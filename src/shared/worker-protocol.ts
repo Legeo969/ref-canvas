@@ -1,0 +1,170 @@
+import type { AssetKind } from "./contracts";
+
+/**
+ * 统一 worker 任务协议（计划 §5.2）。
+ *
+ * Main 与 worker 之间通过 utilityProcess / child process / named pipe 传递
+ * 经过校验的消息。任务必须可追踪（jobId + providerId + provider version）、
+ * 可取消、可设置 deadline，并受 bounded concurrency 约束。
+ */
+
+export type WorkerOperation =
+  | "probe"
+  | "metadata"
+  | "thumbnail"
+  | "waveform"
+  | "preview"
+  | "convert";
+
+export interface WorkerJob {
+  jobId: string;
+  providerId: string;
+  operation: WorkerOperation;
+  inputPath: string;
+  options: Record<string, unknown>;
+  deadlineMs: number;
+}
+
+export type WorkerJobState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export interface WorkerJobUpdate {
+  jobId: string;
+  state: WorkerJobState;
+  progress: number;
+  errorCode: string | null;
+  error: string | null;
+}
+
+/** Worker 返回的载荷：进度更新或最终结果（由具体 operation 定义）。 */
+export interface WorkerResult {
+  jobId: string;
+  /** 结果 JSON（thumbnail 路径、waveform 数据、preview 源等）。 */
+  data: Record<string, unknown>;
+  /** 同一 cache key 的任务合并时，标记结果来自缓存。 */
+  cached?: boolean;
+}
+
+// --- Typed provider contract（计划 §6.1）---
+
+export type ProviderCapability =
+  | "probe"
+  | "metadata"
+  | "thumbnail"
+  | "waveform"
+  | "preview"
+  | "convert";
+
+export type ProviderRuntime = "node" | "native-sidecar" | "external-cli";
+
+export interface ResourceProviderManifest {
+  id: string;
+  version: string;
+  kinds: AssetKind[];
+  extensions: string[];
+  mimeTypes: string[];
+  capabilities: ProviderCapability[];
+  priority: number;
+  runtime: ProviderRuntime;
+}
+
+export interface ProviderHealth {
+  ok: boolean;
+  detail: string;
+}
+
+export interface ProviderProbeInput {
+  path: string;
+  kind: AssetKind;
+  extension: string;
+  size: number;
+}
+
+export interface ProviderProbeResult {
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  /** 格式专属的附加 probe 数据。 */
+  extra: Record<string, unknown>;
+}
+
+export interface ProviderMetadataInput {
+  path: string;
+  kind: AssetKind;
+  extension: string;
+}
+
+export interface ProviderMetadataResult {
+  fields: Record<string, unknown>;
+}
+
+export interface ProviderThumbnailInput {
+  path: string;
+  kind: AssetKind;
+  extension: string;
+  /** 目标宽度（0 表示原尺寸）。 */
+  width: number;
+  height: number;
+}
+
+export interface ProviderThumbnailResult {
+  path: string;
+  width: number;
+  height: number;
+}
+
+export interface ProviderPreviewInput {
+  path: string;
+  kind: AssetKind;
+  extension: string;
+  /** 预览变体（如 hdr 的 tone-mapped、video 的 frame、3D 的 glb 代理）。 */
+  variant: string;
+}
+
+export interface ProviderPreviewResult {
+  /** 预览源 URL（refbrowse token）或本地路径。 */
+  source: string;
+  mimeType: string;
+}
+
+export interface ProviderConvertInput {
+  path: string;
+  kind: AssetKind;
+  extension: string;
+  /** 目标格式（如 "mp4"、"png"）。 */
+  targetFormat: string;
+  options: Record<string, unknown>;
+}
+
+export interface ProviderConvertResult {
+  path: string;
+  format: string;
+}
+
+/**
+ * Typed resource provider 接口。
+ *
+ * 不支持的 capability 必须在 manifest 中缺省，不能通过运行后抛错伪装支持。
+ * 所有方法由 Main 的 provider registry 调度，Renderer 不加载第三方 DLL。
+ */
+export interface ResourceProvider {
+  manifest: ResourceProviderManifest;
+  health(): Promise<ProviderHealth>;
+  probe(input: ProviderProbeInput): Promise<ProviderProbeResult>;
+  metadata(input: ProviderMetadataInput): Promise<ProviderMetadataResult>;
+  thumbnail(input: ProviderThumbnailInput): Promise<ProviderThumbnailResult>;
+  preview(input: ProviderPreviewInput): Promise<ProviderPreviewResult>;
+  convert(input: ProviderConvertInput): Promise<ProviderConvertResult>;
+  dispose(): Promise<void>;
+}
+
+/** provider 实例（可能由 Node 进程直接持有，或通过 worker 间接持有）。 */
+export interface ResourceProviderInstance {
+  provider: ResourceProvider;
+  /** 取消信号：ProviderRegistry 在 Main 退出时发出。 */
+  dispose(): Promise<void>;
+}

@@ -270,6 +270,29 @@ export interface WatchRoot {
   createdAt: string;
 }
 
+/** 挂载根：本地盘符、移动盘或 NAS mount root（计划 §7.2）。 */
+export interface MountRoot {
+  id: string;
+  path: string;
+  displayName: string;
+  volumeId: string | null;
+  state: "online" | "offline" | "permission-denied";
+  lastSeenAt: string | null;
+}
+
+/** 文件身份：磁盘上真实文件的路径 + fingerprint（计划 §7.2）。 */
+export interface FileIdentity {
+  id: string;
+  mountId: string;
+  relativePath: string;
+  fileId: string | null;
+  size: number;
+  mtimeMs: number;
+  quickHash: string | null;
+  contentHash: string | null;
+  linkState: "online" | "missing" | "offline" | "ambiguous";
+}
+
 export interface CollectionRecord {
   id: string;
   title: string;

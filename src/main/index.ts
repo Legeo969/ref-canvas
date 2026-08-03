@@ -42,6 +42,8 @@ import { PreviewTokenRegistry } from "./platform/refbrowse";
 import { PreviewQueue } from "./platform/preview-queue";
 import { PreviewCacheIndex } from "./platform/preview-cache-index";
 import { ThumbnailWorkerClient } from "./platform/thumbnail-worker-client";
+import { ProviderRegistry } from "./platform/provider-registry";
+import { GenericProvider } from "./providers/generic-provider";
 import { registerProtocols } from "./platform/protocols";
 import {
   registerWindowsProjectFormat,
@@ -123,6 +125,8 @@ const previewTokens = new PreviewTokenRegistry();
 const thumbnailQueue = new PreviewQueue<Buffer>(4, 512);
 let previewCacheIndex: PreviewCacheIndex | null = null;
 let thumbnailWorker: ThumbnailWorkerClient | null = null;
+/** 全局 typed provider registry（计划 §6.1）：Renderer 不加载第三方 DLL。 */
+let providerRegistry: ProviderRegistry | null = null;
 const overlayExitAccelerator = "CommandOrControl+Alt+Shift+R";
 const squirrelEvent = process.argv.find((value) =>
   value.startsWith("--squirrel-"),
@@ -815,6 +819,12 @@ void app.whenReady().then(async () => {
     path.join(__dirname, "thumbnail-worker.js"),
     thumbnailCacheDirectory,
   );
+  providerRegistry = new ProviderRegistry();
+  const genericProvider = new GenericProvider();
+  providerRegistry.register({
+    provider: genericProvider,
+    dispose: () => genericProvider.dispose(),
+  });
   for (const cachedFile of previewCacheIndex.prune()) {
     void rm(cachedFile, { force: true });
   }
@@ -893,6 +903,7 @@ async function shutdownServices(): Promise<void> {
   thumbnailQueue.clear("APP_QUITTING");
   thumbnailWorker?.close();
   previewCacheIndex?.close();
+  await providerRegistry?.dispose();
   directoryBatches?.close();
   directoryService?.close();
   await library?.close();
