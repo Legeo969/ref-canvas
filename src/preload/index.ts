@@ -239,6 +239,12 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("filesystem:materialize", path, options),
     rename: (path, newName) =>
       ipcRenderer.invoke("filesystem:rename", path, newName),
+    createFolder: (parentPath, name) =>
+      ipcRenderer.invoke("filesystem:create-folder", parentPath, name),
+    copy: (sources, targetDirectory, options) =>
+      ipcRenderer.invoke("filesystem:copy", sources, targetDirectory, options),
+    move: (sources, targetDirectory, options) =>
+      ipcRenderer.invoke("filesystem:move", sources, targetDirectory, options),
     trash: (paths) => ipcRenderer.invoke("filesystem:trash", paths),
     open: (path) => ipcRenderer.invoke("filesystem:open", path),
     reveal: (path) => ipcRenderer.invoke("filesystem:reveal", path),

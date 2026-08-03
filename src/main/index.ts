@@ -35,6 +35,7 @@ import {
 } from "./services/library-manager";
 import { LibraryService } from "./services/library-service";
 import { FilesystemService } from "./services/filesystem-service";
+import { FileOperationsService } from "./services/file-operations-service";
 import { DirectoryIndexClient } from "./platform/directory-index-client";
 import { ImportEnumeratorClient } from "./platform/import-enumerator-client";
 import { DirectoryBatchService } from "./services/directory-batch-service";
@@ -104,6 +105,7 @@ let actions: ActionService;
 let libraryManager: LibraryManager;
 let directoryService: FilesystemService;
 let directoryBatches: DirectoryBatchService;
+let fileOperations: FileOperationsService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -493,6 +495,10 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   directoryBatches.onProgress((snapshot) => {
     broadcastAll("filesystem:batch-progress", snapshot);
   });
+  fileOperations = new FileOperationsService({
+    allowedRoots: () => [entry.root],
+    trash: (filename) => trashDirectoryPath(filename),
+  });
   await library.recoverPendingOperations();
   library.resumePendingMetadata();
   library.onImportProgress((snapshot) => {
@@ -558,6 +564,7 @@ function registerIpc(): void {
   registerFilesystemIpc(ipc, {
     getDirectoryBatches: () => directoryBatches,
     getDirectoryService: () => directoryService,
+    getFileOperations: () => fileOperations,
     getLibrary: () => library,
     previewTokens,
     trashDirectoryPath,

@@ -660,6 +660,31 @@ export function DirectoryAssetPanel() {
     setSelectedPaths(new Set());
   };
 
+  /** 复制/移动到目标目录（冲突默认 rename，保留原文件时原路径不动）。 */
+  const copyOrMoveEntry = async (
+    entry: DirectoryEntry,
+    kind: "copy" | "move",
+  ) => {
+    setContextMenu(null);
+    const target = await window.refCanvas.system.pickDirectory({
+      title: kind === "copy" ? "选择复制目标目录" : "选择移动目标目录",
+      defaultPath: store.directoryPath ?? undefined,
+    });
+    if (!target) return;
+    const report = await (kind === "copy"
+      ? window.refCanvas.filesystem.copy([entry.path], target, {
+          conflictAction: "rename",
+        })
+      : window.refCanvas.filesystem.move([entry.path], target, {
+          conflictAction: "rename",
+        }));
+    await store.reloadDirectory();
+    const failed = report.failed[0];
+    if (failed) {
+      window.alert(`无法${kind === "copy" ? "复制" : "移动"}：${failed.reason}`);
+    }
+  };
+
   const closePreview = () => setPreviewPath(null);
 
   // ===== 批量操作（选中文件集合） =====
@@ -803,6 +828,34 @@ export function DirectoryAssetPanel() {
     clearSelection();
   };
 
+  /** 批量复制/移动到目标目录（冲突默认 rename）。 */
+  const batchCopyMove = async (kind: "copy" | "move") => {
+    const paths = selectedFilePaths();
+    if (!paths.length) return;
+    const target = await window.refCanvas.system.pickDirectory({
+      title: kind === "copy" ? "选择复制目标目录" : "选择移动目标目录",
+      defaultPath: store.directoryPath ?? undefined,
+    });
+    if (!target) return;
+    const report = await (kind === "copy"
+      ? window.refCanvas.filesystem.copy(paths, target, {
+          conflictAction: "rename",
+        })
+      : window.refCanvas.filesystem.move(paths, target, {
+          conflictAction: "rename",
+        }));
+    await store.reloadDirectory();
+    clearSelection();
+    if (report.failed.length) {
+      window.alert(
+        `${kind === "copy" ? "复制" : "移动"}失败 ${report.failed.length} 项，例如：${report.failed[0].reason}`,
+      );
+    }
+  };
+
+  const batchCopyTo = () => batchCopyMove("copy");
+  const batchMoveTo = () => batchCopyMove("move");
+
   return (
     <section
       className="asset-panel"
@@ -888,6 +941,37 @@ export function DirectoryAssetPanel() {
           >
             <RefreshCw size={17} />
           </button>
+          <button
+            className="icon-button"
+            aria-label="新建文件夹"
+            disabled={!store.directoryPath}
+            onClick={() => {
+              void dialog
+                .requestForm({
+                  title: "新建文件夹",
+                  confirmLabel: "创建",
+                  fields: [
+                    {
+                      name: "name",
+                      label: "文件夹名称",
+                      required: true,
+                      maxLength: 120,
+                    },
+                  ],
+                  onSubmit: () => undefined,
+                })
+                .then(async (values) => {
+                  if (!values || !store.directoryPath) return;
+                  await window.refCanvas.filesystem.createFolder(
+                    store.directoryPath,
+                    String(values.name),
+                  );
+                  await store.reloadDirectory();
+                });
+            }}
+          >
+            <FolderPlus size={17} />
+          </button>
         </div>
       </header>
 
@@ -957,6 +1041,12 @@ export function DirectoryAssetPanel() {
             title={allMatchingSelected ? "导出 UTF-8 路径清单" : "复制选中文件路径"}
           >
             <Copy size={14} />
+          </button>
+          <button onClick={() => void batchCopyTo()} title="复制到…">
+            <Copy size={14} />
+          </button>
+          <button onClick={() => void batchMoveTo()} title="移动到…">
+            <FolderOpen size={14} />
           </button>
           <button onClick={() => void batchMaterialize()} title="加入素材库">
             <FolderPlus size={14} />
@@ -1141,6 +1231,25 @@ export function DirectoryAssetPanel() {
           >
             <Copy size={16} />
             复制路径
+          </button>
+          <span className="context-menu-divider" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              void copyOrMoveEntry(contextMenu.entry, "copy");
+            }}
+          >
+            <Copy size={16} />
+            复制到…
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              void copyOrMoveEntry(contextMenu.entry, "move");
+            }}
+          >
+            <FolderOpen size={16} />
+            移动到…
           </button>
           {contextMenu.entry.isDirectory ? (
             <button

@@ -464,6 +464,31 @@ export interface DirectoryBatchSnapshot {
   failed: Array<{ path: string; reason: string }>;
 }
 
+/** 文件名冲突时的处理策略（计划 §8.2）。 */
+export type FileConflictAction = "skip" | "rename" | "replace";
+
+/** 单次文件操作的冲突处理偏好（apply to all 语义由调用方展开）。 */
+export interface FileOperationOptions {
+  conflictAction?: FileConflictAction;
+  /** 目标已存在时的重命名模板，例如 "name (2).png"；仅 conflictAction=rename。 */
+  renameTemplate?: string;
+}
+
+export interface FileOperationResult {
+  copied: number;
+  moved: number;
+  skipped: number;
+  replaced: number;
+  failed: Array<{ source: string; target: string; reason: string }>;
+}
+
+export type FileOperationKind = "copy" | "move";
+
+export interface FileOperationReport extends FileOperationResult {
+  kind: FileOperationKind;
+  targets: string[];
+}
+
 export type DirectorySearchState =
   | "idle"
   | "running"
@@ -1106,6 +1131,20 @@ export interface RefCanvasApi {
     materialize(path: string, options?: MaterializeOptions): Promise<MaterializeResult>;
     /** 真实改名源文件并同步已入库记录（assetId 不变）。 */
     rename(path: string, newName: string): Promise<FilesystemRenameResult>;
+    /** 在父目录下新建文件夹（同名冲突时自动改名）。 */
+    createFolder(parentPath: string, name: string): Promise<string>;
+    /** 复制文件/文件夹到目标目录；冲突按 strategy 处理。 */
+    copy(
+      sources: string[],
+      targetDirectory: string,
+      options?: FileOperationOptions,
+    ): Promise<FileOperationReport>;
+    /** 移动文件/文件夹到目标目录（跨卷走 copy→校验→回收站）。 */
+    move(
+      sources: string[],
+      targetDirectory: string,
+      options?: FileOperationOptions,
+    ): Promise<FileOperationReport>;
     /** 删除未入库文件到系统回收站；已入库记录同步为 missing。 */
     trash(paths: string[]): Promise<void>;
     open(path: string): Promise<void>;

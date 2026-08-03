@@ -4,6 +4,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { DirectoryBatchService } from "../services/directory-batch-service";
+import type { FileOperationsService } from "../services/file-operations-service";
 import type { FilesystemService } from "../services/filesystem-service";
 import type { LibraryService } from "../services/library-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
@@ -45,6 +46,7 @@ const directoryBatchActionSchema = z.discriminatedUnion("type", [
 interface FilesystemIpcDependencies {
   getDirectoryBatches(): DirectoryBatchService;
   getDirectoryService(): FilesystemService;
+  getFileOperations(): FileOperationsService;
   getLibrary(): LibraryService;
   previewTokens: PreviewTokenRegistry;
   trashDirectoryPath(filename: string): Promise<void>;
@@ -58,6 +60,14 @@ export function registerFilesystemIpc(
   const service = () => dependencies.getDirectoryService();
   const library = () => dependencies.getLibrary();
   const batches = () => dependencies.getDirectoryBatches();
+  const fileOperations = () => dependencies.getFileOperations();
+
+  const fileOperationOptionsSchema = z
+    .object({
+      conflictAction: z.enum(["skip", "rename", "replace"]).optional(),
+      renameTemplate: z.string().max(256).optional(),
+    })
+    .optional();
 
   ipc.handle("filesystem:list-roots", () => service().listRoots());
   ipc.handle("filesystem:set-observed-directory", (filename) =>
@@ -157,6 +167,26 @@ export function registerFilesystemIpc(
       await dependencies.trashDirectoryPath(path.resolve(filename));
     }
   });
+  ipc.handle("filesystem:create-folder", (parentPath, name) =>
+    fileOperations().createFolder(
+      path.resolve(pathSchema.parse(parentPath)),
+      z.string().trim().min(1).max(120).parse(name),
+    ),
+  );
+  ipc.handle("filesystem:copy", (sources, targetDirectory, options) =>
+    fileOperations().copy(
+      directoryPathsSchema.parse(sources).map((filename) => path.resolve(filename)),
+      path.resolve(pathSchema.parse(targetDirectory)),
+      fileOperationOptionsSchema.parse(options),
+    ),
+  );
+  ipc.handle("filesystem:move", (sources, targetDirectory, options) =>
+    fileOperations().move(
+      directoryPathsSchema.parse(sources).map((filename) => path.resolve(filename)),
+      path.resolve(pathSchema.parse(targetDirectory)),
+      fileOperationOptionsSchema.parse(options),
+    ),
+  );
   ipc.handle("filesystem:open", (filename) =>
     shell.openPath(path.resolve(pathSchema.parse(filename))),
   );
