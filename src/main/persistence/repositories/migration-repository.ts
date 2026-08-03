@@ -886,6 +886,18 @@ class V14NativeFilesystem {
       CREATE UNIQUE INDEX IF NOT EXISTS file_identities_id
         ON file_identities(id);
     `);
+    // file_identities 建于 v8，SQLite 无法 ALTER 添加 FK；用触发器强制
+    // mount_id 必须引用 mount_roots（若提供），保持磁盘身份模型的引用完整性。
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS file_identities_mount_fk
+      BEFORE INSERT ON file_identities
+      WHEN NEW.mount_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM mount_roots WHERE id = NEW.mount_id
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed');
+      END;
+    `);
     // 2) 再创建挂载与引用表（cache/media 引用 file_identities.id）。
     db.exec(`
       CREATE TABLE IF NOT EXISTS mount_roots (

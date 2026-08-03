@@ -96,4 +96,41 @@ describe("collection missing-asset reconciliation", () => {
       database.close();
     }
   });
+
+  it("generates a stable identity id for file identity rows", () => {
+    const database = new RefCanvasDatabase(":memory:");
+    try {
+      database.upsertFileIdentity({
+        pathKey: "d:\\art\\reference.png",
+        assetId: "asset-1",
+        fingerprint: "fp",
+        size: 10,
+        rootPath: "D:\\",
+      });
+      const identities = database.listFileIdentitiesByRoot("D:\\");
+      expect(identities).toHaveLength(1);
+      expect(identities[0].id).toMatch(/^[0-9a-f-]{8,}$/);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects a file identity referencing an unknown mount", () => {
+    const database = new RefCanvasDatabase(":memory:");
+    try {
+      // mount_id 引用不存在的 mount 时，v14 触发器必须拒绝插入。
+      expect(() =>
+        database.upsertFileIdentity({
+          pathKey: "d:\\art\\reference.png",
+          assetId: "asset-1",
+          fingerprint: "fp",
+          size: 10,
+          rootPath: "D:\\",
+          mountId: "no-such-mount",
+        }),
+      ).toThrow(/FOREIGN KEY constraint failed/i);
+    } finally {
+      database.close();
+    }
+  });
 });

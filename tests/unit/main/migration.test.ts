@@ -4,6 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
+import {
+  MIGRATIONS,
+  runMigrationSteps,
+} from "../../../src/main/persistence/repositories/migration-repository";
 
 const temporaryDirectories: string[] = [];
 
@@ -265,12 +269,15 @@ describe("database migration", () => {
       } finally {
         verification.close();
       }
-      // 重跑迁移（新连接）幂等：版本不前进、表不重建报错。
-      const reopened = new RefCanvasDatabase(filename);
+      // 真正重跑 v14 迁移步骤（runMigrationSteps 会执行 apply，而非跳过）：
+      // 幂等性验证——表/列已存在时不报错、user_version 不前进。
+      const rerun = new Sqlite(filename);
       try {
-        expect(reopened.getSchemaVersion()).toBe(14);
+        const result = runMigrationSteps(rerun, MIGRATIONS, {});
+        expect(result.completed).toBe(true);
+        expect(result.finalVersion).toBe(14);
       } finally {
-        reopened.close();
+        rerun.close();
       }
     } finally {
       migrated.close();

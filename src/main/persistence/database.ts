@@ -1065,24 +1065,29 @@ export class RefCanvasDatabase {
     fingerprint: string;
     size: number;
     rootPath: string;
+    mountId?: string | null;
   }): void {
     const now = new Date().toISOString();
+    // 新插入时生成稳定 id（cache/media 以 file_identities.id 为引用键）。
     this.db.prepare(`
       INSERT INTO file_identities
-        (path_key, asset_id, fingerprint, size, root_path, created_at, updated_at)
-      VALUES (@path_key, @asset_id, @fingerprint, @size, @root_path, @created_at, @updated_at)
+        (id, path_key, asset_id, fingerprint, size, root_path, mount_id, created_at, updated_at)
+      VALUES (@id, @path_key, @asset_id, @fingerprint, @size, @root_path, @mount_id, @created_at, @updated_at)
       ON CONFLICT(path_key) DO UPDATE SET
         asset_id = excluded.asset_id,
         fingerprint = excluded.fingerprint,
         size = excluded.size,
         root_path = excluded.root_path,
+        mount_id = excluded.mount_id,
         updated_at = excluded.updated_at
     `).run({
+      id: randomUUID(),
       path_key: identity.pathKey,
       asset_id: identity.assetId,
       fingerprint: identity.fingerprint,
       size: identity.size,
       root_path: identity.rootPath,
+      mount_id: identity.mountId ?? null,
       created_at: now,
       updated_at: now,
     });
@@ -1139,16 +1144,18 @@ export class RefCanvasDatabase {
   listFileIdentitiesByRoot(
     rootPath: string,
   ): Array<{
+    id: string;
     pathKey: string;
     assetId: string;
     fingerprint: string;
     size: number;
   }> {
     const rows = this.db.prepare(`
-      SELECT path_key AS pathKey, asset_id AS assetId,
+      SELECT id, path_key AS pathKey, asset_id AS assetId,
         fingerprint, size
       FROM file_identities WHERE root_path = ?
     `).all(rootPath) as Array<{
+      id: string;
       pathKey: string;
       assetId: string;
       fingerprint: string;
