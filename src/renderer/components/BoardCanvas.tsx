@@ -3052,7 +3052,7 @@ export function BoardCanvas({
     const count = result.imported + result.reused;
     setDropNotice(
       importedAssets.length
-        ? `已导入 ${count} 项，并将 ${importedAssets.length} 项放入白板`
+        ? `已加入 ${count} 项，并将 ${importedAssets.length} 项放入白板`
         : `没有可放入白板的受支持文件`,
     );
     window.setTimeout(() => setDropNotice(null), 2400);

@@ -285,7 +285,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                               .requestConfirm({
                                 title: `停止监控“${root.path}”？`,
                                 description:
-                                  "已导入素材和文件夹会保留，源文件不会被修改。",
+                                  "已建立索引的素材和文件夹会保留，源文件不会被修改。",
                                 confirmLabel: "停止监控",
                               })
                               .then((confirmed) => {

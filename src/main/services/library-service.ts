@@ -63,7 +63,6 @@ function kindForExtension(extension: string): AssetKind | undefined {
 
 interface ImportCandidate {
   filename: string;
-  collectionSegments: string[];
   watchRootPath?: string;
 }
 
@@ -91,14 +90,6 @@ async function walk(root: string, signal?: AbortSignal): Promise<string[]> {
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
   return result;
-}
-
-function segmentsForFile(filename: string, root: string): string[] {
-  const relativeDirectory = path.relative(root, path.dirname(filename));
-  return [
-    path.basename(root),
-    ...relativeDirectory.split(path.sep).filter((segment) => segment && segment !== "."),
-  ];
 }
 
 /**
@@ -899,31 +890,13 @@ export class LibraryService {
   private async runImport(job: ImportJob): Promise<void> {
     const { snapshot, controller } = job;
     const storageMode = this.resolveStorageMode(job.options);
-    const hierarchyMode = job.options.hierarchyMode ?? "collections";
     const targetFolderId = job.options.targetFolderId ?? null;
-    const parentFolderId = job.options.parentFolderId ?? null;
-    if (parentFolderId && !this.database.getCollection(parentFolderId)) {
-      snapshot.state = "failed";
-      snapshot.failed.push({
-        path: snapshot.sourcePaths.join("; "),
-        reason: "COLLECTION_PARENT_NOT_FOUND",
-      });
-      snapshot.completedAt = new Date().toISOString();
-      this.importCoordinator.emit(job);
-      return;
-    }
     try {
       snapshot.state = "scanning";
       this.importCoordinator.emit(job);
       const watchRoots = this.database.listWatchRoots()
         .map((item) => path.resolve(item.path))
         .sort((left, right) => right.length - left.length);
-      const collectionIds = new Map(
-        this.database.listCollections().map((collection) => [
-          `${collection.parentId ?? ""}\0${collection.title.toLocaleLowerCase("en-US")}`,
-          collection.id,
-        ]),
-      );
       await this.importEnumerator.enumerate(
         snapshot.sourcePaths,
         controller.signal,
@@ -939,12 +912,8 @@ export class LibraryService {
               (root) =>
                 item.filename === root || item.filename.startsWith(`${root}${path.sep}`),
             );
-            const hierarchyRoot = watchRootPath ?? item.sourceRoot;
             return {
               filename: item.filename,
-              collectionSegments: hierarchyRoot
-                ? segmentsForFile(item.filename, hierarchyRoot)
-                : [],
               ...(watchRootPath ? { watchRootPath } : {}),
             };
           });
@@ -1024,31 +993,9 @@ export class LibraryService {
                   rootPath: item.candidate.watchRootPath,
                 });
               }
-              if (hierarchyMode === "flat") continue;
               if (targetFolderId) {
                 collectionRelations.push({ assetId: saved.asset.id, collectionId: targetFolderId });
-                continue;
               }
-              let parentId: string | null = parentFolderId;
-              const sourceSegments: string[] = [];
-              for (const segment of item.candidate.collectionSegments) {
-                sourceSegments.push(segment);
-                const key = `${parentId ?? ""}\0${segment.toLocaleLowerCase("en-US")}`;
-                let collectionId = collectionIds.get(key);
-                if (!collectionId) {
-                  collectionId = this.database.findOrCreateCollectionId(segment, parentId);
-                  collectionIds.set(key, collectionId);
-                }
-                if (item.candidate.watchRootPath) {
-                  this.database.markCollectionSource(
-                    collectionId,
-                    item.candidate.watchRootPath,
-                    sourceSegments.join(path.sep),
-                  );
-                }
-                parentId = collectionId;
-              }
-              if (parentId) collectionRelations.push({ assetId: saved.asset.id, collectionId: parentId });
             }
             if (identities.length) this.database.upsertFileIdentities(identities);
             if (collectionRelations.length) this.database.addAssetsToCollections(collectionRelations);
@@ -1363,49 +1310,9 @@ export class LibraryService {
     }
   }
 
-  private backfillWatchCollectionSources(rootPath: string): void {
-    const collections = this.database.listCollections();
-    const byId = new Map(collections.map((collection) => [collection.id, collection]));
-    for (const identity of this.database.listFileIdentitiesByRoot(rootPath)) {
-      const asset = this.database.getAsset(identity.assetId);
-      if (!asset) continue;
-      const relativeDirectory = path.relative(rootPath, path.dirname(asset.path));
-      const segments = relativeDirectory && relativeDirectory !== "."
-        ? relativeDirectory.split(path.sep).filter(Boolean)
-        : [];
-      if (!segments.length) continue;
-      for (const collectionId of asset.collectionIds) {
-        const chain: Array<{ id: string; title: string }> = [];
-        let current = byId.get(collectionId);
-        while (current) {
-          chain.unshift({ id: current.id, title: current.title });
-          current = current.parentId ? byId.get(current.parentId) : undefined;
-        }
-        if (
-          chain.length !== segments.length ||
-          chain.some((item, index) =>
-            item.title.localeCompare(segments[index], undefined, { sensitivity: "accent" }) !== 0)
-        ) {
-          continue;
-        }
-        chain.forEach((item, index) => {
-          this.database.markCollectionSource(
-            item.id,
-            rootPath,
-            segments.slice(0, index + 1).join(path.sep),
-          );
-        });
-      }
-    }
-  }
-
   async startWatching(): Promise<void> {
     const roots = this.database.listWatchRoots();
     if (!roots.length || this.watchReconcile.active) return;
-    for (const root of roots) {
-      this.backfillWatchCollectionSources(path.resolve(root.path));
-      this.database.pruneEmptyGeneratedCollections(root.path);
-    }
     await this.watchReconcile.start(roots, {
       onAdd: (filename) => {
         if (this.managedPaths.has(path.normalize(filename))) return;
@@ -1424,17 +1331,9 @@ export class LibraryService {
         if (!asset) return;
         this.rememberUnlink(asset);
         this.database.setLinkStateByPath(filename, "missing");
-        const watchRoot = this.database.listWatchRoots().find(
-          (root) =>
-            filename === root.path ||
-            filename.startsWith(`${root.path}${path.sep}`),
-        );
-        if (watchRoot) {
-          this.database.pruneEmptyGeneratedCollections(watchRoot.path);
-        }
         this.emitLibraryChanged({ reason: "watch", paths: [filename] });
       },
-      onNativePath: (filename, resolvedRoot) => {
+      onNativePath: (filename, _resolvedRoot) => {
         if (this.managedPaths.has(path.normalize(filename))) return;
         void stat(filename)
           .then(async (fileStat) => {
@@ -1451,7 +1350,6 @@ export class LibraryService {
             if (!asset) return;
             this.rememberUnlink(asset);
             this.database.setLinkStateByPath(filename, "missing");
-            this.database.pruneEmptyGeneratedCollections(resolvedRoot);
             this.emitLibraryChanged({ reason: "watch", paths: [filename] });
           });
       },
@@ -1708,7 +1606,6 @@ export class LibraryService {
     };
     for (const root of roots) {
       const rootPath = path.resolve(root.path);
-      this.backfillWatchCollectionSources(rootPath);
       const files = await walk(rootPath);
       report.scanned += files.length;
       const byFingerprint = new Map<string, string[]>();
@@ -1801,7 +1698,6 @@ export class LibraryService {
           }
         }
       }
-      this.database.pruneEmptyGeneratedCollections(rootPath);
     }
     this.database.deleteResolvedReconcileEntries();
     this.lastReconcileReport = report;

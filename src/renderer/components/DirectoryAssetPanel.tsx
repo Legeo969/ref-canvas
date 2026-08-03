@@ -5,11 +5,9 @@ import {
   Check,
   Copy,
   Eye,
-  FolderDown,
   FolderOpen,
   FolderPlus,
   Heart,
-  Import,
   RefreshCw,
   Search,
   Tags,
@@ -104,7 +102,7 @@ function DirectoryCard({
       }}
       draggable
       onDragStart={(event) => {
-        // 文件/文件夹均可拖入侧栏文件夹：文件按需入库+加入，文件夹层级导入。
+        // 文件/文件夹均可拖入侧栏文件夹：文件按需入库+加入，文件夹进入目录浏览。
         event.dataTransfer.setData(
           DIRECTORY_ENTRY_MIME,
           JSON.stringify({ path: entry.path, isDirectory: entry.isDirectory }),
@@ -146,7 +144,7 @@ function DirectoryCard({
   );
 }
 
-/** 目录模式素材区：虚拟网格 + 顶部目录搜索（流式/可取消）+ 导入/导航/预览。 */
+/** 目录模式素材区：虚拟网格 + 顶部目录搜索（流式/可取消）+ 导航/预览。 */
 export function DirectoryAssetPanel() {
   const store = useAppStore();
   const dialog = useDialog();
@@ -166,7 +164,6 @@ export function DirectoryAssetPanel() {
     x: number;
     y: number;
   } | null>(null);
-  const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [viewport, setViewport] = useState({ width: 340, height: 600, top: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -893,53 +890,6 @@ export function DirectoryAssetPanel() {
           >
             <RefreshCw size={17} />
           </button>
-          <div className="dir-import-menu">
-            <button
-              className="icon-button"
-              aria-label="导入当前目录"
-              aria-expanded={importMenuOpen}
-              disabled={!store.directoryPath}
-              onClick={() => setImportMenuOpen((value) => !value)}
-            >
-              <Import size={17} />
-            </button>
-            {importMenuOpen && (
-              <>
-                <div
-                  className="context-menu-dismiss"
-                  onClick={() => setImportMenuOpen(false)}
-                />
-                <div className="dir-import-popover" role="menu">
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setImportMenuOpen(false);
-                      if (store.directoryPath) {
-                        void store.importDirectoryTree(store.directoryPath);
-                      }
-                    }}
-                  >
-                    <FolderDown size={16} />
-                    导入当前目录（含子文件夹层级）
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setImportMenuOpen(false);
-                      if (store.directoryPath) {
-                        void store.importDirectoryTree(store.directoryPath, {
-                          hierarchyMode: "flat",
-                        });
-                      }
-                    }}
-                  >
-                    <Import size={16} />
-                    导入全部文件（不建文件夹）
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
         </div>
       </header>
 
@@ -1199,11 +1149,11 @@ export function DirectoryAssetPanel() {
               role="menuitem"
               onClick={() => {
                 setContextMenu(null);
-                void store.importDirectoryTree(contextMenu.entry.path);
+                void store.openDirectory(contextMenu.entry.path);
               }}
             >
-              <FolderDown size={16} />
-              导入此目录到素材库（保留子文件夹层级）
+              <FolderOpen size={16} />
+              打开目录
             </button>
           ) : (
             <>

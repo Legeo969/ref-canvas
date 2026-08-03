@@ -105,30 +105,28 @@ describe("DirectoryAssetPanel", () => {
     expect(reloadAssets).toHaveBeenCalledOnce();
   });
 
-  it("imports a folder card as a hierarchy-preserving tree", async () => {
-    const startImport = vi.fn(async () => ({
-      id: "job-1",
-      state: "processing",
-      discovered: 3,
-      processed: 1,
-      sourcePaths: ["D:\\refs\\assets"],
-      createdAt: "2026-01-01T00:00:00.000Z",
-      completedAt: null,
-      imported: 0,
-      reused: 0,
-      unsupported: 0,
-      failed: [],
-      copied: 0,
-      relinked: 0,
-      conflicted: 0,
-      verified: 0,
+  it("opens a folder card in browse mode from the context menu", async () => {
+    const setObservedDirectory = vi.fn(async () => undefined);
+    const listDirectory = vi.fn(async () => ({
+      entries: [
+        {
+          path: "D:\\refs\\assets",
+          name: "assets",
+          isDirectory: true,
+          extension: "",
+        },
+      ],
+      total: 1,
+      nextCursor: null,
+      scanState: "complete",
     }));
     Object.assign(window, {
       refCanvas: {
         filesystem: {
           onSearchProgress: () => () => undefined,
+          setObservedDirectory,
+          listDirectory,
         },
-        library: { startImport },
       } as unknown as RefCanvasApi,
     });
     useAppStore.setState({
@@ -162,20 +160,25 @@ describe("DirectoryAssetPanel", () => {
         .querySelector(".directory-card-wrap")
         ?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     });
-    const importButton = Array.from(
+    const openButton = Array.from(
       document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
-    ).find((button) => button.textContent?.includes("导入此目录到素材库"));
-    expect(importButton).toBeTruthy();
+    ).find((button) => button.textContent?.includes("打开目录"));
+    expect(openButton).toBeTruthy();
+    expect(
+      Array.from(
+        document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
+      ).some((button) => button.textContent?.includes("导入此目录到素材库")),
+    ).toBe(false);
     await act(async () => {
-      importButton?.click();
+      openButton?.click();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
 
-    expect(startImport).toHaveBeenCalledWith(["D:\\refs\\assets"], {
-      storageMode: "library-default",
-      hierarchyMode: "collections",
-      parentFolderId: null,
+    expect(setObservedDirectory).toHaveBeenCalledWith("D:\\refs\\assets");
+    expect(listDirectory).toHaveBeenCalledWith("D:\\refs\\assets", {
+      pageSize: 512,
     });
+    expect(useAppStore.getState().directoryPath).toBe("D:\\refs\\assets");
   });
 
   it("exposes a directory entry drag payload for sidebar folder drops", async () => {

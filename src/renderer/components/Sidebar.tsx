@@ -181,10 +181,8 @@ export function Sidebar() {
                     isDirectory: boolean;
                   };
                   if (parsed.isDirectory) {
-                    // 文件夹 → 层级导入为目标文件夹的子文件夹树。
-                    void store.importDirectoryTree(parsed.path, {
-                      parentFolderId: collection.id,
-                    });
+                    // 磁盘原生：目录拖放进入目录浏览，不镜像创建合集。
+                    void store.openDirectory(parsed.path);
                   } else {
                     // 文件 → 按需入库并加入目标文件夹。
                     void store.materializeEntriesToCollection(
@@ -496,8 +494,8 @@ export function Sidebar() {
                   isDirectory: boolean;
                 };
                 if (parsed.isDirectory) {
-                  // 文件夹 → 层级导入到文件夹根。
-                  void store.importDirectoryTree(parsed.path);
+                  // 磁盘原生：目录拖放进入目录浏览。
+                  void store.openDirectory(parsed.path);
                 } else {
                   // 文件 → 按需入库（不指定文件夹，仅建索引）。
                   void window.refCanvas.filesystem.materialize(parsed.path, {

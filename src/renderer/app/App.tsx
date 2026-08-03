@@ -5,7 +5,6 @@ import {
   FileJson,
   FolderOpen,
   ImageDown,
-  Import,
   MonitorPlay,
   PanelLeftClose,
   Pin,
@@ -379,17 +378,15 @@ export function App() {
         <div className="titlebar-actions">
           <button
             className="titlebar-button"
-            onClick={() => void store.importAssets("files")}
-          >
-            <Import size={15} />
-            导入
-          </button>
-          <button
-            className="titlebar-button"
-            onClick={() => void store.importAssets("folder")}
+            onClick={async () => {
+              const directory = await window.refCanvas.system.pickDirectory({
+                title: "打开本地文件夹",
+              });
+              if (directory) await store.openDirectory(directory);
+            }}
           >
             <FolderOpen size={15} />
-            文件夹
+            打开本地文件夹
           </button>
           <button
             className="titlebar-button"

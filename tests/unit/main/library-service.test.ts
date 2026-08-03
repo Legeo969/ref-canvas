@@ -179,7 +179,7 @@ describe("quickFingerprint", () => {
     }
   });
 
-  it("preserves imported folder hierarchy and assigns files to leaf folders", async () => {
+  it("indexes an imported folder tree without mirror-creating collections", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-"));
     temporaryDirectories.push(directory);
     const root = path.join(directory, "Temple Project");
@@ -199,28 +199,20 @@ describe("quickFingerprint", () => {
     const service = new LibraryService(database);
     try {
       const result = await service.importPaths([root]);
-      const folders = database.listCollections();
-      const project = folders.find((item) => item.title === "Temple Project")!;
-      const architecture = folders.find(
-        (item) => item.title === "Architecture" && item.parentId === project.id,
-      )!;
-      const exteriorFolder = folders.find(
-        (item) => item.title === "Exterior" && item.parentId === architecture.id,
-      )!;
-
+      // 磁盘原生语义：导入只建立链接索引，不镜像创建合集树。
+      expect(database.listCollections()).toHaveLength(0);
       expect(result.imported).toBe(3);
-      expect(project.assetCount).toBe(3);
-      expect(project.directAssetCount).toBe(1);
-      expect(
-        database.searchAssets({ collectionId: exteriorFolder.id }).items[0].title,
-      ).toBe("gate");
+      expect(database.searchAssets().total).toBe(3);
+      expect(database.getAssetByPath(path.join(exterior, "gate.png"))?.title).toBe(
+        "gate",
+      );
     } finally {
       await service.close();
       database.close();
     }
   });
 
-  it("nests an imported tree under a parent folder via parentFolderId", async () => {
+  it("adds an imported folder to an explicit target folder via targetFolderId", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-parent-"));
     temporaryDirectories.push(directory);
     const root = path.join(directory, "Inbox");
@@ -240,55 +232,14 @@ describe("quickFingerprint", () => {
     try {
       const target = database.createCollection("收件箱");
       await service.importPaths([root], {
-        hierarchyMode: "collections",
-        parentFolderId: target.id,
+        hierarchyMode: "flat",
+        targetFolderId: target.id,
       });
       const folders = database.listCollections();
-      const inbox = folders.find((item) => item.id === target.id)!;
-      // 源目录根名（Inbox）作为收件箱的第一个子文件夹，Set A/B 挂在其下。
-      const rootFolder = folders.find(
-        (item) => item.title === "Inbox" && item.parentId === inbox.id,
-      )!;
-      const setAFolder = folders.find(
-        (item) => item.title === "Set A" && item.parentId === rootFolder.id,
-      )!;
-      const setBFolder = folders.find(
-        (item) => item.title === "Set B" && item.parentId === rootFolder.id,
-      )!;
-      expect(setAFolder.assetCount).toBe(1);
-      expect(setBFolder.assetCount).toBe(1);
-      expect(rootFolder.assetCount).toBe(2);
-      expect(rootFolder.directAssetCount).toBe(0);
-      expect(inbox.assetCount).toBe(2);
-      expect(inbox.directAssetCount).toBe(0);
-      expect(database.searchAssets({ collectionId: setAFolder.id }).items[0].title).toBe("a");
-      expect(
-        database.searchAssets({
-          collectionId: setBFolder.id,
-          includeSubcollections: false,
-        }).items[0].title,
-      ).toBe("b");
-    } finally {
-      await service.close();
-      database.close();
-    }
-  });
-
-  it("fails a parentFolderId import when the folder was deleted", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-parent-"));
-    temporaryDirectories.push(directory);
-    const root = path.join(directory, "Missing Parent");
-    await mkdir(root, { recursive: true });
-    await writeFile(path.join(root, "a.png"), Buffer.alloc(32, 1));
-    const database = new RefCanvasDatabase(":memory:");
-    const service = new LibraryService(database);
-    try {
-      const result = await service.importPaths([root], {
-        parentFolderId: "00000000-0000-4000-8000-000000000000",
-      });
-      expect(result.failed.length).toBe(1);
-      expect(result.failed[0].reason).toBe("COLLECTION_PARENT_NOT_FOUND");
-      expect(database.listCollections()).toHaveLength(0);
+      expect(folders).toHaveLength(1);
+      expect(folders[0].id).toBe(target.id);
+      expect(folders[0].assetCount).toBe(2);
+      expect(database.searchAssets({ collectionId: target.id }).total).toBe(2);
     } finally {
       await service.close();
       database.close();

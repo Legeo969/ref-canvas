@@ -8,12 +8,12 @@ import {
   FileText,
   Film,
   FolderMinus,
+  FolderOpen,
   FolderPlus,
   FolderSearch,
   FolderX,
   Headphones,
   Heart,
-  Import,
   MoreHorizontal,
   NotebookPen,
   Pencil,
@@ -758,11 +758,15 @@ export function AssetPanel() {
         </div>
         <button
           className="icon-button"
-          onClick={() => void store.importAssets("files")}
-          aria-label="导入素材"
-          disabled={store.importing}
+          onClick={async () => {
+            const directory = await window.refCanvas.system.pickDirectory({
+              title: "打开本地文件夹",
+            });
+            if (directory) await store.openDirectory(directory);
+          }}
+          aria-label="打开本地文件夹"
         >
-          <Import size={17} />
+          <FolderOpen size={17} />
         </button>
       </header>
 
@@ -807,8 +811,8 @@ export function AssetPanel() {
           }}
           aria-label="素材排序"
         >
-          <option value="createdAt:desc">最新导入</option>
-          <option value="createdAt:asc">最早导入</option>
+          <option value="createdAt:desc">最新加入</option>
+          <option value="createdAt:asc">最早加入</option>
           <option value="title:asc">名称 A–Z</option>
           <option value="size:desc">文件最大</option>
           <option value="mtimeMs:desc">最近修改</option>
@@ -1116,7 +1120,7 @@ export function AssetPanel() {
             </div>
           )}
           <label>
-            导入起始
+            加入起始
             <input
               type="date"
               value={dateInputValue(store.createdAfter)}
@@ -1130,7 +1134,7 @@ export function AssetPanel() {
             />
           </label>
           <label>
-            导入截止
+            加入截止
             <input
               type="date"
               value={dateInputValue(store.createdBefore)}
@@ -1698,10 +1702,15 @@ export function AssetPanel() {
           {!store.query && store.lifecycleFilter === "active" && (
             <button
               className="primary-button"
-              onClick={() => void store.importAssets("files")}
+              onClick={async () => {
+                const directory = await window.refCanvas.system.pickDirectory({
+                  title: "打开本地文件夹",
+                });
+                if (directory) await store.openDirectory(directory);
+              }}
             >
-              <Import size={16} />
-              导入素材
+              <FolderOpen size={16} />
+              打开本地文件夹
             </button>
           )}
         </div>

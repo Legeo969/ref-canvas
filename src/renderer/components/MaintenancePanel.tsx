@@ -245,7 +245,7 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
                   onClick={() => {
                     if (
                       window.confirm(
-                        `停止监控“${root.path}”？已导入素材和文件夹会保留，源文件不会被修改。`,
+                        `停止监控“${root.path}”？已建立索引的素材和文件夹会保留，源文件不会被修改。`,
                       )
                     ) {
                       void window.refCanvas.library

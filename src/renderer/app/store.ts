@@ -95,7 +95,6 @@ interface AppState
   restoreSelection(): Promise<void>;
   purgeSelection(): Promise<void>;
   forgetTrashSelection(): Promise<void>;
-  importAssets(mode: "files" | "folder"): Promise<void>;
   importPaths(paths: string[]): Promise<void>;
   importPathsWithOptions(paths: string[], options: ImportOptions): Promise<void>;
   cancelImport(): Promise<void>;
@@ -164,16 +163,6 @@ interface AppState
   goForwardDirectory(): Promise<void>;
   goUpDirectory(): Promise<void>;
   reloadDirectory(): Promise<void>;
-  /** 目录树导入：目录 → 嵌套文件夹（可指定落点文件夹与层级模式）。 */
-  importDirectoryTree(
-    path: string,
-    options?: {
-      /** 层级模式（默认 collections 保留层级）。 */
-      hierarchyMode?: "collections" | "flat";
-      /** 树整体嵌套到该文件夹下（默认为资料库根）。 */
-      parentFolderId?: string | null;
-    },
-  ): Promise<void>;
   /** 批量将未入库文件按需入库并加入文件夹（同路径复用 assetId）。 */
   materializeEntriesToCollection(
     paths: string[],
@@ -796,18 +785,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().reloadAssets();
   },
 
-  importAssets: async (mode) => {
-    set({ importing: true });
-    try {
-      await window.refCanvas.library.pickAndImport(mode);
-      const collections = await window.refCanvas.library.listCollections();
-      set({ collections });
-      await get().reloadAssets();
-    } finally {
-      set({ importing: false });
-    }
-  },
-
   importPaths: async (paths) => {
     if (!paths.length) return;
     const importJob = await window.refCanvas.library.startImport(paths);
@@ -1275,15 +1252,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!current) return;
     const index = get().directoryHistoryIndex;
     await moveDirectoryCursor(set, current, index);
-  },
-
-  importDirectoryTree: async (path, options) => {
-    const job = await window.refCanvas.library.startImport([path], {
-      storageMode: "library-default",
-      hierarchyMode: options?.hierarchyMode ?? "collections",
-      parentFolderId: options?.parentFolderId ?? null,
-    });
-    set({ importJob: job, importing: true });
   },
 
   materializeEntriesToCollection: async (paths, collectionId) => {
