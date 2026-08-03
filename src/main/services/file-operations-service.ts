@@ -163,8 +163,13 @@ export class FileOperationsService {
   }
 
   private async validateRevision(options: FileOperationOptions): Promise<void> {
+    // 无 validateRevision 依赖（如单元测试）时跳过。
     if (!this.dependencies.validateRevision) return;
-    if (!options.revision || !options.directoryPath) return;
+    // Main 提供 scan 校验时，破坏性操作必须携带 revision 上下文（计划 §8.2），
+    // 防止基于陈旧快照的 create/copy/move 被绕过。
+    if (!options.revision || !options.directoryPath) {
+      throw new Error("REVISION_REQUIRED");
+    }
     await this.dependencies.validateRevision(options.directoryPath, options.revision);
   }
 

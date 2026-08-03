@@ -18,14 +18,14 @@ export interface DirectoryClipboard {
 }
 
 let clipboard: DirectoryClipboard | null = null;
-let subscription: ((next: DirectoryClipboard | null) => void) | null = null;
+const listeners = new Set<(next: DirectoryClipboard | null) => void>();
 
 export function subscribeDirectoryClipboard(
   listener: (next: DirectoryClipboard | null) => void,
 ): () => void {
-  subscription = listener;
+  listeners.add(listener);
   return () => {
-    if (subscription === listener) subscription = null;
+    listeners.delete(listener);
   };
 }
 
@@ -35,7 +35,7 @@ export function getDirectoryClipboard(): DirectoryClipboard | null {
 
 export function setDirectoryClipboard(next: DirectoryClipboard | null): void {
   clipboard = next;
-  subscription?.(clipboard);
+  for (const listener of listeners) listener(clipboard);
 }
 
 export function clearDirectoryClipboard(): void {

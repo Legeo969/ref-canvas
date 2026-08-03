@@ -232,6 +232,23 @@ describe("file operations safety", () => {
     expect(validateRevision).toHaveBeenCalledWith(root, "stale-revision");
   });
 
+  it("requires a revision context when scan validation is available", async () => {
+    const root = await createTempDir();
+    const validateRevision = vi.fn(async () => undefined);
+    const service = new FileOperationsService({
+      allowedRoots: () => [root],
+      trash: async () => undefined,
+      validateRevision,
+    });
+    // 有 scan 校验依赖时，缺 revision 的破坏性操作必须被拒绝。
+    await expect(service.createFolder(root, "New", {})).rejects.toThrow(
+      "REVISION_REQUIRED",
+    );
+    await expect(service.move([path.join(root, "x")], root, {})).rejects.toThrow(
+      "REVISION_REQUIRED",
+    );
+  });
+
   it("does not delete the existing target when a replace-copy fails", async () => {
     const root = await createTempDir();
     const source = path.join(root, "src", "a.png");

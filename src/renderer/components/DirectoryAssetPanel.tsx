@@ -1051,6 +1051,10 @@ export function DirectoryAssetPanel() {
                   await window.refCanvas.filesystem.createFolder(
                     store.directoryPath,
                     String(values.name),
+                    {
+                      revision: directoryRevision || undefined,
+                      directoryPath: store.directoryPath,
+                    },
                   );
                   await store.reloadDirectory();
                 });
