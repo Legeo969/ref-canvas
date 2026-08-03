@@ -1,0 +1,503 @@
+import { dialog, type BrowserWindow, type IpcMainInvokeEvent } from "electron";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { z } from "zod";
+import { assetColorLabels } from "../../shared/contracts";
+import type { RefCanvasDatabase } from "../database";
+import type { LibraryService } from "../library-service";
+import type { SecureIpcRegistrar } from "../secure-ipc";
+import {
+  idSchema,
+  idsSchema,
+  pathsSchema,
+  searchObjectSchema,
+  searchSchema,
+  selectionSchema,
+} from "./schemas";
+
+interface LibraryIpcDependencies {
+  copyProjectAsset(assetId: string, destination: string): Promise<unknown>;
+  getDatabase(): RefCanvasDatabase;
+  getLibrary(): LibraryService;
+  safeFilename(value: string): string;
+  windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
+}
+
+export function registerLibraryIpc(
+  ipc: SecureIpcRegistrar,
+  dependencies: LibraryIpcDependencies,
+): void {
+  const database = () => dependencies.getDatabase();
+  const library = () => dependencies.getLibrary();
+
+  ipc.handle("library:search", (input) =>
+    database().searchAssets(searchSchema.parse(input)),
+  );
+  ipc.handle("library:get", (id) => database().getAsset(idSchema.parse(id)));
+  ipc.handle("library:get-by-path", (filename) =>
+    database().getAssetByPath(
+      z.string().min(1).max(32_768).parse(filename),
+    ),
+  );
+  ipc.handle("library:import-paths", (paths) =>
+    library().importPaths(pathsSchema.parse(paths)),
+  );
+  ipc.handle("library:start-import", (paths, options) =>
+    library().startImport(
+      pathsSchema.parse(paths),
+      z
+        .object({
+          storageMode: z
+            .enum(["linked", "managed", "library-default"])
+            .optional(),
+          hierarchyMode: z.enum(["collections", "flat"]).optional(),
+          targetFolderId: z.union([idSchema, z.null()]).optional(),
+          parentFolderId: z.union([idSchema, z.null()]).optional(),
+        })
+        .optional()
+        .parse(options),
+    ),
+  );
+  ipc.handle("library:get-import-job", (id) =>
+    library().getImportJob(idSchema.parse(id)),
+  );
+  ipc.handle("library:cancel-import", (id) =>
+    library().cancelImport(idSchema.parse(id)),
+  );
+  ipc.handle("library:retry-import", (id) =>
+    library().retryImport(idSchema.parse(id)),
+  );
+  ipc.handleWithEvent("library:pick-import", async (event, mode: unknown) => {
+    const parsedMode = z.enum(["files", "folder"]).parse(mode);
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: parsedMode === "files" ? "导入素材" : "导入素材文件夹",
+      properties:
+        parsedMode === "files"
+          ? ["openFile", "multiSelections"]
+          : ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return library().importPaths(result.filePaths);
+  });
+  ipc.handle("library:update", (id, patch) => {
+    const parsedPatch = z
+      .object({
+        title: z.string().trim().min(1).max(256).optional(),
+        notes: z.string().max(10_000).optional(),
+        favorite: z.boolean().optional(),
+        rating: z.number().int().min(0).max(5).optional(),
+        colorLabel: z.enum(assetColorLabels).optional(),
+      })
+      .parse(patch);
+    return database().updateAsset(idSchema.parse(id), parsedPatch);
+  });
+  ipc.handle("library:list-annotations", (assetId) =>
+    database().listAssetAnnotations(idSchema.parse(assetId)),
+  );
+  ipc.handle("library:create-annotation", (assetId, input) =>
+    database().createAssetAnnotation(
+      idSchema.parse(assetId),
+      z.object({
+        x: z.number().finite().min(0).max(1),
+        y: z.number().finite().min(0).max(1),
+        text: z.string().trim().min(1).max(2_000),
+      }).parse(input),
+    ),
+  );
+  ipc.handle("library:update-annotation", (id, patch) =>
+    database().updateAssetAnnotation(
+      idSchema.parse(id),
+      z.object({
+        x: z.number().finite().min(0).max(1).optional(),
+        y: z.number().finite().min(0).max(1).optional(),
+        text: z.string().trim().min(1).max(2_000).optional(),
+      }).parse(patch),
+    ),
+  );
+  ipc.handle("library:delete-annotation", (id) =>
+    database().deleteAssetAnnotation(idSchema.parse(id)),
+  );
+  ipc.handle("library:batch-update", (scope, patch) =>
+    database().batchUpdate(
+      selectionSchema.parse(scope),
+      z.object({
+        addTags: z.array(z.string().trim().min(1).max(64)).max(64).optional(),
+        removeTags: z.array(z.string().trim().min(1).max(64)).max(64).optional(),
+        replaceTags: z.array(z.string().trim().min(1).max(64)).max(64).optional(),
+        addCollectionId: idSchema.optional(),
+        removeCollectionId: idSchema.optional(),
+        favorite: z.boolean().optional(),
+        rating: z.number().int().min(0).max(5).optional(),
+        colorLabel: z.enum(assetColorLabels).optional(),
+        notes: z.string().max(10_000).optional(),
+      }).parse(patch),
+    ),
+  );
+  ipc.handle("library:batch-rename", (scope, pattern) =>
+    database().batchRename(
+      selectionSchema.parse(scope),
+      z.string().trim().min(1).max(256).parse(pattern),
+    ),
+  );
+  ipc.handle("library:trash", (scope) =>
+    library().trashAssets(selectionSchema.parse(scope)),
+  );
+  ipc.handle("library:remove-from-library", (scope) =>
+    library().removeFromLibrary(selectionSchema.parse(scope)),
+  );
+  ipc.handle("library:restore", (ids) =>
+    library().restoreAssets(idsSchema.parse(ids)),
+  );
+  ipc.handle("library:purge", (ids) =>
+    library().purgeAssets(idsSchema.parse(ids)),
+  );
+  ipc.handle("library:forget-trash", (ids) =>
+    library().forgetTrashedAssets(idsSchema.parse(ids)),
+  );
+  ipc.handle("library:list-trash", (input) =>
+    database().searchAssets({
+      ...(searchSchema.parse(input) ?? {}),
+      lifecycle: "trashed",
+    }),
+  );
+  ipc.handle("library:refresh-links", () => library().refreshLinkStates());
+  ipc.handleWithEvent("library:pick-relink", async (event, id) => {
+    const assetId = idSchema.parse(id);
+    const asset = database().getAsset(assetId);
+    if (!asset) throw new Error("ASSET_NOT_FOUND");
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: `重新定位：${asset.title}`,
+      properties: ["openFile"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return library().relinkAsset(assetId, result.filePaths[0]);
+  });
+  ipc.handleWithEvent("library:search-relink", async (event, id) => {
+    const assetId = idSchema.parse(id);
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: "选择搜索文件夹",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return library().searchAndRelink(assetId, result.filePaths[0]);
+  });
+  ipc.handleWithEvent("library:add-watch-folder", async (event) => {
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: "添加监控素材文件夹",
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return library().addWatchRoot(result.filePaths[0]);
+  });
+  ipc.handle("library:list-watch-roots", () => database().listWatchRoots());
+  ipc.handle("library:remove-watch-root", (id) =>
+    library().removeWatchRoot(idSchema.parse(id)),
+  );
+  ipc.handle("library:list-collections", () => database().listCollections());
+  ipc.handle("library:create-collection", (title, parentId) =>
+    database().createCollection(
+      z.string().trim().min(1).max(120).parse(title),
+      z.union([idSchema, z.null()]).optional().parse(parentId) ?? null,
+    ),
+  );
+  ipc.handle("library:update-collection", (id, patch) =>
+    database().updateCollection(
+      idSchema.parse(id),
+      z.object({
+        title: z.string().trim().min(1).max(120).optional(),
+        parentId: z.union([idSchema, z.null()]).optional(),
+        sortOrder: z.number().int().min(0).max(1_000_000).optional(),
+      }).parse(patch),
+    ),
+  );
+  ipc.handle("library:delete-collection", (id) =>
+    database().deleteCollection(idSchema.parse(id)),
+  );
+  ipc.handle("library:batch-collections", (op) =>
+    database().batchCollections(
+      z
+        .object({
+          create: z.array(z.string().trim().min(1).max(120)).max(200).optional(),
+          rename: z
+            .array(
+              z.object({
+                id: idSchema,
+                title: z.string().trim().min(1).max(120),
+              }),
+            )
+            .max(10_000)
+            .optional(),
+          move: z
+            .array(
+              z.object({
+                id: idSchema,
+                parentId: z.union([idSchema, z.null()]),
+              }),
+            )
+            .max(10_000)
+            .optional(),
+          reorder: z
+            .array(
+              z.object({
+                id: idSchema,
+                sortOrder: z.number().int().min(0).max(1_000_000),
+              }),
+            )
+            .max(10_000)
+            .optional(),
+        })
+        .parse(op),
+    ),
+  );
+  ipc.handle("library:set-folder-lock", (id, password) =>
+    database().setFolderLock(
+      idSchema.parse(id),
+      z.string().min(1).max(512).nullable().parse(password),
+    ),
+  );
+  ipc.handle("library:unlock-folder", (id, password) =>
+    database().unlockFolder(
+      idSchema.parse(id),
+      z.string().min(1).max(512).parse(password),
+    ),
+  );
+  ipc.handle("library:is-folder-unlocked", (id) =>
+    database().isFolderUnlocked(idSchema.parse(id)),
+  );
+  ipc.handle("library:add-to-collection", (assetId, collectionId) =>
+    database().addAssetToCollection(
+      idSchema.parse(assetId),
+      idSchema.parse(collectionId),
+    ),
+  );
+  ipc.handle("library:remove-from-collection", (assetId, collectionId) =>
+    database().removeAssetFromCollection(
+      idSchema.parse(assetId),
+      idSchema.parse(collectionId),
+    ),
+  );
+  ipc.handle("library:set-tags", (assetId, tags) =>
+    database().setAssetTags(
+      idSchema.parse(assetId),
+      z.array(z.string().trim().min(1).max(64)).max(64).parse(tags),
+    ),
+  );
+  ipc.handle("library:list-tags", () => database().listTags());
+  ipc.handle("library:list-tag-groups", () => database().listTagGroups());
+  ipc.handle("library:create-tag-group", (title) =>
+    database().createTagGroup(
+      z.string().trim().min(1).max(64).parse(title),
+    ),
+  );
+  ipc.handle("library:rename-tag-group", (id, title) =>
+    database().renameTagGroup(
+      idSchema.parse(id),
+      z.string().trim().min(1).max(64).parse(title),
+    ),
+  );
+  ipc.handle("library:delete-tag-group", (id) =>
+    database().deleteTagGroup(idSchema.parse(id)),
+  );
+  ipc.handle("library:move-tag-to-group", (id, groupId) =>
+    database().moveTagToGroup(
+      idSchema.parse(id),
+      groupId === null ? null : idSchema.parse(groupId),
+    ),
+  );
+  ipc.handle("library:rename-tag", (id, name) =>
+    database().renameTag(
+      idSchema.parse(id),
+      z.string().trim().min(1).max(64).parse(name),
+    ),
+  );
+  ipc.handle("library:update-tag-meta", (id, patch) =>
+    database().updateTagMeta(
+      idSchema.parse(id),
+      z
+        .object({
+          name: z.string().trim().min(1).max(64).optional(),
+          alias: z.string().trim().max(64).nullable().optional(),
+          shortcutKey: z.string().trim().max(16).nullable().optional(),
+        })
+        .parse(patch),
+    ),
+  );
+  ipc.handle("library:list-auto-tag-rules", () =>
+    database().listAutoTagRules(),
+  );
+  ipc.handle("library:create-auto-tag-rule", (rule) =>
+    database().createAutoTagRule(
+      z
+        .object({
+          name: z.string().trim().min(1).max(120),
+          filenamePattern: z.string().max(256).nullable().default(null),
+          pathPattern: z.string().max(512).nullable().default(null),
+          extension: z.string().regex(/^[a-z0-9]{1,16}$/i).nullable().default(null),
+          tags: z.array(z.string().trim().min(1).max(64)).max(64),
+          enabled: z.boolean().default(true),
+        })
+        .parse(rule),
+    ),
+  );
+  ipc.handle("library:update-auto-tag-rule", (id, patch) =>
+    database().updateAutoTagRule(
+      z.string().min(1).max(64).parse(id),
+      z
+        .object({
+          name: z.string().trim().min(1).max(120).optional(),
+          filenamePattern: z.string().max(256).nullable().optional(),
+          pathPattern: z.string().max(512).nullable().optional(),
+          extension: z.string().regex(/^[a-z0-9]{1,16}$/i).nullable().optional(),
+          tags: z.array(z.string().trim().min(1).max(64)).max(64).optional(),
+          enabled: z.boolean().optional(),
+        })
+        .parse(patch),
+    ),
+  );
+  ipc.handle("library:delete-auto-tag-rule", (id) =>
+    database().deleteAutoTagRule(z.string().min(1).max(64).parse(id)),
+  );
+  ipc.handle("library:apply-auto-tag-rules", () =>
+    library().applyAutoTagRules(),
+  );
+  ipc.handle("library:set-custom-thumbnail", (id, thumbnailPath) =>
+    database().setCustomThumbnail(
+      idSchema.parse(id),
+      thumbnailPath === null
+        ? null
+        : z.string().min(1).max(32_768).parse(thumbnailPath),
+    ),
+  );
+  ipc.handle("library:get-preferences", () => library().getPreferences());
+  ipc.handle("library:set-preferences", (prefs) =>
+    library().setPreferences(
+      z
+        .object({
+          layoutMode: z.enum(["grid", "waterfall", "detail", "random"]).optional(),
+          cardSize: z.enum(["small", "medium", "large"]).optional(),
+          thumbnailBackground: z.enum(["checker", "black", "white", "auto"]).optional(),
+          includeSubfolderAssets: z.boolean().optional(),
+          panelLayout: z
+            .object({
+              sidebarWidth: z.number().min(180).max(480),
+              assetWidth: z.number().min(280).max(720),
+              detailsWidth: z.number().min(240).max(520),
+              collapsed: z.array(
+                z.enum(["sidebar", "asset", "details"]),
+              ).max(3),
+            })
+            .optional(),
+          defaultStorageMode: z.enum(["linked", "managed"]).optional(),
+        })
+        .parse(prefs),
+    ),
+  );
+  ipc.handle("library:delete-tag", (id) =>
+    database().deleteTag(idSchema.parse(id)),
+  );
+  ipc.handle("library:list-saved-views", () => database().listSavedViews());
+  ipc.handle("library:save-view", (title, search) =>
+    database().saveView(
+      z.string().trim().min(1).max(120).parse(title),
+      searchObjectSchema.parse(search),
+    ),
+  );
+  ipc.handle("library:update-saved-view", (id, patch) =>
+    database().updateSavedView(
+      idSchema.parse(id),
+      z
+        .object({
+          title: z.string().trim().min(1).max(120).optional(),
+          search: searchObjectSchema.optional(),
+        })
+        .parse(patch),
+    ),
+  );
+  ipc.handle("library:duplicate-saved-view", (id) =>
+    database().duplicateSavedView(idSchema.parse(id)),
+  );
+  ipc.handle("library:delete-saved-view", (id) => {
+    database().deleteSavedView(idSchema.parse(id));
+  });
+  ipc.handle("library:list-duplicates", () => library().findDuplicates());
+  ipc.handle("library:merge-duplicates", (keepId, removeIds) =>
+    library().mergeDuplicates(idSchema.parse(keepId), idsSchema.parse(removeIds)),
+  );
+  ipc.handle("library:find-similar", (id, options) =>
+    library().findSimilar(
+      idSchema.parse(id),
+      z.object({
+        limit: z.number().int().min(1).max(500).optional(),
+        minScore: z.number().min(0).max(100).optional(),
+      }).optional().parse(options),
+    ),
+  );
+  ipc.handle("library:start-similarity-index", () =>
+    library().startSimilarityIndex(),
+  );
+  ipc.handle("library:get-similarity-index", () =>
+    library().getSimilarityIndex(),
+  );
+  ipc.handle("library:cancel-similarity-index", () =>
+    library().cancelSimilarityIndex(),
+  );
+  ipc.handle("library:start-media-metadata-rebuild", () =>
+    library().startMediaMetadataRebuild(),
+  );
+  ipc.handle("library:get-media-metadata-rebuild", () =>
+    library().getMediaMetadataRebuild(),
+  );
+  ipc.handle("library:cancel-media-metadata-rebuild", () =>
+    library().cancelMediaMetadataRebuild(),
+  );
+  ipc.handle("library:references", (id) =>
+    database().getAssetReferences(idSchema.parse(id)),
+  );
+  ipc.handle("library:migrate-paths", (fromRoot, toRoot) =>
+    library().migratePaths(
+      z.string().min(1).max(32_768).parse(fromRoot),
+      z.string().min(1).max(32_768).parse(toRoot),
+    ),
+  );
+  ipc.handleWithEvent("library:collect-project", async (event, boardId) => {
+    const parsedId = idSchema.parse(boardId);
+    const board = database().loadBoard(parsedId);
+    if (!board) throw new Error("BOARD_NOT_FOUND");
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: "选择项目收集目录",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const destination = path.join(
+      result.filePaths[0],
+      `${dependencies.safeFilename(board.summary.title)}.refcanvas-project`,
+    );
+    await mkdir(destination, { recursive: true });
+    const assets = [];
+    for (const assetId of database().getBoardAssetIds(parsedId)) {
+      assets.push(await dependencies.copyProjectAsset(assetId, destination));
+    }
+    await writeFile(
+      path.join(destination, "board.json"),
+      JSON.stringify(board.document, null, 2),
+      "utf8",
+    );
+    await writeFile(
+      path.join(destination, "manifest.json"),
+      JSON.stringify(
+        {
+          format: "refcanvas-project",
+          version: 1,
+          board: board.summary,
+          assets,
+          collectedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+    return destination;
+  });
+  ipc.handle("library:stats", () => database().getLibraryStats());
+}

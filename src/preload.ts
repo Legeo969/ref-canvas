@@ -1,0 +1,392 @@
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { RefCanvasApi } from "./shared/contracts";
+
+const api: RefCanvasApi = {
+  library: {
+    search: (input) => ipcRenderer.invoke("library:search", input),
+    get: (id) => ipcRenderer.invoke("library:get", id),
+    getByPath: (path) => ipcRenderer.invoke("library:get-by-path", path),
+    pickAndImport: (mode) =>
+      ipcRenderer.invoke("library:pick-import", mode),
+    importPaths: (paths) =>
+      ipcRenderer.invoke("library:import-paths", paths),
+    startImport: (paths, options) =>
+      ipcRenderer.invoke("library:start-import", paths, options),
+    getImportJob: (id) =>
+      ipcRenderer.invoke("library:get-import-job", id),
+    cancelImport: (id) =>
+      ipcRenderer.invoke("library:cancel-import", id),
+    retryImport: (id) =>
+      ipcRenderer.invoke("library:retry-import", id),
+    onImportProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("library:import-progress", listener);
+      return () => ipcRenderer.off("library:import-progress", listener);
+    },
+    onLibraryChanged: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        change: Parameters<typeof callback>[0],
+      ) => callback(change);
+      ipcRenderer.on("library:changed", listener);
+      return () => ipcRenderer.off("library:changed", listener);
+    },
+    pathsForFiles: (files) =>
+      files.map((file) => webUtils.getPathForFile(file)).filter(Boolean),
+    update: (id, patch) =>
+      ipcRenderer.invoke("library:update", id, patch),
+    listAnnotations: (assetId) =>
+      ipcRenderer.invoke("library:list-annotations", assetId),
+    createAnnotation: (assetId, input) =>
+      ipcRenderer.invoke("library:create-annotation", assetId, input),
+    updateAnnotation: (id, patch) =>
+      ipcRenderer.invoke("library:update-annotation", id, patch),
+    deleteAnnotation: (id) =>
+      ipcRenderer.invoke("library:delete-annotation", id),
+    batchUpdate: (scope, patch) =>
+      ipcRenderer.invoke("library:batch-update", scope, patch),
+    batchRename: (scope, pattern) =>
+      ipcRenderer.invoke("library:batch-rename", scope, pattern),
+    trash: (scope) => ipcRenderer.invoke("library:trash", scope),
+    removeFromLibrary: (scope) =>
+      ipcRenderer.invoke("library:remove-from-library", scope),
+    restore: (ids) => ipcRenderer.invoke("library:restore", ids),
+    purge: (ids) => ipcRenderer.invoke("library:purge", ids),
+    forgetTrash: (ids) => ipcRenderer.invoke("library:forget-trash", ids),
+    listTrash: (input) => ipcRenderer.invoke("library:list-trash", input),
+    refreshLinks: () => ipcRenderer.invoke("library:refresh-links"),
+    pickAndRelink: (id) => ipcRenderer.invoke("library:pick-relink", id),
+    searchAndRelink: (id) =>
+      ipcRenderer.invoke("library:search-relink", id),
+    addWatchFolder: () => ipcRenderer.invoke("library:add-watch-folder"),
+    listWatchRoots: () => ipcRenderer.invoke("library:list-watch-roots"),
+    removeWatchRoot: (id) =>
+      ipcRenderer.invoke("library:remove-watch-root", id),
+    listCollections: () => ipcRenderer.invoke("library:list-collections"),
+    createCollection: (title, parentId) =>
+      ipcRenderer.invoke("library:create-collection", title, parentId),
+    updateCollection: (id, patch) =>
+      ipcRenderer.invoke("library:update-collection", id, patch),
+    deleteCollection: (id) =>
+      ipcRenderer.invoke("library:delete-collection", id),
+    batchCollections: (op) =>
+      ipcRenderer.invoke("library:batch-collections", op),
+    setFolderLock: (id, password) =>
+      ipcRenderer.invoke("library:set-folder-lock", id, password),
+    unlockFolder: (id, password) =>
+      ipcRenderer.invoke("library:unlock-folder", id, password),
+    isFolderUnlocked: (id) =>
+      ipcRenderer.invoke("library:is-folder-unlocked", id),
+    addToCollection: (assetId, collectionId) =>
+      ipcRenderer.invoke(
+        "library:add-to-collection",
+        assetId,
+        collectionId,
+      ),
+    removeFromCollection: (assetId, collectionId) =>
+      ipcRenderer.invoke(
+        "library:remove-from-collection",
+        assetId,
+        collectionId,
+      ),
+    setTags: (assetId, tags) =>
+      ipcRenderer.invoke("library:set-tags", assetId, tags),
+    listTags: () => ipcRenderer.invoke("library:list-tags"),
+    listTagGroups: () => ipcRenderer.invoke("library:list-tag-groups"),
+    createTagGroup: (title) =>
+      ipcRenderer.invoke("library:create-tag-group", title),
+    renameTagGroup: (id, title) =>
+      ipcRenderer.invoke("library:rename-tag-group", id, title),
+    deleteTagGroup: (id) =>
+      ipcRenderer.invoke("library:delete-tag-group", id),
+    moveTagToGroup: (id, groupId) =>
+      ipcRenderer.invoke("library:move-tag-to-group", id, groupId),
+    renameTag: (id, name) =>
+      ipcRenderer.invoke("library:rename-tag", id, name),
+    updateTagMeta: (id, patch) =>
+      ipcRenderer.invoke("library:update-tag-meta", id, patch),
+    deleteTag: (id) => ipcRenderer.invoke("library:delete-tag", id),
+    listAutoTagRules: () =>
+      ipcRenderer.invoke("library:list-auto-tag-rules"),
+    createAutoTagRule: (rule) =>
+      ipcRenderer.invoke("library:create-auto-tag-rule", rule),
+    updateAutoTagRule: (id, patch) =>
+      ipcRenderer.invoke("library:update-auto-tag-rule", id, patch),
+    deleteAutoTagRule: (id) =>
+      ipcRenderer.invoke("library:delete-auto-tag-rule", id),
+    applyAutoTagRules: () =>
+      ipcRenderer.invoke("library:apply-auto-tag-rules"),
+    setCustomThumbnail: (id, path) =>
+      ipcRenderer.invoke("library:set-custom-thumbnail", id, path),
+    getPreferences: () => ipcRenderer.invoke("library:get-preferences"),
+    setPreferences: (prefs) =>
+      ipcRenderer.invoke("library:set-preferences", prefs),
+    listSavedViews: () => ipcRenderer.invoke("library:list-saved-views"),
+    saveView: (title, search) =>
+      ipcRenderer.invoke("library:save-view", title, search),
+    updateSavedView: (id, patch) =>
+      ipcRenderer.invoke("library:update-saved-view", id, patch),
+    duplicateSavedView: (id) =>
+      ipcRenderer.invoke("library:duplicate-saved-view", id),
+    deleteSavedView: (id) =>
+      ipcRenderer.invoke("library:delete-saved-view", id),
+    listDuplicates: () => ipcRenderer.invoke("library:list-duplicates"),
+    mergeDuplicates: (keepId, removeIds) =>
+      ipcRenderer.invoke("library:merge-duplicates", keepId, removeIds),
+    findSimilar: (id, options) =>
+      ipcRenderer.invoke("library:find-similar", id, options),
+    startSimilarityIndex: () =>
+      ipcRenderer.invoke("library:start-similarity-index"),
+    getSimilarityIndex: () =>
+      ipcRenderer.invoke("library:get-similarity-index"),
+    cancelSimilarityIndex: () =>
+      ipcRenderer.invoke("library:cancel-similarity-index"),
+    onSimilarityProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("library:similarity-progress", listener);
+      return () => ipcRenderer.off("library:similarity-progress", listener);
+    },
+    startMediaMetadataRebuild: () =>
+      ipcRenderer.invoke("library:start-media-metadata-rebuild"),
+    getMediaMetadataRebuild: () =>
+      ipcRenderer.invoke("library:get-media-metadata-rebuild"),
+    cancelMediaMetadataRebuild: () =>
+      ipcRenderer.invoke("library:cancel-media-metadata-rebuild"),
+    onMediaMetadataProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("library:media-metadata-progress", listener);
+      return () =>
+        ipcRenderer.off("library:media-metadata-progress", listener);
+    },
+    references: (id) => ipcRenderer.invoke("library:references", id),
+    collectProject: (boardId) =>
+      ipcRenderer.invoke("library:collect-project", boardId),
+    migratePaths: (fromRoot, toRoot) =>
+      ipcRenderer.invoke("library:migrate-paths", fromRoot, toRoot),
+    stats: () => ipcRenderer.invoke("library:stats"),
+  },
+  libraries: {
+    list: () => ipcRenderer.invoke("libraries:list"),
+    current: () => ipcRenderer.invoke("libraries:current"),
+    create: (options) => ipcRenderer.invoke("libraries:create", options),
+    open: (path) => ipcRenderer.invoke("libraries:open", path),
+    switchTo: (id) => ipcRenderer.invoke("libraries:switch-to", id),
+    move: (id, newDirectory) =>
+      ipcRenderer.invoke("libraries:move", id, newDirectory),
+    merge: (sourceId, targetId) =>
+      ipcRenderer.invoke("libraries:merge", sourceId, targetId),
+    verify: (id) => ipcRenderer.invoke("libraries:verify", id),
+    exportLibrary: (id, destination) =>
+      ipcRenderer.invoke("libraries:export", id, destination),
+  },
+  watchRoots: {
+    reconcile: (rootId) =>
+      ipcRenderer.invoke("watch-roots:reconcile", rootId),
+    getReport: () => ipcRenderer.invoke("watch-roots:get-report"),
+    resolveConflict: (entryId, assetId) =>
+      ipcRenderer.invoke("watch-roots:resolve-conflict", entryId, assetId),
+  },
+  filesystem: {
+    listRoots: () => ipcRenderer.invoke("filesystem:list-roots"),
+    listDirectory: (path, options) =>
+      ipcRenderer.invoke("filesystem:list-directory", path, options),
+    onDirectoryProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("filesystem:directory-progress", listener);
+      return () =>
+        ipcRenderer.removeListener("filesystem:directory-progress", listener);
+    },
+    locateEntry: (path, entryPath, revision) =>
+      ipcRenderer.invoke("filesystem:locate-entry", path, entryPath, revision),
+    startSearch: (path, query) =>
+      ipcRenderer.invoke("filesystem:start-search", path, query),
+    cancelSearch: (id) => ipcRenderer.invoke("filesystem:cancel-search", id),
+    getSearch: (id) => ipcRenderer.invoke("filesystem:get-search", id),
+    getSearchPage: (id, options) =>
+      ipcRenderer.invoke("filesystem:get-search-page", id, options),
+    onSearchProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("filesystem:search-progress", listener);
+      return () =>
+        ipcRenderer.removeListener("filesystem:search-progress", listener);
+    },
+    addQuickAccess: (path, name) =>
+      ipcRenderer.invoke("filesystem:add-quick-access", path, name),
+    updateQuickAccess: (id, patch) =>
+      ipcRenderer.invoke("filesystem:update-quick-access", id, patch),
+    removeQuickAccess: (id) =>
+      ipcRenderer.invoke("filesystem:remove-quick-access", id),
+    listQuickAccess: () => ipcRenderer.invoke("filesystem:list-quick-access"),
+    materialize: (path, options) =>
+      ipcRenderer.invoke("filesystem:materialize", path, options),
+    rename: (path, newName) =>
+      ipcRenderer.invoke("filesystem:rename", path, newName),
+    trash: (paths) => ipcRenderer.invoke("filesystem:trash", paths),
+    open: (path) => ipcRenderer.invoke("filesystem:open", path),
+    reveal: (path) => ipcRenderer.invoke("filesystem:reveal", path),
+    previewToken: (path) =>
+      ipcRenderer.invoke("filesystem:preview-token", path),
+    previewTokens: (paths) =>
+      ipcRenderer.invoke("filesystem:preview-tokens", paths),
+    startBatch: (selection, action) =>
+      ipcRenderer.invoke("filesystem:start-batch", selection, action),
+    exportPaths: (selection) =>
+      ipcRenderer.invoke("filesystem:export-paths", selection),
+    getBatch: (id) => ipcRenderer.invoke("filesystem:get-batch", id),
+    cancelBatch: (id) => ipcRenderer.invoke("filesystem:cancel-batch", id),
+    onBatchProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("filesystem:batch-progress", listener);
+      return () => ipcRenderer.removeListener("filesystem:batch-progress", listener);
+    },
+    dragOut: (paths) =>
+      ipcRenderer.send("system:start-native-drag-paths", paths),
+  },
+  backups: {
+    list: () => ipcRenderer.invoke("backups:list"),
+    create: () => ipcRenderer.invoke("backups:create"),
+    restore: (path) => ipcRenderer.invoke("backups:restore", path),
+  },
+  boards: {
+    list: () => ipcRenderer.invoke("boards:list"),
+    create: (title) => ipcRenderer.invoke("boards:create", title),
+    rename: (id, title) => ipcRenderer.invoke("boards:rename", id, title),
+    delete: (id) => ipcRenderer.invoke("boards:delete", id),
+    load: (id) => ipcRenderer.invoke("boards:load", id),
+    save: (id, document) =>
+      ipcRenderer.invoke("boards:save", id, document),
+    exportJson: (id) => ipcRenderer.invoke("boards:export-json", id),
+    exportPng: (id, dataUrl) =>
+      ipcRenderer.invoke("boards:export-png", id, dataUrl),
+    exportPackage: (id, options) =>
+      ipcRenderer.invoke("boards:export-package", id, options),
+    recent: () => ipcRenderer.invoke("boards:recent"),
+    touch: (id) => ipcRenderer.invoke("boards:touch", id),
+    openWindow: (id) => ipcRenderer.invoke("boards:open-window", id),
+    setActive: (id) => ipcRenderer.invoke("boards:set-active", id),
+    closeWindow: () => ipcRenderer.invoke("boards:close-window"),
+    getAssets: (id) => ipcRenderer.invoke("boards:get-assets", id),
+  },
+  actions: {
+    start: (request) => ipcRenderer.invoke("actions:start", request),
+    get: (id) => ipcRenderer.invoke("actions:get", id),
+    cancel: (id) => ipcRenderer.invoke("actions:cancel", id),
+    retry: (id) => ipcRenderer.invoke("actions:retry", id),
+    resolveConflict: (id, outputPath, overwrite) =>
+      ipcRenderer.invoke("actions:resolve-conflict", id, outputPath, overwrite),
+    onProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("actions:progress", listener);
+      return () => ipcRenderer.off("actions:progress", listener);
+    },
+  },
+  mediaNotes: {
+    list: (assetId) => ipcRenderer.invoke("media-notes:list", assetId),
+    create: (assetId, input) =>
+      ipcRenderer.invoke("media-notes:create", assetId, input),
+    update: (id, patch) =>
+      ipcRenderer.invoke("media-notes:update", id, patch),
+    delete: (id) => ipcRenderer.invoke("media-notes:delete", id),
+    getPlaybackState: (assetId) =>
+      ipcRenderer.invoke("media-notes:get-playback-state", assetId),
+    setPlaybackState: (assetId, state) =>
+      ipcRenderer.invoke("media-notes:set-playback-state", assetId, state),
+  },
+  system: {
+    openExternal: (path) =>
+      ipcRenderer.invoke("system:open-external", path),
+    openFilesWithDefaultApp: (paths) =>
+      ipcRenderer.invoke("system:open-files-with-default-app", paths),
+    revealInFolder: (path) => ipcRenderer.invoke("system:reveal", path),
+    openDataFolder: () => ipcRenderer.invoke("system:open-data-folder"),
+    pickDirectory: (options) =>
+      ipcRenderer.invoke("system:pick-directory", options),
+    toggleAlwaysOnTop: () =>
+      ipcRenderer.invoke("system:toggle-always-on-top"),
+    markRendererInteractive: () =>
+      ipcRenderer.invoke("system:mark-renderer-interactive"),
+    setAlwaysOnBottom: (enabled) =>
+      ipcRenderer.invoke("system:set-always-on-bottom", enabled),
+    setClickThrough: (enabled) =>
+      ipcRenderer.invoke("system:set-click-through", enabled),
+    setWindowTransparent: (enabled) =>
+      ipcRenderer.invoke("system:set-window-transparent", enabled),
+    getWindowModeState: () =>
+      ipcRenderer.invoke("system:get-window-mode-state"),
+    setPresentationMode: (enabled) =>
+      ipcRenderer.invoke("system:set-presentation-mode", enabled),
+    onPresentationModeChanged: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, enabled: boolean) =>
+        callback(enabled);
+      ipcRenderer.on("system:presentation-mode-changed", listener);
+      return () =>
+        ipcRenderer.removeListener(
+          "system:presentation-mode-changed",
+          listener,
+        );
+    },
+    onWindowModeReset: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on("system:window-mode-reset", listener);
+      return () => ipcRenderer.off("system:window-mode-reset", listener);
+    },
+    captureClipboard: () =>
+      ipcRenderer.invoke("system:capture-clipboard"),
+    prepareRegionCapture: () =>
+      ipcRenderer.invoke("system:prepare-region-capture"),
+    saveRegionCapture: (dataUrl) =>
+      ipcRenderer.invoke("system:save-region-capture", dataUrl),
+    cancelRegionCapture: () =>
+      ipcRenderer.invoke("system:cancel-region-capture"),
+    rebuildThumbnailCache: () =>
+      ipcRenderer.invoke("system:rebuild-thumbnail-cache"),
+    exportDiagnostics: () =>
+      ipcRenderer.invoke("system:export-diagnostics"),
+    setGlobalShortcuts: (enabled) =>
+      ipcRenderer.invoke("system:set-global-shortcuts", enabled),
+    getPreferences: () => ipcRenderer.invoke("system:get-preferences"),
+    setPreferences: (prefs) =>
+      ipcRenderer.invoke("system:set-preferences", prefs),
+    getAppInfo: () => ipcRenderer.invoke("system:get-app-info"),
+    writeClipboard: (text) =>
+      ipcRenderer.invoke("system:write-clipboard", text),
+    getNavigationState: () =>
+      ipcRenderer.invoke("system:get-navigation-state"),
+    setNavigationState: (value) =>
+      ipcRenderer.invoke("system:set-navigation-state", value),
+    getBoardShortcuts: () =>
+      ipcRenderer.invoke("system:get-board-shortcuts"),
+    setBoardShortcuts: (value) =>
+      ipcRenderer.invoke("system:set-board-shortcuts", value),
+    startNativeDrag: (assetIds) =>
+      ipcRenderer.send("system:start-native-drag", assetIds),
+    onRegionCaptureRequest: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on("system:request-region-capture", listener);
+      return () => ipcRenderer.off("system:request-region-capture", listener);
+    },
+  },
+};
+
+contextBridge.exposeInMainWorld("refCanvas", api);
