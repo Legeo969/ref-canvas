@@ -36,6 +36,7 @@ import {
 import { LibraryService } from "./services/library-service";
 import { FilesystemService } from "./services/filesystem-service";
 import { FileOperationsService } from "./services/file-operations-service";
+import { MountService } from "./services/mount-service";
 import { DirectoryIndexClient } from "./platform/directory-index-client";
 import { ImportEnumeratorClient } from "./platform/import-enumerator-client";
 import { DirectoryBatchService } from "./services/directory-batch-service";
@@ -106,6 +107,7 @@ let libraryManager: LibraryManager;
 let directoryService: FilesystemService;
 let directoryBatches: DirectoryBatchService;
 let fileOperations: FileOperationsService;
+let mountService: MountService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -501,6 +503,13 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
     validateRevision: (directoryPath, revision) =>
       directoryService.validateRevision(directoryPath, revision),
   });
+  mountService = new MountService(database);
+  // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
+  mountService.onMountStateChanged(({ mountId, state }) => {
+    if (state !== "online") return;
+    const root = database.listWatchRoots().find((item) => item.id === mountId);
+    if (root) void library.reconcileRoots(root.id);
+  });
   await library.recoverPendingOperations();
   library.resumePendingMetadata();
   library.onImportProgress((snapshot) => {
@@ -850,6 +859,17 @@ void app.whenReady().then(async () => {
   if (database.getSetting("globalShortcuts", false)) {
     configureGlobalShortcuts(true);
   }
+  // 启动时刷新挂载根状态（离线根下的资产标记 offline，恢复时 reconcile）。
+  void mountService.refreshAll().then((changes) => {
+    for (const change of changes) {
+      if (change.state === "online") {
+        const root = database
+          .listWatchRoots()
+          .find((item) => item.id === change.mountId);
+        if (root) void library.reconcileRoots(root.id);
+      }
+    }
+  });
 
   const commandLineFiles = process.argv
     .slice(app.isPackaged ? 1 : 2)

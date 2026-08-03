@@ -41,7 +41,7 @@ export type AssetOrientation = (typeof assetOrientations)[number];
 export type AssetStorageMode = (typeof assetStorageModes)[number];
 export type SortDirection = "asc" | "desc";
 export type AssetLifecycle = "active" | "trashed" | "purged";
-export type LinkState = "online" | "missing" | "searching" | "ambiguous";
+export type LinkState = "online" | "missing" | "searching" | "ambiguous" | "offline";
 export type AssetMetadataStatus = "pending" | "ready" | "failed";
 
 export interface AssetRecord {

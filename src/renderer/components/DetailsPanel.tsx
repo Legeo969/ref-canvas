@@ -280,6 +280,7 @@ export function DetailsPanel({
               missing: "断链",
               searching: "搜索中",
               ambiguous: "待确认",
+              offline: "挂载离线",
             }[asset.linkState]}
           </strong>
         </div>

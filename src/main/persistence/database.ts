@@ -739,6 +739,22 @@ export class RefCanvasDatabase {
     `).run(state, new Date().toISOString(), pathKeyFor(filename));
   }
 
+  /**
+   * mount 离线时把该挂载根下的资产标记为 offline（计划 §7.5）。
+   * 不做批量删除；mount 恢复后由 reconcile 增量修正。
+   */
+  markIdentitiesOfflineByMount(mountId: string): number {
+    const result = this.db.prepare(`
+      UPDATE assets SET link_state = 'offline', updated_at = ?
+      WHERE lifecycle = 'active'
+        AND id IN (
+          SELECT fi.asset_id FROM file_identities fi
+          WHERE fi.mount_id = ? AND fi.asset_id IS NOT NULL
+        )
+    `).run(new Date().toISOString(), mountId);
+    return result.changes;
+  }
+
   relinkAsset(id: string, asset: NewAsset): AssetRecord {
     if (!this.getAsset(id)) throw new Error("ASSET_NOT_FOUND");
     this.db.prepare(`
@@ -1041,6 +1057,14 @@ export class RefCanvasDatabase {
     this.db.prepare(
       "INSERT INTO watch_roots (id, path, created_at) VALUES (?, ?, ?)",
     ).run(id, rootPath, createdAt);
+    // watch root 即挂载根：同步注册 mount root（id 一致），供 mount 状态机与
+    // identity 的 mount_id 外键引用。
+    this.upsertMountRoot({
+      id,
+      path: rootPath,
+      displayName: path.basename(rootPath) || rootPath,
+      state: "online",
+    });
     return { id, path: rootPath, createdAt };
   }
 
@@ -1050,6 +1074,7 @@ export class RefCanvasDatabase {
     ).get(id) as WatchRootRow | undefined;
     if (!row) throw new Error("WATCH_ROOT_NOT_FOUND");
     this.db.prepare("DELETE FROM watch_roots WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM mount_roots WHERE id = ?").run(id);
     return { id: row.id, path: row.path, createdAt: row.created_at };
   }
 
@@ -1100,6 +1125,7 @@ export class RefCanvasDatabase {
       fingerprint: string;
       size: number;
       rootPath: string;
+      mountId?: string | null;
     }>,
   ): void {
     this.db.transaction((items: typeof identities) => {

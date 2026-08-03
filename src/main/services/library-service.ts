@@ -869,21 +869,20 @@ export class LibraryService {
    */
   private updateIdentity(asset: AssetRecord): void {
     if (asset.storageMode === "managed") return;
-    const roots = this.database
-      .listWatchRoots()
-      .map((item) => path.resolve(item.path));
-    const root = roots.find(
-      (candidate) =>
-        asset.path === candidate ||
-        asset.path.startsWith(`${candidate}${path.sep}`),
+    const roots = this.database.listWatchRoots();
+    const match = roots.find(
+      (item) =>
+        asset.path === item.path ||
+        asset.path.startsWith(`${item.path}${path.sep}`),
     );
-    if (!root) return;
+    if (!match) return;
     this.database.upsertFileIdentity({
       pathKey: path.normalize(asset.path).toLocaleLowerCase("en-US"),
       assetId: asset.id,
       fingerprint: asset.fingerprint,
       size: asset.size,
-      rootPath: root,
+      rootPath: path.resolve(match.path),
+      mountId: match.id,
     });
   }
 
@@ -894,9 +893,13 @@ export class LibraryService {
     try {
       snapshot.state = "scanning";
       this.importCoordinator.emit(job);
-      const watchRoots = this.database.listWatchRoots()
+      const watchRootEntries = this.database.listWatchRoots();
+      const watchRoots = watchRootEntries
         .map((item) => path.resolve(item.path))
         .sort((left, right) => right.length - left.length);
+      const mountIdByRoot = new Map(
+        watchRootEntries.map((item) => [path.resolve(item.path), item.id]),
+      );
       await this.importEnumerator.enumerate(
         snapshot.sourcePaths,
         controller.signal,
@@ -974,6 +977,7 @@ export class LibraryService {
               fingerprint: string;
               size: number;
               rootPath: string;
+              mountId?: string | null;
             }> = [];
             for (let index = 0; index < savedAssets.length; index += 1) {
               const saved = savedAssets[index];
@@ -991,6 +995,7 @@ export class LibraryService {
                   fingerprint: saved.asset.fingerprint,
                   size: saved.asset.size,
                   rootPath: item.candidate.watchRootPath,
+                  mountId: mountIdByRoot.get(item.candidate.watchRootPath) ?? null,
                 });
               }
               if (targetFolderId) {
@@ -1228,6 +1233,13 @@ export class LibraryService {
     const resolved = path.resolve(root);
     if (!(await stat(resolved)).isDirectory()) throw new Error("WATCH_ROOT_NOT_DIRECTORY");
     const watchRoot = this.database.addWatchRoot(resolved);
+    // 同一目录作为 mount root 注册（计划 §7.2）：watch root 即挂载根。
+    this.database.upsertMountRoot({
+      id: watchRoot.id,
+      path: resolved,
+      displayName: path.basename(resolved) || resolved,
+      state: "online",
+    });
     if (this.watchReconcile.active) this.watchReconcile.addRoot(watchRoot);
     else await this.startWatching();
     return this.importPaths([resolved]);
