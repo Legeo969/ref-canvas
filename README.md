@@ -1,6 +1,6 @@
 # RefCanvas
 
-当前版本：0.37.0
+当前版本：0.37.1
 
 Windows-first、纯本地的视觉素材库与无限参考白板。
 
@@ -79,18 +79,20 @@ pnpm check:release
 
 `pnpm check` 是日常变更门禁（类型检查、架构边界、单元与集成测试）；
 `pnpm check:release` 额外执行性能 smoke 与 Electron 打包。架构边界和后续拆分计划见
-[`docs/architecture.md`](docs/architecture.md)。
+[`docs/architecture/overview.md`](docs/architecture/overview.md)。
 
-生成 Windows 安装程序与 ZIP：
+执行完整发布门禁并生成 Windows 安装程序、ZIP、版本与 SHA-256 manifest：
 
 ```powershell
-pnpm make
+pnpm release:windows
 ```
+
+发布文件写入 `D:\AiWork\ref-canvas-releases\<version>`，仓库只保留 release notes 和 manifest。
 
 Windows 代码签名可通过以下环境变量启用；未设置时生成 unsigned 本地安装包：
 
 ```powershell
 $env:REFCANVAS_CERTIFICATE_FILE="C:\path\certificate.pfx"
 $env:REFCANVAS_CERTIFICATE_PASSWORD="..."
-pnpm make
+pnpm release:windows
 ```

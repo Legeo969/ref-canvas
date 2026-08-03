@@ -14,15 +14,15 @@ import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { AppPreferences, BoardSettings } from "../../shared/contracts";
-import type { RefCanvasDatabase } from "../database";
-import type { LibraryManager } from "../library-manager";
-import type { LibraryService } from "../library-service";
-import { resolveNativeDragAssets } from "../native-drag";
-import type { PreviewCacheIndex } from "../preview-cache-index";
-import type { PreviewQueue } from "../preview-queue";
-import type { SecureIpcRegistrar } from "../secure-ipc";
-import { thumbnailCacheFilename } from "../thumbnail-cache";
-import { ThumbnailWorkerClient } from "../thumbnail-worker-client";
+import type { RefCanvasDatabase } from "../persistence/database";
+import type { LibraryManager } from "../services/library-manager";
+import type { LibraryService } from "../services/library-service";
+import { resolveNativeDragAssets } from "../platform/native-drag";
+import type { PreviewCacheIndex } from "../platform/preview-cache-index";
+import type { PreviewQueue } from "../platform/preview-queue";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import { thumbnailCacheFilename } from "../platform/thumbnail-cache";
+import { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import { nativeDragIdsSchema } from "./schemas";
 
 export interface SystemIpcState {

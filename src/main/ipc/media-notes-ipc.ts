@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { RefCanvasDatabase } from "../database";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { RefCanvasDatabase } from "../persistence/database";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { idSchema } from "./schemas";
 
 export function registerMediaNotesIpc(

@@ -3,15 +3,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { assetColorLabels } from "../../shared/contracts";
-import type { RefCanvasDatabase } from "../database";
-import type { LibraryService } from "../library-service";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { RefCanvasDatabase } from "../persistence/database";
+import type { LibraryService } from "../services/library-service";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import {
   idSchema,
   idsSchema,
   pathsSchema,
   searchObjectSchema,
   searchSchema,
+  searchWindowSchema,
   selectionSchema,
 } from "./schemas";
 
@@ -32,6 +33,9 @@ export function registerLibraryIpc(
 
   ipc.handle("library:search", (input) =>
     database().searchAssets(searchSchema.parse(input)),
+  );
+  ipc.handle("library:search-window", (input) =>
+    database().searchAssetWindow(searchWindowSchema.parse(input)),
   );
   ipc.handle("library:get", (id) => database().getAsset(idSchema.parse(id)));
   ipc.handle("library:get-by-path", (filename) =>

@@ -1,9 +1,9 @@
 import { stat } from "node:fs/promises";
 import { z } from "zod";
-import type { RefCanvasDatabase } from "../database";
-import type { LibraryEntry, LibraryManager } from "../library-manager";
-import type { LibraryService } from "../library-service";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { RefCanvasDatabase } from "../persistence/database";
+import type { LibraryEntry, LibraryManager } from "../services/library-manager";
+import type { LibraryService } from "../services/library-service";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { idSchema, pathSchema } from "./schemas";
 
 const libraryNameSchema = z.string().trim().min(1).max(120);

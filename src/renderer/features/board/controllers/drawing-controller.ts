@@ -1,0 +1,92 @@
+import { Ellipse, FabricObject, Line, Rect } from "fabric";
+import { constrainedEndPoint, drawingBounds } from "../../../app/board-drawing";
+
+export type BoardTool = "select" | "pencil" | "line" | "rectangle" | "ellipse";
+export type BoardDrawingTool = Exclude<BoardTool, "select">;
+export type BoardShapeTool = Exclude<BoardDrawingTool, "pencil">;
+
+export interface BoardDrawingStyle {
+  color: string;
+  width: number;
+  dashed: boolean;
+}
+
+export type BoardDrawingObject = FabricObject & {
+  data?: { type?: string; name?: string };
+};
+
+export const defaultBoardDrawingStyle: BoardDrawingStyle = {
+  color: "#f2b84b",
+  width: 3,
+  dashed: false,
+};
+
+export function isBoardShapeTool(tool: BoardTool): tool is BoardShapeTool {
+  return tool === "line" || tool === "rectangle" || tool === "ellipse";
+}
+
+export function createBoardShape(
+  tool: BoardShapeTool,
+  point: { x: number; y: number },
+  style: BoardDrawingStyle,
+): BoardDrawingObject {
+  const shared = {
+    stroke: style.color,
+    strokeWidth: style.width,
+    strokeDashArray: style.dashed
+      ? [style.width * 3, style.width * 2]
+      : null,
+    fill: "transparent",
+    selectable: false,
+    evented: false,
+    objectCaching: false,
+  };
+  const object = tool === "line"
+    ? new Line([point.x, point.y, point.x, point.y], shared)
+    : tool === "rectangle"
+      ? new Rect({
+          ...shared,
+          left: point.x,
+          top: point.y,
+          width: 0,
+          height: 0,
+        })
+      : new Ellipse({
+          ...shared,
+          left: point.x,
+          top: point.y,
+          rx: 0,
+          ry: 0,
+        });
+  const drawingObject = object as BoardDrawingObject;
+  drawingObject.data = {
+    type: `drawing-${tool}`,
+    name: tool === "line" ? "直线" : tool === "rectangle" ? "矩形绘制" : "圆形绘制",
+  };
+  return drawingObject;
+}
+
+export function updateBoardShape(
+  object: BoardDrawingObject,
+  start: { x: number; y: number },
+  point: { x: number; y: number },
+  constrained: boolean,
+): void {
+  if (object instanceof Line) {
+    const end = constrainedEndPoint(start, point, constrained);
+    object.set({ x2: end.x, y2: end.y });
+  } else {
+    const bounds = drawingBounds(start, point, constrained);
+    if (object instanceof Rect) {
+      object.set(bounds);
+    } else if (object instanceof Ellipse) {
+      object.set({
+        left: bounds.left,
+        top: bounds.top,
+        rx: bounds.width / 2,
+        ry: bounds.height / 2,
+      });
+    }
+  }
+  object.setCoords();
+}

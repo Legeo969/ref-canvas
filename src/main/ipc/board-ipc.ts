@@ -3,8 +3,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { BoardDocument } from "../../shared/contracts";
-import type { RefCanvasDatabase } from "../database";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { RefCanvasDatabase } from "../persistence/database";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { boardDocumentSchema } from "./board-schema";
 import { idSchema } from "./schemas";
 

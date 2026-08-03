@@ -73,6 +73,12 @@ export const searchObjectSchema = z.object({
 });
 
 export const searchSchema = searchObjectSchema.optional();
+export const searchWindowSchema = z.object({
+  query: searchObjectSchema,
+  offset: z.number().int().min(0),
+  pageSize: z.number().int().min(1).max(200),
+  includeTotal: z.boolean(),
+});
 export const selectionSchema = z.union([
   z.object({ mode: z.literal("ids"), ids: idsSchema }),
   z.object({

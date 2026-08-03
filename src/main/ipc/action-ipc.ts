@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { ActionService } from "../action-service";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { ActionService } from "../services/action-service";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { selectionSchema } from "./schemas";
 
 const actionRequestSchema = z.object({

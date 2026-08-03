@@ -33,7 +33,7 @@ const config: ForgeConfig = {
         "node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64}",
     },
     executableName: "RefCanvas",
-    icon: "assets/refcanvas.ico",
+    icon: "assets/installer/refcanvas.ico",
     ...(process.env.REFCANVAS_ELECTRON_ZIP_DIR
       ? { electronZipDir: process.env.REFCANVAS_ELECTRON_ZIP_DIR }
       : {}),
@@ -62,8 +62,8 @@ const config: ForgeConfig = {
       setupExe: signingConfigured
         ? "RefCanvas-Setup.exe"
         : "RefCanvas-Setup-unsigned.exe",
-      setupIcon: "assets/refcanvas.ico",
-      loadingGif: "assets/installer-loading.gif",
+      setupIcon: "assets/installer/refcanvas.ico",
+      loadingGif: "assets/installer/loading.gif",
       ...(process.env.REFCANVAS_CERTIFICATE_FILE
         ? {
             certificateFile: process.env.REFCANVAS_CERTIFICATE_FILE,
@@ -80,19 +80,24 @@ const config: ForgeConfig = {
     new VitePlugin({
       build: [
         {
-          entry: "src/main.ts",
+          entry: { main: "src/main/index.ts" },
           config: "vite.main.config.ts",
         },
         {
-          entry: "src/preload.ts",
+          entry: { preload: "src/preload/index.ts" },
           config: "vite.preload.config.ts",
+          target: "preload",
         },
         {
-          entry: "src/thumbnail-worker.ts",
+          entry: { "thumbnail-worker": "src/workers/thumbnail.ts" },
           config: "vite.main.config.ts",
         },
         {
-          entry: "src/directory-index-worker.ts",
+          entry: { "directory-index-worker": "src/workers/directory-index.ts" },
+          config: "vite.main.config.ts",
+        },
+        {
+          entry: { "import-enumerator": "src/workers/import-enumerator.ts" },
           config: "vite.main.config.ts",
         },
       ],

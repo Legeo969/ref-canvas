@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+import { defaultModelView, sanitizeModelView, viewsEqual, type ModelView } from "../../../../src/renderer/app/model-view";
+
+describe("defaultModelView", () => {
+  it("scales the default camera with the model radius", () => {
+    expect(defaultModelView(2)).toEqual({
+      position: [2.8, 1.8, 3.6],
+      target: [0, 0, 0],
+    });
+    expect(defaultModelView(0.5)).toEqual({
+      position: [0.7, 0.45, 0.9],
+      target: [0, 0, 0],
+    });
+  });
+});
+
+describe("viewsEqual", () => {
+  it("compares position and target component-wise", () => {
+    const view = defaultModelView(1);
+    const otherPosition: ModelView = {
+      position: [1, 1, 1],
+      target: [0, 0, 0],
+    };
+    const otherTarget: ModelView = {
+      position: view.position,
+      target: [0, 1, 0],
+    };
+    expect(viewsEqual(view, view)).toBe(true);
+    expect(viewsEqual(view, otherPosition)).toBe(false);
+    expect(viewsEqual(view, otherTarget)).toBe(false);
+  });
+});
+
+describe("sanitizeModelView", () => {
+  it("passes finite views through unchanged", () => {
+    const view: ModelView = { position: [1, 2, 3], target: [0, 0, 0] };
+    expect(sanitizeModelView(view)).toEqual(view);
+  });
+
+  it("replaces non-finite components with zero", () => {
+    expect(
+      sanitizeModelView({
+        position: [Number.NaN, 2, 3],
+        target: [0, Infinity, 0],
+      }),
+    ).toEqual({ position: [0, 2, 3], target: [0, 0, 0] });
+  });
+
+  it("falls back to the default view when the whole position is degenerate", () => {
+    expect(
+      sanitizeModelView({
+        position: [0, 0, 0],
+        target: [Number.NaN, 0, 0],
+      }),
+    ).toEqual(defaultModelView(1));
+  });
+});

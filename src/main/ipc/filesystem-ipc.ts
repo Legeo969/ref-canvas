@@ -3,11 +3,11 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { DirectoryBatchService } from "../directory-batch-service";
-import type { FilesystemService } from "../filesystem-service";
-import type { LibraryService } from "../library-service";
-import type { PreviewTokenRegistry } from "../refbrowse";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { DirectoryBatchService } from "../services/directory-batch-service";
+import type { FilesystemService } from "../services/filesystem-service";
+import type { LibraryService } from "../services/library-service";
+import type { PreviewTokenRegistry } from "../platform/refbrowse";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import {
   directoryPathsSchema,
   idSchema,
@@ -60,6 +60,11 @@ export function registerFilesystemIpc(
   const batches = () => dependencies.getDirectoryBatches();
 
   ipc.handle("filesystem:list-roots", () => service().listRoots());
+  ipc.handle("filesystem:set-observed-directory", (filename) =>
+    service().setObservedDirectory(
+      filename === null ? null : path.resolve(pathSchema.parse(filename)),
+    ),
+  );
   ipc.handle("filesystem:list-directory", (filename, options) =>
     service().listDirectory(
       path.resolve(pathSchema.parse(filename)),

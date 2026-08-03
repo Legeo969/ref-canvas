@@ -2,10 +2,10 @@ import { app } from "electron";
 import { copyFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { BackupService } from "../backup-service";
-import type { RefCanvasDatabase } from "../database";
-import type { LibraryService } from "../library-service";
-import type { SecureIpcRegistrar } from "../secure-ipc";
+import type { BackupService } from "../services/backup-service";
+import type { RefCanvasDatabase } from "../persistence/database";
+import type { LibraryService } from "../services/library-service";
+import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 
 interface BackupIpcDependencies {
   getBackups(): BackupService;

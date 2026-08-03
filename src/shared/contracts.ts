@@ -42,6 +42,7 @@ export type AssetStorageMode = (typeof assetStorageModes)[number];
 export type SortDirection = "asc" | "desc";
 export type AssetLifecycle = "active" | "trashed" | "purged";
 export type LinkState = "online" | "missing" | "searching" | "ambiguous";
+export type AssetMetadataStatus = "pending" | "ready" | "failed";
 
 export interface AssetRecord {
   id: string;
@@ -64,6 +65,9 @@ export interface AssetRecord {
   width: number | null;
   height: number | null;
   duration: number | null;
+  metadataStatus: AssetMetadataStatus;
+  metadataError: string | null;
+  metadataUpdatedAt: string | null;
   /** Beats per minute, extracted locally for audio. */
   bpm: number | null;
   /** Local-only key/value metadata (extensible custom fields). */
@@ -165,6 +169,18 @@ export interface AssetPage {
   nextCursor: string | null;
 }
 
+export interface AssetSearchWindowInput {
+  query: AssetSearchInput;
+  offset: number;
+  pageSize: number;
+  includeTotal: boolean;
+}
+
+export interface AssetSearchWindow {
+  items: AssetRecord[];
+  total: number | null;
+}
+
 export type SelectionScope =
   | { mode: "ids"; ids: string[] }
   | {
@@ -225,6 +241,7 @@ export type ImportJobState =
   | "queued"
   | "scanning"
   | "processing"
+  | "enriching"
   | "completed"
   | "cancelled"
   | "failed";
@@ -233,7 +250,10 @@ export interface ImportJobSnapshot extends ImportResult {
   id: string;
   state: ImportJobState;
   discovered: number;
+  /** Number of base asset records persisted. */
   processed: number;
+  enriched: number;
+  metadataFailed: number;
   sourcePaths: string[];
   createdAt: string;
   completedAt: string | null;
@@ -879,6 +899,7 @@ export interface ReconcileSnapshot {
 export interface RefCanvasApi {
   library: {
     search(input?: AssetSearchInput): Promise<AssetPage>;
+    searchWindow(input: AssetSearchWindowInput): Promise<AssetSearchWindow>;
     get(id: string): Promise<AssetRecord | null>;
     getByPath(path: string): Promise<AssetRecord | null>;
     pickAndImport(mode: "files" | "folder"): Promise<ImportResult | null>;
@@ -1033,6 +1054,8 @@ export interface RefCanvasApi {
   filesystem: {
     /** Windows C:–Z: 根目录；只探测可访问性，不递归扫描。 */
     listRoots(): Promise<DirectoryEntry[]>;
+    /** 观察当前可见目录；native watcher 失败时由 main 降级为 mtime polling。 */
+    setObservedDirectory(path: string | null): Promise<void>;
     /** 展开目录下一层（游标分页）。 */
     listDirectory(
       path: string,
