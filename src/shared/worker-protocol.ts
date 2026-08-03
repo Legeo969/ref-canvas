@@ -1,4 +1,21 @@
 import type { AssetKind } from "./contracts";
+import { z } from "zod";
+
+/** Worker 回传的状态更新（§5.2），经 Zod 校验后进入 supervisor 状态处理。 */
+export const workerJobUpdateSchema = z.object({
+  jobId: z.string().min(1).max(128),
+  state: z.enum(["queued", "running", "completed", "cancelled", "failed"]),
+  progress: z.number().min(0).max(1),
+  errorCode: z.string().nullable(),
+  error: z.string().nullable(),
+});
+
+/** Worker 回传的最终结果载荷，经 Zod 校验。 */
+export const workerResultSchema = z.object({
+  jobId: z.string().min(1).max(128),
+  data: z.record(z.string(), z.unknown()),
+  cached: z.boolean().optional(),
+});
 
 /**
  * 统一 worker 任务协议（计划 §5.2）。

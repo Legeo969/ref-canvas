@@ -227,4 +227,72 @@ describe("ProviderRegistry", () => {
     await registry.dispose();
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+  it("selects a generic wildcard provider as the final fallback for any extension", async () => {
+    const registry = new ProviderRegistry();
+    const generic = makeProvider({
+      id: "generic-provider",
+      version: "1",
+      kinds: ["image", "video", "generic"],
+      extensions: [],
+      mimeTypes: [],
+      capabilities: ["probe"],
+      priority: 0,
+      runtime: "node",
+    }, {
+      probe: async () => ({ width: null, height: null, duration: null, extra: {} } satisfies ProviderProbeResult),
+    });
+    registry.register({ provider: generic, dispose: generic.dispose });
+
+    // 任意扩展名都能选中 generic fallback（空扩展列表 = 通配）。
+    for (const extension of ["png", "mp4", "unknown"]) {
+      const selection = await registry.select("image", extension, "probe");
+      expect(selection.selected?.manifest.id).toBe("generic-provider");
+    }
+    registry.dispose();
+  });
+
+  it("never invokes an unhealthy candidate during fallback", async () => {
+    const registry = new ProviderRegistry();
+    const probe = vi.fn(async () => ({ width: 1, height: 1, duration: null, extra: {} } satisfies ProviderProbeResult));
+    const broken = makeProvider({
+      id: "primary",
+      version: "1",
+      kinds: ["image"],
+      extensions: ["png"],
+      mimeTypes: [],
+      capabilities: ["probe"],
+      priority: 100,
+      runtime: "node",
+    }, {
+      health: async () => ({ ok: false, detail: "missing runtime" }),
+      probe,
+    });
+    const healthy = makeProvider({
+      id: "fallback",
+      version: "1",
+      kinds: ["image"],
+      extensions: ["png"],
+      mimeTypes: [],
+      capabilities: ["probe"],
+      priority: 10,
+      runtime: "node",
+    }, {
+      probe,
+    });
+    registry.register({ provider: broken, dispose: broken.dispose });
+    registry.register({ provider: healthy, dispose: healthy.dispose });
+
+    const { result, meta } = await invokeProbe(registry, {
+      path: "C:\\f.png",
+      kind: "image",
+      extension: "png",
+      size: 10,
+    });
+    expect(result.width).toBe(1);
+    expect(meta.providerId).toBe("fallback");
+    // 不健康的 primary 在 invoke 时绝不被调用。
+    expect(probe).toHaveBeenCalledTimes(1);
+    registry.dispose();
+  });
 });

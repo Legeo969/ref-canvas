@@ -1,21 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { utilityProcess, type UtilityProcess } from "electron";
-import type {
-  WorkerJob,
-  WorkerJobUpdate,
-  WorkerOperation,
-  WorkerResult,
+import {
+  workerJobUpdateSchema,
+  workerResultSchema,
+  type WorkerJob,
+  type WorkerJobUpdate,
+  type WorkerOperation,
+  type WorkerResult,
 } from "../../shared/worker-protocol";
 
-interface ReplyEnvelope {
-  type: "update" | "result";
-  update?: WorkerJobUpdate;
-  result?: WorkerResult;
-}
-
-interface JobEntry {
-  job: WorkerJob;
+interface JobEntry {  job: WorkerJob;
   cacheKey: string | null;
   resolve(result: WorkerResult): void;
   reject(error: Error): void;
@@ -83,9 +78,9 @@ export class WorkerSupervisor {
     this.defaultDeadlineMs = options.defaultDeadlineMs ?? 30_000;
   }
 
-  /** 已排队/运行中的任务数（含 cache followers）。 */
+  /** 活跃任务数（运行中 + 排队；cache followers 不重复计入）。 */
   size(): number {
-    return this.pending.size + this.queue.length;
+    return this.pending.size;
   }
 
   runningCount(): number {
@@ -193,17 +188,29 @@ export class WorkerSupervisor {
     const child = utilityProcess.fork(this.workerPath, [], {
       serviceName: this.serviceName,
     });
-    child.on("message", (message: unknown) => this.handleMessage(message as ReplyEnvelope));
-    child.once("error", () => this.handleWorkerDown());
-    child.once("exit", () => this.handleWorkerDown());
+    // error 与 exit 可能都触发；用 child 身份守卫，只处理一次（§5.2）。
+    let down = false;
+    const markDown = () => {
+      if (down || this.child !== child) return;
+      down = true;
+      this.child = null;
+      this.handleWorkerDown();
+    };
+    child.on("message", (message: unknown) => this.handleMessage(message));
+    child.once("error", markDown);
+    child.once("exit", markDown);
     this.child = child;
     return child;
   }
 
-  private handleMessage(message: ReplyEnvelope): void {
-    if (message.type === "update") {
-      const update = message.update;
-      if (!update) return;
+  private handleMessage(message: unknown): void {
+    // §5.2：worker 回传消息经 Zod 校验，拒绝畸形载荷（不进入状态处理）。
+    if (!message || typeof message !== "object") return;
+    const envelope = message as { type?: unknown; update?: unknown; result?: unknown };
+    if (envelope.type === "update") {
+      const parsed = workerJobUpdateSchema.safeParse(envelope.update);
+      if (!parsed.success) return;
+      const update: WorkerJobUpdate = parsed.data;
       // 转发进度/状态更新（§5.2：job ID 与 state 可追踪）。
       this.events.emit("progress", update);
       if (update.state === "failed") {
@@ -212,10 +219,13 @@ export class WorkerSupervisor {
       }
       return;
     }
-    if (message.type === "result" && message.result) {
-      const entry = this.pending.get(message.result.jobId);
+    if (envelope.type === "result") {
+      const parsed = workerResultSchema.safeParse(envelope.result);
+      if (!parsed.success) return;
+      const result: WorkerResult = parsed.data;
+      const entry = this.pending.get(result.jobId);
       if (!entry) return;
-      this.completeJob(entry, message.result);
+      this.completeJob(entry, result);
     }
   }
 

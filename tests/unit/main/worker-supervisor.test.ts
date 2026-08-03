@@ -286,4 +286,38 @@ describe("WorkerSupervisor", () => {
     await expect(second).rejects.toThrow("WORKER_SUPERVISOR_CLOSED");
     expect(child.killed).toBe(true);
   });
+
+  it("processes a crash only once when both error and exit fire", async () => {
+    const first = new FakeUtilityProcess();
+    const second = new FakeUtilityProcess();
+    electron.fork.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const supervisor = new WorkerSupervisor({
+      workerPath: "worker.js",
+      serviceName: "test",
+      maxRestarts: 1,
+      maxConcurrency: 1,
+    });
+
+    const running = supervisor.submit({
+      providerId: "p",
+      operation: "probe",
+      inputPath: "C:\\f",
+    });
+    const queued = supervisor.submit({
+      providerId: "p",
+      operation: "probe",
+      inputPath: "C:\\g",
+    });
+    // error 和 exit 同时触发：只应处理一次（一个 WORKER_CRASHED，一次重启）。
+    first.emit("error", new Error("boom"));
+    first.emit("exit", 1);
+    await expect(running).rejects.toThrow("WORKER_CRASHED");
+
+    const job = submittedJob(second, 0);
+    expect(job.inputPath).toBe("C:\\g");
+    reply(second, job, { retried: true });
+    await expect(queued).resolves.toMatchObject({ data: { retried: true } });
+    expect(electron.fork).toHaveBeenCalledTimes(2);
+    supervisor.close();
+  });
 });

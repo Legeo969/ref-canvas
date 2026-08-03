@@ -42,6 +42,8 @@ export interface ProviderInvocationResult {
 }
 
 function extensionMatches(manifest: ResourceProviderManifest, extension: string): boolean {
+  // 空扩展列表 = 通配 fallback（§6.3 第 1 条：generic 兜底所有格式）。
+  if (manifest.extensions.length === 0) return true;
   return manifest.extensions.includes(extension.toLowerCase());
 }
 
@@ -115,27 +117,30 @@ export class ProviderRegistry {
    * 选择一个 provider 执行 capability。
    *
    * 健康检查失败（health() 返回 ok=false 或抛错）的候选被过滤。返回
-   * candidates（全部候选项）与 selected（主 provider）；调用方按 §6.3
-   * 在 selected 失败时用 candidates 中的下一个做 fallback。
+   * candidates（仅健康候选，按 priority 降序）与 selected（第一个健康
+   * 候选，即主 provider）；调用方按 §6.3 在 selected 失败时用 candidates
+   * 中的下一个做 fallback。
    */
   async select(
     kind: AssetKind,
     extension: string,
     capability: ProviderCapability,
   ): Promise<ProviderSelection> {
-    const candidates = this.candidates(kind, extension, capability);
-    let selected: ResourceProvider | null = null;
-    for (const candidate of candidates) {
+    const all = this.candidates(kind, extension, capability);
+    const healthy: ProviderCandidate[] = [];
+    for (const candidate of all) {
       try {
         const health = await candidate.provider.health();
         if (!health.ok) continue;
-        selected = candidate.provider;
-        break;
+        healthy.push(candidate);
       } catch {
         continue;
       }
     }
-    return { candidates, selected };
+    return {
+      candidates: healthy,
+      selected: healthy[0]?.provider ?? null,
+    };
   }
 
   /** 执行调用并记录 provider、版本、耗时与错误码（§6.3 第 5 条）。 */
