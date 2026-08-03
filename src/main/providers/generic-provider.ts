@@ -11,6 +11,8 @@ import type {
   ProviderProbeResult,
   ProviderThumbnailInput,
   ProviderThumbnailResult,
+  ProviderWaveformInput,
+  ProviderWaveformResult,
   ResourceProvider,
   ResourceProviderManifest,
 } from "../../shared/worker-protocol";
@@ -60,6 +62,10 @@ export class GenericProvider implements ResourceProvider {
   }
 
   thumbnail(_input: ProviderThumbnailInput): Promise<ProviderThumbnailResult> {
+    throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
+  }
+
+  waveform(_input: ProviderWaveformInput): Promise<ProviderWaveformResult> {
     throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
   }
 

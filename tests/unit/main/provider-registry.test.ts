@@ -3,6 +3,7 @@ import {
   ProviderRegistry,
   invokeProbe,
   invokeThumbnail,
+  invokeWaveform,
 } from "../../../src/main/platform/provider-registry";
 import type {
   ProviderProbeResult,
@@ -20,6 +21,7 @@ function makeProvider(
     probe: async () => ({ width: null, height: null, duration: null, extra: {} }),
     metadata: async () => ({ fields: {} }),
     thumbnail: async () => ({ path: "", width: 0, height: 0 }),
+    waveform: async () => ({ peaks: [], duration: 0 }),
     preview: async () => ({ source: "", mimeType: "" }),
     convert: async () => ({ path: "", format: "" }),
     dispose: async () => undefined,
@@ -207,6 +209,33 @@ describe("ProviderRegistry", () => {
         size: 1,
       }),
     ).rejects.toThrow("PROVIDER_NOT_FOUND");
+    registry.dispose();
+  });
+
+  it("dispatches a waveform capability through the typed helper", async () => {
+    const registry = new ProviderRegistry();
+    const provider = makeProvider({
+      id: "audio-provider",
+      version: "1",
+      kinds: ["audio"],
+      extensions: ["wav"],
+      mimeTypes: [],
+      capabilities: ["waveform"],
+      priority: 10,
+      runtime: "node",
+    }, {
+      waveform: async () => ({ peaks: [0.1, 0.5, 0.9], duration: 3 } as const),
+    });
+    registry.register({ provider, dispose: provider.dispose });
+
+    const { result, meta } = await invokeWaveform(registry, {
+      path: "C:\\clip.wav",
+      kind: "audio",
+      extension: "wav",
+      samples: 3,
+    });
+    expect(result.peaks).toHaveLength(3);
+    expect(meta.providerId).toBe("audio-provider");
     registry.dispose();
   });
 

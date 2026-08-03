@@ -148,6 +148,21 @@ export interface ProviderConvertResult {
   format: string;
 }
 
+export interface ProviderWaveformInput {
+  path: string;
+  kind: AssetKind;
+  extension: string;
+  /** 采样宽度（峰值数量）；0 使用 provider 默认。 */
+  samples: number;
+}
+
+export interface ProviderWaveformResult {
+  /** 归一化 0..1 的峰值包络。 */
+  peaks: number[];
+  /** 音频时长（秒）。 */
+  duration: number;
+}
+
 /**
  * Typed resource provider 接口。
  *
@@ -160,6 +175,7 @@ export interface ResourceProvider {
   probe(input: ProviderProbeInput): Promise<ProviderProbeResult>;
   metadata(input: ProviderMetadataInput): Promise<ProviderMetadataResult>;
   thumbnail(input: ProviderThumbnailInput): Promise<ProviderThumbnailResult>;
+  waveform(input: ProviderWaveformInput): Promise<ProviderWaveformResult>;
   preview(input: ProviderPreviewInput): Promise<ProviderPreviewResult>;
   convert(input: ProviderConvertInput): Promise<ProviderConvertResult>;
   dispose(): Promise<void>;

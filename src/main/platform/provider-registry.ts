@@ -10,6 +10,8 @@ import type {
   ProviderProbeResult,
   ProviderThumbnailInput,
   ProviderThumbnailResult,
+  ProviderWaveformInput,
+  ProviderWaveformResult,
   ProviderConvertInput,
   ProviderConvertResult,
   ResourceProvider,
@@ -225,6 +227,19 @@ export async function invokeThumbnail(
     (provider) => provider.thumbnail(input),
   );
   return { result: value as ProviderThumbnailResult, meta };
+}
+
+export async function invokeWaveform(
+  registry: ProviderRegistry,
+  input: ProviderWaveformInput,
+): Promise<{ result: ProviderWaveformResult; meta: ProviderInvocationResult }> {
+  const { value, meta } = await registry.invoke(
+    input.kind,
+    input.extension,
+    "waveform",
+    (provider) => provider.waveform(input),
+  );
+  return { result: value as ProviderWaveformResult, meta };
 }
 
 export async function invokePreview(
