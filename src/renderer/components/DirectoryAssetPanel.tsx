@@ -26,6 +26,7 @@ import { applySelectionClick } from "../app/directory-selection";
 import {
   getDirectoryClipboard,
   setDirectoryClipboard,
+  subscribeDirectoryClipboard,
 } from "../app/directory-clipboard";
 import { trimDirectoryPageCache } from "../app/directory-page-cache";
 import { directoryBreadcrumb } from "../app/folder-navigation";
@@ -193,6 +194,12 @@ export function DirectoryAssetPanel() {
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   // 即时预览的当前条目路径（null = 未打开）。
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+  // 剪贴板（React 可观察：订阅模块级状态以触发粘贴条渲染）。
+  const [clipboardVersion, setClipboardVersion] = useState(0);
+
+  useEffect(() => {
+    return subscribeDirectoryClipboard(() => setClipboardVersion((value) => value + 1));
+  }, []);
 
   const searching = searchSnapshot?.state === "running";
 
@@ -665,7 +672,7 @@ export function DirectoryAssetPanel() {
     setSelectedPaths(new Set());
   };
 
-  /** 复制/移动到目标目录（冲突默认 rename，保留原文件时原路径不动）。 */
+  /** 复制/移动到目标目录（冲突先询问策略，传当前目录 revision）。 */
   const copyOrMoveEntry = async (
     entry: DirectoryEntry,
     kind: "copy" | "move",
@@ -676,13 +683,16 @@ export function DirectoryAssetPanel() {
       defaultPath: store.directoryPath ?? undefined,
     });
     if (!target) return;
+    const conflictAction = await askConflictStrategy();
+    if (!conflictAction) return;
+    const revisionOptions = {
+      conflictAction,
+      revision: directoryRevision || undefined,
+      directoryPath: store.directoryPath ?? undefined,
+    };
     const report = await (kind === "copy"
-      ? window.refCanvas.filesystem.copy([entry.path], target, {
-          conflictAction: "rename",
-        })
-      : window.refCanvas.filesystem.move([entry.path], target, {
-          conflictAction: "rename",
-        }));
+      ? window.refCanvas.filesystem.copy([entry.path], target, revisionOptions)
+      : window.refCanvas.filesystem.move([entry.path], target, revisionOptions));
     await store.reloadDirectory();
     const failed = report.failed[0];
     if (failed) {
@@ -833,7 +843,34 @@ export function DirectoryAssetPanel() {
     clearSelection();
   };
 
-  /** 批量复制/移动到目标目录（冲突默认 rename）。 */
+  /** 询问冲突处理策略（apply-to-all：一次选择应用于全部冲突）。 */
+  const askConflictStrategy = async (): Promise<
+    "skip" | "rename" | "replace" | null
+  > => {
+    const values = await dialog.requestForm({
+      title: "遇到同名文件",
+      description: "目标目录已有同名文件时如何处理？选择会应用到本次全部冲突。",
+      confirmLabel: "继续",
+      fields: [
+        {
+          name: "strategy",
+          label: "冲突处理",
+          type: "select",
+          initialValue: "rename",
+          options: [
+            { value: "rename", label: "自动改名（保留两者）" },
+            { value: "replace", label: "覆盖现有文件" },
+            { value: "skip", label: "跳过现有文件" },
+          ],
+        },
+      ],
+      onSubmit: () => undefined,
+    });
+    if (!values) return null;
+    return String(values.strategy) as "skip" | "rename" | "replace";
+  };
+
+  /** 批量复制/移动到目标目录（冲突策略先询问，应用到全部）。 */
   const batchCopyMove = async (kind: "copy" | "move") => {
     const paths = selectedFilePaths();
     if (!paths.length) return;
@@ -842,13 +879,16 @@ export function DirectoryAssetPanel() {
       defaultPath: store.directoryPath ?? undefined,
     });
     if (!target) return;
+    const conflictAction = await askConflictStrategy();
+    if (!conflictAction) return;
+    const revisionOptions = {
+      conflictAction,
+      revision: directoryRevision || undefined,
+      directoryPath: store.directoryPath ?? undefined,
+    };
     const report = await (kind === "copy"
-      ? window.refCanvas.filesystem.copy(paths, target, {
-          conflictAction: "rename",
-        })
-      : window.refCanvas.filesystem.move(paths, target, {
-          conflictAction: "rename",
-        }));
+      ? window.refCanvas.filesystem.copy(paths, target, revisionOptions)
+      : window.refCanvas.filesystem.move(paths, target, revisionOptions));
     await store.reloadDirectory();
     clearSelection();
     if (report.failed.length) {
@@ -877,24 +917,20 @@ export function DirectoryAssetPanel() {
     const clipboard = getDirectoryClipboard();
     if (!clipboard || !clipboard.paths.length || !store.directoryPath) return;
     const target = store.directoryPath;
+    const conflictAction = await askConflictStrategy();
+    if (!conflictAction) return;
+    const revisionOptions = {
+      conflictAction,
+      revision: directoryRevision || undefined,
+      directoryPath: store.directoryPath,
+    };
     const report = await (clipboard.mode === "copy"
-      ? window.refCanvas.filesystem.copy(clipboard.paths, target, {
-          conflictAction: "rename",
-        })
-      : window.refCanvas.filesystem.move(clipboard.paths, target, {
-          conflictAction: "rename",
-        }));
+      ? window.refCanvas.filesystem.copy(clipboard.paths, target, revisionOptions)
+      : window.refCanvas.filesystem.move(clipboard.paths, target, revisionOptions));
     if (clipboard.mode === "cut") {
       setDirectoryClipboard(null);
-      // 剪切后刷新来源目录（若与当前不同）。
-      if (
-        clipboard.sourceDirectory &&
-        clipboard.sourceDirectory !== target
-      ) {
-        // 来源目录不是当前目录时，由当前目录刷新覆盖；来源若正被浏览则走 reload。
-        if (store.directoryPath === clipboard.sourceDirectory) {
-          await store.reloadDirectory();
-        }
+      if (store.directoryPath === clipboard.sourceDirectory) {
+        await store.reloadDirectory();
       }
     }
     await store.reloadDirectory();
@@ -1098,6 +1134,9 @@ export function DirectoryAssetPanel() {
           <button onClick={() => void batchMoveTo()} title="移动到…">
             <FolderOpen size={14} />
           </button>
+          <button onClick={() => clipboardSelection("copy")} title="复制（到剪贴板）">
+            <Copy size={14} />
+          </button>
           <button onClick={() => clipboardSelection("cut")} title="剪切">
             <Scissors size={14} />
           </button>
@@ -1130,6 +1169,7 @@ export function DirectoryAssetPanel() {
         </div>
       )}
       {(() => {
+        void clipboardVersion; // 订阅剪贴板变更以触发粘贴条渲染。
         const clipboard = getDirectoryClipboard();
         if (!clipboard || !clipboard.paths.length || !store.directoryPath) {
           return null;

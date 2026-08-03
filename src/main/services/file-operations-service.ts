@@ -351,7 +351,15 @@ export class FileOperationsService {
   ): Promise<void> {
     const renameFile = this.dependencies.renameForTest ?? rename;
     if (replaced) {
+      // replace 跨卷 move：copy→校验→回收站，缺一不可（计划 §8.2）。
       await this.copyInto(source, target, true);
+      try {
+        await this.verifyCopy(source, target);
+      } catch (error) {
+        // 校验失败：回收已替换的目标，源文件保持完整。
+        await rm(target, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
       await this.dependencies.trash(source);
       return;
     }

@@ -172,6 +172,31 @@ describe("move", () => {
     expect(trash).toHaveBeenCalledWith(source);
   });
 
+  it("verifies before trashing on a cross-volume replace move", async () => {
+    const trash = vi.fn(async () => undefined);
+    const rootA = await createTempDir();
+    const rootB = await createTempDir();
+    const service = new FileOperationsService({
+      allowedRoots: () => [rootA, rootB],
+      trash,
+      renameForTest: async () => {
+        const error = new Error("EXDEV") as NodeJS.ErrnoException;
+        error.code = "EXDEV";
+        throw error;
+      },
+    });
+    const source = path.join(rootA, "a.png");
+    await writeFile(source, "source-data");
+    await writeFile(path.join(rootB, "a.png"), "existing");
+    const report = await service.move([source], rootB, {
+      conflictAction: "replace",
+    });
+    expect(report.replaced).toBe(1);
+    // 校验通过后才回收源文件。
+    expect(trash).toHaveBeenCalledWith(source);
+    expect((await stat(path.join(rootB, "a.png"))).isFile()).toBe(true);
+  });
+
   it("rejects a source outside the allowed scope", async () => {
     const root = await createTempDir();
     const outside = await createTempDir();
