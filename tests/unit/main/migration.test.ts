@@ -269,10 +269,12 @@ describe("database migration", () => {
       } finally {
         verification.close();
       }
-      // 真正重跑 v14 迁移步骤（runMigrationSteps 会执行 apply，而非跳过）：
-      // 幂等性验证——表/列已存在时不报错、user_version 不前进。
+      // 真正重跑 v14 迁移步骤：把 user_version 重置到 13（保留 v14 schema），
+      // runner 会执行 v14 的 apply()——CREATE IF NOT EXISTS / 列守卫必须
+      // 在 schema 已存在时幂等通过。
       const rerun = new Sqlite(filename);
       try {
+        rerun.pragma("user_version = 13");
         const result = runMigrationSteps(rerun, MIGRATIONS, {});
         expect(result.completed).toBe(true);
         expect(result.finalVersion).toBe(14);
