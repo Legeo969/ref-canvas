@@ -39,6 +39,11 @@ describe("collection missing-asset reconciliation", () => {
     const database = new RefCanvasDatabase(":memory:");
     try {
       const collection = database.createCollection("References");
+      database.upsertMountRoot({
+        id: "mount-drive-d",
+        path: "D:\\",
+        displayName: "D:",
+      });
       // v14 collection_refs 以 mount + relative path + fingerprint 引用磁盘文件。
       database.addCollectionRef({
         collectionId: collection.id,
@@ -52,6 +57,39 @@ describe("collection missing-asset reconciliation", () => {
         mountId: "mount-drive-d",
         relativePath: "art/reference.png",
         fingerprint: "abc123",
+        state: "resolved",
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("updates the fingerprint when a ref at the same path changes", () => {
+    const database = new RefCanvasDatabase(":memory:");
+    try {
+      const collection = database.createCollection("References");
+      database.upsertMountRoot({
+        id: "mount-drive-d",
+        path: "D:\\",
+        displayName: "D:",
+      });
+      database.addCollectionRef({
+        collectionId: collection.id,
+        mountId: "mount-drive-d",
+        relativePath: "art/reference.png",
+        fingerprint: "abc123",
+      });
+      // 同路径文件内容变化：fingerprint 必须更新，不产生重复引用。
+      database.addCollectionRef({
+        collectionId: collection.id,
+        mountId: "mount-drive-d",
+        relativePath: "art/reference.png",
+        fingerprint: "new-hash",
+      });
+      const refs = database.listCollectionRefs(collection.id);
+      expect(refs).toHaveLength(1);
+      expect(refs[0]).toMatchObject({
+        fingerprint: "new-hash",
         state: "resolved",
       });
     } finally {

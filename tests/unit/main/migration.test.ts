@@ -227,6 +227,7 @@ describe("database migration", () => {
         ) as Array<{ name: string }>;
         expect(identityColumns.map((column) => column.name)).toEqual(
           expect.arrayContaining([
+            "id",
             "mount_id",
             "relative_path",
             "file_id",
@@ -235,8 +236,41 @@ describe("database migration", () => {
             "link_state",
           ]),
         );
+        // collection_refs.mount_id 外键引用 mount_roots。
+        const refForeignKeys = verification.pragma(
+          "foreign_key_list(collection_refs)",
+        ) as Array<{ table: string; from: string }>;
+        expect(
+          refForeignKeys.some(
+            (fk) => fk.table === "mount_roots" && fk.from === "mount_id",
+          ),
+        ).toBe(true);
+        // cache_entries/media_metadata 引用 file_identities.id 而非 assets。
+        const cacheForeignKeys = verification.pragma(
+          "foreign_key_list(cache_entries)",
+        ) as Array<{ table: string; from: string }>;
+        expect(
+          cacheForeignKeys.some(
+            (fk) => fk.table === "file_identities" && fk.from === "identity_id",
+          ),
+        ).toBe(true);
+        const mediaForeignKeys = verification.pragma(
+          "foreign_key_list(media_metadata)",
+        ) as Array<{ table: string; from: string }>;
+        expect(
+          mediaForeignKeys.some(
+            (fk) => fk.table === "file_identities" && fk.from === "identity_id",
+          ),
+        ).toBe(true);
       } finally {
         verification.close();
+      }
+      // 重跑迁移（新连接）幂等：版本不前进、表不重建报错。
+      const reopened = new RefCanvasDatabase(filename);
+      try {
+        expect(reopened.getSchemaVersion()).toBe(14);
+      } finally {
+        reopened.close();
       }
     } finally {
       migrated.close();

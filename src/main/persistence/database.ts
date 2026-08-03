@@ -19,6 +19,7 @@ import type {
   DuplicateGroup,
   LibraryStats,
   MediaNote,
+  MountRoot,
   PlaybackState,
   ReconcileEntry,
   SavedView,
@@ -1338,6 +1339,41 @@ export class RefCanvasDatabase {
     return asset;
   }
 
+  /** v14：注册或更新挂载根（计划 §7.2 MountRoot）。 */
+  upsertMountRoot(input: {
+    id: string;
+    path: string;
+    displayName: string;
+    volumeId?: string | null;
+    state?: MountRoot["state"];
+  }): void {
+    this.db.prepare(`
+      INSERT INTO mount_roots (id, path, display_name, volume_id, state, last_seen_at)
+      VALUES (@id, @path, @display_name, @volume_id, @state, @last_seen_at)
+      ON CONFLICT(id) DO UPDATE SET
+        path = excluded.path,
+        display_name = excluded.display_name,
+        volume_id = excluded.volume_id,
+        state = excluded.state,
+        last_seen_at = excluded.last_seen_at
+    `).run({
+      id: input.id,
+      path: input.path,
+      display_name: input.displayName,
+      volume_id: input.volumeId ?? null,
+      state: input.state ?? "online",
+      last_seen_at: new Date().toISOString(),
+    });
+  }
+
+  listMountRoots(): MountRoot[] {
+    return this.db.prepare(`
+      SELECT id, path, display_name AS displayName, volume_id AS volumeId,
+        state, last_seen_at AS lastSeenAt
+      FROM mount_roots ORDER BY path
+    `).all() as MountRoot[];
+  }
+
   /** v14：以 mount + relative path + fingerprint 向合集添加磁盘文件引用。 */
   addCollectionRef(input: {
     collectionId: string;
@@ -1348,10 +1384,14 @@ export class RefCanvasDatabase {
     if (!this.collectionsRepository.get(input.collectionId)) {
       throw new Error("COLLECTION_NOT_FOUND");
     }
+    // 同路径引用复用；fingerprint 变化时更新为新指纹并重置为 resolved。
     this.db.prepare(`
-      INSERT OR IGNORE INTO collection_refs
+      INSERT INTO collection_refs
         (id, collection_id, mount_id, relative_path, fingerprint, state)
       VALUES (?, ?, ?, ?, ?, 'resolved')
+      ON CONFLICT(collection_id, mount_id, relative_path) DO UPDATE SET
+        fingerprint = excluded.fingerprint,
+        state = 'resolved'
     `).run(
       randomUUID(),
       input.collectionId,
@@ -1367,7 +1407,7 @@ export class RefCanvasDatabase {
     mountId: string;
     relativePath: string;
     fingerprint: string;
-    state: string;
+    state: "resolved" | "missing" | "ambiguous" | "offline";
   }> {
     return this.db.prepare(`
       SELECT collection_id AS collectionId, mount_id AS mountId,
@@ -1379,7 +1419,7 @@ export class RefCanvasDatabase {
       mountId: string;
       relativePath: string;
       fingerprint: string;
-      state: string;
+      state: "resolved" | "missing" | "ambiguous" | "offline";
     }>;
   }
 

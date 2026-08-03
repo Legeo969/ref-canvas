@@ -849,58 +849,19 @@ export class MigrationRepository {
  */
 class V14NativeFilesystem {
   static apply(db: Database.Database): void {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS mount_roots (
-        id TEXT PRIMARY KEY,
-        path TEXT NOT NULL UNIQUE,
-        display_name TEXT NOT NULL,
-        volume_id TEXT,
-        state TEXT NOT NULL DEFAULT 'online',
-        last_seen_at TEXT
-      );
-      CREATE TABLE IF NOT EXISTS collection_refs (
-        id TEXT PRIMARY KEY,
-        collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-        mount_id TEXT NOT NULL,
-        relative_path TEXT NOT NULL,
-        fingerprint TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'resolved',
-        UNIQUE(collection_id, mount_id, relative_path)
-      );
-      CREATE INDEX IF NOT EXISTS collection_refs_collection
-        ON collection_refs(collection_id);
-      CREATE TABLE IF NOT EXISTS cache_entries (
-        id TEXT PRIMARY KEY,
-        asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-        kind TEXT NOT NULL,
-        variant TEXT NOT NULL,
-        fingerprint TEXT NOT NULL,
-        provider_id TEXT,
-        provider_version TEXT,
-        file_path TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        UNIQUE(asset_id, kind, variant)
-      );
-      CREATE INDEX IF NOT EXISTS cache_entries_asset
-        ON cache_entries(asset_id, kind);
-      CREATE TABLE IF NOT EXISTS media_metadata (
-        id TEXT PRIMARY KEY,
-        asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
-        format TEXT NOT NULL,
-        metadata_json TEXT NOT NULL,
-        provider_id TEXT,
-        provider_version TEXT,
-        updated_at TEXT NOT NULL,
-        UNIQUE(asset_id, format)
-      );
-      CREATE INDEX IF NOT EXISTS media_metadata_asset
-        ON media_metadata(asset_id);
-    `);
+    // 1) 先升级 file_identities：补充磁盘身份列，并回填稳定 id 主键。
     const identityColumns = new Set(
       (db.pragma("table_info(file_identities)") as Array<{ name: string }>).map(
         (column) => column.name,
       ),
     );
+    if (!identityColumns.has("id")) {
+      db.exec("ALTER TABLE file_identities ADD COLUMN id TEXT");
+    }
+    db.exec(`
+      UPDATE file_identities SET id = lower(hex(randomblob(16)))
+      WHERE id IS NULL OR id = '';
+    `);
     if (!identityColumns.has("mount_id")) {
       db.exec("ALTER TABLE file_identities ADD COLUMN mount_id TEXT");
     }
@@ -921,6 +882,60 @@ class V14NativeFilesystem {
         "ALTER TABLE file_identities ADD COLUMN link_state TEXT NOT NULL DEFAULT 'online'",
       );
     }
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS file_identities_id
+        ON file_identities(id);
+    `);
+    // 2) 再创建挂载与引用表（cache/media 引用 file_identities.id）。
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mount_roots (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        volume_id TEXT,
+        state TEXT NOT NULL DEFAULT 'online',
+        last_seen_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS collection_refs (
+        id TEXT PRIMARY KEY,
+        collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+        mount_id TEXT NOT NULL REFERENCES mount_roots(id),
+        relative_path TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'resolved',
+        UNIQUE(collection_id, mount_id, relative_path)
+      );
+      CREATE INDEX IF NOT EXISTS collection_refs_collection
+        ON collection_refs(collection_id);
+      CREATE INDEX IF NOT EXISTS collection_refs_mount
+        ON collection_refs(mount_id, relative_path);
+      CREATE TABLE IF NOT EXISTS cache_entries (
+        id TEXT PRIMARY KEY,
+        identity_id TEXT NOT NULL REFERENCES file_identities(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        variant TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        provider_id TEXT,
+        provider_version TEXT,
+        file_path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(identity_id, kind, variant)
+      );
+      CREATE INDEX IF NOT EXISTS cache_entries_identity
+        ON cache_entries(identity_id, kind);
+      CREATE TABLE IF NOT EXISTS media_metadata (
+        id TEXT PRIMARY KEY,
+        identity_id TEXT NOT NULL REFERENCES file_identities(id) ON DELETE CASCADE,
+        format TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        provider_id TEXT,
+        provider_version TEXT,
+        updated_at TEXT NOT NULL,
+        UNIQUE(identity_id, format)
+      );
+      CREATE INDEX IF NOT EXISTS media_metadata_identity
+        ON media_metadata(identity_id);
+    `);
     // v12 的 watch 镜像标记已停用：删除表（阶段 0 已停止所有运行时调用）。
     db.exec("DROP TABLE IF EXISTS collection_sources;");
   }
