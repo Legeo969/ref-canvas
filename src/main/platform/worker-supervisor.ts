@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { utilityProcess, type UtilityProcess } from "electron";
 import {
+  workerJobSchema,
   workerJobUpdateSchema,
   workerResultSchema,
-  type WorkerJob,
-  type WorkerJobUpdate,
-  type WorkerOperation,
-  type WorkerResult,
+} from "./worker-protocol-validation";
+import type {
+  WorkerJob,
+  WorkerJobUpdate,
+  WorkerOperation,
+  WorkerResult,
 } from "../../shared/worker-protocol";
 
 interface JobEntry {  job: WorkerJob;
@@ -102,6 +105,11 @@ export class WorkerSupervisor {
       options: options.options ?? {},
       deadlineMs: options.deadlineMs ?? this.defaultDeadlineMs,
     };
+    // §5.2：出站 job 经 Zod 校验，畸形参数在提交时拒绝。
+    const parsedJob = workerJobSchema.safeParse(job);
+    if (!parsedJob.success) {
+      return Promise.reject(new Error("WORKER_JOB_INVALID"));
+    }
     if (this.closing) return Promise.reject(new Error("WORKER_SUPERVISOR_CLOSED"));
 
     return new Promise<WorkerResult>((resolve, reject) => {

@@ -287,6 +287,25 @@ describe("WorkerSupervisor", () => {
     expect(child.killed).toBe(true);
   });
 
+  it("rejects an outbound job with invalid fields at submit time", async () => {
+    const child = new FakeUtilityProcess();
+    electron.fork.mockReturnValue(child);
+    const supervisor = new WorkerSupervisor({
+      workerPath: "worker.js",
+      serviceName: "test",
+    });
+
+    await expect(
+      supervisor.submit({
+        providerId: "",
+        operation: "probe",
+        inputPath: "C:\\f",
+      }),
+    ).rejects.toThrow("WORKER_JOB_INVALID");
+    expect(child.messages.filter((m) => m.type === "job")).toHaveLength(0);
+    supervisor.close();
+  });
+
   it("processes a crash only once when both error and exit fire", async () => {
     const first = new FakeUtilityProcess();
     const second = new FakeUtilityProcess();

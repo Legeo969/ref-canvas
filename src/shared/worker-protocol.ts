@@ -1,21 +1,4 @@
 import type { AssetKind } from "./contracts";
-import { z } from "zod";
-
-/** Worker 回传的状态更新（§5.2），经 Zod 校验后进入 supervisor 状态处理。 */
-export const workerJobUpdateSchema = z.object({
-  jobId: z.string().min(1).max(128),
-  state: z.enum(["queued", "running", "completed", "cancelled", "failed"]),
-  progress: z.number().min(0).max(1),
-  errorCode: z.string().nullable(),
-  error: z.string().nullable(),
-});
-
-/** Worker 回传的最终结果载荷，经 Zod 校验。 */
-export const workerResultSchema = z.object({
-  jobId: z.string().min(1).max(128),
-  data: z.record(z.string(), z.unknown()),
-  cached: z.boolean().optional(),
-});
 
 /**
  * 统一 worker 任务协议（计划 §5.2）。
@@ -23,6 +6,9 @@ export const workerResultSchema = z.object({
  * Main 与 worker 之间通过 utilityProcess / child process / named pipe 传递
  * 经过校验的消息。任务必须可追踪（jobId + providerId + provider version）、
  * 可取消、可设置 deadline，并受 bounded concurrency 约束。
+ *
+ * 校验 schema 位于 Main 边界（src/main/platform/worker-protocol-validation.ts）；
+ * 本文件保持平台无关的纯类型，不引入运行时依赖。
  */
 
 export type WorkerOperation =
