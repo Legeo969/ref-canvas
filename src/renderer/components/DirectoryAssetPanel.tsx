@@ -194,6 +194,17 @@ export function DirectoryAssetPanel() {
 
   const searching = searchSnapshot?.state === "running";
 
+  // Dismiss the context menu on Escape as well as the click-out overlay,
+  // matching AssetPanel's context menu so keyboard users can close it.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [contextMenu]);
+
   // 目录内容与搜索结果分别维护；搜索结果优先展示。
   useEffect(() => {
     setDirectoryPages(
@@ -1105,8 +1116,8 @@ export function DirectoryAssetPanel() {
                     event.preventDefault();
                     setContextMenu({
                       entry,
-                      x: Math.min(event.clientX, window.innerWidth - 236),
-                      y: Math.min(event.clientY, window.innerHeight - 300),
+                      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 236)),
+                      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 312)),
                     });
                   }}
                 >

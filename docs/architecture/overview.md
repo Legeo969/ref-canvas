@@ -14,14 +14,26 @@ main (Electron composition root)
 shared (platform-independent contracts and pure logic)
 ```
 
-- `src/renderer` uses system capabilities only through `window.refCanvas`.
-- `src/preload/index.ts` is the only renderer capability bridge.
+- `src/renderer` uses system capabilities only through `window.refCanvas`. It may
+  import from an explicit allowlist of browser-safe packages (react, react-dom,
+  three, fabric, zustand, lucide-react, zod) and nothing else — every node
+  builtin, native addon, and Electron import is denied by default.
+- `src/preload/index.ts` is the only renderer capability bridge. It may reach
+  Electron and the shared contracts, but no native/node modules, and it exposes
+  exactly one contract-typed namespace (`refCanvas`) over the context bridge —
+  never a raw `ipcRenderer`/`webUtils`/`process` handle.
 - `src/main` may depend on `src/shared`, but never on renderer code.
-- `src/shared` cannot depend on Electron, Node, main, or renderer code.
+- `src/shared` cannot depend on Electron, Node, main, or renderer code (zod is the
+  only permitted external package).
 - IPC registration goes through `src/main/platform/secure-ipc.ts` and validates the sender.
-- Every `BrowserWindow` reuses the policy in `src/main/platform/window-security.ts`.
+- Every `BrowserWindow` across all of `src/main` reuses the policy in
+  `src/main/platform/window-security.ts`; inline `webPreferences` are forbidden.
 
-These rules are enforced by `tests/architecture/layers.test.ts`.
+The boundary allowlists are enforced by `tests/architecture/layers.test.ts` (module
+graph) and mirrored per-file by ESLint `no-restricted-imports` in
+`eslint.config.mjs` (fails fast in the editor). Allowlists, not blocklists: a new
+dependency is denied until it is consciously added, so the gate cannot silently
+drift as `package.json` grows.
 
 ## Main process
 
@@ -66,9 +78,17 @@ directory, library, board, and dialog styles in cascade order.
 | Scope | Command | Blocking conditions |
 | --- | --- | --- |
 | Repository | `pnpm check:repo` | generated/runtime files, secrets, logs, or files over 10 MiB are candidates for Git |
-| Development | `pnpm check` | repository, type, architecture, unit, or integration failure |
+| Lint | `pnpm lint` | `any`, `require`, or a layer-forbidden import (`no-restricted-imports` per `eslint.config.mjs`) |
+| Development | `pnpm check` | repository, lint, type, architecture, unit, or integration failure |
 | Release | `pnpm check:release` | development gate, performance, 500k capacity, package, or packaged runtime failure |
 | Windows | `pnpm release:windows` | release gate, Squirrel/ZIP make, runtime migration, version, or SHA-256 verification failure |
+
+`pnpm check` runs on every push and pull request to `main` via
+`.github/workflows/check.yml`, so the development gate is enforced in CI rather
+than by local convention. The workflow runs on `windows-latest` (the only
+shipping target) and skips the Electron binary download, which no test needs.
+ESLint (`eslint.config.mjs`) is the per-file companion to the module-graph
+assertions in `tests/architecture/layers.test.ts`.
 
 Runtime QA writes only to `%TEMP%\RefCanvas-QA\<run-id>`. Distributable files
 are copied to `D:\AiWork\ref-canvas-releases\<version>`; Git stores only the

@@ -266,8 +266,6 @@ async function moveDirectoryCursor(
       directoryPath: target,
       directoryHistoryIndex: index,
     });
-  } catch (error) {
-    throw error;
   } finally {
     set({ directoryLoading: false });
   }

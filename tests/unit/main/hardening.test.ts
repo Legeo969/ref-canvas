@@ -10,6 +10,7 @@ import {
 } from "../../../src/main/persistence/database";
 import { LibraryManager, databasePathFor, managedStorePath } from "../../../src/main/services/library-manager";
 import { LibraryService } from "../../../src/main/services/library-service";
+import { z } from "zod";
 
 const temporaryDirectories: string[] = [];
 
@@ -232,7 +233,6 @@ describe("hardening", () => {
       });
       expect(saved.title).toBe("Strict");
       // Zod 拒绝非法枚举值（IPC 层守卫，这里直接验证 schema 形态约束）。
-      const { z } = require("zod");
       const invalid = z
         .enum(["normal", "always-on-bottom", "transparent-overlay", "locked"])
         .safeParse("bogus-mode");

@@ -10,10 +10,27 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import type { CollectionRecord } from "../../shared/contracts";
+import {
+  placeTriggerMenu,
+  submenuOpensLeft,
+  type MenuPlacement,
+} from "../app/menu-position";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
+
+// Kept in sync with the .asset-folder-submenu width in shell.css so the
+// flip-left decision matches what actually renders. The popover's own width is
+// measured at runtime via getBoundingClientRect, so it needs no constant.
+const SUBMENU_WIDTH = 220;
 
 interface FolderActionsMenuProps {
   collection: CollectionRecord;
@@ -49,18 +66,68 @@ export function FolderActionsMenu({
   const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null);
+  const [submenuLeft, setSubmenuLeft] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  const closeMenu = () => {
+    setOpen(false);
+    setMoveOpen(false);
+    // Clear so the next open re-measures and stays hidden until placed, rather
+    // than flashing at the previous open's coordinates.
+    setPlacement(null);
+  };
+
+  // Position the portaled popover in fixed (viewport) coordinates once it opens.
+  // Portaling to <body> escapes the sidebar's `overflow-y: auto`, which — per the
+  // CSS overflow spec — also clips horizontally and used to slice this menu off.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !popoverRef.current) return;
+    const trigger = triggerRef.current.getBoundingClientRect();
+    const menu = popoverRef.current.getBoundingClientRect();
+    setPlacement(
+      placeTriggerMenu(
+        trigger,
+        { width: menu.width, height: menu.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
+    setSubmenuLeft(
+      submenuOpensLeft(
+        Math.min(trigger.left, window.innerWidth - menu.width - 8) + menu.width,
+        SUBMENU_WIDTH,
+        window.innerWidth,
+      ),
+    );
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setOpen(false);
-        setMoveOpen(false);
+      const node = event.target as Node;
+      if (
+        !triggerRef.current?.contains(node) &&
+        !popoverRef.current?.contains(node)
+      ) {
+        closeMenu();
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
     window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    // The anchor rect goes stale on scroll/resize; close rather than chase it,
+    // matching TooltipLayer's behavior.
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+    };
   }, [open]);
 
   const moveTargets = useMemo(() => {
@@ -180,8 +247,9 @@ export function FolderActionsMenu({
   };
 
   return (
-    <div className="folder-actions-menu" ref={menuRef}>
+    <div className="folder-actions-menu">
       <button
+        ref={triggerRef}
         className="folder-actions-trigger"
         aria-label={`${collection.title} 操作`}
         aria-haspopup="menu"
@@ -194,8 +262,18 @@ export function FolderActionsMenu({
       >
         <MoreHorizontal size={14} />
       </button>
-      {open && (
-        <div className="folder-actions-popover" role="menu">
+      {open && createPortal(
+        <div
+          ref={popoverRef}
+          className="folder-actions-popover"
+          role="menu"
+          style={{
+            left: placement?.left ?? 0,
+            top: placement?.top ?? 0,
+            visibility: placement ? "visible" : "hidden",
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <button
             role="menuitem"
             onClick={() => {
@@ -235,6 +313,11 @@ export function FolderActionsMenu({
                 className="asset-folder-submenu"
                 role="menu"
                 aria-label="选择目标文件夹"
+                style={
+                  submenuLeft
+                    ? { left: "auto", right: "calc(100% + 4px)" }
+                    : undefined
+                }
               >
                 <div className="folder-menu-list">
                   {collection.parentId !== null && (
@@ -320,7 +403,8 @@ export function FolderActionsMenu({
             <Trash2 size={15} />
             删除
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

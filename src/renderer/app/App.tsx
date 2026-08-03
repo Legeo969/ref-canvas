@@ -250,7 +250,7 @@ export function App() {
   const createBoard = async () => {
     const titles = new Set(store.boards.map((board) => board.title));
     let index = 1;
-    let defaultTitle = "";
+    let defaultTitle: string;
     do {
       defaultTitle = `参考板 ${String(index).padStart(2, "0")}`;
       index += 1;

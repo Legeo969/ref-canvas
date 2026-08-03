@@ -495,11 +495,10 @@ body.panel-resizing {
 }
 
 .folder-actions-popover {
-  position: absolute;
+  /* Fixed + portaled to <body>: escapes the sidebar's overflow clip. top/left
+     are supplied inline from placeTriggerMenu (viewport coordinates). */
+  position: fixed;
   z-index: 130;
-  top: 40px;
-  right: auto;
-  left: 0;
   width: 216px;
   padding: 6px;
   border-radius: 10px;

@@ -50,6 +50,8 @@ interface ActionJob {
 }
 
 function safeSegment(value: string): string {
+  // Control chars are stripped deliberately: they are illegal in filenames.
+  // eslint-disable-next-line no-control-regex
   return value.replaceAll(/[<>:"/\\|?*\u0000-\u001F]/g, "_").slice(0, 120);
 }
 

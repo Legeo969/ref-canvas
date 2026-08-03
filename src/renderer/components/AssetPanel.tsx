@@ -1581,7 +1581,10 @@ export function AssetPanel() {
                     setContextMenu({
                       asset,
                       x: Math.min(event.clientX, window.innerWidth - 228),
-                      y: Math.min(event.clientY, window.innerHeight - 248),
+                      // Reserve the tallest variant (active + collectionFilter):
+                      // 6 rows x 40 + 11px divider + 12px padding = 263px. A
+                      // short reserve clipped the destructive 移入回收站 row.
+                      y: Math.min(event.clientY, window.innerHeight - 272),
                     });
                     setFolderMenuOpen(false);
                     setFolderQuery("");
@@ -1809,8 +1812,13 @@ export function AssetPanel() {
                   contextMenu.x + 452 <= window.innerWidth
                     ? "auto"
                     : "calc(100% + 4px)",
+                // Flip up when the menu opens low: the floor is the viewport
+                // top (8 - parent y), not -6, so a submenu that would overflow
+                // the bottom can actually move up instead of being pinned near
+                // the parent. 388 = 380px max-height + 8px margin; 82 keeps it
+                // roughly aligned with the "添加到文件夹" row when there is room.
                 top: Math.max(
-                  -6,
+                  8 - contextMenu.y,
                   Math.min(82, window.innerHeight - contextMenu.y - 388),
                 ),
               }}

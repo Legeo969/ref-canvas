@@ -1,4 +1,3 @@
-import { builtinModules } from "node:module";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
@@ -11,14 +10,37 @@ import {
 const sourceRoot = path.resolve("src");
 const mainRoot = path.join(sourceRoot, "main");
 const rendererRoot = path.join(sourceRoot, "renderer");
-const platformModules = new Set([
-  ...builtinModules,
-  ...builtinModules.map((name) => `node:${name}`),
-  "@ffprobe-installer/ffprobe",
-  "better-sqlite3",
-  "electron",
-  "sharp",
+const preloadRoot = path.join(sourceRoot, "preload");
+const sharedRoot = path.join(sourceRoot, "shared");
+
+// Allowlists, not blocklists. A blocklist of native/node modules silently
+// admits anything nobody remembered to add (e.g. a new `chokidar` import in the
+// sandboxed renderer would run fine in tests and crash at runtime). Listing what
+// each sandboxed layer MAY import inverts the failure: new dependencies are
+// denied until someone consciously vouches for them here.
+const rendererExternalAllowlist = new Set([
+  "react",
+  "react-dom",
+  "three",
+  "fabric",
+  "zustand",
+  "lucide-react",
+  "zod",
 ]);
+// The preload bridge runs with Node integration but is the security seam to the
+// sandboxed renderer: it may only reach Electron. Native/node modules here would
+// widen the bridge's attack surface for no reason.
+const preloadExternalAllowlist = new Set(["electron"]);
+// Shared contracts must stay platform independent: pure logic plus schema only.
+const sharedExternalAllowlist = new Set(["zod"]);
+
+/** Package root of a bare specifier: `three/examples/x` -> `three`, `@a/b/c` -> `@a/b`. */
+function packageRoot(specifier: string): string {
+  const segments = specifier.split("/");
+  return specifier.startsWith("@")
+    ? segments.slice(0, 2).join("/")
+    : segments[0];
+}
 
 async function typeScriptFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -87,11 +109,14 @@ describe("architecture boundaries", () => {
     for (const filename of rendererFiles) {
       for (const specifier of await imports(filename)) {
         const resolved = resolvedImport(filename, specifier);
-        if (
-          platformModules.has(specifier) ||
-          (resolved &&
-            (resolved === mainRoot || isInside(resolved, mainRoot)))
-        ) {
+        if (resolved) {
+          // Relative import: the only forbidden target is the main process.
+          if (resolved === mainRoot || isInside(resolved, mainRoot)) {
+            violations.push(`${path.relative(sourceRoot, filename)} -> ${specifier}`);
+          }
+        } else if (!rendererExternalAllowlist.has(packageRoot(specifier))) {
+          // Bare specifier not on the allowlist — includes every node builtin,
+          // native addon, and electron. Denied by default.
           violations.push(`${path.relative(sourceRoot, filename)} -> ${specifier}`);
         }
       }
@@ -101,17 +126,16 @@ describe("architecture boundaries", () => {
   });
 
   it("keeps shared contracts platform independent", async () => {
-    const sharedRoot = path.join(sourceRoot, "shared");
     const violations: string[] = [];
 
-    for (const filename of await typeScriptFiles(sharedRoot)) {
+    for (const filename of productionFiles(await typeScriptFiles(sharedRoot))) {
       for (const specifier of await imports(filename)) {
         const resolved = resolvedImport(filename, specifier);
-        if (
-          platformModules.has(specifier) ||
-          (resolved &&
-            (isInside(resolved, rendererRoot) || isInside(resolved, mainRoot)))
-        ) {
+        if (resolved) {
+          if (isInside(resolved, rendererRoot) || isInside(resolved, mainRoot)) {
+            violations.push(`${path.relative(sourceRoot, filename)} -> ${specifier}`);
+          }
+        } else if (!sharedExternalAllowlist.has(packageRoot(specifier))) {
           violations.push(`${path.relative(sourceRoot, filename)} -> ${specifier}`);
         }
       }
@@ -137,6 +161,83 @@ describe("architecture boundaries", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("keeps the preload bridge within Electron and shared contracts", async () => {
+    const preloadFiles = productionFiles(await typeScriptFiles(preloadRoot));
+    const violations: string[] = [];
+
+    expect(preloadFiles.length).toBeGreaterThan(0);
+    for (const filename of preloadFiles) {
+      for (const specifier of await imports(filename)) {
+        const resolved = resolvedImport(filename, specifier);
+        if (resolved) {
+          // The bridge sits between main and renderer and must reach neither's
+          // implementation — only the platform-independent shared contracts.
+          if (isInside(resolved, mainRoot) || isInside(resolved, rendererRoot)) {
+            violations.push(`${path.relative(sourceRoot, filename)} -> ${specifier}`);
+          }
+        } else if (!preloadExternalAllowlist.has(packageRoot(specifier))) {
+          violations.push(`${path.relative(sourceRoot, filename)} -> ${specifier}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+
+  it("exposes exactly one frozen capability namespace over the context bridge", async () => {
+    const entry = path.join(preloadRoot, "index.ts");
+    const sourceText = await readFile(entry, "utf8");
+    const source = ts.createSourceFile(
+      entry,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    // The bridge is the whole point of contextIsolation: whatever crosses it is
+    // reachable from untrusted renderer script. Assert the surface is a single
+    // named, contract-typed object — never a raw Electron/Node handle, and never
+    // more than one exposure that a later edit could sneak `ipcRenderer` into.
+    const exposeCalls: ts.CallExpression[] = [];
+    const forbiddenExposedValues = new Set([
+      "ipcRenderer",
+      "webUtils",
+      "process",
+      "require",
+      "global",
+      "electron",
+    ]);
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        ts.isIdentifier(node.expression.expression) &&
+        node.expression.expression.text === "contextBridge" &&
+        node.expression.name.text === "exposeInMainWorld"
+      ) {
+        exposeCalls.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+
+    expect(exposeCalls).toHaveLength(1);
+    const [key, value] = exposeCalls[0].arguments;
+    expect(ts.isStringLiteralLike(key) && key.text).toBe("refCanvas");
+    // The exposed value must be a plain identifier (the assembled api object),
+    // not an inline expression that could smuggle a raw handle across.
+    expect(value && ts.isIdentifier(value)).toBe(true);
+    if (value && ts.isIdentifier(value)) {
+      expect(forbiddenExposedValues.has(value.text)).toBe(false);
+    }
+    // That identifier is bound to the shared contract type, tying the exposed
+    // surface to `RefCanvasApi` so the typechecker guards every added method.
+    expect(sourceText).toMatch(
+      /const\s+api\s*:\s*RefCanvasApi\s*=/,
+    );
+    expect(importsNamedIdentifier(source, "../shared/contracts", "RefCanvasApi")).toBe(true);
   });
 
   it("centralizes all IPC registration behind sender validation", async () => {
@@ -180,13 +281,28 @@ describe("architecture boundaries", () => {
   });
 
   it("applies the shared security policy to every BrowserWindow", async () => {
-    const source = await readFile(path.join(mainRoot, "index.ts"), "utf8");
-    const windowCount = source.match(/new BrowserWindow\s*\(/g)?.length ?? 0;
-    const policyCount = source.match(/webPreferences:\s*secureWebPreferences\s*\(/g)?.length ?? 0;
+    // Scan every main file, not just index.ts. The invariant is "every window",
+    // so a window constructed in any other main module must be covered too —
+    // scoping the check to one file would let a second window-creating module
+    // silently ship without the hardened policy.
+    const mainFiles = productionFiles(await typeScriptFiles(mainRoot));
+    let windowCount = 0;
+    let policyCount = 0;
+    const inlinePreferences: string[] = [];
+
+    for (const filename of mainFiles) {
+      const source = await readFile(filename, "utf8");
+      windowCount += source.match(/new BrowserWindow\s*\(/g)?.length ?? 0;
+      policyCount +=
+        source.match(/webPreferences:\s*secureWebPreferences\s*\(/g)?.length ?? 0;
+      if (/webPreferences:\s*{/.test(source)) {
+        inlinePreferences.push(path.relative(sourceRoot, filename));
+      }
+    }
 
     expect(windowCount).toBeGreaterThan(0);
     expect(policyCount).toBe(windowCount);
-    expect(source).not.toMatch(/webPreferences:\s*{/);
+    expect(inlinePreferences).toEqual([]);
   });
 });
 

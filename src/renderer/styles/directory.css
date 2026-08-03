@@ -569,10 +569,11 @@
 }
 
 .layer-row-menu {
-  position: absolute;
+  /* Portaled to <body> + fixed so it escapes .layer-list-viewport's
+     overflow-y:auto clip; left/top come inline from placeTriggerMenu.
+     Overrides .folder-actions-popover width (216) with the narrower 196. */
+  position: fixed;
   z-index: 132;
-  top: 0;
-  right: 40px;
   width: 196px;
 }
 

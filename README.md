@@ -77,8 +77,10 @@ pnpm start
 pnpm check:release
 ```
 
-`pnpm check` 是日常变更门禁（类型检查、架构边界、单元与集成测试）；
-`pnpm check:release` 额外执行性能 smoke 与 Electron 打包。架构边界和后续拆分计划见
+`pnpm check` 是日常变更门禁（仓库卫生、ESLint、类型检查、架构边界、单元与集成测试）；
+`pnpm check:release` 额外执行性能 smoke 与 Electron 打包。该门禁通过
+[`.github/workflows/check.yml`](.github/workflows/check.yml) 在每次推送与 PR 上强制执行，
+不再依赖本地自觉。架构边界和后续拆分计划见
 [`docs/architecture/overview.md`](docs/architecture/overview.md)。
 
 执行完整发布门禁并生成 Windows 安装程序、ZIP、版本与 SHA-256 manifest：

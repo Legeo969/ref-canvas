@@ -65,11 +65,13 @@ describe("UI shell regressions", () => {
     expect(css).toMatch(/\.board-toolbar-more\s*{[^}]*position: fixed;/s);
   });
 
-  it("opens folder action menus toward the workspace", async () => {
+  it("lifts folder action menus out of the sidebar overflow clip", async () => {
+    // The sidebar sets overflow-y: auto, which per the CSS spec also clips
+    // horizontally — an in-flow popover anchored to a far-right trigger gets
+    // sliced off. The menu must be fixed + portaled so it escapes that clip,
+    // matching .batch-actions-popover / .board-toolbar-more above.
     const css = await readStyles();
-    expect(css).toMatch(
-      /\.folder-actions-popover\s*{[^}]*right: auto;[^}]*left: 0;/s,
-    );
+    expect(css).toMatch(/\.folder-actions-popover\s*{[^}]*position: fixed;/s);
   });
 
   it("lets the hidden state override every board grid style", async () => {

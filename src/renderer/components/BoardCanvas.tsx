@@ -83,6 +83,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import type {
   AssetRecord,
   BoardAppearance,
@@ -142,6 +143,7 @@ import {
   clampBoardContextPosition,
   resolveBoardContext,
 } from "../app/board-context-menu";
+import { placeTriggerMenu, type MenuPlacement } from "../app/menu-position";
 import { toolbarPanelPosition } from "../app/board-toolbar-position";
 import { applyBoardControls } from "../app/board-controls";
 import {
@@ -379,6 +381,10 @@ export function BoardCanvas({
   const [layerQuery, setLayerQuery] = useState("");
   const [layerScrollTop, setLayerScrollTop] = useState(0);
   const [layerMenuId, setLayerMenuId] = useState<string | null>(null);
+  // Fixed (viewport) placement for the portaled layer-row menu; null until the
+  // trigger is measured, so it stays hidden rather than flashing at 0,0.
+  const [layerMenuPlacement, setLayerMenuPlacement] =
+    useState<MenuPlacement | null>(null);
   /** 吸附指示：拖动命中吸附时显示临时参考线，松开后淡出。 */
   const [snapIndicator, setSnapIndicator] = useState<{
     axis: "x" | "y";
@@ -386,6 +392,42 @@ export function BoardCanvas({
     visible: boolean;
   } | null>(null);
   const snapFadeTimerRef = useRef<number | null>(null);
+
+  const closeLayerMenu = () => {
+    setLayerMenuId(null);
+    // Clear so the next open re-measures and stays hidden until placed.
+    setLayerMenuPlacement(null);
+  };
+
+  // Dismiss the portaled layer-row menu on outside click / Escape, and close
+  // (rather than chase) on scroll or resize, since the anchor rect goes stale —
+  // the row list scrolls independently. Mirrors FolderActionsMenu.
+  useEffect(() => {
+    if (!layerMenuId) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const node = event.target as Node;
+      if (
+        node instanceof Element &&
+        (node.closest(".layer-row-more") || node.closest(".layer-row-menu"))
+      ) {
+        return;
+      }
+      closeLayerMenu();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeLayerMenu();
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", closeLayerMenu);
+    window.addEventListener("scroll", closeLayerMenu, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeLayerMenu);
+      window.removeEventListener("scroll", closeLayerMenu, true);
+    };
+  }, [layerMenuId]);
 
   useEffect(() => {
     if (!toolbarMoreOpen) return;
@@ -5608,75 +5650,105 @@ export function BoardCanvas({
                     <button
                       aria-label={`${label} 更多操作`}
                       aria-haspopup="menu"
-                      onClick={() => setLayerMenuId(object.data?.objectId ?? null)}
+                      aria-expanded={layerMenuId === object.data?.objectId}
+                      onClick={(event) => {
+                        const id = object.data?.objectId ?? null;
+                        if (layerMenuId === id) {
+                          closeLayerMenu();
+                          return;
+                        }
+                        // Fixed 4-item menu, so its box is known from CSS
+                        // (.layer-row-menu width 196 + popover padding → 172
+                        // tall): place synchronously, no measure-flash needed.
+                        setLayerMenuPlacement(
+                          placeTriggerMenu(
+                            event.currentTarget.getBoundingClientRect(),
+                            { width: 196, height: 172 },
+                            {
+                              width: window.innerWidth,
+                              height: window.innerHeight,
+                            },
+                          ),
+                        );
+                        setLayerMenuId(id);
+                      }}
                     >
                       <MoreHorizontal size={14} />
                     </button>
-                    {layerMenuId === object.data?.objectId && (
-                      <div
-                        className="folder-actions-popover layer-row-menu"
-                        role="menu"
-                        onPointerDown={(event) => event.stopPropagation()}
-                      >
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            void editObjectComment(object);
-                            setLayerMenuId(null);
+                    {layerMenuId === object.data?.objectId &&
+                      createPortal(
+                        <div
+                          className="folder-actions-popover layer-row-menu"
+                          role="menu"
+                          style={{
+                            left: layerMenuPlacement?.left ?? 0,
+                            top: layerMenuPlacement?.top ?? 0,
+                            visibility: layerMenuPlacement ? "visible" : "hidden",
                           }}
+                          onPointerDown={(event) => event.stopPropagation()}
                         >
-                          <MessageSquareText size={15} />
-                          {object.data?.comment ? "编辑评论" : "添加评论"}
-                        </button>
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            const canvas = canvasRef.current;
-                            if (!canvas) return;
-                            const objects = canvas.getObjects();
-                            canvas.moveObjectTo(
-                              object,
-                              Math.min(objects.length - 1, objects.indexOf(object) + 1),
-                            );
-                            canvas.fire("object:modified", { target: object });
-                            canvas.requestRenderAll();
-                            setLayerMenuId(null);
-                          }}
-                        >
-                          <ChevronUp size={15} />
-                          上移一层
-                        </button>
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            const canvas = canvasRef.current;
-                            if (!canvas) return;
-                            const objects = canvas.getObjects();
-                            canvas.moveObjectTo(
-                              object,
-                              Math.max(0, objects.indexOf(object) - 1),
-                            );
-                            canvas.fire("object:modified", { target: object });
-                            canvas.requestRenderAll();
-                            setLayerMenuId(null);
-                          }}
-                        >
-                          <ChevronDown size={15} />
-                          下移一层
-                        </button>
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            canvasRef.current?.setActiveObject(object);
-                            canvasRef.current?.requestRenderAll();
-                            setLayerMenuId(null);
-                          }}
-                        >
-                          <ScanSearch size={15} />
-                          定位并选中
-                        </button>
-                      </div>
-                    )}
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              void editObjectComment(object);
+                              closeLayerMenu();
+                            }}
+                          >
+                            <MessageSquareText size={15} />
+                            {object.data?.comment ? "编辑评论" : "添加评论"}
+                          </button>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              const canvas = canvasRef.current;
+                              if (!canvas) return;
+                              const objects = canvas.getObjects();
+                              canvas.moveObjectTo(
+                                object,
+                                Math.min(objects.length - 1, objects.indexOf(object) + 1),
+                              );
+                              canvas.fire("object:modified", { target: object });
+                              canvas.requestRenderAll();
+                              closeLayerMenu();
+                            }}
+                          >
+                            <ChevronUp size={15} />
+                            上移一层
+                          </button>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              const canvas = canvasRef.current;
+                              if (!canvas) return;
+                              const objects = canvas.getObjects();
+                              canvas.moveObjectTo(
+                                object,
+                                Math.max(0, objects.indexOf(object) - 1),
+                              );
+                              canvas.fire("object:modified", { target: object });
+                              canvas.requestRenderAll();
+                              closeLayerMenu();
+                            }}
+                          >
+                            <ChevronDown size={15} />
+                            下移一层
+                          </button>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              canvasRef.current?.setActiveObject(object);
+                              canvasRef.current?.requestRenderAll();
+                              closeLayerMenu();
+                            }}
+                          >
+                            <ScanSearch size={15} />
+                            定位并选中
+                          </button>
+                        </div>,
+                        // `document` is a BoardDocumentV3 prop here (line 176),
+                        // shadowing the global — reach the DOM via window.
+                        window.document.body,
+                      )}
                   </div>
                 </div>
               );

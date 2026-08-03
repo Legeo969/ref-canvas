@@ -181,7 +181,7 @@ export class LibraryManager {
   async describe(id: string): Promise<LibrarySummary> {
     const entry = this.getEntry(id);
     const base = this.list().find((item) => item.id === id)!;
-    let assetCount = 0;
+    let assetCount: number;
     let databaseBytes = 0;
     const dbPath = databasePathFor(entry);
     try {
@@ -365,7 +365,7 @@ export class LibraryManager {
     const dbPath = databasePathFor(entry);
     const db = new RefCanvasDatabase(dbPath);
     const exportedDbPath = path.join(target, "data", "refcanvas.db");
-    let assets = 0;
+    let assets: number;
     let managedBytes = 0;
     let files = 0;
     try {
@@ -498,6 +498,9 @@ export class LibraryManager {
           error: mergeError instanceof Error ? mergeError.message : String(mergeError),
         });
       } catch (rollbackError) {
+        // Both the original failure and the rollback failure are carried in the
+        // AggregateError's `errors` array, so no separate `cause` is needed.
+        // eslint-disable-next-line preserve-caught-error
         throw new AggregateError(
           [mergeError, rollbackError],
           "LIBRARY_MERGE_ROLLBACK_FAILED",
