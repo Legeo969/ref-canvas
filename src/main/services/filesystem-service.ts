@@ -278,6 +278,21 @@ export class FilesystemService {
     );
   }
 
+  /**
+   * 破坏性操作前的 scan revision 校验（计划 §8.2）：目录扫描已过期则抛
+   * DIRECTORY_REVISION_CHANGED，拒绝基于陈旧快照的 create/copy/move/trash。
+   */
+  async validateRevision(directoryPath: string, revision: string): Promise<void> {
+    const resolved = path.resolve(directoryPath);
+    if (!this.indexClient) {
+      // 无 index worker 时退化为目录存在性检查。
+      await stat(resolved);
+      return;
+    }
+    // locate 会校验 scan 状态与 revision；entry 自身命中与否不影响校验结果。
+    await this.indexClient.locate(resolved, resolved, revision);
+  }
+
   async setObservedDirectory(filename: string | null): Promise<void> {
     const directory = filename === null ? null : path.resolve(filename);
     if (directory === this.observedDirectory) return;

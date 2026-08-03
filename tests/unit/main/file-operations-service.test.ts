@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FileOperationsService } from "../../../src/main/services/file-operations-service";
-
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -181,5 +180,71 @@ describe("move", () => {
     const service = createService(root);
     const report = await service.move([outsideFile], root);
     expect(report.failed[0].reason).toBe("PATH_OUTSIDE_SCOPE");
+  });
+});
+
+describe("file operations safety", () => {
+  it("rejects a destructive operation when the scan revision is stale", async () => {
+    const root = await createTempDir();
+    const validateRevision = vi.fn(async () => {
+      throw new Error("DIRECTORY_REVISION_CHANGED");
+    });
+    const service = new FileOperationsService({
+      allowedRoots: () => [root],
+      trash: async () => undefined,
+      validateRevision,
+    });
+    const options = {
+      revision: "stale-revision",
+      directoryPath: root,
+    };
+    await expect(
+      service.createFolder(root, "New", options),
+    ).rejects.toThrow("DIRECTORY_REVISION_CHANGED");
+    await expect(
+      service.move([path.join(root, "x")], root, options),
+    ).rejects.toThrow("DIRECTORY_REVISION_CHANGED");
+    expect(validateRevision).toHaveBeenCalledWith(root, "stale-revision");
+  });
+
+  it("does not delete the existing target when a replace-copy fails", async () => {
+    const root = await createTempDir();
+    const source = path.join(root, "src", "a.png");
+    const target = path.join(root, "dest");
+    await mkdir(path.dirname(source), { recursive: true });
+    await mkdir(target);
+    await writeFile(source, "new-data");
+    await writeFile(path.join(target, "a.png"), "existing-data");
+    const service = createService(root);
+    const report = await service.copy([source], target, {
+      conflictAction: "replace",
+    });
+    expect(report.replaced).toBe(1);
+    expect(report.copied).toBe(0);
+    // 现有目标被新内容替换，且没有残留临时文件。
+    expect((await stat(path.join(target, "a.png"))).isFile()).toBe(true);
+    const leftovers = (await import("node:fs/promises")).readdir(target);
+    expect((await leftovers).some((name) => name.includes(".partial"))).toBe(false);
+  });
+
+  it("rejects a source directory containing an escaping symlink", async () => {
+    const root = await createTempDir();
+    const outside = await createTempDir();
+    const outsideFile = path.join(outside, "secret.txt");
+    await writeFile(outsideFile, "secret");
+    const source = path.join(root, "folder");
+    await mkdir(source);
+    const target = path.join(root, "dest");
+    await mkdir(target);
+    if (process.platform !== "win32") {
+      const { symlink } = await import("node:fs/promises");
+      await symlink(outsideFile, path.join(source, "escape.txt"));
+      const service = new FileOperationsService({
+        allowedRoots: () => [root],
+        trash: async () => undefined,
+      });
+      const report = await service.copy([source], target);
+      expect(report.failed[0].reason).toBe("SYMLINK_ESCAPES_SCOPE");
+    }
   });
 });

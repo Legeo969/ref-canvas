@@ -498,6 +498,8 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   fileOperations = new FileOperationsService({
     allowedRoots: () => [entry.root],
     trash: (filename) => trashDirectoryPath(filename),
+    validateRevision: (directoryPath, revision) =>
+      directoryService.validateRevision(directoryPath, revision),
   });
   await library.recoverPendingOperations();
   library.resumePendingMetadata();

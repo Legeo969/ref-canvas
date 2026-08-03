@@ -66,6 +66,8 @@ export function registerFilesystemIpc(
     .object({
       conflictAction: z.enum(["skip", "rename", "replace"]).optional(),
       renameTemplate: z.string().max(256).optional(),
+      revision: z.string().max(128).optional(),
+      directoryPath: pathSchema.optional(),
     })
     .optional();
 
@@ -167,10 +169,11 @@ export function registerFilesystemIpc(
       await dependencies.trashDirectoryPath(path.resolve(filename));
     }
   });
-  ipc.handle("filesystem:create-folder", (parentPath, name) =>
+  ipc.handle("filesystem:create-folder", (parentPath, name, options) =>
     fileOperations().createFolder(
       path.resolve(pathSchema.parse(parentPath)),
       z.string().trim().min(1).max(120).parse(name),
+      fileOperationOptionsSchema.parse(options),
     ),
   );
   ipc.handle("filesystem:copy", (sources, targetDirectory, options) =>

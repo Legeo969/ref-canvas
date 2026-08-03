@@ -10,6 +10,7 @@ import {
   Heart,
   RefreshCw,
   Search,
+  Scissors,
   Tags,
   Trash2,
   X,
@@ -22,6 +23,10 @@ import type {
   DirectorySearchSnapshot,
 } from "../../shared/contracts";
 import { applySelectionClick } from "../app/directory-selection";
+import {
+  getDirectoryClipboard,
+  setDirectoryClipboard,
+} from "../app/directory-clipboard";
 import { trimDirectoryPageCache } from "../app/directory-page-cache";
 import { directoryBreadcrumb } from "../app/folder-navigation";
 import { useAppStore } from "../app/store";
@@ -856,6 +861,51 @@ export function DirectoryAssetPanel() {
   const batchCopyTo = () => batchCopyMove("copy");
   const batchMoveTo = () => batchCopyMove("move");
 
+  /** 剪切/复制到剪贴板。 */
+  const clipboardSelection = (mode: "copy" | "cut") => {
+    const paths = selectedFilePaths();
+    if (!paths.length) return;
+    setDirectoryClipboard({
+      paths,
+      mode,
+      sourceDirectory: store.directoryPath,
+    });
+  };
+
+  /** 粘贴剪贴板内容到当前目录。 */
+  const pasteClipboard = async () => {
+    const clipboard = getDirectoryClipboard();
+    if (!clipboard || !clipboard.paths.length || !store.directoryPath) return;
+    const target = store.directoryPath;
+    const report = await (clipboard.mode === "copy"
+      ? window.refCanvas.filesystem.copy(clipboard.paths, target, {
+          conflictAction: "rename",
+        })
+      : window.refCanvas.filesystem.move(clipboard.paths, target, {
+          conflictAction: "rename",
+        }));
+    if (clipboard.mode === "cut") {
+      setDirectoryClipboard(null);
+      // 剪切后刷新来源目录（若与当前不同）。
+      if (
+        clipboard.sourceDirectory &&
+        clipboard.sourceDirectory !== target
+      ) {
+        // 来源目录不是当前目录时，由当前目录刷新覆盖；来源若正被浏览则走 reload。
+        if (store.directoryPath === clipboard.sourceDirectory) {
+          await store.reloadDirectory();
+        }
+      }
+    }
+    await store.reloadDirectory();
+    clearSelection();
+    if (report.failed.length) {
+      window.alert(
+        `粘贴失败 ${report.failed.length} 项，例如：${report.failed[0].reason}`,
+      );
+    }
+  };
+
   return (
     <section
       className="asset-panel"
@@ -1048,6 +1098,9 @@ export function DirectoryAssetPanel() {
           <button onClick={() => void batchMoveTo()} title="移动到…">
             <FolderOpen size={14} />
           </button>
+          <button onClick={() => clipboardSelection("cut")} title="剪切">
+            <Scissors size={14} />
+          </button>
           <button onClick={() => void batchMaterialize()} title="加入素材库">
             <FolderPlus size={14} />
           </button>
@@ -1076,6 +1129,32 @@ export function DirectoryAssetPanel() {
           </button>
         </div>
       )}
+      {(() => {
+        const clipboard = getDirectoryClipboard();
+        if (!clipboard || !clipboard.paths.length || !store.directoryPath) {
+          return null;
+        }
+        return (
+          <div className="batch-toolbar">
+            <span>
+              剪贴板：{clipboard.paths.length} 项
+              {clipboard.mode === "cut" ? "（剪切）" : "（复制）"}
+            </span>
+            <button onClick={() => void pasteClipboard()} title="粘贴到当前目录">
+              <Copy size={14} />
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                setDirectoryClipboard(null);
+              }}
+              title="清除剪贴板"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        );
+      })()}
 
       <div className="dir-path-bar">
         <button
@@ -1231,6 +1310,20 @@ export function DirectoryAssetPanel() {
           >
             <Copy size={16} />
             复制路径
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setDirectoryClipboard({
+                paths: [contextMenu.entry.path],
+                mode: "cut",
+                sourceDirectory: store.directoryPath,
+              });
+              setContextMenu(null);
+            }}
+          >
+            <Scissors size={16} />
+            剪切
           </button>
           <span className="context-menu-divider" />
           <button
