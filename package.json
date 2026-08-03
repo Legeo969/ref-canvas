@@ -1,7 +1,7 @@
 {
   "name": "ref-canvas",
   "productName": "RefCanvas",
-  "version": "0.37.1",
+  "version": "0.37.2",
   "description": "A local-first visual asset library and infinite reference canvas.",
   "main": ".vite/build/main.js",
   "private": true,

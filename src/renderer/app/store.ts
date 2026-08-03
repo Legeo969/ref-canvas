@@ -84,6 +84,7 @@ interface AppState
   }): void;
   setSort(sort: AssetSortKey, direction: SortDirection): void;
   selectAsset(asset: AssetRecord | null): void;
+  locateAssetInLibrary(asset: AssetRecord): Promise<void>;
   selectAssetInGrid(id: string, mode: "replace" | "toggle" | "range"): void;
   selectAllMatching(): void;
   clearSelection(): void;
@@ -298,8 +299,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const loaded = activeBoard
       ? await window.refCanvas.boards.load(activeBoard.id)
       : null;
-    // 上报主窗口当前白板（boards:open-window 去重聚焦依据）。
-    void window.refCanvas.boards.setActive(activeBoard?.id ?? null);
     const unsubscribeImport = window.refCanvas.library.onImportProgress((importJob) => {
       set({
         importJob,
@@ -630,6 +629,53 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectAsset: (selectedAsset) => set({ selectedAsset }),
+
+  locateAssetInLibrary: async (asset) => {
+    set({
+      query: asset.title,
+      kindFilter: "all",
+      collectionFilter: null,
+      linkStateFilter: "all",
+      lifecycleFilter: asset.lifecycle === "trashed" ? "trashed" : "active",
+      favoriteFilter: undefined,
+      ratingFilter: 0,
+      colorFilter: "none",
+      visualColor: null,
+      minWidth: undefined,
+      maxWidth: undefined,
+      minHeight: undefined,
+      maxHeight: undefined,
+      minSize: undefined,
+      maxSize: undefined,
+      minDuration: undefined,
+      maxDuration: undefined,
+      extension: undefined,
+      orientation: undefined,
+      createdAfter: undefined,
+      createdBefore: undefined,
+      modifiedAfter: undefined,
+      modifiedBefore: undefined,
+      navigationSource: "library",
+    });
+    updateNavigationState({
+      navigationSource: "library",
+      query: asset.title,
+      scrollTop: 0,
+    });
+    await get().reloadAssets();
+    const located = get().assets.find((item) => item.id === asset.id);
+    if (located) {
+      get().selectAssetInGrid(located.id, "replace");
+      return;
+    }
+    set({
+      selectedAsset: asset,
+      selectedIds: new Set([asset.id]),
+      allMatchingSelected: false,
+      excludedIds: new Set(),
+      selectionAnchorId: asset.id,
+    });
+  },
 
   selectAssetInGrid: (id, mode) => {
     const state = get();
@@ -1105,7 +1151,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     const summary = await window.refCanvas.boards.create(title);
     const loaded = await window.refCanvas.boards.load(summary.id);
-    void window.refCanvas.boards.setActive(summary.id);
     set((state) => ({
       boards: [summary, ...state.boards],
       activeBoard: summary,
@@ -1132,7 +1177,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const loaded = boards[0]
       ? await window.refCanvas.boards.load(boards[0].id)
       : null;
-    void window.refCanvas.boards.setActive(loaded?.summary?.id ?? null);
     set({
       boards,
       activeBoard: loaded?.summary ?? null,
@@ -1150,7 +1194,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const loaded = await window.refCanvas.boards.load(id);
     if (!loaded) return;
     void window.refCanvas.boards.touch(id);
-    void window.refCanvas.boards.setActive(id);
     set({
       activeBoard: loaded.summary,
       boardDocument: loaded.document,

@@ -186,16 +186,20 @@ async function main() {
     const panStart = await evaluate(send, `window.__sampleFps(4)`);
     // 并行执行：一边拖动一边采样。
     const sampleDuringPan = evaluate(send, `window.__sampleFps(4)`);
-    const { width, height } = await evaluate(
+    const { left, top, width, height } = await evaluate(
       send,
       `(() => {
         const el = window.__boardCanvas().getElement();
         const r = el.getBoundingClientRect();
-        return { width: r.width, height: r.height };
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
       })()`,
     );
-    const cx = Math.round(width / 2);
-    const cy = Math.round(height / 2);
+    const cx = Math.round(left + width / 2);
+    const cy = Math.round(top + height / 2);
+    const panBefore = await evaluate(
+      send,
+      `window.__boardCanvas().viewportTransform.slice(4, 6)`,
+    );
     await send("Input.dispatchMouseEvent", {
       type: "mousePressed",
       x: cx,
@@ -221,7 +225,19 @@ async function main() {
       buttons: 0,
     });
     const pan = await sampleDuringPan;
-    results.boardPanZoom = { scenario: "2000 对象平移", ...pan };
+    const panAfter = await evaluate(
+      send,
+      `window.__boardCanvas().viewportTransform.slice(4, 6)`,
+    );
+    if (panBefore[0] === panAfter[0] && panBefore[1] === panAfter[1]) {
+      throw new Error("BOARD_MIDDLE_PAN_DID_NOT_MOVE_VIEWPORT");
+    }
+    results.boardPanZoom = {
+      scenario: "2000 对象平移",
+      viewportBefore: panBefore,
+      viewportAfter: panAfter,
+      ...pan,
+    };
     void panStart;
 
     // 滚轮缩放期间采样。

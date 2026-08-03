@@ -95,6 +95,8 @@ import {
   constrainedAxis,
   cropGestureRect,
   cropPanDelta,
+  isMiddleButtonPointer,
+  isPanPointerEvent,
   opacityDelta,
   normalizeSignedAngle,
   rotationForGesture,
@@ -173,6 +175,7 @@ interface BoardCanvasProps {
   assets: AssetRecord[];
   boards: BoardSummary[];
   onSelectAsset(asset: AssetRecord | null): void;
+  onLocateAsset?(asset: AssetRecord): void;
   onSave(document: BoardDocumentV3): Promise<void>;
   onSwitchBoard(id: string): Promise<void>;
   onCreateBoard(): Promise<void>;
@@ -251,6 +254,7 @@ export function BoardCanvas({
   assets,
   boards,
   onSelectAsset,
+  onLocateAsset,
   onSave,
   onSwitchBoard,
   onCreateBoard,
@@ -264,6 +268,7 @@ export function BoardCanvas({
   const canvasRef = useRef<FabricCanvas | null>(null);
   const assetsRef = useRef(assets);
   const onSelectAssetRef = useRef(onSelectAsset);
+  const onLocateAssetRef = useRef(onLocateAsset);
   const onSaveRef = useRef(onSave);
   const toolRef = useRef<BoardTool>("select");
   const drawingStyleRef = useRef<BoardDrawingStyle>(defaultBoardDrawingStyle);
@@ -601,8 +606,9 @@ export function BoardCanvas({
   useEffect(() => {
     assetsRef.current = assets;
     onSelectAssetRef.current = onSelectAsset;
+    onLocateAssetRef.current = onLocateAsset;
     onSaveRef.current = onSave;
-  }, [assets, onSelectAsset, onSave]);
+  }, [assets, onLocateAsset, onSelectAsset, onSave]);
 
   useEffect(() => {
     let current = true;
@@ -639,6 +645,7 @@ export function BoardCanvas({
       selectionColor: "rgba(58, 178, 143, 0.08)",
       selectionBorderColor: "#3ab28f",
       selectionLineWidth: 1,
+      fireMiddleClick: true,
     });
     let renderFrame: number | null = null;
     let historyFrame: number | null = null;
@@ -1016,6 +1023,7 @@ export function BoardCanvas({
     });
 
     let panning = false;
+    let panButton: "middle" | "alt-left" | null = null;
     let lastX = 0;
     let lastY = 0;
     let drawingStart: { x: number; y: number } | null = null;
@@ -1041,22 +1049,51 @@ export function BoardCanvas({
         // 首次提示是本地便利项，失败不影响白板。
       }
     };
+    const finishPanning = () => {
+      if (!panning) return false;
+      panning = false;
+      panButton = null;
+      canvas.selection =
+        toolRef.current === "select" && !canvasModeRef.current.locked;
+      canvas.defaultCursor = toolRef.current === "select" ? "default" : "crosshair";
+      canvas.setCursor(canvas.defaultCursor);
+      scheduleProxyRefresh();
+      return true;
+    };
+    const preventMiddleButtonDefault = (event: MouseEvent) => {
+      if (isMiddleButtonPointer(event)) event.preventDefault();
+    };
+    const handleWindowBlur = () => void finishPanning();
+    canvas.upperCanvasEl.addEventListener(
+      "mousedown",
+      preventMiddleButtonDefault,
+    );
+    canvas.upperCanvasEl.addEventListener(
+      "auxclick",
+      preventMiddleButtonDefault,
+    );
+    window.addEventListener("blur", handleWindowBlur);
     canvas.on("mouse:down", (event) => {
       const pointerEvent = event.e as MouseEvent;
-      if (eraserActiveRef.current) {
-        const point = canvas.getScenePoint(pointerEvent);
-        eraseAtPoint(point);
-        return;
-      }
       const pureRef = interactionPresetRef.current === "pureref";
-      if (pointerEvent.button === 1 || (pureRef && pointerEvent.altKey)) {
+      if (isPanPointerEvent(pointerEvent, pureRef)) {
+        pointerEvent.preventDefault();
         setFocusPlaying(false);
         panning = true;
+        panButton = isMiddleButtonPointer(pointerEvent)
+          ? "middle"
+          : "alt-left";
         lastX = pointerEvent.clientX;
         lastY = pointerEvent.clientY;
         canvas.selection = false;
         canvas.defaultCursor = "grabbing";
+        canvas.setCursor("grabbing");
         dismissHint();
+        return;
+      }
+      if (eraserActiveRef.current) {
+        const point = canvas.getScenePoint(pointerEvent);
+        eraseAtPoint(point);
         return;
       }
       if (pointerEvent.button !== 0) return;
@@ -1291,21 +1328,32 @@ export function BoardCanvas({
         canvas.add(drawingObject);
       }
     });
-    canvas.on("mouse:move", (event) => {
+    canvas.on("mouse:move:before", (event) => {
       const pointerEvent = event.e as MouseEvent;
-      if (eraserActiveRef.current && pointerEvent.buttons === 1) {
-        eraseAtPoint(canvas.getScenePoint(pointerEvent));
+      if (!panning) return;
+      const stillPressed =
+        panButton === "middle"
+          ? (pointerEvent.buttons & 4) !== 0
+          : pointerEvent.altKey && (pointerEvent.buttons & 1) !== 0;
+      if (!stillPressed) {
+        finishPanning();
         return;
       }
-      if (panning) {
-        canvas.relativePan(
-          new Point(
-            pointerEvent.clientX - lastX,
-            pointerEvent.clientY - lastY,
-          ),
-        );
-        lastX = pointerEvent.clientX;
-        lastY = pointerEvent.clientY;
+      pointerEvent.preventDefault();
+      canvas.relativePan(
+        new Point(
+          pointerEvent.clientX - lastX,
+          pointerEvent.clientY - lastY,
+        ),
+      );
+      lastX = pointerEvent.clientX;
+      lastY = pointerEvent.clientY;
+    });
+    canvas.on("mouse:move", (event) => {
+      const pointerEvent = event.e as MouseEvent;
+      if (panning) return;
+      if (eraserActiveRef.current && pointerEvent.buttons === 1) {
+        eraseAtPoint(canvas.getScenePoint(pointerEvent));
         return;
       }
       const gesture = gestureRef.current;
@@ -1457,9 +1505,10 @@ export function BoardCanvas({
       );
       scheduleRender();
     });
-    canvas.on("mouse:up", () => {
+    canvas.on("mouse:up", (event) => {
+      if (panning) (event.e as MouseEvent).preventDefault();
+      if (finishPanning()) return;
       if (eraserActiveRef.current) return;
-      panning = false;
       snapGestureTarget = null;
       snapCandidates = [];
       transformDescendantsRef.current = null;
@@ -1596,6 +1645,15 @@ export function BoardCanvas({
 
     return () => {
       resizeObserver.disconnect();
+      canvas.upperCanvasEl.removeEventListener(
+        "mousedown",
+        preventMiddleButtonDefault,
+      );
+      canvas.upperCanvasEl.removeEventListener(
+        "auxclick",
+        preventMiddleButtonDefault,
+      );
+      window.removeEventListener("blur", handleWindowBlur);
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
       if (historyFrame !== null) window.cancelAnimationFrame(historyFrame);
@@ -2587,16 +2645,22 @@ export function BoardCanvas({
         count: number,
       ) => {
         const objects = canvas.getObjects();
-        for (let index = 0; index < count; index += 1) {
-          const rect = new Rect({
-            left: index * 14,
-            top: index * 9,
-            width: 32,
-            height: 24,
-            fill: `hsl(${index % 360} 45% 55%)`,
-          }) as CanvasObjectWithData;
-          ensureObjectIdentity(rect);
-          canvas.add(rect);
+        const previousBulkMutation = bulkMutationRef.current;
+        bulkMutationRef.current = true;
+        try {
+          for (let index = 0; index < count; index += 1) {
+            const rect = new Rect({
+              left: index * 14,
+              top: index * 9,
+              width: 32,
+              height: 24,
+              fill: `hsl(${index % 360} 45% 55%)`,
+            }) as CanvasObjectWithData;
+            ensureObjectIdentity(rect);
+            canvas.add(rect);
+          }
+        } finally {
+          bulkMutationRef.current = previousBulkMutation;
         }
         canvas.requestRenderAll();
         return objects.length + count;
@@ -2615,7 +2679,9 @@ export function BoardCanvas({
           context.fillRect(48, 48, 416, 416);
         }
         const previousRenderOnAddRemove = canvas.renderOnAddRemove;
+        const previousBulkMutation = bulkMutationRef.current;
         canvas.renderOnAddRemove = false;
+        bulkMutationRef.current = true;
         try {
           for (let index = 0; index < count; index += 1) {
             const image = new FabricImage(proxy, {
@@ -2636,6 +2702,7 @@ export function BoardCanvas({
           }
         } finally {
           canvas.renderOnAddRemove = previousRenderOnAddRemove;
+          bulkMutationRef.current = previousBulkMutation;
         }
         canvas.requestRenderAll();
         return count;
@@ -5968,21 +6035,25 @@ export function BoardCanvas({
                   <span className="text-tool-icon">NN</span>
                   切换采样
                 </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const assetId = boardContextMenu.target?.data?.assetId;
-                    if (assetId) {
-                      void window.refCanvas.library
-                        .get(assetId)
-                        .then((loaded) => onSelectAssetRef.current(loaded));
-                    }
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <FolderOpen size={16} />
-                  在素材库中定位
-                </button>
+                {onLocateAssetRef.current && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      const assetId = boardContextMenu.target?.data?.assetId;
+                      if (assetId) {
+                        void window.refCanvas.library
+                          .get(assetId)
+                          .then((loaded) => {
+                            if (loaded) onLocateAssetRef.current?.(loaded);
+                          });
+                      }
+                      setBoardContextMenu(null);
+                    }}
+                  >
+                    <FolderOpen size={16} />
+                    在素材库中定位
+                  </button>
+                )}
                 <div className="folder-menu-separator" />
                 <button
                   className="danger"
@@ -6022,15 +6093,16 @@ export function BoardCanvas({
                 </button>
                 <button
                   role="menuitem"
-                  onClick={() =>
+                  onClick={() => {
                     updateAppearance({
                       ...appearanceRef.current,
                       gridVisible: !appearanceRef.current.gridVisible,
-                    })
-                  }
+                    });
+                    setBoardContextMenu(null);
+                  }}
                 >
                   <Grid3X3 size={16} />
-                  显示 / 隐藏网格
+                  {appearance.gridVisible ? "隐藏网格" : "显示网格"}
                 </button>
                 <button
                   role="menuitem"

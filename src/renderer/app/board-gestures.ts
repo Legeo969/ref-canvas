@@ -3,6 +3,30 @@ export interface GesturePoint {
   y: number;
 }
 
+export interface PanPointerEvent {
+  button: number;
+  buttons: number;
+  altKey: boolean;
+}
+
+export function isMiddleButtonPointer(
+  event: Pick<PanPointerEvent, "button" | "buttons">,
+): boolean {
+  return event.button === 1 || (event.buttons & 4) !== 0;
+}
+
+export function isPanPointerEvent(
+  event: PanPointerEvent,
+  pureRef: boolean,
+): boolean {
+  return (
+    isMiddleButtonPointer(event) ||
+    (pureRef &&
+      event.altKey &&
+      (event.button === 0 || (event.buttons & 1) !== 0))
+  );
+}
+
 /** 围绕 center 的指针角位移（弧度），用于 Ctrl+左旋转。 */
 export function pointerAngleDelta(
   center: GesturePoint,

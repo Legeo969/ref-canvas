@@ -284,7 +284,6 @@ const api: RefCanvasApi = {
     recent: () => ipcRenderer.invoke("boards:recent"),
     touch: (id) => ipcRenderer.invoke("boards:touch", id),
     openWindow: (id) => ipcRenderer.invoke("boards:open-window", id),
-    setActive: (id) => ipcRenderer.invoke("boards:set-active", id),
     closeWindow: () => ipcRenderer.invoke("boards:close-window"),
     getAssets: (id) => ipcRenderer.invoke("boards:get-assets", id),
   },

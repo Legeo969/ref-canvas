@@ -165,6 +165,7 @@ export function AssetPanel() {
   const selectedCount = store.allMatchingSelected
     ? store.totalAssets - store.excludedIds.size
     : store.selectedIds.size;
+  const hasAssets = store.totalAssets > 0;
   const detailMode = store.preferences.layoutMode === "detail";
   const columns = detailMode
     ? 1
@@ -319,7 +320,7 @@ export function AssetPanel() {
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [hasAssets]);
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -1458,7 +1459,7 @@ export function AssetPanel() {
         </div>
       )}
 
-      {store.totalAssets > 0 ? (
+      {hasAssets ? (
         <div
           className="asset-viewport"
           ref={viewportRef}

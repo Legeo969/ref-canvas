@@ -123,4 +123,42 @@ describe("asset query revisions", () => {
     expect(searchWindow.mock.calls[0][0].includeTotal).toBe(true);
     expect(searchWindow.mock.calls.slice(1).every(([input]) => !input.includeTotal)).toBe(true);
   });
+
+  it("locates a board asset in an unfiltered library result", async () => {
+    const located = {
+      id: "22222222-2222-4222-8222-222222222222",
+      title: "Exact board reference",
+      lifecycle: "active",
+    } as AssetRecord;
+    const searchWindow = vi.fn(async () => ({ items: [located], total: 1 }));
+    Object.assign(window, {
+      refCanvas: {
+        library: { searchWindow, stats: vi.fn(async () => stats) },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      navigationSource: "directory",
+      query: "old query",
+      kindFilter: "video",
+      favoriteFilter: true,
+      ratingFilter: 5,
+    });
+
+    await useAppStore.getState().locateAssetInLibrary(located);
+
+    const state = useAppStore.getState();
+    expect(searchWindow).toHaveBeenCalledWith(expect.objectContaining({
+      query: expect.objectContaining({
+        query: located.title,
+        kind: "all",
+        favorite: undefined,
+        ratingMin: undefined,
+      }),
+      offset: 0,
+      includeTotal: true,
+    }));
+    expect(state.navigationSource).toBe("library");
+    expect(state.selectedAsset?.id).toBe(located.id);
+    expect(state.selectedIds).toEqual(new Set([located.id]));
+  });
 });

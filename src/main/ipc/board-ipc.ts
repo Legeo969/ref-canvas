@@ -14,7 +14,6 @@ interface BoardIpcDependencies {
   getMainWindow(): BrowserWindow | null;
   openBoardWindow(boardId: string): void;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
-  setMainWindowActiveBoardId(boardId: string | null): void;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
 }
 
@@ -54,12 +53,6 @@ export function registerBoardIpc(
     const boardId = idSchema.parse(id);
     if (!database().loadBoard(boardId)) throw new Error("BOARD_NOT_FOUND");
     dependencies.openBoardWindow(boardId);
-    return true;
-  });
-  ipc.handle("boards:set-active", (id) => {
-    dependencies.setMainWindowActiveBoardId(
-      id === null ? null : idSchema.parse(id),
-    );
     return true;
   });
   ipc.handleWithEvent("boards:close-window", (event) => {

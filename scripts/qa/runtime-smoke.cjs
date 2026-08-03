@@ -36,11 +36,12 @@ function reservePort() {
 }
 
 async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null) return true;
   await Promise.race([
     new Promise((resolve) => child.once("exit", resolve)),
     delay(timeoutMs),
   ]);
+  return child.exitCode !== null;
 }
 
 async function launchOnce(label) {
@@ -62,10 +63,13 @@ async function launchOnce(label) {
     client = await connectCdp(port);
     const result = await runPackagedSmoke(client);
     await client.send("Browser.close").catch(() => undefined);
-    await waitForExit(child, 5_000);
-    if (child.exitCode === null) child.kill();
+    const exited = await waitForExit(child, 10_000);
+    if (!exited) {
+      child.kill();
+      throw new Error("PACKAGED_APP_SHUTDOWN_TIMEOUT");
+    }
     if (
-      /Uncaught Exception|UnhandledPromiseRejection|EINVAL[^\r\n]*DumpStack\.log\.tmp/i.test(
+      /Uncaught Exception|UnhandledPromiseRejection|Error occurred in handler|database connection is not open|EINVAL[^\r\n]*DumpStack\.log\.tmp/i.test(
         output,
       )
     ) {

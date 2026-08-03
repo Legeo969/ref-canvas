@@ -498,7 +498,8 @@ body.panel-resizing {
   position: absolute;
   z-index: 130;
   top: 40px;
-  right: 0;
+  right: auto;
+  left: 0;
   width: 216px;
   padding: 6px;
   border-radius: 10px;

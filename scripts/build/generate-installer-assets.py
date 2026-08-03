@@ -6,8 +6,9 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 
-ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "assets"
+ROOT = Path(__file__).resolve().parents[2]
+APP_ASSETS = ROOT / "assets" / "app"
+INSTALLER_ASSETS = ROOT / "assets" / "installer"
 BACKGROUND = "#171a1c"
 PANEL = "#202628"
 INK = "#eef3f1"
@@ -70,9 +71,9 @@ def draw_mark(image: Image.Image, bounds: tuple[int, int, int, int]) -> None:
 def create_icon() -> None:
     icon = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
     draw_mark(icon, (8, 8, 248, 248))
-    icon.save(ASSETS / "refcanvas.png")
+    icon.save(APP_ASSETS / "refcanvas.png")
     icon.save(
-        ASSETS / "refcanvas.ico",
+        INSTALLER_ASSETS / "refcanvas.ico",
         sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
     )
 
@@ -122,7 +123,7 @@ def create_loading_gif() -> None:
         frames.append(frame)
 
     frames[0].save(
-        ASSETS / "installer-loading.gif",
+        INSTALLER_ASSETS / "loading.gif",
         save_all=True,
         append_images=frames[1:],
         duration=80,
@@ -133,7 +134,8 @@ def create_loading_gif() -> None:
 
 
 def main() -> None:
-    ASSETS.mkdir(parents=True, exist_ok=True)
+    APP_ASSETS.mkdir(parents=True, exist_ok=True)
+    INSTALLER_ASSETS.mkdir(parents=True, exist_ok=True)
     create_icon()
     create_loading_gif()
 

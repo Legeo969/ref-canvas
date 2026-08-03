@@ -4,6 +4,8 @@ import {
   constrainedAxis,
   cropGestureRect,
   cropPanDelta,
+  isMiddleButtonPointer,
+  isPanPointerEvent,
   opacityDelta,
   pointerAngleDelta,
   pointerDistanceRatio,
@@ -14,6 +16,25 @@ import {
   scaleForGesture,
   zoomFactorForDrag,
 } from "../../../../src/renderer/app/board-gestures";
+
+describe("board panning pointer", () => {
+  it("recognizes a middle-button press and held-button move", () => {
+    expect(isMiddleButtonPointer({ button: 1, buttons: 4 })).toBe(true);
+    expect(isMiddleButtonPointer({ button: 0, buttons: 4 })).toBe(true);
+    expect(
+      isPanPointerEvent({ button: 1, buttons: 4, altKey: false }, false),
+    ).toBe(true);
+  });
+
+  it("keeps Alt+left panning exclusive to the PureRef preset", () => {
+    const altLeft = { button: 0, buttons: 1, altKey: true };
+    expect(isPanPointerEvent(altLeft, true)).toBe(true);
+    expect(isPanPointerEvent(altLeft, false)).toBe(false);
+    expect(
+      isPanPointerEvent({ button: 2, buttons: 2, altKey: true }, true),
+    ).toBe(false);
+  });
+});
 
 describe("pointerAngleDelta", () => {
   it("measures clockwise rotation around a center", () => {

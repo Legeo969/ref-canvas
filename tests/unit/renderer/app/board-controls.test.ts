@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { ActiveSelection, FabricImage, Rect } from "fabric";
+import { ActiveSelection, FabricImage, Rect, controlsUtils } from "fabric";
 import { describe, expect, it } from "vitest";
 import { applyBoardControls, createBoardControls, supportsBoardControls } from "../../../../src/renderer/app/board-controls";
 
@@ -8,13 +8,26 @@ describe("PureRef-style board controls", () => {
   it("uses quiet corner markers and separate outside rotation zones", () => {
     const controls = createBoardControls();
     expect(Object.keys(controls)).toEqual([
-      "tl", "tr", "bl", "br", "rtl", "rtr", "rbl", "rbr",
+      "ml", "mr", "mt", "mb", "tl", "tr", "bl", "br",
+      "rtl", "rtr", "rbl", "rbr",
     ]);
+    expect(controls.ml.x).toBe(-0.5);
+    expect(controls.ml.y).toBe(0);
+    expect(controls.mr.x).toBe(0.5);
+    expect(controls.mr.y).toBe(0);
+    expect(controls.mt.x).toBe(0);
+    expect(controls.mt.y).toBe(-0.5);
+    expect(controls.mb.x).toBe(0);
+    expect(controls.mb.y).toBe(0.5);
+    expect(controls.ml.actionHandler).toBe(controlsUtils.scalingX);
+    expect(controls.mt.actionHandler).toBe(controlsUtils.scalingY);
+    expect(controls.tl.actionHandler).toBe(controlsUtils.scalingEqually);
     expect(controls.tl.sizeX).toBe(20);
     expect(controls.rtl.offsetX).toBe(-18);
     expect(controls.rtl.offsetY).toBe(-18);
     expect(controls.rbr.offsetX).toBe(18);
     expect(controls.rbr.offsetY).toBe(18);
+    expect(controls.rtr.cursorStyle).toMatch(/^url\("data:image\/svg\+xml,/);
   });
 
   it("applies controls to images and multi-selection without changing plain shapes", () => {
@@ -29,6 +42,7 @@ describe("PureRef-style board controls", () => {
     expect(image.cornerSize).toBe(8);
     expect(image.touchCornerSize).toBe(28);
     expect(image.borderScaleFactor).toBe(1);
+    expect(image.cornerColor).toBe("#2e84aa");
     expect(image.controls.mtr).toBeUndefined();
   });
 });

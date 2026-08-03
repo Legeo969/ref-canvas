@@ -64,4 +64,18 @@ describe("UI shell regressions", () => {
     const css = await readStyles();
     expect(css).toMatch(/\.board-toolbar-more\s*{[^}]*position: fixed;/s);
   });
+
+  it("opens folder action menus toward the workspace", async () => {
+    const css = await readStyles();
+    expect(css).toMatch(
+      /\.folder-actions-popover\s*{[^}]*right: auto;[^}]*left: 0;/s,
+    );
+  });
+
+  it("lets the hidden state override every board grid style", async () => {
+    const css = await readStyles();
+    expect(css.indexOf(".board-host.grid-hidden")).toBeGreaterThan(
+      css.indexOf(".board-host.grid-style-dot"),
+    );
+  });
 });

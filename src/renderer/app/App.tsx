@@ -527,6 +527,7 @@ export function App() {
             assets={store.assets}
             boards={store.boards}
             onSelectAsset={store.selectAsset}
+            onLocateAsset={store.locateAssetInLibrary}
             onSave={store.saveBoard}
             onSwitchBoard={store.switchBoard}
             onCreateBoard={createBoard}

@@ -1136,8 +1136,6 @@ export interface RefCanvasApi {
     touch(id: string): Promise<void>;
     /** Opens the board in its own window (dedupes: focuses the existing one). */
     openWindow(id: string): Promise<boolean>;
-    /** Reports the main window's active board (for open-window dedupe). */
-    setActive(id: string | null): Promise<boolean>;
     /** Closes the window this renderer lives in (board windows only). */
     closeWindow(): Promise<boolean>;
     /** Assets referenced by the board (for board-window initial state). */

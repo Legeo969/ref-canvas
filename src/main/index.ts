@@ -59,6 +59,7 @@ import { registerLibraryIpc } from "./ipc/library-ipc";
 import { registerLibraryManagementIpc } from "./ipc/library-management-ipc";
 import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
+import { trayIconPaths } from "./platform/tray-icon";
 import {
   hardenWindowNavigation,
   secureWebPreferences,
@@ -94,8 +95,6 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 /** 独立白板窗口：boardId → BrowserWindow（同一白板同时只允许一个窗口）。 */
 const boardWindows = new Map<string, BrowserWindow>();
-/** 主窗口当前白板（boards:set-active 上报），用于 open-window 去重聚焦。 */
-let mainWindowActiveBoardId: string | null = null;
 let database: RefCanvasDatabase;
 let library: LibraryService;
 let backups: BackupService;
@@ -339,6 +338,7 @@ function broadcastAll(channel: string, ...args: unknown[]): void {
 
 /** 后台驻留：关闭窗口后保留主进程、目录监控与托盘（可选设置，默认关闭）。 */
 function backgroundResidencyEnabled(): boolean {
+  if (quitting) return false;
   return database.getSetting("backgroundResidency", false);
 }
 
@@ -386,11 +386,7 @@ function rebuildTrayMenu(): void {
 function createTray(): void {
   if (tray || process.platform === "darwin") return;
   let icon: Electron.NativeImage | null = null;
-  const candidates = [
-    path.join(app.getAppPath(), "assets", "refcanvas.png"),
-    path.join(app.getAppPath(), "assets", "icon.png"),
-    path.join(app.getAppPath(), "assets", "tray.png"),
-  ];
+  const candidates = trayIconPaths(app.getAppPath());
   for (const candidate of candidates) {
     icon = nativeImage.createFromPath(candidate);
     if (!icon.isEmpty()) break;
@@ -575,9 +571,6 @@ function registerIpc(): void {
     getMainWindow: () => mainWindow,
     openBoardWindow,
     pngDataUrlToBuffer,
-    setMainWindowActiveBoardId: (boardId) => {
-      mainWindowActiveBoardId = boardId;
-    },
     windowForSender,
   });
 
@@ -699,12 +692,9 @@ function createWindow(): void {
   });
   mainWindow.on("close", (event) => {
     if (!mainWindow) return;
-    database.setSetting("windowBounds", {
-      ...mainWindow.getNormalBounds(),
-      maximized: mainWindow.isMaximized(),
-    });
+    if (!quitting) saveMainWindowBounds();
     // 后台驻留开启：关窗不退出，销毁 renderer，保留主进程、目录监控与托盘。
-    if (backgroundResidencyEnabled() && !quitting) {
+    if (!quitting && backgroundResidencyEnabled()) {
       event.preventDefault();
       const window = mainWindow;
       mainWindow = null;
@@ -736,18 +726,20 @@ function createWindow(): void {
   if (savedBounds.maximized) mainWindow.maximize();
 }
 
+function saveMainWindowBounds(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  database.setSetting("windowBounds", {
+    ...mainWindow.getNormalBounds(),
+    maximized: mainWindow.isMaximized(),
+  });
+}
+
 /** 创建独立白板窗口（同一白板只允许一个窗口，重复打开聚焦已有窗口）。 */
 function openBoardWindow(boardId: string): void {
   const existing = boardWindows.get(boardId);
   if (existing && !existing.isDestroyed()) {
     if (existing.isMinimized()) existing.restore();
     existing.focus();
-    return;
-  }
-  // 主窗口当前就在看这块白板：聚焦主窗口即可，避免双窗口编辑同板。
-  if (mainWindow && mainWindowActiveBoardId === boardId) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
     return;
   }
   const window = new BrowserWindow({
@@ -879,7 +871,7 @@ app.on("second-instance", (_event, argv) => {
 
 app.on("window-all-closed", () => {
   // 后台驻留开启时保留主进程与托盘，由托盘控制完全退出。
-  if (backgroundResidencyEnabled() && !quitting) {
+  if (!quitting && backgroundResidencyEnabled()) {
     if (!tray) createTray();
     return;
   }
@@ -891,6 +883,10 @@ app.on("before-quit", () => {
 });
 
 async function shutdownServices(): Promise<void> {
+  saveMainWindowBounds();
+  for (const window of boardWindows.values()) window.destroy();
+  boardWindows.clear();
+  mainWindow?.destroy();
   cancelBackgroundServicesStart();
   globalShortcut.unregisterAll();
   destroyTray();

@@ -8,17 +8,23 @@ import {
   type TransformActionHandler,
 } from "fabric";
 
-const accent = "#75d2b6";
+const accent = "#2e84aa";
 
-const renderCorner: Control["render"] = (context, left, top, _style, object) => {
+const renderHandle: Control["render"] = (context, left, top) => {
   context.save();
-  context.translate(left, top);
-  context.rotate(((object.angle ?? 0) * Math.PI) / 180);
-  context.strokeStyle = accent;
-  context.lineWidth = 1;
-  context.strokeRect(-3.5, -3.5, 7, 7);
+  context.fillStyle = accent;
+  context.beginPath();
+  context.arc(left, top, 4.5, 0, Math.PI * 2);
+  context.fill();
   context.restore();
 };
+
+const rotationCursorSvg =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+  '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5" ' +
+  'fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+  "</svg>";
+const rotationCursor = `url("data:image/svg+xml,${encodeURIComponent(rotationCursorSvg)}") 12 12, crosshair`;
 
 const rotateWithShiftSnapping: TransformActionHandler = (
   event,
@@ -39,7 +45,13 @@ const rotateWithShiftSnapping: TransformActionHandler = (
   }
 };
 
-function scaleControl(x: -0.5 | 0.5, y: -0.5 | 0.5): Control {
+function scaleControl(x: -0.5 | 0 | 0.5, y: -0.5 | 0 | 0.5): Control {
+  const actionHandler =
+    x === 0
+      ? controlsUtils.scalingY
+      : y === 0
+        ? controlsUtils.scalingX
+        : controlsUtils.scalingEqually;
   return new Control({
     x,
     y,
@@ -47,9 +59,9 @@ function scaleControl(x: -0.5 | 0.5, y: -0.5 | 0.5): Control {
     sizeY: 20,
     touchSizeX: 28,
     touchSizeY: 28,
-    actionHandler: controlsUtils.scalingEqually,
+    actionHandler,
     cursorStyleHandler: controlsUtils.scaleCursorStyleHandler,
-    render: renderCorner,
+    render: renderHandle,
   });
 }
 
@@ -64,7 +76,7 @@ function rotateControl(x: -0.5 | 0.5, y: -0.5 | 0.5): Control {
     touchSizeX: 26,
     touchSizeY: 26,
     actionName: "rotate",
-    cursorStyle: "crosshair",
+    cursorStyle: rotationCursor,
     cursorStyleHandler: controlsUtils.rotationStyleHandler,
     actionHandler: rotateWithShiftSnapping,
     render: () => undefined,
@@ -73,6 +85,10 @@ function rotateControl(x: -0.5 | 0.5, y: -0.5 | 0.5): Control {
 
 export function createBoardControls(): Record<string, Control> {
   return {
+    ml: scaleControl(-0.5, 0),
+    mr: scaleControl(0.5, 0),
+    mt: scaleControl(0, -0.5),
+    mb: scaleControl(0, 0.5),
     tl: scaleControl(-0.5, -0.5),
     tr: scaleControl(0.5, -0.5),
     bl: scaleControl(-0.5, 0.5),
@@ -96,7 +112,7 @@ export function applyBoardControls(object: FabricObject): void {
   object.set({
     borderColor: accent,
     borderScaleFactor: 1,
-    cornerColor: "transparent",
+    cornerColor: accent,
     cornerStrokeColor: accent,
     cornerSize: 8,
     touchCornerSize: 28,

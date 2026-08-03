@@ -120,10 +120,6 @@
   cursor: crosshair !important;
 }
 
-.board-host.grid-hidden {
-  background-image: none;
-}
-
 /* 点状网格（默认） */
 .board-host.grid-style-line {
   background-image:
@@ -142,6 +138,10 @@
 }
 
 .board-host.grid-style-none {
+  background-image: none;
+}
+
+.board-host.grid-hidden {
   background-image: none;
 }
 
