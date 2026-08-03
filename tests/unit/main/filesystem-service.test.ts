@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { FSWatcher, Stats } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -398,7 +398,7 @@ describe("materialize", () => {
     }
   });
 
-  it("managed mode copies with full hash verification", async () => {
+  it("never copies the source file even when managed mode is requested", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
     temporaryDirectories.push(root);
     const source = path.join(root, "managed.png");
@@ -408,14 +408,14 @@ describe("materialize", () => {
       libraryRoot: root,
     });
     try {
+      // 磁盘唯一真相：materialize 恒为 linked，忽略 storageMode。
       const result = await service.materializePath(source, {
         storageMode: "managed",
       });
-      expect(result.copied).toBe(true);
-      expect(result.verified).toBe(true);
-      expect(result.asset.storageMode).toBe("managed");
-      expect(result.asset.path).not.toBe(source);
-      expect(await readFile(result.asset.path)).toEqual(Buffer.alloc(512, 9));
+      expect(result.copied).toBe(false);
+      expect(result.verified).toBe(false);
+      expect(result.asset.storageMode).toBe("linked");
+      expect(result.asset.path).toBe(source);
     } finally {
       await service.close();
       database.close();

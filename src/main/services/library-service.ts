@@ -1116,8 +1116,9 @@ export class LibraryService {
 
   /**
    * 按需入库一个未导入文件（Found 式浏览的 materialize）：
-   * 同路径复用 assetId；只计算 quick fingerprint，完整 SHA-256 仅用于
-   * managed 复制或主动完整性校验；不创建文件夹层级。
+   * 磁盘唯一真相——同路径复用 assetId；只计算 quick fingerprint，完整
+   * SHA-256 仅用于主动完整性校验；不创建文件夹层级，绝不复制源文件
+   * （忽略 storageMode，materialize 恒为 linked 引用索引）。
    */
   async materializePath(
     filename: string,
@@ -1126,33 +1127,9 @@ export class LibraryService {
     const resolved = path.resolve(filename);
     const existing = this.database.getAssetByPath(resolved);
     const next = await this.readAsset(resolved, existing ?? undefined);
-    const storageMode = this.resolveStorageMode({
-      storageMode: options.storageMode,
-    });
-    let asset: AssetRecord;
-    let copied = false;
-    let verified = false;
-    if (storageMode === "managed") {
-      const managed = await this.managedCopy(
-        resolved,
-        path.extname(resolved).toLowerCase(),
-      );
-      asset = this.database.upsertAsset({
-        ...next,
-        path: managed.path,
-        pathKey: path.normalize(managed.path).toLocaleLowerCase("en-US"),
-        storageMode: "managed",
-        libraryRelativePath: path.relative(this.libraryRoot, managed.path),
-        originalSourcePath: resolved,
-        contentHash: managed.hash,
-      }).asset;
-      copied = true;
-      verified = true;
-    } else {
-      const result = this.database.upsertAsset(next);
-      asset = result.asset;
-      this.updateIdentity(asset);
-    }
+    const result = this.database.upsertAsset(next);
+    const asset = result.asset;
+    this.updateIdentity(asset);
     if (options.collectionIds?.length) {
       this.database.addAssetsToCollections(
         options.collectionIds.map((collectionId) => ({
@@ -1166,7 +1143,7 @@ export class LibraryService {
     }
     // 重新读取以反映集合/标签副作用后的最新记录。
     const fresh = this.database.getAsset(asset.id)!;
-    return { asset: fresh, created: !existing, copied, verified };
+    return { asset: fresh, created: !existing, copied: false, verified: false };
   }
 
   /**

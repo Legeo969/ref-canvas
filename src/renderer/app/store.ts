@@ -1258,7 +1258,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const results = await Promise.allSettled(
       paths.map((entryPath) =>
         window.refCanvas.filesystem.materialize(entryPath, {
-          storageMode: "library-default",
           collectionIds: [collectionId],
         }),
       ),
@@ -1279,11 +1278,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   /** 批量按需入库（不指定文件夹），失败容错；单条失败时抛错。 */
   materializeEntries: async (paths) => {
     const results = await Promise.allSettled(
-      paths.map((entryPath) =>
-        window.refCanvas.filesystem.materialize(entryPath, {
-          storageMode: "library-default",
-        }),
-      ),
+      paths.map((entryPath) => window.refCanvas.filesystem.materialize(entryPath, {})),
     );
     if (paths.length === 1 && results[0]?.status === "rejected") {
       throw results[0].reason;
@@ -1298,7 +1293,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const results = await Promise.allSettled(
       paths.map((entryPath) =>
         window.refCanvas.filesystem.materialize(entryPath, {
-          storageMode: "library-default",
           tags,
         }),
       ),

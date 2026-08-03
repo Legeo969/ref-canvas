@@ -202,10 +202,13 @@ describe("quickFingerprint", () => {
       // 磁盘原生语义：导入只建立链接索引，不镜像创建合集树。
       expect(database.listCollections()).toHaveLength(0);
       expect(result.imported).toBe(3);
+      expect(result.copied).toBe(0);
       expect(database.searchAssets().total).toBe(3);
-      expect(database.getAssetByPath(path.join(exterior, "gate.png"))?.title).toBe(
-        "gate",
-      );
+      const gate = database.getAssetByPath(path.join(exterior, "gate.png"));
+      expect(gate?.title).toBe("gate");
+      expect(gate?.storageMode).toBe("linked");
+      // 原文件保持原位，记录路径即源路径。
+      expect(gate?.path).toBe(path.join(exterior, "gate.png"));
     } finally {
       await service.close();
       database.close();

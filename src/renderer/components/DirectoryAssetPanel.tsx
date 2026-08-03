@@ -559,9 +559,7 @@ export function DirectoryAssetPanel() {
   };
 
   const materialize = async (entry: DirectoryEntry) => {
-    const result = await window.refCanvas.filesystem.materialize(entry.path, {
-      storageMode: "library-default",
-    });
+    const result = await window.refCanvas.filesystem.materialize(entry.path, {});
     return result.asset;
   };
 

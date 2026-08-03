@@ -498,9 +498,7 @@ export function Sidebar() {
                   void store.openDirectory(parsed.path);
                 } else {
                   // 文件 → 按需入库（不指定文件夹，仅建索引）。
-                  void window.refCanvas.filesystem.materialize(parsed.path, {
-                    storageMode: "library-default",
-                  });
+                  void window.refCanvas.filesystem.materialize(parsed.path, {});
                 }
               } catch {
                 // Ignore malformed drag payloads from outside RefCanvas.

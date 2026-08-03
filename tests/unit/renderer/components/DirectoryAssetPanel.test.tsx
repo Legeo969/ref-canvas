@@ -594,12 +594,8 @@ describe("DirectoryAssetPanel", () => {
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
 
-    expect(materialize).toHaveBeenCalledWith("D:\\refs\\a.png", {
-      storageMode: "library-default",
-    });
-    expect(materialize).toHaveBeenCalledWith("D:\\refs\\b.png", {
-      storageMode: "library-default",
-    });
+    expect(materialize).toHaveBeenCalledWith("D:\\refs\\a.png", {});
+    expect(materialize).toHaveBeenCalledWith("D:\\refs\\b.png", {});
     expect(document.querySelector(".batch-toolbar")).toBeNull();
   });
 

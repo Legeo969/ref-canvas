@@ -482,9 +482,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
       } else if (action.type === "tag") {
         await library.materializePath(filename, { tags: action.tags });
       } else {
-        await library.materializePath(filename, {
-          storageMode: "library-default",
-        });
+        await library.materializePath(filename, {});
       }
     },
   });
