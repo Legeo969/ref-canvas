@@ -887,10 +887,19 @@ class V14NativeFilesystem {
         ON file_identities(id);
     `);
     // file_identities 建于 v8，SQLite 无法 ALTER 添加 FK；用触发器强制
-    // mount_id 必须引用 mount_roots（若提供），保持磁盘身份模型的引用完整性。
+    // mount_id 必须引用 mount_roots（若提供）。INSERT 与 UPDATE 都需校验：
+    // upsert 可通过 ON CONFLICT DO UPDATE 改写 mount_id。
     db.exec(`
       CREATE TRIGGER IF NOT EXISTS file_identities_mount_fk
       BEFORE INSERT ON file_identities
+      WHEN NEW.mount_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM mount_roots WHERE id = NEW.mount_id
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed');
+      END;
+      CREATE TRIGGER IF NOT EXISTS file_identities_mount_update_fk
+      BEFORE UPDATE OF mount_id ON file_identities
       WHEN NEW.mount_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM mount_roots WHERE id = NEW.mount_id
       )

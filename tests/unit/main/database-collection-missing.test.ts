@@ -133,4 +133,36 @@ describe("collection missing-asset reconciliation", () => {
       database.close();
     }
   });
+
+  it("rejects reassigning an identity to an unknown mount on update", () => {
+    const database = new RefCanvasDatabase(":memory:");
+    try {
+      database.upsertMountRoot({
+        id: "mount-drive-d",
+        path: "D:\\",
+        displayName: "D:",
+      });
+      database.upsertFileIdentity({
+        pathKey: "d:\\art\\reference.png",
+        assetId: "asset-1",
+        fingerprint: "fp",
+        size: 10,
+        rootPath: "D:\\",
+        mountId: "mount-drive-d",
+      });
+      // upsert 的 ON CONFLICT DO UPDATE 改写 mount_id 也必须被触发器拒绝。
+      expect(() =>
+        database.upsertFileIdentity({
+          pathKey: "d:\\art\\reference.png",
+          assetId: "asset-1",
+          fingerprint: "fp2",
+          size: 10,
+          rootPath: "D:\\",
+          mountId: "no-such-mount",
+        }),
+      ).toThrow(/FOREIGN KEY constraint failed/i);
+    } finally {
+      database.close();
+    }
+  });
 });
