@@ -7,12 +7,21 @@ import { RefCanvasDatabase } from "../../../src/main/persistence/database";
 
 const temporaryDirectories: string[] = [];
 
+async function removeDirectory(directory: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      // Windows 上 WAL -shm/-wal 句柄释放有延迟，短暂等待后重试。
+      if (attempt === 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
+    }
+  }
+}
+
 afterEach(async () => {
-  await Promise.all(
-    temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }),
-    ),
-  );
+  await Promise.all(temporaryDirectories.splice(0).map(removeDirectory));
 });
 
 describe("database migration", () => {
@@ -50,7 +59,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(13);
+      expect(migrated.getSchemaVersion()).toBe(14);
       expect(migrated.searchAssets().items[0]).toMatchObject({
         title: "Legacy",
         lifecycle: "active",
@@ -140,7 +149,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(13);
+      expect(migrated.getSchemaVersion()).toBe(14);
       const v1 = migrated.loadBoard("00000000-0000-4000-8000-000000000001")!;
       expect(v1.document.schemaVersion).toBe(3);
       expect(v1.document.windowMode).toBe("normal");
@@ -167,6 +176,68 @@ describe("database migration", () => {
         migrated.loadBoard("00000000-0000-4000-8000-000000000002")!.document,
       );
       expect(first).toBe(second);
+    } finally {
+      migrated.close();
+    }
+  });
+
+  it("adds v14 native-filesystem tables and drops collection_sources", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-v14-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "v14.db");
+    const legacy = new Sqlite(filename);
+    legacy.exec(`
+      CREATE TABLE file_identities (
+        path_key TEXT PRIMARY KEY, asset_id TEXT NOT NULL,
+        fingerprint TEXT NOT NULL, size INTEGER NOT NULL,
+        root_path TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE collection_sources (
+        collection_id TEXT PRIMARY KEY, watch_root_path TEXT NOT NULL,
+        relative_path TEXT NOT NULL
+      );
+    `);
+    legacy.close();
+
+    const migrated = new RefCanvasDatabase(filename);
+    try {
+      expect(migrated.getSchemaVersion()).toBe(14);
+      const verification = new Sqlite(filename, { readonly: true });
+      try {
+        const tables = verification
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('mount_roots', 'collection_refs', 'cache_entries', 'media_metadata')",
+          )
+          .all() as Array<{ name: string }>;
+        expect(tables.map((item) => item.name).sort()).toEqual([
+          "cache_entries",
+          "collection_refs",
+          "media_metadata",
+          "mount_roots",
+        ]);
+        // collection_sources 已删除。
+        const dropped = verification
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collection_sources'",
+          )
+          .all() as Array<{ name: string }>;
+        expect(dropped).toHaveLength(0);
+        const identityColumns = verification.pragma(
+          "table_info(file_identities)",
+        ) as Array<{ name: string }>;
+        expect(identityColumns.map((column) => column.name)).toEqual(
+          expect.arrayContaining([
+            "mount_id",
+            "relative_path",
+            "file_id",
+            "quick_hash",
+            "content_hash",
+            "link_state",
+          ]),
+        );
+      } finally {
+        verification.close();
+      }
     } finally {
       migrated.close();
     }

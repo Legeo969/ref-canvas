@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-export const DATABASE_SCHEMA_VERSION = 13;
+export const DATABASE_SCHEMA_VERSION = 14;
 
 /**
  * Ordered migration model.
@@ -152,6 +152,15 @@ export const MIGRATIONS: readonly MigrationStep[] = [
         CREATE INDEX IF NOT EXISTS assets_metadata_pending
           ON assets(metadata_status, metadata_job_id, updated_at, id);
       `);
+    },
+  },
+  {
+    version: 14,
+    id: "v14-native-filesystem-schema",
+    description:
+      "Found 磁盘原生 schema：引入 mount roots、collection refs、cache 与 media metadata 表，升级 file identities 为磁盘身份模型，移除已停用的 collection_sources。",
+    apply(db) {
+      V14NativeFilesystem.apply(db);
     },
   },
 ];
@@ -822,5 +831,97 @@ export class MigrationRepository {
       entry.startedAt,
       entry.finishedAt,
     );
+  }
+}
+
+/**
+ * v14 Found 磁盘原生 schema（计划 §13.2）。
+ *
+ * - 新增 `mount_roots`：本地盘符、移动盘或 NAS mount root。
+ * - 升级 `file_identities`：为磁盘身份模型补充 mount_id、relative_path、
+ *   file_id、quick_hash、content_hash、link_state 列。
+ * - 新增 `collection_refs`：Collection 以 path + fingerprint 引用磁盘文件。
+ * - 新增 `cache_entries`：thumbnail/poster/waveform/proxy 缓存地址。
+ * - 新增 `media_metadata`：格式专属 metadata JSON。
+ * - 删除 `collection_sources`：v12 的 watch 镜像标记已停用（阶段 0 停止调用）。
+ *
+ * 迁移保持幂等（列/表存在性守卫），可安全重跑。
+ */
+class V14NativeFilesystem {
+  static apply(db: Database.Database): void {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mount_roots (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        volume_id TEXT,
+        state TEXT NOT NULL DEFAULT 'online',
+        last_seen_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS collection_refs (
+        id TEXT PRIMARY KEY,
+        collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+        mount_id TEXT NOT NULL,
+        relative_path TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'resolved',
+        UNIQUE(collection_id, mount_id, relative_path)
+      );
+      CREATE INDEX IF NOT EXISTS collection_refs_collection
+        ON collection_refs(collection_id);
+      CREATE TABLE IF NOT EXISTS cache_entries (
+        id TEXT PRIMARY KEY,
+        asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        variant TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        provider_id TEXT,
+        provider_version TEXT,
+        file_path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(asset_id, kind, variant)
+      );
+      CREATE INDEX IF NOT EXISTS cache_entries_asset
+        ON cache_entries(asset_id, kind);
+      CREATE TABLE IF NOT EXISTS media_metadata (
+        id TEXT PRIMARY KEY,
+        asset_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        format TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        provider_id TEXT,
+        provider_version TEXT,
+        updated_at TEXT NOT NULL,
+        UNIQUE(asset_id, format)
+      );
+      CREATE INDEX IF NOT EXISTS media_metadata_asset
+        ON media_metadata(asset_id);
+    `);
+    const identityColumns = new Set(
+      (db.pragma("table_info(file_identities)") as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    );
+    if (!identityColumns.has("mount_id")) {
+      db.exec("ALTER TABLE file_identities ADD COLUMN mount_id TEXT");
+    }
+    if (!identityColumns.has("relative_path")) {
+      db.exec("ALTER TABLE file_identities ADD COLUMN relative_path TEXT");
+    }
+    if (!identityColumns.has("file_id")) {
+      db.exec("ALTER TABLE file_identities ADD COLUMN file_id TEXT");
+    }
+    if (!identityColumns.has("quick_hash")) {
+      db.exec("ALTER TABLE file_identities ADD COLUMN quick_hash TEXT");
+    }
+    if (!identityColumns.has("content_hash")) {
+      db.exec("ALTER TABLE file_identities ADD COLUMN content_hash TEXT");
+    }
+    if (!identityColumns.has("link_state")) {
+      db.exec(
+        "ALTER TABLE file_identities ADD COLUMN link_state TEXT NOT NULL DEFAULT 'online'",
+      );
+    }
+    // v12 的 watch 镜像标记已停用：删除表（阶段 0 已停止所有运行时调用）。
+    db.exec("DROP TABLE IF EXISTS collection_sources;");
   }
 }

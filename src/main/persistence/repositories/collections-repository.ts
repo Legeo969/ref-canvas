@@ -1,6 +1,5 @@
 import type Database from "better-sqlite3";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import path from "node:path";
 import type {
   BatchCollectionOp,
   CollectionRecord,
@@ -118,52 +117,6 @@ export class CollectionsRepository {
         (id, title, parent_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?)`,
     ).run(id, title, parentId, nextOrder, createdAt);
     return id;
-  }
-
-  markSource(
-    collectionId: string,
-    watchRootPath: string,
-    relativePath: string,
-  ): void {
-    this.db.prepare(`
-      INSERT INTO collection_sources(collection_id, watch_root_path, relative_path)
-      VALUES (?, ?, ?)
-      ON CONFLICT(collection_id) DO UPDATE SET
-        watch_root_path = excluded.watch_root_path,
-        relative_path = excluded.relative_path
-    `).run(collectionId, path.resolve(watchRootPath), relativePath);
-  }
-
-  pruneEmptyGenerated(watchRootPath?: string): string[] {
-    const removed: string[] = [];
-    const root = watchRootPath ? path.resolve(watchRootPath) : null;
-    this.db.transaction(() => {
-      while (true) {
-        const rows = this.db.prepare(`
-          SELECT cs.collection_id AS id
-          FROM collection_sources cs
-          WHERE (? IS NULL OR cs.watch_root_path = ?)
-            AND NOT EXISTS (
-              SELECT 1 FROM collections child
-              WHERE child.parent_id = cs.collection_id
-            )
-            AND NOT EXISTS (
-              SELECT 1
-              FROM collection_assets ca
-              JOIN assets a ON a.id = ca.asset_id
-              WHERE ca.collection_id = cs.collection_id
-                AND a.lifecycle = 'active'
-                AND a.link_state = 'online'
-            )
-        `).all(root, root) as Array<{ id: string }>;
-        if (!rows.length) break;
-        for (const row of rows) {
-          this.db.prepare("DELETE FROM collections WHERE id = ?").run(row.id);
-          removed.push(row.id);
-        }
-      }
-    })();
-    return removed;
   }
 
   update(

@@ -35,18 +35,25 @@ describe("collection missing-asset reconciliation", () => {
     }
   });
 
-  it("prunes only empty folders marked as watch-generated", () => {
+  it("records a v14 collection ref by path and fingerprint", () => {
     const database = new RefCanvasDatabase(":memory:");
     try {
-      const generated = database.createCollection("Generated");
-      const manual = database.createCollection("Manual");
-      database.markCollectionSource(generated.id, "D:\\watch", "Generated");
-
-      expect(database.pruneEmptyGeneratedCollections("D:\\watch")).toEqual([
-        generated.id,
-      ]);
-      expect(database.getCollection(generated.id)).toBeNull();
-      expect(database.getCollection(manual.id)).not.toBeNull();
+      const collection = database.createCollection("References");
+      // v14 collection_refs 以 mount + relative path + fingerprint 引用磁盘文件。
+      database.addCollectionRef({
+        collectionId: collection.id,
+        mountId: "mount-drive-d",
+        relativePath: "art/reference.png",
+        fingerprint: "abc123",
+      });
+      expect(database.listCollectionRefs(collection.id)).toHaveLength(1);
+      expect(database.listCollectionRefs(collection.id)[0]).toMatchObject({
+        collectionId: collection.id,
+        mountId: "mount-drive-d",
+        relativePath: "art/reference.png",
+        fingerprint: "abc123",
+        state: "resolved",
+      });
     } finally {
       database.close();
     }

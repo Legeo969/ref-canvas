@@ -74,7 +74,7 @@ describe("LibraryManager", () => {
 
     const db = new RefCanvasDatabase(databasePathFor(entry));
     try {
-      expect(db.getSchemaVersion()).toBe(13);
+      expect(db.getSchemaVersion()).toBe(14);
       expect(db.listBoards()).toHaveLength(1);
     } finally {
       db.close();

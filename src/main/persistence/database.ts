@@ -1280,18 +1280,6 @@ export class RefCanvasDatabase {
     return this.collectionsRepository.findOrCreateId(title, parentId);
   }
 
-  markCollectionSource(
-    collectionId: string,
-    watchRootPath: string,
-    relativePath: string,
-  ): void {
-    this.collectionsRepository.markSource(collectionId, watchRootPath, relativePath);
-  }
-
-  pruneEmptyGeneratedCollections(watchRootPath?: string): string[] {
-    return this.collectionsRepository.pruneEmptyGenerated(watchRootPath);
-  }
-
   updateCollection(
     id: string,
     patch: { title?: string; parentId?: string | null; sortOrder?: number },
@@ -1348,6 +1336,51 @@ export class RefCanvasDatabase {
     const asset = this.getAsset(assetId);
     if (!asset) throw new Error("ASSET_NOT_FOUND");
     return asset;
+  }
+
+  /** v14：以 mount + relative path + fingerprint 向合集添加磁盘文件引用。 */
+  addCollectionRef(input: {
+    collectionId: string;
+    mountId: string;
+    relativePath: string;
+    fingerprint: string;
+  }): void {
+    if (!this.collectionsRepository.get(input.collectionId)) {
+      throw new Error("COLLECTION_NOT_FOUND");
+    }
+    this.db.prepare(`
+      INSERT OR IGNORE INTO collection_refs
+        (id, collection_id, mount_id, relative_path, fingerprint, state)
+      VALUES (?, ?, ?, ?, ?, 'resolved')
+    `).run(
+      randomUUID(),
+      input.collectionId,
+      input.mountId,
+      input.relativePath,
+      input.fingerprint,
+    );
+  }
+
+  /** v14：列出合集当前的磁盘文件引用。 */
+  listCollectionRefs(collectionId: string): Array<{
+    collectionId: string;
+    mountId: string;
+    relativePath: string;
+    fingerprint: string;
+    state: string;
+  }> {
+    return this.db.prepare(`
+      SELECT collection_id AS collectionId, mount_id AS mountId,
+        relative_path AS relativePath, fingerprint, state
+      FROM collection_refs WHERE collection_id = ?
+      ORDER BY relative_path
+    `).all(collectionId) as Array<{
+      collectionId: string;
+      mountId: string;
+      relativePath: string;
+      fingerprint: string;
+      state: string;
+    }>;
   }
 
   setAssetTags(assetId: string, names: string[]): AssetRecord {
