@@ -1622,6 +1622,10 @@ export class LibraryService {
           report.unchanged += 1;
           claimed.set(path.normalize(asset.path), asset.id);
           claimedAssets.add(asset.id);
+          // 挂载恢复：原路径仍在的 asset 重新置为 online（§7.5）。
+          if (asset.linkState !== "online") {
+            this.database.setLinkState(asset.id, "online");
+          }
           continue;
         }
         const candidates = byFingerprint.get(

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -92,16 +92,42 @@ describe("MountService", () => {
       displayName: "Root",
       state: "online",
     });
+    // 离线前注册一个资产，恢复后应回到 online。
+    const asset = database.upsertAsset({
+      title: "Ref",
+      kind: "image",
+      path: path.join(root, "a.png"),
+      pathKey: path.join(root, "a.png").toLocaleLowerCase("en-US"),
+      extension: "png",
+      size: 1,
+      mtimeMs: 1,
+      fingerprint: "fp",
+      linkState: "online",
+      notes: "",
+      width: 1,
+      height: 1,
+      duration: null,
+    }).asset;
+    database.upsertFileIdentity({
+      pathKey: path.join(root, "a.png").toLocaleLowerCase("en-US"),
+      assetId: asset.id,
+      fingerprint: "fp",
+      size: 1,
+      rootPath: root,
+      mountId: "mount-1",
+    });
     const changes: Array<{ mountId: string; state: string }> = [];
     service.onMountStateChanged((change) => changes.push(change));
 
     await rm(root, { recursive: true, force: true });
     await service.refreshMount("mount-1");
     expect(changes).toContainEqual({ mountId: "mount-1", state: "offline" });
+    expect(database.getAsset(asset.id)?.linkState).toBe("offline");
 
-    // 恢复目录：mount 重新 online。
+    // 恢复目录：mount 重新 online，资产标记回到 online（§7.5 增量恢复）。
     const { mkdir } = await import("node:fs/promises");
     await mkdir(root, { recursive: true });
+    await writeFile(path.join(root, "a.png"), "x");
     await service.refreshMount("mount-1");
     expect(changes).toContainEqual({ mountId: "mount-1", state: "online" });
   });

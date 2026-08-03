@@ -156,6 +156,23 @@ async function trashDirectoryPath(filename: string): Promise<void> {
   }
 }
 
+/**
+ * 修复存量 watch root 与 mount root 的 1:1 关联：为缺少 mount_roots 记录的
+ * watch root 补注册挂载根（计划 §7.2 / §7.5）。
+ */
+function repairMountRoots(): void {
+  const mountRoots = new Set(database.listMountRoots().map((item) => item.id));
+  for (const watchRoot of database.listWatchRoots()) {
+    if (mountRoots.has(watchRoot.id)) continue;
+    database.upsertMountRoot({
+      id: watchRoot.id,
+      path: watchRoot.path,
+      displayName: path.basename(watchRoot.path) || watchRoot.path,
+      state: "online",
+    });
+  }
+}
+
 function pngDataUrlToBuffer(dataUrl: string): Buffer {
   const parsed = z
     .string()
@@ -859,17 +876,24 @@ void app.whenReady().then(async () => {
   if (database.getSetting("globalShortcuts", false)) {
     configureGlobalShortcuts(true);
   }
-  // 启动时刷新挂载根状态（离线根下的资产标记 offline，恢复时 reconcile）。
-  void mountService.refreshAll().then((changes) => {
-    for (const change of changes) {
-      if (change.state === "online") {
-        const root = database
-          .listWatchRoots()
-          .find((item) => item.id === change.mountId);
-        if (root) void library.reconcileRoots(root.id);
+  // 启动时修复存量 watch root 与 mount root 的 1:1 关联，再刷新挂载状态。
+  repairMountRoots();
+  const refreshMounts = () => {
+    void mountService.refreshAll().then((changes) => {
+      for (const change of changes) {
+        if (change.state === "online") {
+          const root = database
+            .listWatchRoots()
+            .find((item) => item.id === change.mountId);
+          if (root) void library.reconcileRoots(root.id);
+        }
       }
-    }
-  });
+    });
+  };
+  refreshMounts();
+  // 运行期间受控轮询挂载状态，检测断连/重连（计划 §7.5 外部增删改语义）。
+  const mountPollTimer = setInterval(refreshMounts, 15_000);
+  mountPollTimer.unref();
 
   const commandLineFiles = process.argv
     .slice(app.isPackaged ? 1 : 2)

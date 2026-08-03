@@ -236,6 +236,39 @@ describe("dual-mode library service", () => {
     }
   });
 
+  it("restores unchanged assets to online when a mount recovers", async () => {
+    const userData = await tempDirectory("refcanvas-registry-");
+    const manager = new LibraryManager(userData);
+    await manager.initialize();
+    await manager.bootstrapLegacy();
+    const legacy = manager.current()!;
+    const db = new RefCanvasDatabase(databasePathFor(legacy));
+    const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
+      libraryRoot: legacy.root,
+      defaultStorageMode: "linked",
+    });
+    const base = await tempDirectory("refcanvas-recover-");
+    const watchRoot = path.join(base, "watch");
+    await mkdir(watchRoot, { recursive: true });
+    const originalPath = path.join(watchRoot, "concept.png");
+    await writeFile(originalPath, Buffer.alloc(1_280, 9));
+    try {
+      db.addWatchRoot(watchRoot);
+      await service.importPaths([originalPath]);
+      const asset = db.getAssetByPath(originalPath)!;
+      // 模拟挂载离线：asset 被标记 offline（文件仍在磁盘）。
+      db.setLinkState(asset.id, "offline");
+      expect(db.getAsset(asset.id)?.linkState).toBe("offline");
+      // 挂载恢复：reconcile 应把原路径仍在的 asset 置回 online（§7.5）。
+      const report = await service.reconcileRoots();
+      expect(report.unchanged).toBeGreaterThanOrEqual(1);
+      expect(db.getAsset(asset.id)?.linkState).toBe("online");
+    } finally {
+      await service.close();
+      db.close();
+    }
+  });
+
   it("parks ambiguous moves in the reconcile queue and resolves them by choice", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
