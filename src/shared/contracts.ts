@@ -1023,6 +1023,28 @@ export interface TextPreviewResult {
   lineCount: number;
 }
 
+/** 序列导出 MP4 请求（阶段 5）。 */
+export interface ExportMp4Request {
+  /** 帧文件绝对路径（按帧号升序）。 */
+  files: string[];
+  /** 输出 fps。 */
+  fps: number;
+  /** Mp4Preset.id（默认 "original"）。 */
+  presetId: string;
+  /** 输出目录（用户选择）。 */
+  outputDirectory: string;
+  /** 输出文件名（不含扩展名）。 */
+  baseName: string;
+}
+
+export interface ExportMp4Result {
+  outputPath: string;
+  durationSeconds: number;
+  frameCount: number;
+  width: number;
+  height: number;
+}
+
 /** 图片序列分组（阶段 3 §9.4）。 */
 export interface SequenceGroupInfo {
   id: string;
@@ -1274,6 +1296,8 @@ export interface RefCanvasApi {
       directory: string,
       options?: { customPatterns?: string[] },
     ): Promise<SequenceGroupInfo[]>;
+    /** 序列导出 MP4（阶段 5 §10.1 MP4 presets）。 */
+    exportMp4(request: ExportMp4Request): Promise<ExportMp4Result>;
   };
   providers: {
     list(): Promise<ProviderManifestInfo[]>;

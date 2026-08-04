@@ -217,6 +217,7 @@ const api: RefCanvasApi = {
   sequences: {
     detect: (directory, options) =>
       ipcRenderer.invoke("sequences:detect", directory, options),
+    exportMp4: (request) => ipcRenderer.invoke("sequences:exportMp4", request),
   },
   providers: {
     list: () => ipcRenderer.invoke("providers:list"),

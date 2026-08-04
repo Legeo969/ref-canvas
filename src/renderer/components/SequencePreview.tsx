@@ -1,4 +1,5 @@
 import {
+  Download,
   Expand,
   Film,
   Pause,
@@ -8,7 +9,10 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { SequenceGroupInfo } from "../../shared/contracts";
+import type {
+  ExportMp4Result,
+  SequenceGroupInfo,
+} from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
 
 /**
@@ -67,6 +71,15 @@ export function SequencePreviewDialog({
   );
   const [failed, setFailed] = useState(false);
   const tokens = useFrameTokens(frames);
+  // 阶段 5：MP4 导出（预设来自 FoundSettings.mp4Presets）。
+  const [exportPresetId, setExportPresetId] = useState(
+    foundSettings.defaultMp4PresetId,
+  );
+  const [exportState, setExportState] = useState<
+    "idle" | "running" | "done"
+  >("idle");
+  const [exportResult, setExportResult] = useState<ExportMp4Result | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const frameIndexRef = useRef(0);
   const playingRef = useRef(true);
   const fpsRef = useRef(fps);
@@ -116,6 +129,31 @@ export function SequencePreviewDialog({
   const frameLabel = (index: number) =>
     String(sequence.start + index).padStart(sequence.width, "0");
 
+  // 阶段 5：MP4 导出（预设来自 FoundSettings.mp4Presets）。
+  const exportMp4 = async () => {
+    setExportError(null);
+    const outputDirectory = await window.refCanvas.system.pickDirectory({
+      title: "选择 MP4 导出目录",
+      defaultPath: sequence.directory,
+    });
+    if (!outputDirectory) return;
+    setExportState("running");
+    try {
+      const result = await window.refCanvas.sequences.exportMp4({
+        files: frames,
+        fps,
+        presetId: exportPresetId,
+        outputDirectory,
+        baseName: sequence.baseName,
+      });
+      setExportResult(result);
+      setExportState("done");
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "导出失败");
+      setExportState("idle");
+    }
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -160,6 +198,23 @@ export function SequencePreviewDialog({
             </button>
           </div>
         </header>
+        {exportState === "running" && (
+          <div className="sequence-export-banner">正在导出 MP4…</div>
+        )}
+        {exportState === "done" && exportResult && (
+          <div className="sequence-export-banner sequence-export-done">
+            已导出 {exportResult.width}×{exportResult.height} ·{" "}
+            {Math.round(exportResult.durationSeconds * 10) / 10}s ·{" "}
+            <code title={exportResult.outputPath}>
+              {exportResult.outputPath}
+            </code>
+          </div>
+        )}
+        {exportError && (
+          <div className="sequence-export-banner sequence-export-error">
+            {exportError}
+          </div>
+        )}
 
         <div className="quick-preview-stage sequence-preview-stage">
           {source && !failed ? (
@@ -228,6 +283,28 @@ export function SequencePreviewDialog({
           />
           <span className="sequence-frame-count">
             {frameLabel(frameIndex)} / {frameLabel(frames.length - 1)}
+          </span>
+          <span className="sequence-export-controls">
+            <select
+              value={exportPresetId}
+              aria-label="导出预设"
+              onChange={(event) => setExportPresetId(event.target.value)}
+            >
+              {foundSettings.mp4Presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+            <button
+              className="secondary-button"
+              disabled={exportState === "running"}
+              onClick={() => void exportMp4()}
+              title="导出为 MP4（H.264）"
+            >
+              <Download size={14} />
+              导出 MP4
+            </button>
           </span>
         </footer>
 

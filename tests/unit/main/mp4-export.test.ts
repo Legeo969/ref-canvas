@@ -1,0 +1,121 @@
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { exportSequenceToMp4 } from "../../../src/main/services/media/mp4-export";
+import { packagedFfmpegPath } from "../../../src/main/services/media/ffmpeg-tools";
+
+const execFileAsync = promisify(execFile);
+const tempDirectories: string[] = [];
+
+async function withTemp(): Promise<string> {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "refcanvas-mp4-test-"),
+  );
+  tempDirectories.push(directory);
+  return directory;
+}
+
+async function makeFrame(
+  directory: string,
+  name: string,
+  color: string,
+): Promise<string> {
+  const output = path.join(directory, name);
+  await execFileAsync(
+    packagedFfmpegPath(),
+    [
+      "-y",
+      "-f", "lavfi",
+      "-i", `color=${color}:s=320x180`,
+      "-frames:v", "1",
+      output,
+    ],
+    { windowsHide: true },
+  );
+  return output;
+}
+
+describe("exportSequenceToMp4（阶段 5：序列导出 MP4）", () => {
+  afterEach(async () => {
+    await Promise.all(
+      tempDirectories.splice(0).map((directory) =>
+        rm(directory, { recursive: true, force: true }),
+      ),
+    );
+  });
+
+  it("把 3 帧合成 H.264 MP4（concat demuxer + duration）", async () => {
+    const directory = await withTemp();
+    const frames = [
+      await makeFrame(directory, "frame_0001.png", "red"),
+      await makeFrame(directory, "frame_0002.png", "green"),
+      await makeFrame(directory, "frame_0003.png", "blue"),
+    ];
+    const output = path.join(directory, "out.mp4");
+    const result = await exportSequenceToMp4({
+      files: frames,
+      fps: 24,
+      maxWidth: null,
+      crf: 20,
+      outputPath: output,
+    });
+    expect(result.width).toBe(320);
+    expect(result.height).toBe(180);
+    expect(result.durationSeconds).toBeGreaterThan(0.05);
+    expect(result.durationSeconds).toBeLessThan(0.5);
+    const entries = await readdir(directory);
+    expect(entries).toContain("out.mp4");
+  });
+
+  it("缺帧时只编码存在的帧", async () => {
+    const directory = await withTemp();
+    const frames = [
+      await makeFrame(directory, "frame_0001.png", "red"),
+      await makeFrame(directory, "frame_0003.png", "blue"),
+    ];
+    const output = path.join(directory, "sparse.mp4");
+    const result = await exportSequenceToMp4({
+      files: frames,
+      fps: 12,
+      maxWidth: 160,
+      crf: 23,
+      outputPath: output,
+    });
+    expect(result.width).toBe(160);
+    expect(result.height).toBe(90);
+  });
+
+  it("空文件列表拒绝导出", async () => {
+    const directory = await withTemp();
+    await expect(
+      exportSequenceToMp4({
+        files: [],
+        fps: 24,
+        maxWidth: null,
+        crf: 20,
+        outputPath: path.join(directory, "empty.mp4"),
+      }),
+    ).rejects.toThrow("MP4_EXPORT_EMPTY");
+  });
+
+  it("临时 concat 文件被清理", async () => {
+    const directory = await withTemp();
+    const frames = [await makeFrame(directory, "a_0001.png", "red")];
+    await exportSequenceToMp4({
+      files: frames,
+      fps: 24,
+      maxWidth: null,
+      crf: 20,
+      outputPath: path.join(directory, "clean.mp4"),
+    });
+    const osTemp = path.join(os.tmpdir());
+    const leftovers = (await readdir(osTemp)).filter((entry) =>
+      entry.startsWith("refcanvas-mp4-"),
+    );
+    // 测试自身创建的临时目录由 afterEach 清理；这里只验证导出不留残留。
+    expect(leftovers.length).toBeLessThanOrEqual(tempDirectories.length);
+  });
+});

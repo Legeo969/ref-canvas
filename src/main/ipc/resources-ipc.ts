@@ -20,6 +20,9 @@ import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import { extractVideoFrame } from "../services/media/ffmpeg-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
+import { exportSequenceToMp4 } from "../services/media/mp4-export";
+import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
+import type { FoundSettings } from "../../shared/contracts";
 import { idSchema, pathSchema } from "./schemas";
 
 interface ResourcesIpcDependencies {
@@ -347,23 +350,82 @@ export function registerResourcesIpc(
         .object({ customPatterns: z.array(z.string()).max(16).optional() })
         .optional()
         .parse(options) ?? {};
+    // 阶段 5：序列规则（sequenceRules pattern + sequenceMinFrames 过滤）
+    // 进入检测任务参数；调用方显式传 customPatterns 时优先。
+    const found = database().getSetting<Partial<FoundSettings>>(
+      "foundSettings",
+      {},
+    );
+    const settings: FoundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      ...found,
+    };
+    const customPatterns =
+      parsed.customPatterns ?? settings.sequenceRules.map((rule) => rule.pattern);
     const groups = await detectSequencesInDirectory(resolved, {
-      customPatterns: parsed.customPatterns,
+      customPatterns,
     });
-    return groups.map((group) => ({
-      id: group.id,
-      directory: group.directory,
-      baseName: group.baseName,
-      extension: group.extension,
-      pattern: group.pattern,
-      files: group.files,
-      frames: group.frames,
-      start: group.start,
-      end: group.end,
-      missingFrames: group.missingFrames,
-      width: group.width,
-      fps: group.fps,
-    }));
+    const minFrames = Math.max(
+      1,
+      settings.sequenceMinFrames || FOUND_SETTINGS_DEFAULTS.sequenceMinFrames,
+    );
+    return groups
+      .filter((group) => group.files.length >= minFrames)
+      .map((group) => ({
+        id: group.id,
+        directory: group.directory,
+        baseName: group.baseName,
+        extension: group.extension,
+        pattern: group.pattern,
+        files: group.files,
+        frames: group.frames,
+        start: group.start,
+        end: group.end,
+        missingFrames: group.missingFrames,
+        width: group.width,
+        fps: group.fps,
+      }));
+  });
+
+  // --- sequences:exportMp4（阶段 5 §10.1 MP4 presets）---
+
+  ipc.handle("sequences:exportMp4", async (request) => {
+    const parsed = z
+      .object({
+        files: z.array(pathSchema).min(1).max(100_000),
+        fps: z.number().int().min(1).max(240),
+        presetId: z.string().min(1).max(64),
+        outputDirectory: pathSchema,
+        baseName: z.string().min(1).max(128),
+      })
+      .parse(request);
+    const found = database().getSetting<Partial<FoundSettings>>(
+      "foundSettings",
+      {},
+    );
+    const settings: FoundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      ...found,
+    };
+    const preset =
+      settings.mp4Presets.find((item) => item.id === parsed.presetId) ??
+      settings.mp4Presets[0];
+    const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+    const outputPath = path.join(parsed.outputDirectory, `${safeBase}.mp4`);
+    const result = await exportSequenceToMp4({
+      files: parsed.files.map((file) => path.resolve(file)),
+      fps: parsed.fps,
+      maxWidth: preset.maxWidth,
+      crf: preset.crf,
+      outputPath,
+    });
+    return {
+      outputPath,
+      durationSeconds: result.durationSeconds,
+      frameCount: parsed.files.length,
+      width: result.width,
+      height: result.height,
+    };
   });
 
   // --- providers（计划 §6.1 / §13.4）---
