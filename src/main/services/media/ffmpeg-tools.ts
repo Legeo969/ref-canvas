@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegStatic from "ffmpeg-static";
@@ -86,4 +86,43 @@ export async function extractVideoPoster(
       ? Math.min(durationMs / 2, 30_000)
       : 0;
   return extractVideoFrame(filename, timeMs, outputPath, { width: 480, height: 320 }, executable, signal);
+}
+
+
+/**
+ * 阶段 5 §10.3：对 PNG 应用 Camera LUT（ffmpeg lut3d filter）。
+ * 输入输出为同一目录下的图片；输出先写临时文件再 rename（ffmpeg 拒绝
+ * 输出=输入）。LUT 进 thumbnail cache key 由调用方保证。
+ */
+export async function applyLut3dToPng(
+  inputPath: string,
+  lutPath: string,
+  outputPath: string,
+  executable = packagedFfmpegPath(),
+  signal?: AbortSignal,
+): Promise<void> {
+  const temporary = `${outputPath}.lut-tmp`;
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await execFileAsync(
+    executable,
+    [
+      "-v",
+      "error",
+      "-i",
+      inputPath,
+      "-vf",
+      `lut3d=${lutPath.replaceAll(":", "\\:")}`,
+      "-f",
+      "image2",
+      "-y",
+      temporary,
+    ],
+    {
+      maxBuffer: 16 * 1024 * 1024,
+      timeout: 30_000,
+      windowsHide: true,
+      signal,
+    },
+  );
+  await rename(temporary, outputPath);
 }

@@ -1067,6 +1067,35 @@ export interface DownscaleResult {
   modifiesSources: boolean;
 }
 
+/** 色彩管理状态（阶段 5 §10.3）。 */
+export interface ColorStatus {
+  /** 自动检测的 $OCIO 环境变量。 */
+  detectedOcio: string | null;
+  ocioConfigPath: string | null;
+  activeLut: string | null;
+  /** activeLut 是否真实存在（丢失时 UI 提示）。 */
+  activeLutExists: boolean;
+  lutDirectories: string[];
+}
+
+/** 已注册脚本（阶段 5 §10.5；sha256 信任锚点）。 */
+export interface RegisteredScript {
+  id: string;
+  name: string;
+  path: string;
+  hash: string;
+  kind: "py" | "ps1" | "other";
+  timeoutMs: number;
+  createdAt: string;
+}
+
+export interface ScriptRunResult {
+  exitCode: number | null;
+  output: string;
+  timedOut: boolean;
+  durationMs: number;
+}
+
 /** 图片序列分组（阶段 3 §9.4）。 */
 export interface SequenceGroupInfo {
   id: string;
@@ -1326,6 +1355,20 @@ export interface RefCanvasApi {
   providers: {
     list(): Promise<ProviderManifestInfo[]>;
     health(providerId: string): Promise<ProviderHealthInfo>;
+  };
+  color: {
+    /** 色彩管理状态（$OCIO 检测 + LUT）。 */
+    getStatus(): Promise<ColorStatus>;
+  };
+  scripts: {
+    list(): Promise<RegisteredScript[]>;
+    register(request: {
+      path: string;
+      name?: string;
+      timeoutMs?: number;
+    }): Promise<RegisteredScript>;
+    unregister(id: string): Promise<void>;
+    run(request: { id: string; cwd: string }): Promise<ScriptRunResult>;
   };
   watchRoots: {
     /** Full reconciliation of watched roots against the identity index. */

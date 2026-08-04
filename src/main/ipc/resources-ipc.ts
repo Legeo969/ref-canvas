@@ -16,8 +16,9 @@ import {
   type ProviderRegistry,
 } from "../platform/provider-registry";
 import type { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
+import type { ScriptsService } from "../services/scripts-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
-import { extractVideoFrame } from "../services/media/ffmpeg-tools";
+import { extractVideoFrame, applyLut3dToPng } from "../services/media/ffmpeg-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
 import { exportSequenceToMp4 } from "../services/media/mp4-export";
@@ -36,6 +37,7 @@ interface ResourcesIpcDependencies {
   getProviderRegistry(): ProviderRegistry;
   getThumbnailWorker(): ThumbnailWorkerClient | null;
   getThumbnailCacheDirectory(): string;
+  getScriptsService(): ScriptsService;
   previewTokens: PreviewTokenRegistry;
 }
 
@@ -169,9 +171,33 @@ export function registerResourcesIpc(
         .parse(options) ?? {};
     const cacheDirectory = dependencies.getThumbnailCacheDirectory();
     if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+    // 阶段 5 §10.3：当前 LUT 进入 cache key（路径+mtime+size），
+    // LUT 变化自动失效；activeLut 存在时缩略图叠加 lut3d。
+    const found = database().getSetting<Partial<FoundSettings>>(
+      "foundSettings",
+      {},
+    );
+    const settings: FoundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      ...found,
+    };
+    let lutSignature = "nolut";
+    let lutPath: string | null = null;
+    if (settings.activeLut) {
+      const lutInfo = await stat(settings.activeLut).catch(() => null);
+      if (lutInfo?.isFile()) {
+        lutPath = settings.activeLut;
+        lutSignature = createHash("sha256")
+          .update(
+            `${path.normalize(settings.activeLut)}:${lutInfo.mtimeMs}:${lutInfo.size}`,
+          )
+          .digest("hex")
+          .slice(0, 10);
+      }
+    }
     const target = path.join(
       cacheDirectory,
-      `media-${thumbnailIdForPath(resolved)}.png`,
+      `media-${thumbnailIdForPath(resolved)}-${lutSignature}.png`,
     );
     const kind = assetKindForExtension(extension);
     // 阶段 3/4：EXR/HDR、视频、PSD/PSB、音频、字体、文本走 provider
@@ -225,6 +251,9 @@ export function registerResourcesIpc(
           outputPath: target,
         },
       );
+      if (lutPath) {
+        await applyLut3dToPng(result.path, lutPath, target);
+      }
       return {
         path: result.path,
         width: result.width,
@@ -237,6 +266,9 @@ export function registerResourcesIpc(
       width: parsed.width ?? 480,
       height: parsed.height ?? 320,
     });
+    if (lutPath) {
+      await applyLut3dToPng(target, lutPath, target);
+    }
     return {
       path: target,
       width: parsed.width ?? 480,
@@ -429,6 +461,69 @@ export function registerResourcesIpc(
       frameCount: parsed.files.length,
       width: result.width,
       height: result.height,
+    };
+  });
+
+  // --- scripts（阶段 5 §10.5：Python/Shell 脚本信任执行）---
+
+  ipc.handle("scripts:list", () => dependencies.getScriptsService().list());
+
+  ipc.handle("scripts:register", async (request) => {
+    const parsed = z
+      .object({
+        path: pathSchema,
+        name: z.string().max(128).optional(),
+        timeoutMs: z.number().int().min(1_000).max(600_000).default(60_000),
+      })
+      .parse(request);
+    return dependencies.getScriptsService().register(
+      path.resolve(parsed.path),
+      parsed.name,
+      parsed.timeoutMs,
+    );
+  });
+
+  ipc.handle("scripts:unregister", (id) => {
+    dependencies.getScriptsService().unregister(z.string().min(1).max(64).parse(id));
+  });
+
+  ipc.handle("scripts:run", async (request) => {
+    const parsed = z
+      .object({
+        id: z.string().min(1).max(64),
+        cwd: pathSchema,
+      })
+      .parse(request);
+    return dependencies.getScriptsService().run(parsed.id, path.resolve(parsed.cwd));
+  });
+
+  // --- color:get-status（阶段 5 §10.3 色彩管理）---
+
+  ipc.handle("color:get-status", async () => {
+    const found = database().getSetting<Partial<FoundSettings>>(
+      "foundSettings",
+      {},
+    );
+    const settings: FoundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      ...found,
+    };
+    const detected = process.env.OCIO ?? null;
+    let activeLutExists = false;
+    if (settings.activeLut) {
+      try {
+        const info = await stat(settings.activeLut);
+        activeLutExists = info.isFile();
+      } catch {
+        activeLutExists = false;
+      }
+    }
+    return {
+      detectedOcio: detected,
+      ocioConfigPath: settings.ocioConfigPath,
+      activeLut: settings.activeLut,
+      activeLutExists,
+      lutDirectories: settings.lutDirectories,
     };
   });
 

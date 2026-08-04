@@ -225,6 +225,15 @@ const api: RefCanvasApi = {
     health: (providerId) =>
       ipcRenderer.invoke("providers:health", providerId),
   },
+  color: {
+    getStatus: () => ipcRenderer.invoke("color:get-status"),
+  },
+  scripts: {
+    list: () => ipcRenderer.invoke("scripts:list"),
+    register: (request) => ipcRenderer.invoke("scripts:register", request),
+    unregister: (id) => ipcRenderer.invoke("scripts:unregister", id),
+    run: (request) => ipcRenderer.invoke("scripts:run", request),
+  },
   watchRoots: {
     reconcile: (rootId) =>
       ipcRenderer.invoke("watch-roots:reconcile", rootId),

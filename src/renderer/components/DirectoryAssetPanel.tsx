@@ -13,6 +13,7 @@ import {
   Scissors,
   Shrink,
   Tags,
+  TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
@@ -22,6 +23,7 @@ import type {
   DirectoryBatchSnapshot,
   DirectoryEntry,
   DirectorySearchSnapshot,
+  RegisteredScript,
   SequenceGroupInfo,
 } from "../../shared/contracts";
 import { applySelectionClick } from "../app/directory-selection";
@@ -57,6 +59,14 @@ function formatSize(bytes: number | undefined): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** 文件所在目录（renderer 不依赖 node:path）。 */
+function dirnameOf(filename: string): string {
+  const index = filename.lastIndexOf("\\");
+  const alt = filename.lastIndexOf("/");
+  const cut = Math.max(index, alt);
+  return cut <= 0 ? filename : filename.slice(0, cut);
 }
 
 interface DirectoryCardProps {
@@ -169,6 +179,24 @@ export function DirectoryAssetPanel() {
   const store = useAppStore();
   const foundSettings = useFoundSettings();
   const dialog = useDialog();
+  // 阶段 5 §10.5：已注册脚本（右键菜单运行；信任校验在主进程）。
+  const [registeredScripts, setRegisteredScripts] = useState<RegisteredScript[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      void window.refCanvas.scripts
+        .list()
+        .then((scripts) => {
+          if (!cancelled) setRegisteredScripts(scripts);
+        })
+        .catch(() => undefined);
+    } catch {
+      // 测试或受限环境没有 scripts API：不显示脚本菜单。
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // 阶段 5 §10.1：当前目录 flatten 深度（每文件夹记忆 > 默认值）。
   const currentFlattenDepth =
     (store.directoryPath
@@ -767,6 +795,44 @@ export function DirectoryAssetPanel() {
       mode: foundSettings.downscaleMode,
     });
     await store.reloadDirectory();
+  };
+
+  // 阶段 5 §10.5：运行脚本（cwd = 条目所在目录；hash 变更由主进程拒绝）。
+  const runScript = async (
+    script: RegisteredScript,
+    entry: DirectoryEntry,
+  ) => {
+    try {
+      const result = await window.refCanvas.scripts.run({
+        id: script.id,
+        cwd: entry.isDirectory ? entry.path : dirnameOf(entry.path),
+      });
+      const summary = result.timedOut
+        ? `${script.name}：超时终止`
+        : `${script.name}：退出码 ${result.exitCode ?? "?"}（${result.durationMs}ms）`;
+      await dialog.requestConfirm({
+        title: summary,
+        description:
+          result.output.trim().slice(0, 4000) || "（无输出）",
+        confirmLabel: "关闭",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "运行失败";
+      if (message === "SCRIPT_HASH_CHANGED") {
+        await dialog.requestConfirm({
+          title: "脚本已被修改",
+          description:
+            "文件内容与注册时的 sha256 不一致，为安全起见已拒绝运行。请在设置中重新注册该脚本。",
+          confirmLabel: "知道了",
+        });
+      } else {
+        await dialog.requestConfirm({
+          title: "脚本运行失败",
+          description: message,
+          confirmLabel: "关闭",
+        });
+      }
+    }
   };
 
   const trashEntry = async (entry: DirectoryEntry) => {
@@ -1630,6 +1696,26 @@ export function DirectoryAssetPanel() {
                 <Shrink size={16} />
                 Downscale…
               </button>
+              {registeredScripts.length > 0 && (
+                <>
+                  <span className="context-menu-divider" />
+                  <span className="context-menu-label">运行脚本</span>
+                  {registeredScripts.map((script) => (
+                    <button
+                      role="menuitem"
+                      key={script.id}
+                      onClick={() => {
+                        const entry = contextMenu.entry;
+                        setContextMenu(null);
+                        void runScript(script, entry);
+                      }}
+                    >
+                      <TerminalSquare size={16} />
+                      {script.name}
+                    </button>
+                  ))}
+                </>
+              )}
               <button
                 role="menuitem"
                 onClick={() => {

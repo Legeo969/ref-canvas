@@ -10,6 +10,7 @@ import {
   Info,
   MonitorCog,
   PanelLeftClose,
+  Plus,
   ScanLine,
   Settings2,
   SlidersHorizontal,
@@ -21,9 +22,11 @@ import type {
   AppPreferences,
   AppPreferencesPatch,
   BackupRecord,
+  ColorStatus,
   FoundSettings,
   LibraryPreferences,
   MediaMetadataSnapshot,
+  RegisteredScript,
   WatchRoot,
 } from "../../shared/contracts";
 import { PANEL_DEFAULTS } from "../app/panel-layout";
@@ -59,6 +62,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     null,
   );
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [colorStatus, setColorStatus] = useState<ColorStatus | null>(null);
+  const [scripts, setScripts] = useState<RegisteredScript[]>([]);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [watchRoots, setWatchRoots] = useState<WatchRoot[]>([]);
   const [migrationResult, setMigrationResult] = useState("");
@@ -84,6 +89,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   useEffect(() => {
     void window.refCanvas.system.getPreferences().then(setAppPreferences);
     void window.refCanvas.system.getAppInfo().then(setAppInfo);
+    void window.refCanvas.color.getStatus().then(setColorStatus);
+    void window.refCanvas.scripts.list().then(setScripts);
     void reload();
     void window.refCanvas.library
       .getMediaMetadataRebuild()
@@ -676,6 +683,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </label>
 
                 <h3>色彩管理</h3>
+                <p className="settings-hint">
+                  {colorStatus?.detectedOcio
+                    ? `自动检测 $OCIO：${colorStatus.detectedOcio}`
+                    : "未检测到 $OCIO 环境变量"}
+                  {colorStatus?.activeLut && !colorStatus.activeLutExists
+                    ? "；当前 LUT 文件不存在"
+                    : ""}
+                  ；LUT 变化会自动失效缩略图缓存
+                </p>
                 <label className="settings-row">
                   <span>
                     OCIO config 路径
@@ -708,6 +724,97 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     }
                   />
                 </label>
+
+                <h3>脚本（Python/Shell）</h3>
+                <p className="settings-hint">
+                  注册时记录 sha256 信任锚点；脚本被修改后需重新注册才能运行。
+                </p>
+                <div className="watch-root-list">
+                  {scripts.length === 0 && (
+                    <p className="watch-root-empty">
+                      还没有注册脚本。目录右键菜单可运行已注册脚本。
+                    </p>
+                  )}
+                  {scripts.map((script) => (
+                    <div className="watch-root-row" key={script.id}>
+                      <div>
+                        <strong title={script.path}>{script.name}</strong>
+                        <span title={script.hash}>
+                          {script.kind.toUpperCase()} · 超时{" "}
+                          {Math.round(script.timeoutMs / 1000)}s · sha256{" "}
+                          {script.hash.slice(0, 12)}…
+                        </span>
+                      </div>
+                      <div className="watch-root-actions">
+                        <button
+                          className="secondary-button"
+                          onClick={() =>
+                            void window.refCanvas.system.revealInFolder(
+                              script.path,
+                            )
+                          }
+                        >
+                          <FolderOpen size={14} />
+                          定位
+                        </button>
+                        <button
+                          className="secondary-button"
+                          onClick={() => {
+                            void window.refCanvas.scripts
+                              .unregister(script.id)
+                              .then(() =>
+                                window.refCanvas.scripts.list().then(setScripts),
+                              );
+                          }}
+                        >
+                          <X size={14} />
+                          移除
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="secondary-button"
+                  onClick={async () => {
+                    const values = await dialog.requestForm({
+                      title: "注册脚本",
+                      description: "脚本将在目录右键菜单中运行（带信任校验与超时）。",
+                      confirmLabel: "注册",
+                      fields: [
+                        {
+                          name: "path",
+                          label: "脚本绝对路径（.py / .ps1）",
+                          required: true,
+                          maxLength: 4096,
+                        },
+                        {
+                          name: "timeout",
+                          label: "超时秒数（默认 60）",
+                          required: false,
+                          maxLength: 6,
+                        },
+                      ],
+                      onSubmit: () => undefined,
+                    });
+                    if (!values) return;
+                    try {
+                      await window.refCanvas.scripts.register({
+                        path: values.path,
+                        timeoutMs: (Number(values.timeout) || 60) * 1000,
+                      });
+                      const next = await window.refCanvas.scripts.list();
+                      setScripts(next);
+                    } catch (error) {
+                      window.alert(
+                        error instanceof Error ? error.message : "注册失败",
+                      );
+                    }
+                  }}
+                >
+                  <Plus size={14} />
+                  注册脚本…
+                </button>
 
                 <h3>本地</h3>
                 <label className="settings-toggle">

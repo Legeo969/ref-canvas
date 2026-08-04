@@ -37,6 +37,7 @@ import { LibraryService } from "./services/library-service";
 import { FilesystemService } from "./services/filesystem-service";
 import { FileOperationsService } from "./services/file-operations-service";
 import { MountService } from "./services/mount-service";
+import { ScriptsService } from "./services/scripts-service";
 import { DirectoryIndexClient } from "./platform/directory-index-client";
 import { ImportEnumeratorClient } from "./platform/import-enumerator-client";
 import { DirectoryBatchService } from "./services/directory-batch-service";
@@ -117,6 +118,7 @@ let directoryService: FilesystemService;
 let directoryBatches: DirectoryBatchService;
 let fileOperations: FileOperationsService;
 let mountService: MountService;
+let scriptsService: ScriptsService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -374,7 +376,11 @@ function broadcastAll(channel: string, ...args: unknown[]): void {
 /** 后台驻留：关闭窗口后保留主进程、目录监控与托盘（可选设置，默认关闭）。 */
 function backgroundResidencyEnabled(): boolean {
   if (quitting) return false;
-  return database.getSetting("backgroundResidency", false);
+  // 阶段 5 §10.5：closeBehavior=tray 与 backgroundResidency 等效。
+  return (
+    database.getSetting("backgroundResidency", false) ||
+    database.getSetting<"quit" | "tray">("closeBehavior", "quit") === "tray"
+  );
 }
 
 function rebuildTrayMenu(): void {
@@ -526,6 +532,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
       directoryService.validateRevision(directoryPath, revision),
   });
   mountService = new MountService(database);
+  scriptsService = new ScriptsService(database);
   // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
   mountService.onMountStateChanged(({ mountId, state }) => {
     if (state !== "online") return;
@@ -614,6 +621,7 @@ function registerIpc(): void {
     getProviderRegistry: () => providerRegistry!,
     getThumbnailWorker: () => thumbnailWorker,
     getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
+    getScriptsService: () => scriptsService,
     previewTokens,
   });
 
