@@ -95,8 +95,13 @@ describe("DirectoryAssetPanel", () => {
       addButton?.click();
     });
     expect(
-      (document.querySelector("select") as HTMLSelectElement).value,
-    ).toBe("collection-1");
+      (document.querySelector("select[aria-label='文件夹展开深度']") as HTMLSelectElement)
+        ?.value,
+    ).toBe("0");
+    const collectionSelect = Array.from(
+      document.querySelectorAll<HTMLSelectElement>("select"),
+    ).find((select) => select.value === "collection-1");
+    expect(collectionSelect?.value).toBe("collection-1");
 
     await act(async () => {
       (

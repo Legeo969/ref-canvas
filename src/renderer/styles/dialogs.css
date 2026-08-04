@@ -3533,3 +3533,35 @@
   border-color: rgba(201, 154, 91, 0.3);
   color: #e0b178;
 }
+
+
+/* 阶段 5：Folder flattening */
+
+.dir-flatten-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  color: #8d9a94;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dir-flatten-control select {
+  background: #1a1f1d;
+  color: #c8d1cc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.dir-flatten-warning {
+  margin: 0 14px 8px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  background: rgba(201, 154, 91, 0.1);
+  border: 1px solid rgba(201, 154, 91, 0.25);
+  color: #e0b178;
+  font-size: 12.5px;
+}

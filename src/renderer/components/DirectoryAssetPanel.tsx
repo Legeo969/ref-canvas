@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Search,
   Scissors,
+  Shrink,
   Tags,
   Trash2,
   X,
@@ -67,6 +68,8 @@ interface DirectoryCardProps {
   onPreview(): void;
   /** 阶段 5：文件夹打开方式（single = 单击进入，double = 双击进入）。 */
   folderClickMode: "single" | "double";
+  /** 阶段 5：flatten 视图下显示相对路径（子目录条目）。 */
+  displayName?: string;
   priority: "visible" | "overscan";
 }
 
@@ -80,6 +83,7 @@ function DirectoryCard({
   onPreview,
   priority,
   folderClickMode,
+  displayName,
 }: DirectoryCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -151,7 +155,7 @@ function DirectoryCard({
         )}
       </span>
       <span className="asset-title" title={entry.path}>
-        <HighlightedText text={entry.name} query={query} />
+        <HighlightedText text={displayName ?? entry.name} query={query} />
       </span>
       <span className="asset-meta">
         {entry.isDirectory ? "目录" : formatSize(entry.size)}
@@ -165,6 +169,19 @@ export function DirectoryAssetPanel() {
   const store = useAppStore();
   const foundSettings = useFoundSettings();
   const dialog = useDialog();
+  // 阶段 5 §10.1：当前目录 flatten 深度（每文件夹记忆 > 默认值）。
+  const currentFlattenDepth =
+    (store.directoryPath
+      ? foundSettings.flattenPerFolder[store.directoryPath]
+      : undefined) ?? foundSettings.defaultFlattenDepth;
+  const setFlattenDepth = (depth: number) => {
+    if (!store.directoryPath) return;
+    void window.refCanvas.system.setPreferences({
+      foundSettings: {
+        flattenPerFolder: { [store.directoryPath]: depth },
+      },
+    });
+  };
   const [query, setQuery] = useState("");
   const [searchId, setSearchId] = useState<string | null>(null);
   const activeSearchIdRef = useRef<string | null>(null);
@@ -706,6 +723,50 @@ export function DirectoryAssetPanel() {
         .filter(Boolean),
     );
     await store.reloadAssets();
+  };
+
+  // 阶段 5 §10.4：Downscale naming（suffix/子目录/备份原文件三种模式）。
+  const downscaleEntry = async (entry: DirectoryEntry) => {
+    if (entry.isDirectory) return;
+    const values = await dialog.requestForm({
+      title: "Downscale",
+      description: `模式：${foundSettings.downscaleMode === "suffix"
+        ? `文件名追加 _${foundSettings.downscaleSuffix || "2k"}`
+        : foundSettings.downscaleMode === "subdirectory"
+          ? `输出到 ${foundSettings.downscaleSubdirectory || "downscaled"} 子目录`
+          : "保持原名并备份原文件"}`,      confirmLabel: "开始",
+      fields: [
+        {
+          name: "maxDimension",
+          label: "最大边像素（64–16384）",
+          required: true,
+          maxLength: 6,
+        },
+      ],
+      onSubmit: () => undefined,
+    });
+    if (!values) return;
+    const maxDimension = Math.max(
+      64,
+      Math.min(16_384, Number(values.maxDimension) || 2048),
+    );
+    if (foundSettings.downscaleMode === "backup") {
+      // §10.4：backup 模式修改原路径，执行前展示源/备份/输出。
+      const backupPath = `${entry.path.slice(0, -(entry.extension.length + 1))}.bak.${entry.extension}`;
+      const confirmed = await dialog.requestConfirm({
+        title: "备份并覆盖原文件？",
+        description: `源：${entry.path}\n备份：${backupPath}\n输出：${entry.path}（覆盖）`,
+        confirmLabel: "备份并 Downscale",
+        danger: true,
+      });
+      if (!confirmed) return;
+    }
+    await window.refCanvas.media.downscale({
+      paths: [entry.path],
+      maxDimension,
+      mode: foundSettings.downscaleMode,
+    });
+    await store.reloadDirectory();
   };
 
   const trashEntry = async (entry: DirectoryEntry) => {
@@ -1275,7 +1336,26 @@ export function DirectoryAssetPanel() {
             </span>
           ))}
         </div>
+        <label className="dir-flatten-control" title="Folder flattening：展开子目录内容">
+          <span>展开</span>
+          <select
+            value={currentFlattenDepth}
+            onChange={(event) => setFlattenDepth(Number(event.target.value))}
+            aria-label="文件夹展开深度"
+          >
+            <option value={0}>关闭</option>
+            <option value={1}>1 层</option>
+            <option value={2}>2 层</option>
+            <option value={3}>3 层</option>
+          </select>
+        </label>
       </div>
+
+      {currentFlattenDepth > 0 && totalEntries > 5000 && (
+        <div className="dir-flatten-warning">
+          该目录展开后内容较多（{totalEntries} 项），滚动可能变慢。可减少展开深度。
+        </div>
+      )}
 
       {totalEntries ? (
         <div
@@ -1393,6 +1473,11 @@ export function DirectoryAssetPanel() {
                     onSelect={(event) => selectEntry(entry, event)}
                     onPreview={() => openPreview(entry)}
                     folderClickMode={foundSettings.folderClickMode}
+                    displayName={
+                      currentFlattenDepth > 0 && (entry.depth ?? 0) > 0
+                        ? entry.path.slice((store.directoryPath ?? "").length + 1)
+                        : undefined
+                    }
                     priority={
                       row >= firstVisibleRow && row <= lastVisibleRow
                         ? "visible"
@@ -1534,6 +1619,17 @@ export function DirectoryAssetPanel() {
                 <Tags size={16} />
                 设置标签
               </button>
+              <span className="context-menu-divider" />
+              <button
+                role="menuitem"
+                onClick={() => {
+                  setContextMenu(null);
+                  void downscaleEntry(contextMenu.entry);
+                }}
+              >
+                <Shrink size={16} />
+                Downscale…
+              </button>
               <button
                 role="menuitem"
                 onClick={() => {
@@ -1608,9 +1704,15 @@ export function DirectoryAssetPanel() {
     pageRequestsRef.current.add(offset);
     setLoadingMore(true);
     try {
+      // 阶段 5 §10.1：flatten 深度（每文件夹记忆优先于默认）+ 隐藏文件。
       const page = await window.refCanvas.filesystem.listDirectory(
         store.directoryPath,
-        { pageSize: directoryPageSize, offset },
+        {
+          pageSize: directoryPageSize,
+          offset,
+          flattenDepth: currentFlattenDepth,
+          showHidden: foundSettings.showHiddenFiles,
+        },
       );
       setDirectoryTotal(page.total);
       setDirectoryRevision(page.revision ?? "");

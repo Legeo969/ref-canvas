@@ -21,6 +21,10 @@ import { extractVideoFrame } from "../services/media/ffmpeg-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
 import { exportSequenceToMp4 } from "../services/media/mp4-export";
+import {
+  downscaleImage,
+  planDownscale,
+} from "../services/media/downscale";
 import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
 import type { FoundSettings } from "../../shared/contracts";
 import { idSchema, pathSchema } from "./schemas";
@@ -425,6 +429,48 @@ export function registerResourcesIpc(
       frameCount: parsed.files.length,
       width: result.width,
       height: result.height,
+    };
+  });
+
+  // --- media:downscale（阶段 5 §10.4 Downscale naming）---
+
+  ipc.handle("media:downscale", async (request) => {
+    const parsed = z
+      .object({
+        paths: z.array(pathSchema).min(1).max(500),
+        maxDimension: z.number().int().min(64).max(16_384),
+        mode: z.enum(["suffix", "subdirectory", "backup"]),
+      })
+      .parse(request);
+    const found = database().getSetting<Partial<FoundSettings>>(
+      "foundSettings",
+      {},
+    );
+    const settings: FoundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      ...found,
+    };
+    const items = parsed.paths.map((sourcePath) =>
+      planDownscale(path.resolve(sourcePath), {
+        maxDimension: parsed.maxDimension,
+        mode: parsed.mode,
+        suffix: settings.downscaleSuffix,
+        subdirectory: settings.downscaleSubdirectory,
+      }),
+    );
+    const results: Array<{
+      sourcePath: string;
+      outputPath: string;
+      width: number;
+      height: number;
+    }> = [];
+    for (const item of items) {
+      const result = await downscaleImage(item, parsed.maxDimension);
+      results.push(result);
+    }
+    return {
+      results,
+      modifiesSources: parsed.mode === "backup",
     };
   });
 

@@ -22,6 +22,10 @@ export interface ListDirectoryOptions {
   cursor?: string;
   offset?: number;
   pageSize?: number;
+  /** 阶段 5 §10.1：Folder flattening 深度（0 = 关闭；1/2 = 展开层级）。 */
+  flattenDepth?: number;
+  /** 阶段 5 §10.1：显示隐藏文件（以 . 开头）。 */
+  showHidden?: boolean;
 }
 
 type DirectoryWatcherFactory = (
@@ -185,14 +189,40 @@ export class FilesystemService {
     options: ListDirectoryOptions = {},
   ): Promise<DirectoryPage> {
     const resolved = path.resolve(filename);
+    const showHidden = options.showHidden ?? false;
+    const flattenDepth = Math.max(0, Math.min(8, options.flattenDepth ?? 0));
+    if (flattenDepth > 0) {
+      // §10.1：flatten 用递归 readdir 展开（深度受限），返回树序条目。
+      const entries = await this.listFlattened(
+        resolved,
+        flattenDepth,
+        showHidden,
+        0,
+      );
+      const pageSize = Math.max(1, Math.min(10_000, options.pageSize ?? 500));
+      const cursor = Number.parseInt(options.cursor ?? "0", 10);
+      const start = Number.isFinite(cursor) ? Math.max(0, cursor) : 0;
+      return {
+        entries: entries.slice(start, start + pageSize),
+        total: entries.length,
+        nextCursor:
+          start + pageSize < entries.length ? String(start + pageSize) : null,
+      };
+    }
     if (this.indexClient) {
       const cursor = Number.parseInt(options.cursor ?? "0", 10);
       const offset = options.offset ?? (Number.isFinite(cursor) ? cursor : 0);
-      return this.indexClient.list(
+      const page = await this.indexClient.list(
         resolved,
         Math.max(0, offset),
         Math.max(1, Math.min(512, options.pageSize ?? 512)),
       );
+      if (showHidden) return page;
+      // 索引未过滤隐藏文件；这里过滤（隐藏文件罕见，跨页边界可能轻微错位）。
+      return {
+        ...page,
+        entries: page.entries.filter((entry) => !entry.name.startsWith(".")),
+      };
     }
     let cached = this.directoryCache.get(resolved);
     if (!cached) {
@@ -213,14 +243,69 @@ export class FilesystemService {
     const pageSize = Math.max(1, Math.min(10_000, options.pageSize ?? 500));
     const cursor = Number.parseInt(options.cursor ?? "0", 10);
     const start = Number.isFinite(cursor) ? Math.max(0, cursor) : 0;
+    let entries = cached.entries;
+    if (!showHidden) entries = entries.filter((entry) => !entry.name.startsWith("."));
     return {
-      entries: cached.entries.slice(start, start + pageSize),
-      total: cached.entries.length,
+      entries: entries.slice(start, start + pageSize),
+      total: entries.length,
       nextCursor:
-        start + pageSize < cached.entries.length
-          ? String(start + pageSize)
-          : null,
+        start + pageSize < entries.length ? String(start + pageSize) : null,
     };
+  }
+
+  /**
+   * §10.1 Folder flattening：递归展开子目录（DFS 树序，目录优先）。
+   * 隐藏文件按 showHidden 过滤；条目带 depth 供 UI 分组显示。
+   */
+  private async listFlattened(
+    directory: string,
+    maxDepth: number,
+    showHidden: boolean,
+    depth: number,
+  ): Promise<DirectoryEntry[]> {
+    let dirents: Array<{ name: string; isDirectory: boolean }>;
+    try {
+      const raw = await readdir(directory, { withFileTypes: true });
+      dirents = raw.map((entry) => ({
+        name: entry.name,
+        isDirectory: entry.isDirectory(),
+      }));
+    } catch {
+      return [];
+    }
+    const sorted = dirents
+      .filter((entry) => showHidden || !entry.name.startsWith("."))
+      .sort((left, right) => {
+        if (left.isDirectory !== right.isDirectory) {
+          return left.isDirectory ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name, "zh-CN");
+      });
+    const result: DirectoryEntry[] = [];
+    const subdirectories: Array<{ name: string; isDirectory: boolean }> = [];
+    for (const entry of sorted) {
+      const next: DirectoryEntry = {
+        path: path.join(directory, entry.name),
+        name: entry.name,
+        isDirectory: entry.isDirectory,
+        extension: extensionFor(entry.name, entry.isDirectory),
+        depth,
+      };
+      result.push(next);
+      if (entry.isDirectory && depth < maxDepth) {
+        subdirectories.push(entry);
+      }
+    }
+    for (const entry of subdirectories) {
+      const nested = await this.listFlattened(
+        path.join(directory, entry.name),
+        maxDepth,
+        showHidden,
+        depth + 1,
+      );
+      result.push(...nested);
+    }
+    return result;
   }
 
   /** 目录失效（删除/改名后）从缓存移除。 */

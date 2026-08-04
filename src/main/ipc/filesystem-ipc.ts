@@ -85,6 +85,8 @@ export function registerFilesystemIpc(
           cursor: z.string().max(64).optional(),
           offset: z.number().int().min(0).max(10_000_000).optional(),
           pageSize: z.number().int().min(1).max(512).optional(),
+          flattenDepth: z.number().int().min(0).max(8).optional(),
+          showHidden: z.boolean().optional(),
         })
         .optional()
         .parse(options),

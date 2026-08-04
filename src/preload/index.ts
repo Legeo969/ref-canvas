@@ -206,6 +206,7 @@ const api: RefCanvasApi = {
     preview: (path) => ipcRenderer.invoke("media:preview", path),
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
+    downscale: (request) => ipcRenderer.invoke("media:downscale", request),
     convert: (path, targetFormat) =>
       ipcRenderer.invoke("media:convert", path, targetFormat),
     cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),

@@ -457,6 +457,8 @@ export interface DirectoryEntry {
   isDirectory: boolean;
   /** 小写扩展名（不含点）；目录为空字符串。 */
   extension: string;
+  /** Folder flattening 深度（阶段 5；0 = 当前目录层）。 */
+  depth?: number;
   /** 按需分批补齐的元数据，排序依赖字段时先完成补齐再稳定排序。 */
   size?: number;
   mtimeMs?: number;
@@ -1045,6 +1047,26 @@ export interface ExportMp4Result {
   height: number;
 }
 
+/** Downscale 请求（阶段 5 §10.4）。 */
+export interface DownscaleRequest {
+  paths: string[];
+  maxDimension: number;
+  mode: "suffix" | "subdirectory" | "backup";
+}
+
+export interface DownscaleItemResult {
+  sourcePath: string;
+  outputPath: string;
+  width: number;
+  height: number;
+}
+
+export interface DownscaleResult {
+  results: DownscaleItemResult[];
+  /** backup 模式覆盖了原路径（UI 需先确认）。 */
+  modifiesSources: boolean;
+}
+
 /** 图片序列分组（阶段 3 §9.4）。 */
 export interface SequenceGroupInfo {
   id: string;
@@ -1289,6 +1311,8 @@ export interface RefCanvasApi {
       path: string,
       options?: { limit?: number },
     ): Promise<TextPreviewResult>;
+    /** Downscale 图片（阶段 5 §10.4 Downscale naming）。 */
+    downscale(request: DownscaleRequest): Promise<DownscaleResult>;
   };
   sequences: {
     /** 检测目录内的图片序列分组（阶段 3 §9.4）。 */
@@ -1315,10 +1339,16 @@ export interface RefCanvasApi {
     listRoots(): Promise<DirectoryEntry[]>;
     /** 观察当前可见目录；native watcher 失败时由 main 降级为 mtime polling。 */
     setObservedDirectory(path: string | null): Promise<void>;
-    /** 展开目录下一层（游标分页）。 */
+    /** 展开目录下一层（游标分页）；flattenDepth/showHidden 见阶段 5。 */
     listDirectory(
       path: string,
-      options?: { cursor?: string; offset?: number; pageSize?: number },
+      options?: {
+        cursor?: string;
+        offset?: number;
+        pageSize?: number;
+        flattenDepth?: number;
+        showHidden?: boolean;
+      },
     ): Promise<DirectoryPage>;
     onDirectoryProgress(
       callback: (snapshot: DirectoryProgressSnapshot) => void,

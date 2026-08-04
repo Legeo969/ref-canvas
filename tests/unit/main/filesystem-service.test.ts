@@ -238,6 +238,87 @@ describe("listDirectory", () => {
   });
 });
 
+describe("listDirectory flatten + hidden（阶段 5 §10.1）", () => {
+  it("flattenDepth=1 展开一层子目录，条目带 depth", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(root);
+    const sub = path.join(root, "sub");
+    await mkdir(sub);
+    await Promise.all([
+      writeFile(path.join(root, "top.png"), Buffer.alloc(4)),
+      writeFile(path.join(sub, "inner.png"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    try {
+      const page = await directory.listDirectory(root, { flattenDepth: 1 });
+      const inner = page.entries.find((entry) => entry.name === "inner.png");
+      expect(inner).toBeTruthy();
+      expect(inner?.depth).toBe(1);
+      const top = page.entries.find((entry) => entry.name === "top.png");
+      expect(top?.depth).toBe(0);
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("flattenDepth=2 展开两层", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(root);
+    const deep = path.join(root, "a", "b");
+    await mkdir(deep, { recursive: true });
+    await writeFile(path.join(deep, "leaf.png"), Buffer.alloc(4));
+    const { database, directory } = createService();
+    try {
+      const page = await directory.listDirectory(root, { flattenDepth: 2 });
+      const leaf = page.entries.find((entry) => entry.name === "leaf.png");
+      expect(leaf).toBeTruthy();
+      expect(leaf?.depth).toBe(2);
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("showHidden=false 过滤点开头文件；true 显示", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(root);
+    await Promise.all([
+      writeFile(path.join(root, "visible.png"), Buffer.alloc(4)),
+      writeFile(path.join(root, ".secret.png"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    try {
+      const hidden = await directory.listDirectory(root, { showHidden: false });
+      expect(hidden.entries.map((entry) => entry.name)).not.toContain(".secret.png");
+      const shown = await directory.listDirectory(root, { showHidden: true });
+      expect(shown.entries.map((entry) => entry.name)).toContain(".secret.png");
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("flatten 模式同样过滤隐藏文件", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(root);
+    const sub = path.join(root, "sub");
+    await mkdir(sub);
+    await writeFile(path.join(sub, ".hidden.png"), Buffer.alloc(4));
+    const { database, directory } = createService();
+    try {
+      const page = await directory.listDirectory(root, {
+        flattenDepth: 1,
+        showHidden: false,
+      });
+      expect(page.entries.map((entry) => entry.name)).not.toContain(".hidden.png");
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+});
+
 describe("directory search", () => {
   it("returns current-level results and streams subdirectory matches", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
