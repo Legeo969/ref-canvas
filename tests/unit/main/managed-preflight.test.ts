@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -74,6 +74,28 @@ describe("managed preflight (plan 13.3)", () => {
       expect(after.path.startsWith(targetDir)).toBe(true);
       expect((await stat(after.path)).size).toBe(1_024);
       expect(database.listManagedAssets()).toHaveLength(0);
+      // 目标目录已注册为 mount root（§13.3 第 6 条）。
+      expect(
+        database.listMountRoots().some((mount) => mount.path === targetDir),
+      ).toBe(true);
+    } finally {
+      await service.close();
+      database.close();
+    }
+  });
+
+  it("counts orphan store files so direct migration is not claimed with leftovers", async () => {
+    const root = await createTempDir();
+    const { database, service } = await createLibraryService(root);
+    try {
+      // 手动放置孤儿文件（无对应 managed 记录）。
+      const filesDir = path.join(root, "files");
+      await mkdir(filesDir, { recursive: true });
+      await writeFile(path.join(filesDir, "orphan.bin"), "x");
+      const report = await service.prepareManagedMigration();
+      expect(report.managedAssets).toBe(0);
+      expect(report.managedFiles).toBe(1);
+      expect(report.canMigrateDirectly).toBe(false);
     } finally {
       await service.close();
       database.close();

@@ -864,13 +864,17 @@ export class LibraryService {
 
   /**
    * Records the persistent file identity of an asset when it lives under one
-   * of the watched roots. The identity key is the on-disk path, so later
-   * moves and renames can be confirmed by fingerprint. Called after an asset
-   * is upserted (the asset id is only known then).
+   * of the watched roots or a registered mount root. The identity key is the
+   * on-disk path, so later moves and renames can be confirmed by fingerprint.
+   * Called after an asset is upserted (the asset id is only known then).
    */
   private updateIdentity(asset: AssetRecord): void {
     if (asset.storageMode === "managed") return;
-    const roots = this.database.listWatchRoots();
+    // watch roots 与 mount roots 都是合法身份根（§7.2）。
+    const roots = [
+      ...this.database.listWatchRoots(),
+      ...this.database.listMountRoots(),
+    ];
     const match = roots.find(
       (item) =>
         asset.path === item.path ||
@@ -1798,7 +1802,7 @@ export class LibraryService {
 
   /**
    * Managed preflight（计划 §13.3）：统计 managed records 与实际 store 文件。
-   * 返回迁移前的检查报告；managed 为零时允许直接退役。
+   * 返回迁移前的检查报告；managed 记录与 store 文件都为零时允许直接退役。
    */
   async prepareManagedMigration(): Promise<{
     managedAssets: number;
@@ -1807,21 +1811,18 @@ export class LibraryService {
     canMigrateDirectly: boolean;
   }> {
     const managed = this.database.listManagedAssets();
-    const files = managed.length
-      ? await this.managedStoreFiles()
-      : [];
+    // 实际文件统计独立于记录数：孤儿文件也算作待迁移数据。
+    const files = await this.managedStoreFiles();
     let storeBytes = 0;
     for (const filename of files) {
-      const info = await stat(path.join(this.managedStore, filename)).catch(
-        () => null,
-      );
-      if (info) storeBytes += info.size;
+      const info = await stat(filename).catch(() => null);
+      if (info?.isFile()) storeBytes += info.size;
     }
     return {
       managedAssets: managed.length,
       managedFiles: files.length,
       storeBytes,
-      canMigrateDirectly: managed.length === 0,
+      canMigrateDirectly: managed.length === 0 && files.length === 0,
     };
   }
 
@@ -1838,14 +1839,18 @@ export class LibraryService {
     const targetRoot = path.resolve(targetDirectory);
     const failed: Array<{ path: string; reason: string }> = [];
     let migrated = 0;
+    await mkdir(targetRoot, { recursive: true });
     for (const asset of managed) {
       const existing = this.database.getAsset(asset.id);
-      if (!existing) continue;
+      if (!existing) {
+        // 记录缺失也是失败：不得静默移除 store。
+        failed.push({ path: asset.path, reason: "MANAGED_ASSET_RECORD_MISSING" });
+        continue;
+      }
       const filename = path.basename(asset.path);
       const targetPath = path.join(targetRoot, filename);
       try {
-        await mkdir(targetRoot, { recursive: true });
-        // 复制并校验（contentHash 已记录源 SHA-256）。
+        // 复制并校验 size + 完整 SHA-256（contentHash 缺失时同样计算并建立）。
         await copyFile(asset.path, targetPath);
         const [sourceInfo, targetInfo] = await Promise.all([
           stat(asset.path),
@@ -1854,16 +1859,16 @@ export class LibraryService {
         if (sourceInfo.size !== targetInfo.size) {
           throw new Error("MIGRATE_SIZE_MISMATCH");
         }
-        if (existing.contentHash) {
-          const copiedHash = await fullFileHash(targetPath);
-          if (copiedHash !== existing.contentHash) {
-            throw new Error("MIGRATE_HASH_MISMATCH");
-          }
+        const copiedHash = await fullFileHash(targetPath);
+        if (existing.contentHash && copiedHash !== existing.contentHash) {
+          throw new Error("MIGRATE_HASH_MISMATCH");
         }
-        // 更新 asset 为 linked 模式并指向磁盘目标。
+        // 更新 asset 为 linked 模式并指向磁盘目标；contentHash 缺失时以
+        // 实际复制的 SHA-256 建立验证摘要。
         const next = await this.readAsset(targetPath, existing);
         const updated = this.database.relinkAsset(asset.id, {
           ...next,
+          contentHash: existing.contentHash ?? copiedHash,
           storageMode: "linked",
           libraryRelativePath: null,
           originalSourcePath: null,
@@ -1881,16 +1886,32 @@ export class LibraryService {
       // 全部成功后移除 managed store。
       await rm(this.managedStore, { recursive: true, force: true });
     }
+    // 把目标目录注册为 mount root（§13.3 第 6 条），使 identity 具备 mount
+    // scope 与离线语义。
+    if (managed.length > 0) {
+      this.database.upsertMountRoot({
+        id: randomUUID(),
+        path: targetRoot,
+        displayName: path.basename(targetRoot) || targetRoot,
+        state: "online",
+      });
+    }
     return { migrated, failed };
   }
 
+  /** 返回 managed store 下实际普通文件的绝对路径（过滤子目录）。 */
   private async managedStoreFiles(): Promise<string[]> {
-    const { readdir } = await import("node:fs/promises");
+    const result: string[] = [];
+    let entries;
     try {
-      return await readdir(this.managedStore);
+      entries = await readdir(this.managedStore, { withFileTypes: true });
     } catch {
       return [];
     }
+    for (const entry of entries) {
+      if (entry.isFile()) result.push(path.join(this.managedStore, entry.name));
+    }
+    return result;
   }
 
   /** 暂停目录监控（托盘驻留模式保留主进程但不监控）。 */
