@@ -1,6 +1,7 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { useFoundSettings } from "../app/found-settings";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 
 /**
@@ -22,14 +23,25 @@ function formatTimecode(seconds: number): string {
 }
 
 export function VideoPreview({ asset }: { asset: AssetRecord }) {
+  const foundSettings = useFoundSettings();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying] = useState(true);
+  // 阶段 5：autoplay 偏好（默认播放）；首次挂载按设置决定是否自动播放。
+  const [playing, setPlaying] = useState(foundSettings.autoplayVideo);
+  const autoPlayedRef = useRef(false);
   const [timecode, setTimecode] = useState(0);
   const [duration, setDuration] = useState(0);
   const [frameSource, setFrameSource] = useState<string | null>(null);
   const [stepping, setStepping] = useState(false);
   const [failed, setFailed] = useState(false);
   const lastFrameTimeRef = useRef(0);
+
+  // 挂载后按偏好触发播放（浏览器 autoplay 策略下静音不可行时忽略）。
+  useEffect(() => {
+    if (!foundSettings.autoplayVideo || autoPlayedRef.current) return;
+    autoPlayedRef.current = true;
+    const video = videoRef.current;
+    if (video) void video.play().catch(() => undefined);
+  }, [foundSettings.autoplayVideo]);
 
   // 单帧步进：暂停视频，用 ffmpeg 精确提取目标时间帧。
   const step = (deltaSeconds: number) => {

@@ -6,6 +6,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { useFoundSettings } from "../app/found-settings";
 import {
   sanitizeModelView,
   viewsEqual,
@@ -32,6 +33,7 @@ export function ModelPreview({
   initialView,
   onCameraChange,
 }: ModelPreviewProps) {
+  const foundSettings = useFoundSettings();
   const hostRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
   const onCameraChangeRef = useRef(onCameraChange);
@@ -59,6 +61,9 @@ export function ModelPreview({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.screenSpacePanning = true;
+    // 阶段 5：autoplayModel3d → 自动旋转（交互时暂停）。
+    controls.autoRotate = foundSettings.autoplayModel3d;
+    controls.autoRotateSpeed = 1.6;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x26312e, 2.2));
     const key = new THREE.DirectionalLight(0xffffff, 3.2);

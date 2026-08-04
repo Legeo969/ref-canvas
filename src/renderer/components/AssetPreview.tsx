@@ -2,6 +2,7 @@ import { Box, Shapes } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { browserImageExtensions } from "../../shared/asset-kind";
+import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
 import { AudioPreview } from "./AudioPreview";
 import { FontPreview } from "./FontPreview";
 import { GIFPreview } from "./GIFPreview";
@@ -70,6 +71,7 @@ function SystemThumbnail({ asset }: { asset: AssetRecord }) {
 }
 
 export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) {
+  const foundSettings = useFoundSettings();
   if (asset.linkState !== "online") {
     return <span className="preview-message">原文件当前不可访问</span>;
   }
@@ -110,7 +112,13 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
 
   switch (asset.kind) {
     case "image":
-      if (asset.extension === "gif") return <GIFPreview asset={asset} />;
+      if (asset.extension === "gif") {
+        return (
+          <div style={{ background: alphaBackgroundStyle(foundSettings) }}>
+            <GIFPreview asset={asset} />
+          </div>
+        );
+      }
       if (needsUnsupportedCheck) {
         return (
           <MediaNotesOverlay asset={asset}>
@@ -122,7 +130,11 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
         );
       }
       return browserImageExtensions.has(asset.extension.toLowerCase())
-        ? <ProgressiveImage asset={asset} />
+        ? (
+            <div style={{ background: alphaBackgroundStyle(foundSettings) }}>
+              <ProgressiveImage asset={asset} />
+            </div>
+          )
         : <SystemThumbnail asset={asset} />;
     case "video":
       return <VideoPreview asset={asset} />;

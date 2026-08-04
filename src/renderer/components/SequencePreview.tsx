@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SequenceGroupInfo } from "../../shared/contracts";
+import { useFoundSettings } from "../app/found-settings";
 
 /**
  * 图片序列预览（阶段 3 §9.4）：播放、逐帧、FPS 调节、帧范围/缺帧显示。
@@ -54,9 +55,16 @@ export function SequencePreviewDialog({
   onClose(): void;
 }) {
   const frames = useMemo(() => sequence.files, [sequence.files]);
+  const foundSettings = useFoundSettings();
+  // 阶段 5：autoplaySequence 决定打开时是否自动播放；defaultSequenceFps
+  // 作为 FPS presets 默认速度（检测器推断值保留给无设置时）。
   const [frameIndex, setFrameIndex] = useState(0);
-  const [playing, setPlaying] = useState(true);
-  const [fps, setFps] = useState(sequence.fps || 24);
+  const [playing, setPlaying] = useState(foundSettings.autoplaySequence);
+  const [fps, setFps] = useState(
+    foundSettings.defaultSequenceFps > 0
+      ? foundSettings.defaultSequenceFps
+      : (sequence.fps || 24),
+  );
   const [failed, setFailed] = useState(false);
   const tokens = useFrameTokens(frames);
   const frameIndexRef = useRef(0);

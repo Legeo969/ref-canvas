@@ -31,6 +31,7 @@ import {
 } from "../app/directory-clipboard";
 import { trimDirectoryPageCache } from "../app/directory-page-cache";
 import { directoryBreadcrumb } from "../app/folder-navigation";
+import { useFoundSettings } from "../app/found-settings";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
 import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
@@ -64,6 +65,8 @@ interface DirectoryCardProps {
   onEnter(): void;
   onSelect(event: React.MouseEvent): void;
   onPreview(): void;
+  /** 阶段 5：文件夹打开方式（single = 单击进入，double = 双击进入）。 */
+  folderClickMode: "single" | "double";
   priority: "visible" | "overscan";
 }
 
@@ -76,6 +79,7 @@ function DirectoryCard({
   onSelect,
   onPreview,
   priority,
+  folderClickMode,
 }: DirectoryCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -105,11 +109,12 @@ function DirectoryCard({
     <button
       className={`asset-card directory-card ${selected ? "selected" : ""}`}
       onClick={(event) => {
-        if (entry.isDirectory) onEnter();
+        if (entry.isDirectory && folderClickMode === "single") onEnter();
         else onSelect(event);
       }}
       onDoubleClick={() => {
-        if (!entry.isDirectory) onPreview();
+        if (entry.isDirectory && folderClickMode === "double") onEnter();
+        else if (!entry.isDirectory) onPreview();
       }}
       draggable
       onDragStart={(event) => {
@@ -158,6 +163,7 @@ function DirectoryCard({
 /** 目录模式素材区：虚拟网格 + 顶部目录搜索（流式/可取消）+ 导航/预览。 */
 export function DirectoryAssetPanel() {
   const store = useAppStore();
+  const foundSettings = useFoundSettings();
   const dialog = useDialog();
   const [query, setQuery] = useState("");
   const [searchId, setSearchId] = useState<string | null>(null);
@@ -1386,6 +1392,7 @@ export function DirectoryAssetPanel() {
                     onEnter={() => void store.openDirectory(entry.path)}
                     onSelect={(event) => selectEntry(entry, event)}
                     onPreview={() => openPreview(entry)}
+                    folderClickMode={foundSettings.folderClickMode}
                     priority={
                       row >= firstVisibleRow && row <= lastVisibleRow
                         ? "visible"

@@ -21,6 +21,7 @@ import type {
   AppPreferences,
   AppPreferencesPatch,
   BackupRecord,
+  FoundSettings,
   LibraryPreferences,
   MediaMetadataSnapshot,
   WatchRoot,
@@ -38,12 +39,13 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-type SettingsTab = "general" | "library" | "board" | "maintenance" | "about";
+type SettingsTab = "general" | "library" | "board" | "found" | "maintenance" | "about";
 
 const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Info }> = [
   { id: "general", label: "通用", icon: SlidersHorizontal },
   { id: "library", label: "资料库", icon: FolderOpen },
   { id: "board", label: "白板", icon: MonitorCog },
+  { id: "found", label: "Found 高级", icon: ScanLine },
   { id: "maintenance", label: "数据维护", icon: Gauge },
   { id: "about", label: "关于", icon: Info },
 ];
@@ -102,6 +104,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         detail: next.boardSettings,
       }),
     );
+    if (next.foundSettings) {
+      window.dispatchEvent(
+        new CustomEvent("refcanvas:found-settings", {
+          detail: next.foundSettings,
+        }),
+      );
+    }
   };
 
   const setLibraryPreference = async (patch: Partial<LibraryPreferences>) => {
@@ -389,6 +398,350 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <option value={50}>50 步</option>
                     <option value={99}>99 步</option>
                     <option value={200}>200 步</option>
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {tab === "found" && (
+              <div className="settings-group">
+                <h3>高级浏览</h3>
+                <label className="settings-row">
+                  <span>
+                    显示隐藏文件
+                    <small>目录视图中显示以 . 开头的文件</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={appPreferences?.foundSettings.showHiddenFiles ?? false}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          showHiddenFiles: event.target.checked,
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="settings-row">
+                  <span>
+                    文件夹打开方式
+                    <small>单击直接进入，或双击进入</small>
+                  </span>
+                  <select
+                    value={appPreferences?.foundSettings.folderClickMode ?? "double"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          folderClickMode: event.target.value as "single" | "double",
+                        },
+                      })
+                    }
+                  >
+                    <option value="single">单击</option>
+                    <option value="double">双击</option>
+                  </select>
+                </label>
+                <label className="settings-row">
+                  <span>
+                    Folder flattening 默认深度
+                    <small>0 = 关闭；1/2 = 展开子目录层级</small>
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={8}
+                    value={appPreferences?.foundSettings.defaultFlattenDepth ?? 0}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          defaultFlattenDepth: Number(event.target.value) || 0,
+                        },
+                      })
+                    }
+                  />
+                </label>
+
+                <h3>高级预览</h3>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={appPreferences?.foundSettings.autoplayVideo ?? true}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: { autoplayVideo: event.target.checked },
+                      })
+                    }
+                  />
+                  <span>
+                    视频自动播放
+                    <small>打开视频预览时立即播放</small>
+                  </span>
+                </label>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={appPreferences?.foundSettings.autoplaySequence ?? true}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: { autoplaySequence: event.target.checked },
+                      })
+                    }
+                  />
+                  <span>
+                    图片序列自动播放
+                    <small>打开序列预览时立即播放</small>
+                  </span>
+                </label>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={appPreferences?.foundSettings.autoplayModel3d ?? false}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: { autoplayModel3d: event.target.checked },
+                      })
+                    }
+                  />
+                  <span>
+                    3D 模型自动旋转
+                    <small>无交互时缓慢旋转模型</small>
+                  </span>
+                </label>
+                <label className="settings-row">
+                  <span>
+                    图片序列默认 FPS
+                    <small>序列预览的初始播放速度（1–240）</small>
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={240}
+                    value={appPreferences?.foundSettings.defaultSequenceFps ?? 24}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          defaultSequenceFps:
+                            Math.max(1, Number(event.target.value) || 24),
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="settings-row">
+                  <span>
+                    Alpha 背景
+                    <small>透明图片预览的棋盘格/纯色背景</small>
+                  </span>
+                  <select
+                    value={appPreferences?.foundSettings.alphaBackground ?? "checker"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          alphaBackground: event.target.value as FoundSettings["alphaBackground"],
+                        },
+                      })
+                    }
+                  >
+                    <option value="checker">棋盘格</option>
+                    <option value="black">黑色</option>
+                    <option value="white">白色</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </label>
+                {(appPreferences?.foundSettings.alphaBackground ?? "checker") ===
+                  "custom" && (
+                  <label className="settings-row">
+                    <span>自定义 Alpha 背景色</span>
+                    <input
+                      type="color"
+                      value={appPreferences?.foundSettings.alphaCustomColor ?? "#404040"}
+                      onChange={(event) =>
+                        void setAppPreference({
+                          foundSettings: { alphaCustomColor: event.target.value },
+                        })
+                      }
+                    />
+                  </label>
+                )}
+                <label className="settings-row">
+                  <span>
+                    UI 缩放
+                    <small>0.8–1.5，界面整体缩放</small>
+                  </span>
+                  <input
+                    type="number"
+                    min={0.8}
+                    max={1.5}
+                    step={0.05}
+                    value={appPreferences?.foundSettings.uiScale ?? 1}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          uiScale: Number(event.target.value) || 1,
+                        },
+                      })
+                    }
+                  />
+                </label>
+
+                <h3>性能</h3>
+                <label className="settings-row">
+                  <span>
+                    预览队列并发
+                    <small>同时生成的缩略图数量（1–16）</small>
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={16}
+                    value={appPreferences?.foundSettings.previewConcurrency ?? 4}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          previewConcurrency:
+                            Math.max(1, Math.min(16, Number(event.target.value) || 4)),
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="settings-row">
+                  <span>
+                    缩略图 worker 线程
+                    <small>libvips 并发线程（1–8）</small>
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={8}
+                    value={appPreferences?.foundSettings.thumbnailWorkerThreads ?? 1}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          thumbnailWorkerThreads:
+                            Math.max(1, Math.min(8, Number(event.target.value) || 1)),
+                        },
+                      })
+                    }
+                  />
+                </label>
+
+                <h3>输出工作流</h3>
+                <label className="settings-row">
+                  <span>
+                    Downscale 命名模式
+                    <small>后缀追加 / 分辨率子目录 / 备份原文件</small>
+                  </span>
+                  <select
+                    value={appPreferences?.foundSettings.downscaleMode ?? "suffix"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          downscaleMode: event.target.value as FoundSettings["downscaleMode"],
+                        },
+                      })
+                    }
+                  >
+                    <option value="suffix">文件名追加分辨率</option>
+                    <option value="subdirectory">输出到分辨率子目录</option>
+                    <option value="backup">保持原名并备份原文件</option>
+                  </select>
+                </label>
+                <label className="settings-row">
+                  <span>分辨率后缀（suffix 模式）</span>
+                  <input
+                    type="text"
+                    maxLength={32}
+                    value={appPreferences?.foundSettings.downscaleSuffix ?? "2k"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: { downscaleSuffix: event.target.value },
+                      })
+                    }
+                  />
+                </label>
+                <label className="settings-row">
+                  <span>分辨率子目录名（subdirectory 模式）</span>
+                  <input
+                    type="text"
+                    maxLength={128}
+                    value={appPreferences?.foundSettings.downscaleSubdirectory ?? "downscaled"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: { downscaleSubdirectory: event.target.value },
+                      })
+                    }
+                  />
+                </label>
+
+                <h3>色彩管理</h3>
+                <label className="settings-row">
+                  <span>
+                    OCIO config 路径
+                    <small>留空自动检测 $OCIO；颜色设置缓存键包含 config</small>
+                  </span>
+                  <input
+                    type="text"
+                    value={appPreferences?.foundSettings.ocioConfigPath ?? ""}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          ocioConfigPath: event.target.value || null,
+                        },
+                      })
+                    }
+                  />
+                </label>
+                <label className="settings-row">
+                  <span>当前 LUT（.cube/.3dl）</span>
+                  <input
+                    type="text"
+                    placeholder="绝对路径，留空关闭"
+                    value={appPreferences?.foundSettings.activeLut ?? ""}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          activeLut: event.target.value || null,
+                        },
+                      })
+                    }
+                  />
+                </label>
+
+                <h3>本地</h3>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={appPreferences?.foundSettings.debugLogging ?? false}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: { debugLogging: event.target.checked },
+                      })
+                    }
+                  />
+                  <span>
+                    Debug 日志
+                    <small>主进程输出详细日志</small>
+                  </span>
+                </label>
+                <label className="settings-row">
+                  <span>
+                    关闭行为
+                    <small>关闭窗口时完全退出或最小化到托盘</small>
+                  </span>
+                  <select
+                    value={appPreferences?.foundSettings.closeBehavior ?? "quit"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        foundSettings: {
+                          closeBehavior: event.target.value as "quit" | "tray",
+                        },
+                      })
+                    }
+                  >
+                    <option value="quit">完全退出</option>
+                    <option value="tray">最小化到托盘</option>
                   </select>
                 </label>
               </div>

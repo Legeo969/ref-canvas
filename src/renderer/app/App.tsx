@@ -23,6 +23,7 @@ import type {
 } from "../../shared/contracts";
 import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
 import { parseBoardWindowParams } from "./board-window";
+import { useFoundSettings } from "./found-settings";
 import { AssetPanel } from "../components/AssetPanel";
 import { ActionsPanel } from "../components/ActionsPanel";
 import { BoardCanvas } from "../components/BoardCanvas";
@@ -320,11 +321,14 @@ export function App() {
     return <BoardWindow boardId={boardWindowParams.boardId} />;
   }
 
+  const uiScale = useFoundSettings().uiScale;
+
   return (
     <main
       className={`app-shell ${store.focusMode ? "focus-mode" : ""} ${
         presentationMode ? "presentation-mode" : ""
       }`}
+      style={{ zoom: uiScale }}
     >
       {captureSource && (
         <CaptureOverlay
