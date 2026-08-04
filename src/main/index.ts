@@ -49,6 +49,10 @@ import { GenericProvider } from "./providers/generic-provider";
 import { HdrProvider } from "./providers/hdr-provider";
 import { GeometryProvider } from "./providers/geometry-provider";
 import { VideoProvider } from "./providers/video-provider";
+import { ImageProvider } from "./providers/image-provider";
+import { AudioProvider } from "./providers/audio-provider";
+import { FontProvider } from "./providers/font-provider";
+import { DocumentProvider } from "./providers/document-provider";
 import { registerProtocols } from "./platform/protocols";
 import {
   registerWindowsProjectFormat,
@@ -872,6 +876,26 @@ void app.whenReady().then(async () => {
   providerRegistry.register({
     provider: videoProvider,
     dispose: () => videoProvider.dispose(),
+  });
+  const imageProvider = new ImageProvider();
+  providerRegistry.register({
+    provider: imageProvider,
+    dispose: () => imageProvider.dispose(),
+  });
+  const audioProvider = new AudioProvider();
+  providerRegistry.register({
+    provider: audioProvider,
+    dispose: () => audioProvider.dispose(),
+  });
+  const fontProvider = new FontProvider();
+  providerRegistry.register({
+    provider: fontProvider,
+    dispose: () => fontProvider.dispose(),
+  });
+  const documentProvider = new DocumentProvider();
+  providerRegistry.register({
+    provider: documentProvider,
+    dispose: () => documentProvider.dispose(),
   });
   for (const cachedFile of previewCacheIndex.prune()) {
     void rm(cachedFile, { force: true });

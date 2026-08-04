@@ -76,9 +76,46 @@ async function generateThumbnail(
 ): Promise<Buffer> {
   const extension = path.extname(source).replace(/^\./, "").toLowerCase();
   const kind = assetKindForExtension(extension);
-  // 阶段 3：EXR/HDR 走 hdr-provider（线性 → sRGB display transform），
-  // 视频走 video-provider（ffmpeg poster 帧）；其余图片走 sharp worker。
-  if ((extension === "exr" || extension === "hdr") || kind === "video") {
+  // 阶段 3/4：EXR/HDR、视频、PSD/PSB、音频、字体、文本走 provider
+  // registry（display transform / poster / composite / 封面或波形样张 /
+  // 字体样张 / 文本卡片）；其余图片走 sharp worker。
+  const registryFormats =
+    extension === "exr" ||
+    extension === "hdr" ||
+    kind === "video" ||
+    extension === "psd" ||
+    extension === "psb" ||
+    kind === "audio" ||
+    extension === "ttf" ||
+    extension === "otf" ||
+    extension === "woff" ||
+    extension === "woff2" ||
+    extension === "ttc" ||
+    extension === "txt" ||
+    extension === "md" ||
+    extension === "markdown" ||
+    extension === "rtf" ||
+    extension === "srt" ||
+    extension === "vtt" ||
+    extension === "json" ||
+    extension === "yaml" ||
+    extension === "yml" ||
+    extension === "xml" ||
+    extension === "csv" ||
+    extension === "log" ||
+    extension === "ini" ||
+    extension === "toml" ||
+    extension === "conf" ||
+    extension === "html" ||
+    extension === "htm" ||
+    extension === "css" ||
+    extension === "js" ||
+    extension === "ts" ||
+    extension === "py" ||
+    extension === "sh" ||
+    extension === "bat" ||
+    extension === "ps1";
+  if (registryFormats) {
     const registry = dependencies.getProviderRegistry();
     if (registry) {
       const { result } = await invokeThumbnail(registry, {

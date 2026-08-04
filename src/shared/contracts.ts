@@ -904,6 +904,25 @@ export interface MediaFrameResult {
   timeMs: number;
 }
 
+/** media.waveform 波形结果（阶段 4：音频）。 */
+export interface MediaWaveformResult {
+  /** 归一化 0..1 峰值包络（等时间间隔）。 */
+  peaks: number[];
+  /** 每点对应的时间跨度（秒）。 */
+  secondsPerPoint: number;
+  /** 音频时长（秒；解码失败时为 null）。 */
+  durationSeconds: number | null;
+}
+
+/** media.readText 文本预览结果（阶段 4：文档）。 */
+export interface TextPreviewResult {
+  text: string;
+  encoding: string;
+  truncated: boolean;
+  byteLength: number;
+  lineCount: number;
+}
+
 /** 图片序列分组（阶段 3 §9.4）。 */
 export interface SequenceGroupInfo {
   id: string;
@@ -1135,6 +1154,19 @@ export interface RefCanvasApi {
     convert(path: string, targetFormat: string): Promise<MediaConvertResult>;
     /** 取消进行中的转换任务。 */
     cancel(jobId: string): Promise<boolean>;
+    /**
+     * 音频波形峰值（阶段 4；provider waveform 流式解码）。
+     * samples：目标峰值数量（0 使用 provider 默认）。
+     */
+    waveform(
+      path: string,
+      options?: { samples?: number },
+    ): Promise<MediaWaveformResult>;
+    /** 文本预览读取（阶段 4；UTF-8 探测，二进制拒绝）。 */
+    readText(
+      path: string,
+      options?: { limit?: number },
+    ): Promise<TextPreviewResult>;
   };
   sequences: {
     /** 检测目录内的图片序列分组（阶段 3 §9.4）。 */

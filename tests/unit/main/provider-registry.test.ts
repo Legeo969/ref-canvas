@@ -21,7 +21,7 @@ function makeProvider(
     probe: async () => ({ width: null, height: null, duration: null, extra: {} }),
     metadata: async () => ({ fields: {} }),
     thumbnail: async () => ({ path: "", width: 0, height: 0 }),
-    waveform: async () => ({ peaks: [], duration: 0 }),
+    waveform: async () => ({ peaks: [], secondsPerPoint: 0, duration: 0, durationSeconds: null }),
     preview: async () => ({ source: "", mimeType: "" }),
     convert: async () => ({ path: "", format: "" }),
     dispose: async () => undefined,
@@ -224,7 +224,7 @@ describe("ProviderRegistry", () => {
       priority: 10,
       runtime: "node",
     }, {
-      waveform: async () => ({ peaks: [0.1, 0.5, 0.9], duration: 3 } as const),
+      waveform: async () => ({ peaks: [0.1, 0.5, 0.9], secondsPerPoint: 1, duration: 3, durationSeconds: 3 } as const),
     });
     registry.register({ provider, dispose: provider.dispose });
 

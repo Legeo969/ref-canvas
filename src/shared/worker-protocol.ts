@@ -161,8 +161,11 @@ export interface ProviderWaveformInput {
 export interface ProviderWaveformResult {
   /** 归一化 0..1 的峰值包络。 */
   peaks: number[];
+  /** 每点对应的时间跨度（秒）。 */
+  secondsPerPoint: number;
   /** 音频时长（秒）。 */
   duration: number;
+  durationSeconds: number | null;
 }
 
 /**

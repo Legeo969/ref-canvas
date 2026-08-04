@@ -331,3 +331,115 @@ export async function writeVideoFixture(
   );
   return target;
 }
+
+
+/**
+ * 生成最小 PSD 文件（8×6 RGB，raw 压缩，无图层）。
+ * 布局：26B header + color mode(0) + resources(0) + layer/mask(0)
+ * + 2B compression(0) + R/G/B planes。
+ */
+export async function writePsdFixture(
+  directory: string,
+  filename = "minimal.psd",
+): Promise<string> {
+  await mkdir(directory, { recursive: true });
+  const target = path.join(directory, filename);
+  const header = Buffer.alloc(26);
+  header.write("8BPS", 0, "latin1");
+  header.writeUInt16BE(1, 4); // version 1 (PSD)
+  header.writeUInt16BE(3, 12); // channels
+  header.writeUInt32BE(6, 14); // height
+  header.writeUInt32BE(8, 18); // width
+  header.writeUInt16BE(8, 22); // depth
+  header.writeUInt16BE(3, 24); // RGB
+  const red = Buffer.alloc(48, 200);
+  const green = Buffer.alloc(48, 60);
+  const blue = Buffer.alloc(48, 40);
+  const compression = Buffer.from([0, 0]);
+  await writeFile(
+    target,
+    Buffer.concat([header, Buffer.alloc(4), Buffer.alloc(4), Buffer.alloc(4), compression, red, green, blue]),
+  );
+  return target;
+}
+
+/** 写一个 JXL 头（FF 0A container magic）+ 填充字节（probe 只认 magic）。 */
+export async function writeJxlFixture(
+  directory: string,
+  filename = "fake.jxl",
+): Promise<string> {
+  await mkdir(directory, { recursive: true });
+  const target = path.join(directory, filename);
+  const head = Buffer.from([0xff, 0x0a]);
+  const body = Buffer.alloc(64, 0x42);
+  await writeFile(target, Buffer.concat([head, body]));
+  return target;
+}
+
+/** 写一个 TIFF 头伪装的 RAW（II* + IFD 计数 0），用于降级探测。 */
+export async function writeRawFixture(
+  directory: string,
+  filename = "fake.nef",
+): Promise<string> {
+  await mkdir(directory, { recursive: true });
+  const target = path.join(directory, filename);
+  const head = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00]);
+  await writeFile(target, head);
+  return target;
+}
+
+/** 用打包 ffmpeg 生成 1 秒 440Hz sine WAV（音频 fixture）。 */
+export async function writeAudioFixture(
+  directory: string,
+  filename = "tone.wav",
+): Promise<string> {
+  await mkdir(directory, { recursive: true });
+  const target = path.join(directory, filename);
+  const executable = process.env.REFCANVAS_FFMPEG || ffmpegStatic;
+  await execFileAsync(
+    executable,
+    [
+      "-v", "error",
+      "-f", "lavfi",
+      "-i", "sine=frequency=440:duration=1:sample_rate=44100",
+      "-c:a", "pcm_s16le",
+      "-y",
+      target,
+    ],
+    { timeout: 60_000, windowsHide: true },
+  );
+  return target;
+}
+
+/** 用打包 ffmpeg 生成带内嵌封面的 MP3（封面提取测试）。 */
+export async function writeAudioWithCoverFixture(
+  directory: string,
+  filename = "cover.mp3",
+): Promise<string> {
+  await mkdir(directory, { recursive: true });
+  const target = path.join(directory, filename);
+  const executable = process.env.REFCANVAS_FFMPEG || ffmpegStatic;
+  const cover = path.join(directory, "cover.png");
+  const { default: sharp } = await import("sharp");
+  await sharp({
+    create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 60, b: 40 } },
+  }).png().toFile(cover);
+  await execFileAsync(
+    executable,
+    [
+      "-v", "error",
+      "-f", "lavfi",
+      "-i", "sine=frequency=440:duration=1:sample_rate=44100",
+      "-i", cover,
+      "-map", "0:a", "-map", "1:v",
+      "-c:a", "libmp3lame",
+      "-c:v", "png",
+      "-id3v2_version", "3",
+      "-metadata:s:v", "title=Album cover",
+      "-y",
+      target,
+    ],
+    { timeout: 60_000, windowsHide: true },
+  );
+  return target;
+}

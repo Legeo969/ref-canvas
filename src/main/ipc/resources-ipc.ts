@@ -12,12 +12,14 @@ import {
   invokeConvert,
   invokeProbe,
   invokeThumbnail,
+  invokeWaveform,
   type ProviderRegistry,
 } from "../platform/provider-registry";
 import type { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import { extractVideoFrame } from "../services/media/ffmpeg-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
+import { readTextPreview } from "../services/media/text-reader";
 import { idSchema, pathSchema } from "./schemas";
 
 interface ResourcesIpcDependencies {
@@ -165,9 +167,46 @@ export function registerResourcesIpc(
       `media-${thumbnailIdForPath(resolved)}.png`,
     );
     const kind = assetKindForExtension(extension);
-    // 阶段 3：EXR/HDR 走 hdr-provider（display transform），视频走
-    // video-provider（ffmpeg poster 帧）；其余走 sharp worker。
-    if (extension === "exr" || extension === "hdr" || kind === "video") {
+    // 阶段 3/4：EXR/HDR、视频、PSD/PSB、音频、字体、文本走 provider
+    // registry（display transform / poster / composite / 封面或波形/
+    // 样张 SVG）；其余图片走 sharp worker（libvips 原生支持 HEIC/AVIF）。
+    const registryFormats =
+      extension === "exr" ||
+      extension === "hdr" ||
+      kind === "video" ||
+      extension === "psd" ||
+      extension === "psb" ||
+      kind === "audio" ||
+      extension === "ttf" ||
+      extension === "otf" ||
+      extension === "woff" ||
+      extension === "woff2" ||
+      extension === "ttc" ||
+      extension === "txt" ||
+      extension === "md" ||
+      extension === "markdown" ||
+      extension === "rtf" ||
+      extension === "srt" ||
+      extension === "vtt" ||
+      extension === "json" ||
+      extension === "yaml" ||
+      extension === "yml" ||
+      extension === "xml" ||
+      extension === "csv" ||
+      extension === "log" ||
+      extension === "ini" ||
+      extension === "toml" ||
+      extension === "conf" ||
+      extension === "html" ||
+      extension === "htm" ||
+      extension === "css" ||
+      extension === "js" ||
+      extension === "ts" ||
+      extension === "py" ||
+      extension === "sh" ||
+      extension === "bat" ||
+      extension === "ps1";
+    if (registryFormats) {
       const { result } = await invokeThumbnail(
         dependencies.getProviderRegistry(),
         {
@@ -240,6 +279,43 @@ export function registerResourcesIpc(
       source: `refbrowse://preview/${token}`,
       mimeType: mimeTypeForPath(resolved),
     };
+  });
+  /**
+   * 阶段 4：音频波形峰值（provider waveform，8kHz 流式解码）。
+   * samples：目标峰值数量（0 使用 provider 默认）。
+   */
+  ipc.handle("media:waveform", async (filename, options) => {
+    const resolved = path.resolve(pathSchema.parse(filename));
+    const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
+    const parsed =
+      z
+        .object({ samples: z.number().int().min(0).max(8_192).optional() })
+        .optional()
+        .parse(options) ?? {};
+    const { result } = await invokeWaveform(
+      dependencies.getProviderRegistry(),
+      {
+        path: resolved,
+        kind: assetKindForExtension(extension),
+        extension,
+        samples: parsed.samples ?? 2400,
+      },
+    );
+    return result;
+  });
+  /**
+   * 阶段 4：文本预览读取（前 N 字节，UTF-8 探测，二进制拒绝）。
+   */
+  ipc.handle("media:readText", async (filename, options) => {
+    const resolved = path.resolve(pathSchema.parse(filename));
+    const parsed =
+      z
+        .object({
+          limit: z.number().int().min(1024).max(2_000_000).optional(),
+        })
+        .optional()
+        .parse(options) ?? {};
+    return readTextPreview(resolved, parsed.limit);
   });
   ipc.handle("media:convert", async (filename, targetFormat) => {
     const resolved = path.resolve(pathSchema.parse(filename));

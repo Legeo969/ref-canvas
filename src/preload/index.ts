@@ -209,6 +209,10 @@ const api: RefCanvasApi = {
     convert: (path, targetFormat) =>
       ipcRenderer.invoke("media:convert", path, targetFormat),
     cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),
+    waveform: (path, options) =>
+      ipcRenderer.invoke("media:waveform", path, options),
+    readText: (path, options) =>
+      ipcRenderer.invoke("media:readText", path, options),
   },
   sequences: {
     detect: (directory, options) =>
