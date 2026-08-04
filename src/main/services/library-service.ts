@@ -1828,8 +1828,9 @@ export class LibraryService {
 
   /**
    * 把 managed store 迁移到用户选择的磁盘目录（计划 §13.3）：
-   * 复制 → 逐文件验证 size + SHA-256 → 注册为 mount root → 更新 asset 的
-   * path/fingerprint/identity → 全部成功后才移除 managed store。
+   * 先注册目标目录为 mount root，再复制 → 逐文件验证 size + SHA-256 →
+   * 更新 asset 的 path/fingerprint/identity；所有 managed 记录与孤儿文件
+   * 都处理成功后才移除 managed store。
    */
   async migrateManagedToDisk(targetDirectory: string): Promise<{
     migrated: number;
@@ -1840,6 +1841,17 @@ export class LibraryService {
     const failed: Array<{ path: string; reason: string }> = [];
     let migrated = 0;
     await mkdir(targetRoot, { recursive: true });
+    // 先注册 mount root，使 relink 后的 updateIdentity 能建立 mount-scoped
+    // identity（§13.3 第 6 条）。
+    const mountId = randomUUID();
+    this.database.upsertMountRoot({
+      id: mountId,
+      path: targetRoot,
+      displayName: path.basename(targetRoot) || targetRoot,
+      state: "online",
+    });
+    // 记录每个 managed 文件对应的磁盘目标路径（冲突时逐文件隔离）。
+    const usedTargets = new Set<string>();
     for (const asset of managed) {
       const existing = this.database.getAsset(asset.id);
       if (!existing) {
@@ -1847,8 +1859,17 @@ export class LibraryService {
         failed.push({ path: asset.path, reason: "MANAGED_ASSET_RECORD_MISSING" });
         continue;
       }
-      const filename = path.basename(asset.path);
-      const targetPath = path.join(targetRoot, filename);
+      const parsed = path.parse(asset.path);
+      let targetPath = path.join(targetRoot, parsed.base);
+      let suffix = 2;
+      while (usedTargets.has(targetPath)) {
+        targetPath = path.join(
+          targetRoot,
+          `${parsed.name} ${suffix}${parsed.ext}`,
+        );
+        suffix += 1;
+      }
+      usedTargets.add(targetPath);
       try {
         // 复制并校验 size + 完整 SHA-256（contentHash 缺失时同样计算并建立）。
         await copyFile(asset.path, targetPath);
@@ -1882,19 +1903,16 @@ export class LibraryService {
         });
       }
     }
-    if (failed.length === 0 && managed.length > 0) {
-      // 全部成功后移除 managed store。
-      await rm(this.managedStore, { recursive: true, force: true });
+    // 孤儿文件：无对应记录但仍在 store，也计入失败，避免被静默删除。
+    const storeFiles = await this.managedStoreFiles();
+    const managedPaths = new Set(managed.map((item) => path.normalize(item.path)));
+    for (const filename of storeFiles) {
+      if (managedPaths.has(path.normalize(filename))) continue;
+      failed.push({ path: filename, reason: "ORPHAN_STORE_FILE" });
     }
-    // 把目标目录注册为 mount root（§13.3 第 6 条），使 identity 具备 mount
-    // scope 与离线语义。
-    if (managed.length > 0) {
-      this.database.upsertMountRoot({
-        id: randomUUID(),
-        path: targetRoot,
-        displayName: path.basename(targetRoot) || targetRoot,
-        state: "online",
-      });
+    if (failed.length === 0 && managed.length > 0) {
+      // 全部记录与文件都成功后才移除 managed store。
+      await rm(this.managedStore, { recursive: true, force: true });
     }
     return { migrated, failed };
   }

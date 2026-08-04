@@ -101,4 +101,51 @@ describe("managed preflight (plan 13.3)", () => {
       database.close();
     }
   });
+
+  it("does not remove the store while orphan files remain", async () => {
+    const root = await createTempDir();
+    const source = path.join(root, "source.png");
+    await writeFile(source, Buffer.alloc(1_024, 7));
+    const { database, service } = await createLibraryService(root);
+    const targetDir = path.join(root, "disk-library");
+    try {
+      const result = await service.importPaths([source]);
+      expect(result.copied).toBe(1);
+      // 向 store 添加一个孤儿文件。
+      const orphanPath = path.join(root, "files", "orphan.bin");
+      await writeFile(orphanPath, "x");
+      const migration = await service.migrateManagedToDisk(targetDir);
+      // 孤儿文件计入失败：store 必须保留。
+      expect(migration.failed.some((item) => item.reason === "ORPHAN_STORE_FILE")).toBe(
+        true,
+      );
+      const storeFiles = await readdir(path.join(root, "files")).catch(() => []);
+      expect(storeFiles).toContain("orphan.bin");
+    } finally {
+      await service.close();
+      database.close();
+    }
+  });
+
+  it("creates a mount-scoped identity for a migrated asset", async () => {
+    const root = await createTempDir();
+    const source = path.join(root, "source.png");
+    await writeFile(source, Buffer.alloc(1_024, 7));
+    const { database, service } = await createLibraryService(root);
+    const targetDir = path.join(root, "disk-library");
+    try {
+      const result = await service.importPaths([source]);
+      expect(result.copied).toBe(1);
+      await service.migrateManagedToDisk(targetDir);
+      // 目标目录已注册为 mount root，且 identity 关联该 mount。
+      const mount = database.listMountRoots().find((item) => item.path === targetDir)!;
+      expect(mount.state).toBe("online");
+      const identities = database.listFileIdentitiesByRoot(targetDir);
+      expect(identities.length).toBe(1);
+      expect(identities[0].id).toBeTruthy();
+    } finally {
+      await service.close();
+      database.close();
+    }
+  });
 });
