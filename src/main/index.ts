@@ -62,6 +62,7 @@ import { registerFilesystemIpc } from "./ipc/filesystem-ipc";
 import { registerLibraryIpc } from "./ipc/library-ipc";
 import { registerLibraryManagementIpc } from "./ipc/library-management-ipc";
 import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
+import { registerResourcesIpc } from "./ipc/resources-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
 import { trayIconPaths } from "./platform/tray-icon";
 import {
@@ -593,7 +594,19 @@ function registerIpc(): void {
     getMainWindow: () => mainWindow,
     openBoardWindow,
     pngDataUrlToBuffer,
+    relinkBoardAsset: (assetId, filename) =>
+      library.relinkAsset(assetId, filename),
     windowForSender,
+  });
+
+  registerResourcesIpc(ipc, {
+    getDatabase: () => database,
+    getLibrary: () => library,
+    getMountService: () => mountService,
+    getProviderRegistry: () => providerRegistry!,
+    getThumbnailWorker: () => thumbnailWorker,
+    getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
+    previewTokens,
   });
 
   registerActionIpc(ipc, () => actions);

@@ -1155,6 +1155,7 @@ export class RefCanvasDatabase {
     fingerprint: string;
     size: number;
     rootPath: string;
+    mountId: string | null;
   } | null {
     const row = this.db.prepare(
       "SELECT * FROM file_identities WHERE asset_id = ?",
@@ -1163,6 +1164,7 @@ export class RefCanvasDatabase {
       fingerprint: string;
       size: number;
       root_path: string;
+      mount_id: string | null;
     } | undefined;
     return row
       ? {
@@ -1170,6 +1172,7 @@ export class RefCanvasDatabase {
           fingerprint: row.fingerprint,
           size: row.size,
           rootPath: row.root_path,
+          mountId: row.mount_id ?? null,
         }
       : null;
   }
@@ -1414,6 +1417,11 @@ export class RefCanvasDatabase {
     `).all() as MountRoot[];
   }
 
+  /** v14：移除挂载根记录（不触碰磁盘文件；离线/删除由状态语义决定）。 */
+  deleteMountRoot(id: string): void {
+    this.db.prepare("DELETE FROM mount_roots WHERE id = ?").run(id);
+  }
+
   /** v14：以 mount + relative path + fingerprint 向合集添加磁盘文件引用。 */
   addCollectionRef(input: {
     collectionId: string;
@@ -1461,6 +1469,59 @@ export class RefCanvasDatabase {
       fingerprint: string;
       state: "resolved" | "missing" | "ambiguous" | "offline";
     }>;
+  }
+
+  /** v14：按 mount + relative path 从合集移除磁盘文件引用。 */
+  removeCollectionRefs(
+    collectionId: string,
+    refs: Array<{ mountId: string; relativePath: string }>,
+  ): number {
+    const remove = this.db.prepare(`
+      DELETE FROM collection_refs
+      WHERE collection_id = ? AND mount_id = ? AND relative_path = ?
+    `);
+    return this.db.transaction((items: typeof refs) => {
+      let removed = 0;
+      for (const item of items) {
+        removed += remove.run(collectionId, item.mountId, item.relativePath).changes;
+      }
+      return removed;
+    })(refs);
+  }
+
+  /**
+   * v14：把绝对路径解析为 identity + mount 引用键（§7.4）。
+   * 返回 null 表示该路径不在任何已注册 mount 内（无引用键）。
+   */
+  resolveIdentityRef(filename: string): {
+    pathKey: string;
+    fingerprint: string;
+    size: number;
+    mountId: string;
+    relativePath: string;
+  } | null {
+    const resolved = path.resolve(filename);
+    const pathKey = path.normalize(resolved).toLocaleLowerCase("en-US");
+    const identity = this.db.prepare(
+      "SELECT fingerprint, size FROM file_identities WHERE path_key = ?",
+    ).get(pathKey) as { fingerprint: string; size: number } | undefined;
+    if (!identity) return null;
+    const mounts = this.db.prepare(`
+      SELECT id, path FROM mount_roots ORDER BY length(path) DESC
+    `).all() as Array<{ id: string; path: string }>;
+    const mount = mounts.find(
+      (candidate) =>
+        resolved === candidate.path ||
+        resolved.startsWith(`${candidate.path}${path.sep}`),
+    );
+    if (!mount) return null;
+    return {
+      pathKey,
+      fingerprint: identity.fingerprint,
+      size: identity.size,
+      mountId: mount.id,
+      relativePath: path.relative(mount.path, resolved),
+    };
   }
 
   setAssetTags(assetId: string, names: string[]): AssetRecord {

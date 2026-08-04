@@ -845,6 +845,87 @@ export interface ReconcileSnapshot {
   pending: ReconcileEntry[];
 }
 
+// --- §13.4 新增 API 类型（mounts / metadata / collections refs / media / providers）---
+
+/** 用户自定义 metadata 补丁：tags、rating、notes（计划 §7.2）。 */
+export interface UserMetadataPatch {
+  tags?: string[];
+  rating?: number;
+  notes?: string;
+}
+
+/** Collection 的磁盘文件引用（计划 §7.2 CollectionReference）。 */
+export interface CollectionReferenceInfo {
+  collectionId: string;
+  mountId: string;
+  relativePath: string;
+  fingerprint: string;
+  state: "resolved" | "missing" | "ambiguous" | "offline";
+}
+
+/** media.probe 结果（计划 §9）。 */
+export interface MediaProbeResult {
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  /** 格式专属附加数据。 */
+  extra: Record<string, unknown>;
+}
+
+export interface MediaThumbnailOptions {
+  width?: number;
+  height?: number;
+}
+
+export interface MediaThumbnailResult {
+  /** 缩略图文件路径（缓存目录内）。 */
+  path: string;
+  width: number;
+  height: number;
+}
+
+export interface MediaPreviewResult {
+  /** refbrowse:// 预览源 URL。 */
+  source: string;
+  mimeType: string;
+}
+
+export interface MediaConvertResult {
+  path: string;
+  format: string;
+}
+
+/** provider manifest 摘要（renderer 可读，不含实现）。 */
+export interface ProviderManifestInfo {
+  id: string;
+  version: string;
+  kinds: AssetKind[];
+  extensions: string[];
+  capabilities: Array<
+    | "probe"
+    | "metadata"
+    | "thumbnail"
+    | "waveform"
+    | "preview"
+    | "convert"
+  >;
+  priority: number;
+  runtime: "node" | "native-sidecar" | "external-cli";
+}
+
+export interface ProviderHealthInfo {
+  ok: boolean;
+  detail: string;
+}
+
+/** Board 引用解析结果（计划 §11 BoardAssetReferenceV4 解析态）。 */
+export interface BoardReferenceResolution {
+  assetId: string;
+  /** 解析后的磁盘路径；缺失时为 null。 */
+  path: string | null;
+  state: "online" | "missing" | "offline" | "ambiguous";
+}
+
 export interface RefCanvasApi {
   library: {
     search(input?: AssetSearchInput): Promise<AssetPage>;
@@ -989,6 +1070,45 @@ export interface RefCanvasApi {
       failed: Array<{ path: string; reason: string }>;
     }>;
   };
+  mounts: {
+    list(): Promise<MountRoot[]>;
+    /** 注册挂载根并启动监视；已存在时返回现有记录。 */
+    add(path: string): Promise<MountRoot>;
+    /** 移除挂载根与对应监视；不会删除磁盘文件。 */
+    remove(id: string): Promise<void>;
+    /** 刷新挂载状态；离线恢复后触发增量 reconcile。 */
+    reconnect(id: string): Promise<MountRoot>;
+  };
+  metadata: {
+    /** 确保路径已建立索引（等价 materialize，§13.4 metadata.ensure）。 */
+    ensure(path: string): Promise<MaterializeResult>;
+    /** 更新用户 metadata（tags/rating/notes；不可重建数据，参与备份）。 */
+    patch(assetId: string, patch: UserMetadataPatch): Promise<AssetRecord>;
+  };
+  collections: {
+    /** 以 path + fingerprint 引用向合集添加磁盘文件（计划 §7.2）。 */
+    addReferences(collectionId: string, paths: string[]): Promise<number>;
+    /** 按 path 从合集移除引用（不删除磁盘文件）。 */
+    removeReferences(collectionId: string, paths: string[]): Promise<number>;
+    /** 列出合集当前的磁盘文件引用。 */
+    listReferences(collectionId: string): Promise<CollectionReferenceInfo[]>;
+  };
+  media: {
+    /** 探测媒体基本信息（provider probe，§6.2）。 */
+    probe(path: string): Promise<MediaProbeResult>;
+    /** 生成缩略图（缓存目录内）。 */
+    thumbnail(path: string, options?: MediaThumbnailOptions): Promise<MediaThumbnailResult>;
+    /** 生成 refbrowse 预览源 URL。 */
+    preview(path: string): Promise<MediaPreviewResult>;
+    /** 格式转换（provider convert；不支持时明确失败）。 */
+    convert(path: string, targetFormat: string): Promise<MediaConvertResult>;
+    /** 取消进行中的转换任务。 */
+    cancel(jobId: string): Promise<boolean>;
+  };
+  providers: {
+    list(): Promise<ProviderManifestInfo[]>;
+    health(providerId: string): Promise<ProviderHealthInfo>;
+  };
   watchRoots: {
     /** Full reconciliation of watched roots against the identity index. */
     reconcile(rootId?: string | null): Promise<ReconcileReport>;
@@ -1103,6 +1223,10 @@ export interface RefCanvasApi {
     closeWindow(): Promise<boolean>;
     /** Assets referenced by the board (for board-window initial state). */
     getAssets(id: string): Promise<AssetRecord[]>;
+    /** 批量解析 board 引用到磁盘路径/状态（计划 §11 V4 引用解析）。 */
+    resolveReferences(id: string): Promise<BoardReferenceResolution[]>;
+    /** 重新链接一个 board 引用的 asset 到新路径（fingerprint 匹配时自动更新）。 */
+    relinkReference(id: string, assetId: string, path: string): Promise<BoardReferenceResolution>;
   };
   actions: {
     start(request: AssetActionRequest): Promise<AssetActionSnapshot>;

@@ -2,11 +2,11 @@ import { app, BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { BoardDocument } from "../../shared/contracts";
+import type { AssetRecord, BoardDocument } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { boardDocumentSchema } from "./board-schema";
-import { idSchema } from "./schemas";
+import { idSchema, pathSchema } from "./schemas";
 
 interface BoardIpcDependencies {
   copyProjectAsset(assetId: string, destination: string): Promise<unknown>;
@@ -14,6 +14,7 @@ interface BoardIpcDependencies {
   getMainWindow(): BrowserWindow | null;
   openBoardWindow(boardId: string): void;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
+  relinkBoardAsset(assetId: string, filename: string): Promise<AssetRecord>;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
 }
 
@@ -65,6 +66,42 @@ export function registerBoardIpc(
     return assetIds
       .map((assetId) => database().getAsset(assetId))
       .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
+  });
+  ipc.handle("boards:resolve-references", (id) => {
+    const assetIds = database().getBoardAssetIds(idSchema.parse(id));
+    return assetIds.map((assetId) => {
+      const asset = database().getAsset(assetId);
+      if (!asset) {
+        return { assetId, path: null, state: "missing" as const };
+      }
+      if (asset.linkState === "offline") {
+        return { assetId, path: asset.path, state: "offline" as const };
+      }
+      if (asset.linkState === "ambiguous") {
+        return { assetId, path: asset.path, state: "ambiguous" as const };
+      }
+      return {
+        assetId,
+        path: asset.path,
+        state: asset.linkState === "online" ? ("online" as const) : ("missing" as const),
+      };
+    });
+  });
+  ipc.handle("boards:relink-reference", async (id, assetId, filename) => {
+    const parsedId = idSchema.parse(id);
+    const parsedAssetId = idSchema.parse(assetId);
+    if (!database().getBoardAssetIds(parsedId).includes(parsedAssetId)) {
+      throw new Error("BOARD_ASSET_NOT_REFERENCED");
+    }
+    const asset = await dependencies.relinkBoardAsset(
+      parsedAssetId,
+      path.resolve(pathSchema.parse(filename)),
+    );
+    return {
+      assetId: parsedAssetId,
+      path: asset.path,
+      state: asset.linkState === "online" ? ("online" as const) : ("missing" as const),
+    };
   });
   ipc.handleWithEvent("boards:export-package", async (event, id, options) => {
     const parsedId = idSchema.parse(id);

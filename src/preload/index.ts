@@ -180,6 +180,39 @@ const api: RefCanvasApi = {
     managedMigrate: (targetDirectory) =>
       ipcRenderer.invoke("libraries:managed-migrate", targetDirectory),
   },
+  mounts: {
+    list: () => ipcRenderer.invoke("mounts:list"),
+    add: (path) => ipcRenderer.invoke("mounts:add", path),
+    remove: (id) => ipcRenderer.invoke("mounts:remove", id),
+    reconnect: (id) => ipcRenderer.invoke("mounts:reconnect", id),
+  },
+  metadata: {
+    ensure: (path) => ipcRenderer.invoke("metadata:ensure", path),
+    patch: (assetId, patch) =>
+      ipcRenderer.invoke("metadata:patch", assetId, patch),
+  },
+  collections: {
+    addReferences: (collectionId, paths) =>
+      ipcRenderer.invoke("collections:add-references", collectionId, paths),
+    removeReferences: (collectionId, paths) =>
+      ipcRenderer.invoke("collections:remove-references", collectionId, paths),
+    listReferences: (collectionId) =>
+      ipcRenderer.invoke("collections:list-references", collectionId),
+  },
+  media: {
+    probe: (path) => ipcRenderer.invoke("media:probe", path),
+    thumbnail: (path, options) =>
+      ipcRenderer.invoke("media:thumbnail", path, options),
+    preview: (path) => ipcRenderer.invoke("media:preview", path),
+    convert: (path, targetFormat) =>
+      ipcRenderer.invoke("media:convert", path, targetFormat),
+    cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),
+  },
+  providers: {
+    list: () => ipcRenderer.invoke("providers:list"),
+    health: (providerId) =>
+      ipcRenderer.invoke("providers:health", providerId),
+  },
   watchRoots: {
     reconcile: (rootId) =>
       ipcRenderer.invoke("watch-roots:reconcile", rootId),
@@ -283,6 +316,10 @@ const api: RefCanvasApi = {
     openWindow: (id) => ipcRenderer.invoke("boards:open-window", id),
     closeWindow: () => ipcRenderer.invoke("boards:close-window"),
     getAssets: (id) => ipcRenderer.invoke("boards:get-assets", id),
+    resolveReferences: (id) =>
+      ipcRenderer.invoke("boards:resolve-references", id),
+    relinkReference: (id, assetId, path) =>
+      ipcRenderer.invoke("boards:relink-reference", id, assetId, path),
   },
   actions: {
     start: (request) => ipcRenderer.invoke("actions:start", request),
