@@ -19,11 +19,8 @@ import type {
   DuplicateGroup,
   FilesystemRenameResult,
   ImportJobSnapshot,
-  ImportOptions,
-  ImportResult,
   LibraryPreferences,
   LibraryChangedEvent,
-  MaterializeOptions,
   MaterializeResult,
   MediaMetadataSnapshot,
   PathMigrationReport,
@@ -837,7 +834,6 @@ export class LibraryService {
   private async runImport(job: ImportJob): Promise<void> {
     const { snapshot, controller } = job;
     // 磁盘唯一真相：导入恒为 linked（磁盘原生，计划 §13.2 退役 managed）。
-    const targetFolderId = job.options.targetFolderId ?? null;
     try {
       snapshot.state = "scanning";
       this.importCoordinator.emit(job);
@@ -897,7 +893,6 @@ export class LibraryService {
               inspected.push(...results.filter((item): item is NonNullable<typeof item> => item !== null));
             }
             const savedAssets = this.database.upsertAssets(inspected.map((item) => item.asset));
-            const collectionRelations: Array<{ assetId: string; collectionId: string }> = [];
             const identities: Array<{
               pathKey: string;
               assetId: string;
@@ -921,12 +916,8 @@ export class LibraryService {
                   mountId: mountIdByRoot.get(item.candidate.watchRootPath) ?? null,
                 });
               }
-              if (targetFolderId) {
-                collectionRelations.push({ assetId: saved.asset.id, collectionId: targetFolderId });
-              }
             }
             if (identities.length) this.database.upsertFileIdentities(identities);
-            if (collectionRelations.length) this.database.addAssetsToCollections(collectionRelations);
             snapshot.processed += savedAssets.length;
             this.importCoordinator.emit(job, false);
           }
@@ -972,8 +963,8 @@ export class LibraryService {
       this.metadataEnricher.run(undefined, controller.signal));
   }
 
-  startImport(inputPaths: string[], options: ImportOptions = {}): ImportJobSnapshot {
-    const job = this.importCoordinator.create(inputPaths, options);
+  startImport(inputPaths: string[]): ImportJobSnapshot {
+    const job = this.importCoordinator.create(inputPaths);
     this.importCoordinator.enqueueJob(job, (next) => this.runImport(next));
     return structuredClone(job.snapshot);
   }
@@ -988,27 +979,17 @@ export class LibraryService {
 
   retryImport(id: string): ImportJobSnapshot {
     const retry = this.importCoordinator.retryInput(id);
-    return this.startImport(retry.paths, retry.options);
+    return this.startImport(retry);
   }
 
-  async importPaths(
-    inputPaths: string[],
-    options: ImportOptions = {},
-  ): Promise<ImportResult> {
-    const snapshot = this.startImport(inputPaths, options);
+  async importPaths(inputPaths: string[]): Promise<ImportJobSnapshot> {
+    const snapshot = this.startImport(inputPaths);
     return new Promise((resolve) => {
       const unsubscribe = this.onImportProgress((next) => {
         if (next.id !== snapshot.id) return;
         if (!["completed", "cancelled", "failed"].includes(next.state)) return;
         unsubscribe();
-        resolve({
-          imported: next.imported,
-          reused: next.reused,
-          unsupported: next.unsupported,
-          failed: next.failed,
-          relinked: next.relinked,
-          conflicted: next.conflicted,
-        });
+        resolve(next);
       });
     });
   }
@@ -1027,30 +1008,16 @@ export class LibraryService {
    * 按需入库一个未导入文件（Found 式浏览的 materialize）：
    * 磁盘唯一真相——同路径复用 assetId；只计算 quick fingerprint，完整
    * SHA-256 仅用于主动完整性校验；不创建文件夹层级，绝不复制源文件
-   * （忽略 storageMode，materialize 恒为 linked 引用索引）。
+   * （materialize 恒为 linked 引用索引，§13.4 已移除 options）。
    */
-  async materializePath(
-    filename: string,
-    options: MaterializeOptions = {},
-  ): Promise<MaterializeResult> {
+  async materializePath(filename: string): Promise<MaterializeResult> {
     const resolved = path.resolve(filename);
     const existing = this.database.getAssetByPath(resolved);
     const next = await this.readAsset(resolved, existing ?? undefined);
     const result = this.database.upsertAsset(next);
     const asset = result.asset;
     this.updateIdentity(asset);
-    if (options.collectionIds?.length) {
-      this.database.addAssetsToCollections(
-        options.collectionIds.map((collectionId) => ({
-          assetId: asset.id,
-          collectionId,
-        })),
-      );
-    }
-    if (options.tags?.length) {
-      this.database.setAssetTags(asset.id, options.tags);
-    }
-    // 重新读取以反映集合/标签副作用后的最新记录。
+    // 重新读取以反映索引后的最新记录。
     const fresh = this.database.getAsset(asset.id)!;
     return { asset: fresh, created: !existing };
   }
@@ -1133,7 +1100,7 @@ export class LibraryService {
     };
   }
 
-  async addWatchRoot(root: string): Promise<ImportResult> {
+  async addWatchRoot(root: string): Promise<WatchRoot> {
     const resolved = path.resolve(root);
     if (!(await stat(resolved)).isDirectory()) throw new Error("WATCH_ROOT_NOT_DIRECTORY");
     const watchRoot = this.database.addWatchRoot(resolved);
@@ -1146,7 +1113,8 @@ export class LibraryService {
     });
     if (this.watchReconcile.active) this.watchReconcile.addRoot(watchRoot);
     else await this.startWatching();
-    return this.importPaths([resolved]);
+    void this.importPaths([resolved]);
+    return watchRoot;
   }
 
   async removeWatchRoot(id: string): Promise<WatchRoot> {

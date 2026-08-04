@@ -186,32 +186,6 @@ export interface BatchAssetPatch {
   notes?: string;
 }
 
-export interface ImportOptions {
-  /**
-   * `collections` recreates the source directory hierarchy as folders
-   * (existing behavior); `flat` skips folder creation.
-   */
-  hierarchyMode?: "collections" | "flat";
-  /** When set, imported assets are added directly to this folder instead of the hierarchy. */
-  targetFolderId?: string | null;
-  /**
-   * When set together with `hierarchyMode: "collections"`, the recreated
-   * folder tree is nested under this folder instead of the library root.
-   */
-  parentFolderId?: string | null;
-}
-
-export interface ImportResult {
-  imported: number;
-  reused: number;
-  unsupported: number;
-  failed: Array<{ path: string; reason: string }>;
-  /** Records repaired to a new location after identity confirmation. */
-  relinked: number;
-  /** Moves parked in the reconcile queue because identity was ambiguous. */
-  conflicted: number;
-}
-
 export type ImportJobState =
   | "queued"
   | "scanning"
@@ -221,7 +195,7 @@ export type ImportJobState =
   | "cancelled"
   | "failed";
 
-export interface ImportJobSnapshot extends ImportResult {
+export interface ImportJobSnapshot {
   id: string;
   state: ImportJobState;
   discovered: number;
@@ -230,6 +204,14 @@ export interface ImportJobSnapshot extends ImportResult {
   enriched: number;
   metadataFailed: number;
   sourcePaths: string[];
+  imported: number;
+  reused: number;
+  unsupported: number;
+  failed: Array<{ path: string; reason: string }>;
+  /** Records repaired to a new location after identity confirmation. */
+  relinked: number;
+  /** Moves parked in the reconcile queue because identity was ambiguous. */
+  conflicted: number;
   createdAt: string;
   completedAt: string | null;
 }
@@ -499,12 +481,6 @@ export interface QuickAccessEntry {
   sortOrder: number;
   expanded: boolean;
   createdAt: string;
-}
-
-export interface MaterializeOptions {
-  collectionIds?: string[];
-  tags?: string[];
-  targetFolderId?: string | null;
 }
 
 export interface MaterializeResult {
@@ -875,12 +851,9 @@ export interface RefCanvasApi {
     searchWindow(input: AssetSearchWindowInput): Promise<AssetSearchWindow>;
     get(id: string): Promise<AssetRecord | null>;
     getByPath(path: string): Promise<AssetRecord | null>;
-    pickAndImport(mode: "files" | "folder"): Promise<ImportResult | null>;
-    importPaths(paths: string[]): Promise<ImportResult>;
-    startImport(
-      paths: string[],
-      options?: ImportOptions,
-    ): Promise<ImportJobSnapshot>;
+    pickAndImport(mode: "files" | "folder"): Promise<ImportJobSnapshot | null>;
+    importPaths(paths: string[]): Promise<ImportJobSnapshot>;
+    startImport(paths: string[]): Promise<ImportJobSnapshot>;
     getImportJob(id: string): Promise<ImportJobSnapshot | null>;
     cancelImport(id: string): Promise<boolean>;
     retryImport(id: string): Promise<ImportJobSnapshot>;
@@ -926,7 +899,7 @@ export interface RefCanvasApi {
     refreshLinks(): Promise<number>;
     pickAndRelink(id: string): Promise<AssetRecord | null>;
     searchAndRelink(id: string): Promise<RelinkResult | null>;
-    addWatchFolder(): Promise<ImportResult | null>;
+    addWatchFolder(): Promise<WatchRoot | null>;
     listWatchRoots(): Promise<WatchRoot[]>;
     removeWatchRoot(id: string): Promise<WatchRoot>;
     listCollections(): Promise<CollectionRecord[]>;
@@ -1052,7 +1025,7 @@ export interface RefCanvasApi {
     removeQuickAccess(id: string): Promise<QuickAccessEntry[]>;
     listQuickAccess(): Promise<QuickAccessEntry[]>;
     /** 未入库文件按需入库：复用同路径 assetId，仅计算 quick fingerprint。 */
-    materialize(path: string, options?: MaterializeOptions): Promise<MaterializeResult>;
+    materialize(path: string): Promise<MaterializeResult>;
     /** 真实改名源文件并同步已入库记录（assetId 不变）。 */
     rename(path: string, newName: string): Promise<FilesystemRenameResult>;
     /** 在父目录下新建文件夹（同名冲突时自动改名）。 */
@@ -1179,7 +1152,7 @@ export interface RefCanvasApi {
     onWindowModeReset(callback: () => void): () => void;
     captureClipboard(): Promise<AssetRecord | null>;
     prepareRegionCapture(): Promise<CaptureSource | null>;
-    saveRegionCapture(dataUrl: string): Promise<ImportResult>;
+    saveRegionCapture(dataUrl: string): Promise<AssetRecord | null>;
     cancelRegionCapture(): Promise<void>;
     rebuildThumbnailCache(): Promise<void>;
     exportDiagnostics(): Promise<string | null>;

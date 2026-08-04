@@ -1,14 +1,10 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type {
-  ImportJobSnapshot,
-  ImportOptions,
-} from "../../shared/contracts";
+import type { ImportJobSnapshot } from "../../shared/contracts";
 
 export interface ImportJob {
   snapshot: ImportJobSnapshot;
   controller: AbortController;
-  options: ImportOptions;
   lastEmittedAt: number;
 }
 
@@ -20,7 +16,7 @@ export class ImportCoordinator {
     private readonly onProgress: (snapshot: ImportJobSnapshot) => void,
   ) {}
 
-  create(inputPaths: string[], options: ImportOptions): ImportJob {
+  create(inputPaths: string[]): ImportJob {
     const snapshot: ImportJobSnapshot = {
       id: randomUUID(),
       state: "queued",
@@ -41,7 +37,6 @@ export class ImportCoordinator {
     const job = {
       snapshot,
       controller: new AbortController(),
-      options,
       lastEmittedAt: 0,
     };
     this.jobs.set(snapshot.id, job);
@@ -78,14 +73,11 @@ export class ImportCoordinator {
     return true;
   }
 
-  retryInput(id: string): { paths: string[]; options: ImportOptions } {
+  retryInput(id: string): string[] {
     const job = this.jobs.get(id);
     if (!job) throw new Error("IMPORT_JOB_NOT_FOUND");
     const failedPaths = job.snapshot.failed.map((item) => item.path);
-    return {
-      paths: failedPaths.length ? failedPaths : job.snapshot.sourcePaths,
-      options: job.options,
-    };
+    return failedPaths.length ? failedPaths : job.snapshot.sourcePaths;
   }
 
   cancelAll(): void {

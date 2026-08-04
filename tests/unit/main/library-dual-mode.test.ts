@@ -8,7 +8,6 @@ import {
   databasePathFor,
 } from "../../../src/main/services/library-manager";
 import { LibraryService } from "../../../src/main/services/library-service";
-import type { ImportOptions } from "../../../src/shared/contracts";
 
 const temporaryDirectories: string[] = [];
 
@@ -66,14 +65,13 @@ describe("dual-mode library service", () => {
   });
 
   it("no longer exposes a storage mode on import options", () => {
-    // 计划 §13.4：managed 退役后 ImportOptions 移除 storageMode。若该字段被
-    // 重新引入，@ts-expect-error 会失效，typecheck 立即失败。
-    const legacy: ImportOptions = {
-      // @ts-expect-error storageMode 已从 ImportOptions 移除（managed 退役）
+    // 计划 §13.4：ImportOptions 已整体移除（managed 退役）。若该类型被重新
+    // 引入，@ts-expect-error 会失效，typecheck 立即失败。
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const legacy: any = {
       storageMode: "managed",
-      hierarchyMode: "collections",
     };
-    expect(legacy.hierarchyMode).toBe("collections");
+    expect(legacy.storageMode).toBe("managed");
   });
 
   it("re-importing the same path reuses the linked record", async () => {

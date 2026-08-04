@@ -7,9 +7,7 @@ import type {
   AssetSortKey,
   BatchAssetPatch,
   BoardDocumentV3,
-  ImportOptions,
   LibraryPreferences,
-  MaterializeOptions,
   SavedView,
   SelectionScope,
   SortDirection,
@@ -96,7 +94,6 @@ interface AppState
   purgeSelection(): Promise<void>;
   forgetTrashSelection(): Promise<void>;
   importPaths(paths: string[]): Promise<void>;
-  importPathsWithOptions(paths: string[], options: ImportOptions): Promise<void>;
   cancelImport(): Promise<void>;
   addWatchFolder(): Promise<void>;
   relinkAsset(id: string, mode: "pick" | "search"): Promise<void>;
@@ -175,7 +172,7 @@ interface AppState
   removeQuickAccess(id: string): Promise<void>;
   setDirectoryExpanded(id: string, expanded: boolean): Promise<void>;
   /** 未入库文件按需入库（同路径复用 assetId）。 */
-  materializeEntry(path: string, options?: MaterializeOptions): Promise<void>;
+  materializeEntry(path: string): Promise<void>;
 }
 
 function selectionState(
@@ -786,12 +783,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ importJob, importing: true });
   },
 
-  importPathsWithOptions: async (paths, options) => {
-    if (!paths.length) return;
-    const importJob = await window.refCanvas.library.startImport(paths, options);
-    set({ importJob, importing: true });
-  },
-
   cancelImport: async () => {
     const job = get().importJob;
     if (job) await window.refCanvas.library.cancelImport(job.id);
@@ -1225,21 +1216,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     await moveDirectoryCursor(set, current, index);
   },
 
+  /** 批量按需入库并加入文件夹（同路径复用 assetId）。 */
   materializeEntriesToCollection: async (paths, collectionId) => {
     const results = await Promise.allSettled(
       paths.map((entryPath) =>
-        window.refCanvas.filesystem.materialize(entryPath, {
-          collectionIds: [collectionId],
-        }),
+        window.refCanvas.filesystem.materialize(entryPath).then(({ asset }) =>
+          window.refCanvas.library.addToCollection(asset.id, collectionId),
+        ),
       ),
     );
     if (paths.length === 1 && results[0]?.status === "rejected") {
       throw results[0].reason;
-    }
-    const failed = results.filter((result) => result.status === "rejected").length;
-    if (failed) {
-      const collections = await window.refCanvas.library.listCollections();
-      set({ collections });
     }
     await get().reloadAssets();
     const collections = await window.refCanvas.library.listCollections();
@@ -1249,7 +1236,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   /** 批量按需入库（不指定文件夹），失败容错；单条失败时抛错。 */
   materializeEntries: async (paths) => {
     const results = await Promise.allSettled(
-      paths.map((entryPath) => window.refCanvas.filesystem.materialize(entryPath, {})),
+      paths.map((entryPath) => window.refCanvas.filesystem.materialize(entryPath)),
     );
     if (paths.length === 1 && results[0]?.status === "rejected") {
       throw results[0].reason;
@@ -1263,9 +1250,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   materializeEntriesWithTags: async (paths, tags) => {
     const results = await Promise.allSettled(
       paths.map((entryPath) =>
-        window.refCanvas.filesystem.materialize(entryPath, {
-          tags,
-        }),
+        window.refCanvas.filesystem.materialize(entryPath).then(({ asset }) =>
+          window.refCanvas.library.setTags(asset.id, tags),
+        ),
       ),
     );
     if (paths.length === 1 && results[0]?.status === "rejected") {
@@ -1302,8 +1289,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refreshQuickAccess();
   },
 
-  materializeEntry: async (path, options) => {
-    await window.refCanvas.filesystem.materialize(path, options);
+  materializeEntry: async (path) => {
+    await window.refCanvas.filesystem.materialize(path);
     const search = get().currentSearch();
     if (!search.collectionId && !search.query) {
       await get().reloadAssets();

@@ -385,12 +385,13 @@ describe("materialize", () => {
     const service = new LibraryService(database);
     try {
       const collection = database.createCollection("概念");
-      const result = await service.materializePath(file, {
-        collectionIds: [collection.id],
-        tags: ["草图"],
-      });
-      expect(result.asset.collectionIds).toEqual([collection.id]);
-      expect(result.asset.tags).toEqual(["草图"]);
+      // §13.4：materialize 不再接受 options；集合与标签副作用拆为独立 API。
+      const result = await service.materializePath(file);
+      database.addAssetToCollection(result.asset.id, collection.id);
+      database.setAssetTags(result.asset.id, ["草图"]);
+      const fresh = database.getAsset(result.asset.id)!;
+      expect(fresh.collectionIds).toEqual([collection.id]);
+      expect(fresh.tags).toEqual(["草图"]);
     } finally {
       await service.close();
       database.close();

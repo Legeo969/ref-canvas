@@ -144,18 +144,8 @@ export function registerFilesystemIpc(
     service().removeQuickAccess(z.string().min(1).max(128).parse(id)),
   );
   ipc.handle("filesystem:list-quick-access", () => service().listQuickAccess());
-  ipc.handle("filesystem:materialize", (filename, options) =>
-    library().materializePath(
-      path.resolve(pathSchema.parse(filename)),
-      z
-        .object({
-          collectionIds: z.array(idSchema).max(500).optional(),
-          tags: z.array(z.string().trim().min(1).max(64)).max(500).optional(),
-          targetFolderId: idSchema.nullable().optional(),
-        })
-        .optional()
-        .parse(options),
-    ),
+  ipc.handle("filesystem:materialize", (filename) =>
+    library().materializePath(path.resolve(pathSchema.parse(filename))),
   );
   ipc.handle("filesystem:rename", (filename, newName) =>
     library().renameSourceFile(

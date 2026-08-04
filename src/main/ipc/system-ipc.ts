@@ -204,7 +204,8 @@ export function registerSystemIpc(
       const filename = await dependencies.saveCapture(
         dependencies.pngDataUrlToBuffer(z.string().parse(dataUrl)),
       );
-      return await library().importPaths([filename]);
+      await library().importPaths([filename]);
+      return database().getAssetByPath(filename);
     } finally {
       dependencies.restoreCaptureWindow();
     }

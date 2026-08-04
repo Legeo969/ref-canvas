@@ -46,18 +46,8 @@ export function registerLibraryIpc(
   ipc.handle("library:import-paths", (paths) =>
     library().importPaths(pathsSchema.parse(paths)),
   );
-  ipc.handle("library:start-import", (paths, options) =>
-    library().startImport(
-      pathsSchema.parse(paths),
-      z
-        .object({
-          hierarchyMode: z.enum(["collections", "flat"]).optional(),
-          targetFolderId: z.union([idSchema, z.null()]).optional(),
-          parentFolderId: z.union([idSchema, z.null()]).optional(),
-        })
-        .optional()
-        .parse(options),
-    ),
+  ipc.handle("library:start-import", (paths) =>
+    library().startImport(pathsSchema.parse(paths)),
   );
   ipc.handle("library:get-import-job", (id) =>
     library().getImportJob(idSchema.parse(id)),

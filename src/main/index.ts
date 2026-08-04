@@ -497,13 +497,13 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
       } else if (action.type === "trash") {
         await trashDirectoryPath(filename);
       } else if (action.type === "addCollection") {
-        await library.materializePath(filename, {
-          collectionIds: [action.collectionId],
-        });
+        const result = await library.materializePath(filename);
+        database.addAssetToCollection(result.asset.id, action.collectionId);
       } else if (action.type === "tag") {
-        await library.materializePath(filename, { tags: action.tags });
+        const result = await library.materializePath(filename);
+        database.setAssetTags(result.asset.id, action.tags);
       } else {
-        await library.materializePath(filename, {});
+        await library.materializePath(filename);
       }
     },
   });

@@ -23,10 +23,13 @@ describe("DirectoryAssetPanel", () => {
 
   it("materializes a local file into the selected collection", async () => {
     const materialize = vi.fn(async () => ({
-      asset: {},
+      asset: { id: "asset-1" },
       created: true,
       copied: false,
       verified: false,
+    }));
+    const addToCollection = vi.fn(async () => ({
+      id: "asset-1",
     }));
     const reloadAssets = vi.fn(async () => undefined);
     Object.assign(window, {
@@ -34,6 +37,9 @@ describe("DirectoryAssetPanel", () => {
         filesystem: {
           materialize,
           onSearchProgress: () => () => undefined,
+        },
+        library: {
+          addToCollection,
         },
       } as unknown as RefCanvasApi,
     });
@@ -99,9 +105,8 @@ describe("DirectoryAssetPanel", () => {
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
 
-    expect(materialize).toHaveBeenCalledWith("D:\\refs\\shot.txt", {
-      collectionIds: ["collection-1"],
-    });
+    expect(materialize).toHaveBeenCalledWith("D:\\refs\\shot.txt");
+    expect(addToCollection).toHaveBeenCalledWith("asset-1", "collection-1");
     expect(reloadAssets).toHaveBeenCalledOnce();
   });
 
@@ -594,8 +599,8 @@ describe("DirectoryAssetPanel", () => {
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
 
-    expect(materialize).toHaveBeenCalledWith("D:\\refs\\a.png", {});
-    expect(materialize).toHaveBeenCalledWith("D:\\refs\\b.png", {});
+    expect(materialize).toHaveBeenCalledWith("D:\\refs\\a.png");
+    expect(materialize).toHaveBeenCalledWith("D:\\refs\\b.png");
     expect(document.querySelector(".batch-toolbar")).toBeNull();
   });
 

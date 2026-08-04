@@ -299,14 +299,13 @@ describe("capacity smoke", () => {
           );
         }
         const startedAt = performance.now();
-        const result = await service.importPaths([source], {
-          hierarchyMode: "collections",
-        });
+        const result = await service.importPaths([source]);
         const elapsedMs = performance.now() - startedAt;
         expect(result.failed).toHaveLength(0);
         expect(result.imported).toBe(3_000);
         expect(database.getLibraryStats().total).toBe(3_000);
-        expect(database.listCollections()).toHaveLength(67);
+        // §13.4：导入不再镜像创建合集（ImportOptions 已移除）。
+        expect(database.listCollections()).toHaveLength(0);
         expect(elapsedMs).toBeLessThan(15_000);
       } finally {
         await service.close();

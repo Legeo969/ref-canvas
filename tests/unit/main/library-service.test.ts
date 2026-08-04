@@ -232,10 +232,11 @@ describe("quickFingerprint", () => {
     const service = new LibraryService(database);
     try {
       const target = database.createCollection("收件箱");
-      await service.importPaths([root], {
-        hierarchyMode: "flat",
-        targetFolderId: target.id,
-      });
+      // §13.4：导入不再接受 targetFolderId；改为导入后逐文件加入合集。
+      await service.importPaths([root]);
+      for (const asset of database.searchAssets().items) {
+        database.addAssetToCollection(asset.id, target.id);
+      }
       const folders = database.listCollections();
       expect(folders).toHaveLength(1);
       expect(folders[0].id).toBe(target.id);

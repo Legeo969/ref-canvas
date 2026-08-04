@@ -571,7 +571,7 @@ export function DirectoryAssetPanel() {
   };
 
   const materialize = async (entry: DirectoryEntry) => {
-    const result = await window.refCanvas.filesystem.materialize(entry.path, {});
+    const result = await window.refCanvas.filesystem.materialize(entry.path);
     return result.asset;
   };
 
@@ -626,9 +626,8 @@ export function DirectoryAssetPanel() {
   const addToCollection = async (entry: DirectoryEntry) => {
     const collectionId = await pickCollection();
     if (!collectionId) return;
-    await window.refCanvas.filesystem.materialize(entry.path, {
-      collectionIds: [collectionId],
-    });
+    const { asset } = await window.refCanvas.filesystem.materialize(entry.path);
+    await window.refCanvas.library.addToCollection(asset.id, collectionId);
     await store.reloadAssets();
   };
 
@@ -648,12 +647,14 @@ export function DirectoryAssetPanel() {
       onSubmit: () => undefined,
     });
     if (!values) return;
-    await window.refCanvas.filesystem.materialize(entry.path, {
-      tags: values.tags
+    const { asset } = await window.refCanvas.filesystem.materialize(entry.path);
+    await window.refCanvas.library.setTags(
+      asset.id,
+      values.tags
         .split(/[,，]/)
         .map((tag) => tag.trim())
         .filter(Boolean),
-    });
+    );
     await store.reloadAssets();
   };
 

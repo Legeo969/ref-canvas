@@ -11,8 +11,8 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("library:pick-import", mode),
     importPaths: (paths) =>
       ipcRenderer.invoke("library:import-paths", paths),
-    startImport: (paths, options) =>
-      ipcRenderer.invoke("library:start-import", paths, options),
+    startImport: (paths) =>
+      ipcRenderer.invoke("library:start-import", paths),
     getImportJob: (id) =>
       ipcRenderer.invoke("library:get-import-job", id),
     cancelImport: (id) =>
@@ -226,8 +226,8 @@ const api: RefCanvasApi = {
     removeQuickAccess: (id) =>
       ipcRenderer.invoke("filesystem:remove-quick-access", id),
     listQuickAccess: () => ipcRenderer.invoke("filesystem:list-quick-access"),
-    materialize: (path, options) =>
-      ipcRenderer.invoke("filesystem:materialize", path, options),
+    materialize: (path) =>
+      ipcRenderer.invoke("filesystem:materialize", path),
     rename: (path, newName) =>
       ipcRenderer.invoke("filesystem:rename", path, newName),
     createFolder: (parentPath, name, options) =>
