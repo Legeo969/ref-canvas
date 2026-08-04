@@ -53,7 +53,7 @@ describe("eagle management", () => {
   it("v9 migration adds BPM, custom fields, tag metadata and lock columns", async () => {
     const database = new RefCanvasDatabase(":memory:");
     try {
-      expect(database.getSchemaVersion()).toBe(14);
+      expect(database.getSchemaVersion()).toBe(15);
       const columns = database
         .listActiveAssets()
         .length === 0

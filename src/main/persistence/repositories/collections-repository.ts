@@ -150,7 +150,7 @@ export class CollectionsRepository {
     this.db.transaction(() => {
       for (const collectionId of ids.reverse()) {
         this.db.prepare(
-          "DELETE FROM collection_assets WHERE collection_id = ?",
+          "DELETE FROM collection_refs WHERE collection_id = ?",
         ).run(collectionId);
         this.db.prepare("DELETE FROM collections WHERE id = ?").run(collectionId);
       }
@@ -213,7 +213,7 @@ export class CollectionsRepository {
     return this.db.prepare(`
       SELECT c.*, COUNT(CASE WHEN a.lifecycle = 'active' AND a.link_state = 'online' THEN 1 END) AS asset_count
       FROM collections c
-      LEFT JOIN collection_assets ca ON ca.collection_id = c.id
+      LEFT JOIN collection_refs ca ON ca.collection_id = c.id
       LEFT JOIN assets a ON a.id = ca.asset_id
       GROUP BY c.id ORDER BY c.sort_order, c.created_at
     `).all() as CollectionPersistenceRow[];

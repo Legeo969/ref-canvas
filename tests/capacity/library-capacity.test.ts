@@ -93,7 +93,7 @@ describe("500k capacity gates", () => {
         "INSERT INTO asset_tags(asset_id, tag_id) VALUES (?, 'capacity-tag')",
       );
       const addCollection = sqlite.prepare(
-        "INSERT INTO collection_assets(asset_id, collection_id) VALUES (?, 'capacity-collection')",
+        "INSERT INTO collection_refs(id, collection_id, asset_id) VALUES (?, 'capacity-collection', ?)",
       );
       sqlite.transaction(() => {
         for (const base of [249_800, 499_800]) {

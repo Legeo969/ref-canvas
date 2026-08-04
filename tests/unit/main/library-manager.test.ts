@@ -53,7 +53,7 @@ describe("LibraryManager (single active library)", () => {
 
     const db = new RefCanvasDatabase(databasePathFor(entry));
     try {
-      expect(db.getSchemaVersion()).toBe(14);
+      expect(db.getSchemaVersion()).toBe(15);
     } finally {
       db.close();
     }

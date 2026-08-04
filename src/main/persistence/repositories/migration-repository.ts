@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
-export const DATABASE_SCHEMA_VERSION = 14;
+export const DATABASE_SCHEMA_VERSION = 15;
 
 /**
  * Ordered migration model.
@@ -147,11 +147,22 @@ export const MIGRATIONS: readonly MigrationStep[] = [
           ON assets(lifecycle, rating DESC, id DESC);
         CREATE INDEX IF NOT EXISTS asset_tags_asset
           ON asset_tags(asset_id, tag_id);
-        CREATE INDEX IF NOT EXISTS collection_assets_asset
-          ON collection_assets(asset_id, collection_id);
         CREATE INDEX IF NOT EXISTS assets_metadata_pending
           ON assets(metadata_status, metadata_job_id, updated_at, id);
       `);
+      // collection_assets 的索引：v15 已将该表并入 collection_refs 并删除；
+      // 降级重跑 v13 时表可能已不存在，需守卫跳过。
+      const collectionAssetsExist = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collection_assets'",
+        )
+        .get();
+      if (collectionAssetsExist) {
+        db.exec(`
+          CREATE INDEX IF NOT EXISTS collection_assets_asset
+            ON collection_assets(asset_id, collection_id);
+        `);
+      }
     },
   },
   {
@@ -161,6 +172,15 @@ export const MIGRATIONS: readonly MigrationStep[] = [
       "Found 磁盘原生 schema：引入 mount roots、collection refs、cache 与 media metadata 表，升级 file identities 为磁盘身份模型，移除已停用的 collection_sources。",
     apply(db) {
       V14NativeFilesystem.apply(db);
+    },
+  },
+  {
+    version: 15,
+    id: "v15-unified-collection-refs",
+    description:
+      "统一 Collection 引用：collection_refs 增加 asset_id 列并放宽挂载列为可空，collection_assets 数据并入后删除该表。",
+    apply(db) {
+      V15CollectionRefsUnified.apply(db);
     },
   },
 ];
@@ -959,5 +979,115 @@ class V14NativeFilesystem {
     `);
     // v12 的 watch 镜像标记已停用：删除表（阶段 0 已停止所有运行时调用）。
     db.exec("DROP TABLE IF EXISTS collection_sources;");
+  }
+}
+
+/**
+ * v15：Collection 引用统一为 collection_refs（计划 §7.2）。
+ *
+ * - collection_refs 增加 `asset_id`（可空，引用 assets ON DELETE CASCADE）：
+ *   入库资产即使不在任何挂载内（materialize 到任意目录）也能被合集引用。
+ * - 挂载列（mount_id / relative_path / fingerprint）放宽为可空，
+ *   与 asset_id 形成双轨引用：有身份则两者齐备，无身份则仅 asset_id。
+ * - 保留 UNIQUE(collection_id, mount_id, relative_path)（路径引用去重），
+ *   新增 UNIQUE(collection_id, asset_id)（资产引用去重）。
+ * - 数据迁移：collection_assets 经 file_identities 解析挂载键后并入
+ *   collection_refs；既有路径引用尽力回填 asset_id。最后 DROP collection_assets。
+ */
+class V15CollectionRefsUnified {
+  static apply(db: Database.Database): void {
+    // 1) 重建 collection_refs：加 asset_id、放宽挂载列、增加资产唯一键。
+    const refsExist = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collection_refs'",
+      )
+      .get();
+    if (refsExist) {
+      db.exec(`
+        CREATE TABLE collection_refs_v15 (
+          id TEXT PRIMARY KEY,
+          collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+          asset_id TEXT REFERENCES assets(id) ON DELETE CASCADE,
+          mount_id TEXT REFERENCES mount_roots(id),
+          relative_path TEXT,
+          fingerprint TEXT,
+          state TEXT NOT NULL DEFAULT 'resolved',
+          UNIQUE(collection_id, asset_id),
+          UNIQUE(collection_id, mount_id, relative_path)
+        );
+        INSERT INTO collection_refs_v15
+          (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+          SELECT id, collection_id, NULL, mount_id, relative_path, fingerprint, state
+          FROM collection_refs;
+        DROP TABLE collection_refs;
+        ALTER TABLE collection_refs_v15 RENAME TO collection_refs;
+      `);
+    } else {
+      db.exec(`
+        CREATE TABLE collection_refs (
+          id TEXT PRIMARY KEY,
+          collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+          asset_id TEXT REFERENCES assets(id) ON DELETE CASCADE,
+          mount_id TEXT REFERENCES mount_roots(id),
+          relative_path TEXT,
+          fingerprint TEXT,
+          state TEXT NOT NULL DEFAULT 'resolved',
+          UNIQUE(collection_id, asset_id),
+          UNIQUE(collection_id, mount_id, relative_path)
+        );
+      `);
+    }
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS collection_refs_collection
+        ON collection_refs(collection_id);
+      CREATE INDEX IF NOT EXISTS collection_refs_mount
+        ON collection_refs(mount_id, relative_path);
+      CREATE INDEX IF NOT EXISTS collection_refs_asset
+        ON collection_refs(asset_id, collection_id);
+    `);
+    // 2) collection_assets → collection_refs：经 file_identities 解析挂载键。
+    //    同一资产可能存在多条 identity 行，INSERT OR IGNORE 由
+    //    UNIQUE(collection_id, asset_id) 保证每个资产每合集只落一行。
+    //    守卫表存在：v15 幂等重跑时 collection_assets 已删除。
+    const collectionAssetsExist = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collection_assets'",
+      )
+      .get();
+    if (collectionAssetsExist) {
+      db.exec(`
+        INSERT OR IGNORE INTO collection_refs
+          (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+        SELECT lower(hex(randomblob(16))), ca.collection_id, ca.asset_id,
+          fi.mount_id, fi.relative_path, fi.fingerprint, 'resolved'
+        FROM collection_assets ca
+        LEFT JOIN file_identities fi
+          ON fi.asset_id = ca.asset_id
+         AND fi.mount_id IS NOT NULL AND fi.relative_path IS NOT NULL;
+      `);
+      // 3) 既有路径引用尽力回填 asset_id；跳过会撞资产唯一键的行。
+      db.exec(`
+        UPDATE collection_refs SET asset_id = (
+          SELECT fi.asset_id FROM file_identities fi
+          WHERE fi.mount_id = collection_refs.mount_id
+            AND fi.relative_path = collection_refs.relative_path
+          LIMIT 1
+        )
+        WHERE asset_id IS NULL AND mount_id IS NOT NULL AND relative_path IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM collection_refs cr2
+            WHERE cr2.collection_id = collection_refs.collection_id
+              AND cr2.asset_id = (
+                SELECT fi2.asset_id FROM file_identities fi2
+                WHERE fi2.mount_id = collection_refs.mount_id
+                  AND fi2.relative_path = collection_refs.relative_path
+                LIMIT 1
+              )
+              AND cr2.asset_id IS NOT NULL
+          );
+      `);
+      // 4) collection_assets 退役。
+      db.exec("DROP TABLE IF EXISTS collection_assets;");
+    }
   }
 }

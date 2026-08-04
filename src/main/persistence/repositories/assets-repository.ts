@@ -142,7 +142,7 @@ export class AssetsRepository {
       `).all(...batch) as Array<{ asset_id: string; name: string }>;
       const collections = this.db.prepare(`
         SELECT asset_id, collection_id
-        FROM collection_assets
+        FROM collection_refs
         WHERE asset_id IN (${placeholders})
         ORDER BY asset_id, collection_id
       `).all(...batch) as Array<{ asset_id: string; collection_id: string }>;
@@ -253,7 +253,7 @@ export class AssetsRepository {
       );
     }
     if (input.collectionId) {
-      joins.push("JOIN collection_assets ca ON ca.asset_id = a.id");
+      joins.push("JOIN collection_refs ca ON ca.asset_id = a.id");
       if (!input.linkState || input.linkState === "all") {
         clauses.push("a.link_state = 'online'");
       }

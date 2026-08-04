@@ -55,7 +55,7 @@ describe("hardening", () => {
       // 全新数据库文件可正常迁移到最新版本（恢复路径）。
       const recovered = new RefCanvasDatabase(path.join(directory, "recovered.db"));
       try {
-        expect(recovered.getSchemaVersion()).toBe(14);
+        expect(recovered.getSchemaVersion()).toBe(15);
       } finally {
         recovered.close();
       }
@@ -152,7 +152,7 @@ describe("hardening", () => {
 
     const db = new RefCanvasDatabase(filename, { migrationBackupDirectory: backups });
     try {
-      expect(db.getSchemaVersion()).toBe(14);
+      expect(db.getSchemaVersion()).toBe(15);
       // 迁移前快照已写入 backups 目录。
       const { readdir } = await import("node:fs/promises");
       const files = await readdir(backups);

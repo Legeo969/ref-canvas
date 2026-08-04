@@ -1355,27 +1355,87 @@ export class RefCanvasDatabase {
   }
   addAssetToCollection(assetId: string, collectionId: string): AssetRecord {
     if (!this.getAsset(assetId)) throw new Error("ASSET_NOT_FOUND");
-    this.db.prepare(`
-      INSERT OR IGNORE INTO collection_assets (collection_id, asset_id) VALUES (?, ?)
-    `).run(collectionId, assetId);
+    this.insertCollectionRef(assetId, collectionId);
     return this.getAsset(assetId)!;
+  }
+
+  /**
+   * v15：以 asset_id 为主键写入 collection_refs；资产存在挂载身份时
+   * 一并记录引用键（§7.2 双轨引用），否则仅保留资产引用。
+   */
+  private insertCollectionRef(assetId: string, collectionId: string): void {
+    const identity = this.db.prepare(`
+      SELECT mount_id, relative_path, fingerprint FROM file_identities
+      WHERE asset_id = ? AND mount_id IS NOT NULL AND relative_path IS NOT NULL
+      LIMIT 1
+    `).get(assetId) as
+      | { mount_id: string; relative_path: string; fingerprint: string }
+      | undefined;
+    this.db.prepare(`
+      INSERT INTO collection_refs
+        (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+      VALUES (?, ?, ?, ?, ?, ?, 'resolved')
+      ON CONFLICT(collection_id, asset_id) DO UPDATE SET
+        mount_id = excluded.mount_id,
+        relative_path = excluded.relative_path,
+        fingerprint = excluded.fingerprint,
+        state = 'resolved'
+    `).run(
+      randomUUID(),
+      collectionId,
+      assetId,
+      identity?.mount_id ?? null,
+      identity?.relative_path ?? null,
+      identity?.fingerprint ?? null,
+    );
   }
 
   addAssetsToCollections(
     relations: Array<{ assetId: string; collectionId: string }>,
   ): void {
+    const identities = new Map<
+      string,
+      { mount_id: string; relative_path: string; fingerprint: string } | null
+    >();
     const insert = this.db.prepare(`
-      INSERT OR IGNORE INTO collection_assets (collection_id, asset_id)
-      VALUES (?, ?)
+      INSERT INTO collection_refs
+        (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+      VALUES (?, ?, ?, ?, ?, ?, 'resolved')
+      ON CONFLICT(collection_id, asset_id) DO UPDATE SET
+        mount_id = excluded.mount_id,
+        relative_path = excluded.relative_path,
+        fingerprint = excluded.fingerprint,
+        state = 'resolved'
     `);
     this.db.transaction((items: typeof relations) => {
-      for (const item of items) insert.run(item.collectionId, item.assetId);
+      for (const item of items) {
+        let identity = identities.get(item.assetId);
+        if (identity === undefined) {
+          identity =
+            (this.db.prepare(`
+              SELECT mount_id, relative_path, fingerprint FROM file_identities
+              WHERE asset_id = ? AND mount_id IS NOT NULL AND relative_path IS NOT NULL
+              LIMIT 1
+            `).get(item.assetId) as
+              | { mount_id: string; relative_path: string; fingerprint: string }
+              | undefined) ?? null;
+          identities.set(item.assetId, identity);
+        }
+        insert.run(
+          randomUUID(),
+          item.collectionId,
+          item.assetId,
+          identity?.mount_id ?? null,
+          identity?.relative_path ?? null,
+          identity?.fingerprint ?? null,
+        );
+      }
     })(relations);
   }
 
   removeAssetFromCollection(assetId: string, collectionId: string): AssetRecord {
     this.db.prepare(
-      "DELETE FROM collection_assets WHERE collection_id = ? AND asset_id = ?",
+      "DELETE FROM collection_refs WHERE collection_id = ? AND asset_id = ?",
     ).run(collectionId, assetId);
     const asset = this.getAsset(assetId);
     if (!asset) throw new Error("ASSET_NOT_FOUND");
@@ -1432,17 +1492,23 @@ export class RefCanvasDatabase {
     if (!this.collectionsRepository.get(input.collectionId)) {
       throw new Error("COLLECTION_NOT_FOUND");
     }
-    // 同路径引用复用；fingerprint 变化时更新为新指纹并重置为 resolved。
+    // 尽力反查该路径对应的入库资产（若有），使路径引用与资产引用合一。
+    const identity = this.db.prepare(
+      "SELECT asset_id FROM file_identities WHERE mount_id = ? AND relative_path = ? LIMIT 1",
+    ).get(input.mountId, input.relativePath) as { asset_id: string } | undefined;
+    // 无冲突目标：路径唯一键或资产唯一键任一命中都会走到 DO UPDATE。
     this.db.prepare(`
       INSERT INTO collection_refs
-        (id, collection_id, mount_id, relative_path, fingerprint, state)
-      VALUES (?, ?, ?, ?, ?, 'resolved')
-      ON CONFLICT(collection_id, mount_id, relative_path) DO UPDATE SET
+        (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+      VALUES (?, ?, ?, ?, ?, ?, 'resolved')
+      ON CONFLICT DO UPDATE SET
+        asset_id = COALESCE(excluded.asset_id, asset_id),
         fingerprint = excluded.fingerprint,
         state = 'resolved'
     `).run(
       randomUUID(),
       input.collectionId,
+      identity?.asset_id ?? null,
       input.mountId,
       input.relativePath,
       input.fingerprint,
@@ -1452,21 +1518,24 @@ export class RefCanvasDatabase {
   /** v14：列出合集当前的磁盘文件引用。 */
   listCollectionRefs(collectionId: string): Array<{
     collectionId: string;
-    mountId: string;
-    relativePath: string;
-    fingerprint: string;
+    mountId: string | null;
+    relativePath: string | null;
+    fingerprint: string | null;
+    assetId: string | null;
     state: "resolved" | "missing" | "ambiguous" | "offline";
   }> {
     return this.db.prepare(`
       SELECT collection_id AS collectionId, mount_id AS mountId,
-        relative_path AS relativePath, fingerprint, state
+        relative_path AS relativePath, fingerprint, state,
+        asset_id AS assetId
       FROM collection_refs WHERE collection_id = ?
-      ORDER BY relative_path
+      ORDER BY COALESCE(relative_path, '')
     `).all(collectionId) as Array<{
       collectionId: string;
-      mountId: string;
-      relativePath: string;
-      fingerprint: string;
+      mountId: string | null;
+      relativePath: string | null;
+      fingerprint: string | null;
+      assetId: string | null;
       state: "resolved" | "missing" | "ambiguous" | "offline";
     }>;
   }
