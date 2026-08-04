@@ -101,7 +101,7 @@ describe("hardening", () => {
     db.close();
   });
 
-  it("managed import reuses the content-addressed copy and never alters the source", async () => {
+  it("imports linked files without copying and never alters the source", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
     await manager.initialize();
@@ -114,29 +114,28 @@ describe("hardening", () => {
     const db = new RefCanvasDatabase(databasePathFor(entry));
     const service = new LibraryService(db, path.join(entry.root, "trash", "files"), {
       libraryRoot: entry.root,
-      defaultStorageMode: "managed",
+      defaultStorageMode: "linked",
     });
     const source = path.join(base, "art.png");
     const content = Buffer.alloc(2048, 9);
     await writeFile(source, content);
     try {
       await service.importPaths([source]);
+      // 磁盘唯一真相：不产生 managed store 副本。
       const storeFiles = await import("node:fs/promises").then((fs) =>
-        fs.readdir(managedStorePath(entry.root)),
+        fs.readdir(managedStorePath(entry.root)).catch(() => []),
       );
-      expect(storeFiles).toHaveLength(1);
-      // Re-importing the same bytes reuses the single store file.
-      const secondSource = path.join(base, "copy.png");
-      await writeFile(secondSource, content);
-      const result = await service.importPaths([secondSource]);
+      expect(storeFiles).toHaveLength(0);
+      const asset = db.searchAssets().items[0];
+      expect(asset.storageMode).toBe("linked");
+      expect(asset.path).toBe(source);
+      // Re-importing the same path reuses the single linked record.
+      const result = await service.importPaths([source]);
       expect(result.imported).toBe(0);
       expect(result.reused).toBe(1);
-      // Source files untouched.
+      // Source file untouched.
       await expect(
         (await import("node:fs/promises")).readFile(source),
-      ).resolves.toEqual(content);
-      await expect(
-        (await import("node:fs/promises")).readFile(secondSource),
       ).resolves.toEqual(content);
     } finally {
       await service.close();
@@ -157,19 +156,36 @@ describe("hardening", () => {
     const db = new RefCanvasDatabase(databasePathFor(entry));
     const service = new LibraryService(db, path.join(entry.root, "trash", "files"), {
       libraryRoot: entry.root,
-      defaultStorageMode: "managed",
+      defaultStorageMode: "linked",
     });
-    const source = path.join(base, "photo.png");
-    await writeFile(source, Buffer.alloc(512, 3));
     try {
-      await service.importPaths([source]);
       const store = managedStorePath(entry.root);
+      // 直接构造存量 managed 资产（store 文件 + DB 记录）。
+      const { mkdir, writeFile: write } = await import("node:fs/promises");
+      await mkdir(store, { recursive: true });
+      const storedPath = path.join(store, "kept.png");
+      await write(storedPath, Buffer.alloc(512, 3));
+      db.upsertAsset({
+        title: "kept",
+        kind: "image",
+        path: storedPath,
+        pathKey: storedPath.toLocaleLowerCase("en-US"),
+        extension: "png",
+        size: 512,
+        mtimeMs: 1,
+        fingerprint: "fp",
+        linkState: "online",
+        notes: "",
+        width: 1,
+        height: 1,
+        duration: null,
+        storageMode: "managed",
+        libraryRelativePath: "kept.png",
+        originalSourcePath: "C:\\original\\kept.png",
+      });
       // 删除托管文件 → 报告缺失；塞入孤儿文件 → 报告孤儿。
-      const stored = await import("node:fs/promises").then((fs) =>
-        fs.readdir(store),
-      );
       await import("node:fs/promises").then((fs) =>
-        fs.unlink(path.join(store, stored[0])),
+        fs.unlink(storedPath),
       );
       await writeFile(path.join(store, "orphan.bin"), Buffer.alloc(16));
       const report = await manager.verify(entry.id);

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,9 +6,8 @@ import { RefCanvasDatabase } from "../../../src/main/persistence/database";
 import {
   LibraryManager,
   databasePathFor,
-  managedStorePath,
 } from "../../../src/main/services/library-manager";
-import { LibraryService, fullFileHash } from "../../../src/main/services/library-service";
+import { LibraryService } from "../../../src/main/services/library-service";
 
 const temporaryDirectories: string[] = [];
 
@@ -51,22 +50,21 @@ async function setupManagedLibrary(): Promise<{
 }
 
 describe("dual-mode library service", () => {
-  it("imports managed files with hash-verified copies and original path kept", async () => {
-    const { entry, service, db, base } = await setupManagedLibrary();
+  it("imports files as linked without copying the source", async () => {
+    const { service, db, base } = await setupManagedLibrary();
     const source = path.join(base, "photo.png");
     await writeFile(source, Buffer.alloc(1_024, 5));
     try {
       const result = await service.importPaths([source]);
       const asset = db.searchAssets().items[0];
 
+      // 磁盘唯一真相：导入恒为 linked，绝不复制源文件。
       expect(result.imported).toBe(1);
-      expect(result.copied).toBe(1);
-      expect(result.verified).toBe(1);
-      expect(asset.storageMode).toBe("managed");
-      expect(asset.originalSourcePath).toBe(source);
-      expect(asset.path.startsWith(managedStorePath(entry.root))).toBe(true);
-      expect(asset.libraryRelativePath).toMatch(/^files[\\/]/);
-      expect(asset.contentHash).toBe(await fullFileHash(source));
+      expect(result.copied).toBe(0);
+      expect(asset.storageMode).toBe("linked");
+      expect(asset.originalSourcePath).toBeNull();
+      expect(asset.path).toBe(source);
+      expect(asset.contentHash).toBeNull();
       await expect(stat(source)).resolves.toBeDefined();
     } finally {
       await service.close();
@@ -74,23 +72,20 @@ describe("dual-mode library service", () => {
     }
   });
 
-  it("re-importing identical content reuses the managed copy", async () => {
-    const { entry, service, db, base } = await setupManagedLibrary();
+  it("re-importing the same path reuses the linked record", async () => {
+    const { service, db, base } = await setupManagedLibrary();
     const source = path.join(base, "photo.png");
-    const secondSource = path.join(base, "copy.png");
     const content = Buffer.alloc(2_048, 8);
-    await Promise.all([
-      writeFile(source, content),
-      writeFile(secondSource, content),
-    ]);
+    await writeFile(source, content);
     try {
       await service.importPaths([source]);
-      const result = await service.importPaths([secondSource]);
+      const result = await service.importPaths([source]);
+      // linked 按路径复用；不产生副本。
       expect(result.imported).toBe(0);
       expect(result.reused).toBe(1);
       expect(db.searchAssets().items).toHaveLength(1);
-      const storeFiles = await readdir(managedStorePath(entry.root));
-      expect(storeFiles).toHaveLength(1);
+      const asset = db.searchAssets().items[0];
+      expect(asset.path).toBe(source);
     } finally {
       await service.close();
       db.close();
@@ -131,14 +126,13 @@ describe("dual-mode library service", () => {
     }
   });
 
-  it("removeFromLibrary deletes managed store files but not the record when referenced", async () => {
+  it("removeFromLibrary keeps the linked source when a record is board-referenced", async () => {
     const { service, db, base } = await setupManagedLibrary();
     const source = path.join(base, "kept.png");
     await writeFile(source, Buffer.alloc(300, 6));
     try {
       await service.importPaths([source]);
       const asset = db.searchAssets().items[0];
-      const storeFile = asset.path;
       // Reference it from a board so the record must survive as purged.
       const board = db.createBoard("Ref board");
       db.saveBoard(board.id, {
@@ -156,8 +150,8 @@ describe("dual-mode library service", () => {
       await service.removeFromLibrary({ mode: "ids", ids: [asset.id] });
       const after = db.getAsset(asset.id)!;
       expect(after.lifecycle).toBe("purged");
-      // The managed copy is deleted because the record is purged, not trashed.
-      await expect(stat(storeFile)).rejects.toThrow();
+      // linked 源文件绝不因移除记录而被删除。
+      await expect(stat(source)).resolves.toBeDefined();
       expect(db.getAssetReferences(asset.id)).toHaveLength(1);
     } finally {
       await service.close();
@@ -165,25 +159,26 @@ describe("dual-mode library service", () => {
     }
   });
 
-  it("trash keeps the managed file in the library trash for restore", async () => {
+  it("trash moves the linked source file to the library trash for restore", async () => {
     const { service, db, base } = await setupManagedLibrary();
     const source = path.join(base, "trashme.png");
     await writeFile(source, Buffer.alloc(400, 4));
     try {
       await service.importPaths([source]);
       const asset = db.searchAssets().items[0];
-      const storeFile = asset.path;
 
       await service.trashAssets({ mode: "ids", ids: [asset.id] });
       const trashed = db.getAsset(asset.id)!;
       expect(trashed.lifecycle).toBe("trashed");
-      await expect(stat(storeFile)).rejects.toThrow();
+      // linked 源文件被移入库内回收站（不删除）。
+      await expect(stat(source)).rejects.toThrow();
       await expect(stat(trashed.trashPath!)).resolves.toBeDefined();
 
       await service.restoreAssets([asset.id]);
       const restored = db.getAsset(asset.id)!;
       expect(restored.lifecycle).toBe("active");
-      expect(restored.storageMode).toBe("managed");
+      expect(restored.storageMode).toBe("linked");
+      expect(restored.path).toBe(source);
       await expect(stat(restored.path)).resolves.toBeDefined();
     } finally {
       await service.close();

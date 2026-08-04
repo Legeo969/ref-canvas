@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +33,41 @@ async function makeManager(): Promise<LibraryManager> {
   await manager.initialize();
   await manager.bootstrapLegacy();
   return manager;
+}
+
+/** 直接构造存量 managed 资产（store 文件 + DB 记录），不依赖运行时导入。 */
+async function seedManaged(
+  entry: { root: string },
+  db: RefCanvasDatabase,
+  name: string,
+  content: Buffer,
+): Promise<string> {
+  const { mkdir } = await import("node:fs/promises");
+  const store = managedStorePath(entry.root);
+  await mkdir(store, { recursive: true });
+  const hash = createHash("sha256").update(content).digest("hex");
+  const storePath = path.join(store, `${hash}.png`);
+  await writeFile(storePath, content);
+  db.upsertAsset({
+    title: name,
+    kind: "image",
+    path: storePath,
+    pathKey: storePath.toLocaleLowerCase("en-US"),
+    extension: "png",
+    size: content.length,
+    mtimeMs: 1,
+    fingerprint: `fp-${hash}`,
+    linkState: "online",
+    notes: "",
+    width: 1,
+    height: 1,
+    duration: null,
+    contentHash: hash,
+    storageMode: "managed",
+    libraryRelativePath: `${hash}.png`,
+    originalSourcePath: `C:\\original\\${name}.png`,
+  });
+  return storePath;
 }
 
 describe("LibraryManager", () => {
@@ -128,12 +164,10 @@ describe("LibraryManager", () => {
     const service = new LibraryService(
       db,
       path.join(entry.root, "trash", "files"),
-      { libraryRoot: entry.root, defaultStorageMode: "managed" },
+      { libraryRoot: entry.root, defaultStorageMode: "linked" },
     );
-    const source = path.join(directory, "photo.png");
-    await writeFile(source, Buffer.alloc(256, 5));
     try {
-      await service.importPaths([source]);
+      await seedManaged(entry, db, "photo", Buffer.alloc(256, 5));
       const report = await manager.verify(entry.id);
       expect(report.integrityOk).toBe(true);
       expect(report.assets).toBe(1);
@@ -157,12 +191,10 @@ describe("LibraryManager", () => {
     const service = new LibraryService(
       db,
       path.join(entry.root, "trash", "files"),
-      { libraryRoot: entry.root, defaultStorageMode: "managed" },
+      { libraryRoot: entry.root, defaultStorageMode: "linked" },
     );
-    const source = path.join(base, "sample.png");
-    await writeFile(source, Buffer.alloc(128, 9));
     try {
-      await service.importPaths([source]);
+      await seedManaged(entry, db, "sample", Buffer.alloc(128, 9));
       const destination = path.join(base, "exported");
       const report = await manager.exportLibrary(entry.id, destination);
 
@@ -259,21 +291,20 @@ describe("LibraryManager", () => {
     const sourceDb = new RefCanvasDatabase(databasePathFor(sourceEntry));
     const sourceService = new LibraryService(sourceDb, path.join(sourceEntry.root, "trash", "files"), {
       libraryRoot: sourceEntry.root,
-      defaultStorageMode: "managed",
+      defaultStorageMode: "linked",
     });
     const targetDb = new RefCanvasDatabase(databasePathFor(targetEntry));
     const targetService = new LibraryService(targetDb, path.join(targetEntry.root, "trash", "files"), {
       libraryRoot: targetEntry.root,
-      defaultStorageMode: "managed",
+      defaultStorageMode: "linked",
     });
     const shared = Buffer.alloc(512, 3);
-    const sharedPath = path.join(base, "shared.png");
-    const uniquePath = path.join(base, "unique.png");
-    await writeFile(sharedPath, shared);
-    await writeFile(uniquePath, Buffer.alloc(512, 7));
+    const unique = Buffer.alloc(512, 7);
     try {
-      await sourceService.importPaths([sharedPath, uniquePath]);
-      await targetService.importPaths([sharedPath]);
+      // 直接构造存量 managed 资产：共享内容 + 唯一内容。
+      await seedManaged(sourceEntry, sourceDb, "shared", shared);
+      await seedManaged(sourceEntry, sourceDb, "unique", unique);
+      await seedManaged(targetEntry, targetDb, "shared", shared);
 
       const report = await manager.merge(sourceEntry.id, targetEntry.id);
       expect(report.mergedAssets).toBe(1);

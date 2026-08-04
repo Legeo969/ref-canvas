@@ -829,13 +829,6 @@ export class LibraryService {
     return { width: null, height: null, duration: null, bpm: null };
   }
 
-  private resolveStorageMode(options?: ImportOptions): AssetStorageMode {
-    if (!options?.storageMode || options.storageMode === "library-default") {
-      return this.defaultStorageMode;
-    }
-    return options.storageMode;
-  }
-
   /**
    * Copies a source file into the managed store with full SHA-256 verification
    * and atomic rename. The store is content-addressed (`<hash><ext>`), so
@@ -893,7 +886,7 @@ export class LibraryService {
 
   private async runImport(job: ImportJob): Promise<void> {
     const { snapshot, controller } = job;
-    const storageMode = this.resolveStorageMode(job.options);
+    // 磁盘唯一真相：导入恒为 linked（磁盘原生，计划 §13.2 退役 managed）。
     const targetFolderId = job.options.targetFolderId ?? null;
     try {
       snapshot.state = "scanning";
@@ -943,27 +936,8 @@ export class LibraryService {
                      this.readAssetBase(candidate.filename, existing, snapshot.id),
                      controller.signal,
                    );
-                  if (storageMode === "linked") {
-                    return { candidate, asset: linked, copied: false, verified: false };
-                  }
-                  const copied = await this.managedCopy(
-                    candidate.filename,
-                    path.extname(candidate.filename).toLowerCase(),
-                  );
-                  return {
-                    candidate,
-                    asset: {
-                      ...linked,
-                      path: copied.path,
-                      pathKey: path.normalize(copied.path).toLocaleLowerCase("en-US"),
-                      storageMode: "managed" as const,
-                      libraryRelativePath: path.relative(this.libraryRoot, copied.path),
-                      originalSourcePath: candidate.filename,
-                      contentHash: copied.hash,
-                    },
-                    copied: true,
-                    verified: true,
-                  };
+                  // 恒为 linked：不复制源文件（计划 §13.2）。
+                  return { candidate, asset: linked, copied: false, verified: false };
                 } catch (error) {
                   snapshot.failed.push({
                     path: candidate.filename,
@@ -993,7 +967,7 @@ export class LibraryService {
                 if (item.copied) snapshot.copied += 1;
               }
               if (item.verified) snapshot.verified += 1;
-              if (storageMode === "linked" && item.candidate.watchRootPath) {
+              if (item.candidate.watchRootPath) {
                 identities.push({
                   pathKey: path.normalize(saved.asset.path).toLocaleLowerCase("en-US"),
                   assetId: saved.asset.id,
