@@ -21,6 +21,7 @@ import type {
   DirectoryBatchSnapshot,
   DirectoryEntry,
   DirectorySearchSnapshot,
+  SequenceGroupInfo,
 } from "../../shared/contracts";
 import { applySelectionClick } from "../app/directory-selection";
 import {
@@ -35,6 +36,10 @@ import { useDialog } from "./DialogProvider";
 import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
 import { HighlightedText } from "./HighlightedText";
 import { ImportProgressBar } from "./ImportProgressBar";
+import {
+  SequenceCard,
+  SequencePreviewDialog,
+} from "./SequencePreview";
 
 const cardWidth = 148;
 const rowHeight = 160;
@@ -194,6 +199,45 @@ export function DirectoryAssetPanel() {
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   // 即时预览的当前条目路径（null = 未打开）。
   const [previewPath, setPreviewPath] = useState<string | null>(null);
+  // 图片序列：目录级检测结果（按首帧路径索引）与预览对话框。
+  const [sequenceGroups, setSequenceGroups] = useState<Map<string, SequenceGroupInfo>>(
+    () => new Map(),
+  );
+  const [sequencePreview, setSequencePreview] =
+    useState<SequenceGroupInfo | null>(null);
+  const sequenceTokenCacheRef = useRef(new Map<string, string>());
+
+  // 目录切换时重新检测序列（全目录一次，含缺帧与 FPS 推断）。
+  useEffect(() => {
+    setSequenceGroups(new Map());
+    setSequencePreview(null);
+    sequenceTokenCacheRef.current.clear();
+    if (!store.directoryPath || !window.refCanvas.sequences?.detect) return;
+    let cancelled = false;
+    void window.refCanvas.sequences
+      .detect(store.directoryPath)
+      .then((groups) => {
+        if (cancelled) return;
+        setSequenceGroups(new Map(groups.map((group) => [group.files[0], group])));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [store.directoryPath]);
+
+  // 帧路径 → 所属序列 + 首帧集合（渲染时折叠非首帧条目）。
+  const sequenceIndex = useMemo(() => {
+    const byPath = new Map<string, SequenceGroupInfo>();
+    const firstFrames = new Set<string>();
+    for (const group of sequenceGroups.values()) {
+      group.files.forEach((file, index) => {
+        byPath.set(file, group);
+        if (index === 0) firstFrames.add(file);
+      });
+    }
+    return { byPath, firstFrames };
+  }, [sequenceGroups]);
   // 剪贴板（React 可观察：订阅模块级状态以触发粘贴条渲染）。
   const [clipboardVersion, setClipboardVersion] = useState(0);
 
@@ -1265,6 +1309,54 @@ export function DirectoryAssetPanel() {
                   />
                 );
               }
+              const group = sequenceIndex.byPath.get(entry.path);
+              // 序列的非首帧条目：占位保持网格位置（Grid 只显示一个条目）。
+              if (group && !sequenceIndex.firstFrames.has(entry.path)) {
+                return (
+                  <div
+                    key={entry.path}
+                    className="directory-card-wrap"
+                    style={{
+                      left: column * (cardWidth + gap),
+                      top: row * rowHeight,
+                      width: cardWidth,
+                    }}
+                  />
+                );
+              }
+              // 序列首帧条目：渲染序列卡片。
+              if (group) {
+                return (
+                  <div
+                    key={entry.path}
+                    className="directory-card-wrap"
+                    style={{
+                      left: column * (cardWidth + gap),
+                      top: row * rowHeight,
+                      width: cardWidth,
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setContextMenu({
+                        entry,
+                        x: Math.max(8, Math.min(event.clientX, window.innerWidth - 236)),
+                        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 312)),
+                      });
+                    }}
+                  >
+                    <SequenceCard
+                      sequence={group}
+                      selected={
+                        allMatchingSelected
+                          ? !excludedPaths.has(entry.path)
+                          : selectedPaths.has(entry.path)
+                      }
+                      onSelect={(event) => selectEntry(entry, event)}
+                      onPreview={() => setSequencePreview(group)}
+                    />
+                  </div>
+                );
+              }
               return (
                 <div
                   key={entry.path}
@@ -1488,6 +1580,13 @@ export function DirectoryAssetPanel() {
             void trashEntry(entry);
           }}
           onClose={closePreview}
+        />
+      )}
+
+      {sequencePreview && (
+        <SequencePreviewDialog
+          sequence={sequencePreview}
+          onClose={() => setSequencePreview(null)}
         />
       )}
     </section>
