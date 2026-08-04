@@ -398,20 +398,18 @@ describe("materialize", () => {
     }
   });
 
-  it("never copies the source file even when managed mode is requested", async () => {
+  it("materializes linked without ever copying the source", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
     temporaryDirectories.push(root);
-    const source = path.join(root, "managed.png");
+    const source = path.join(root, "linked.png");
     await writeFile(source, Buffer.alloc(512, 9));
     const database = new RefCanvasDatabase(":memory:");
     const service = new LibraryService(database, undefined, {
       libraryRoot: root,
     });
     try {
-      // 磁盘唯一真相：materialize 恒为 linked，忽略 storageMode。
-      const result = await service.materializePath(source, {
-        storageMode: "managed",
-      });
+      // 磁盘唯一真相：materialize 恒为 linked，绝不复制源文件。
+      const result = await service.materializePath(source);
       expect(result.copied).toBe(false);
       expect(result.verified).toBe(false);
       expect(result.asset.storageMode).toBe("linked");

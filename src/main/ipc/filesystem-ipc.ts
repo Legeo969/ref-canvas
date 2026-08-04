@@ -152,7 +152,6 @@ export function registerFilesystemIpc(
           collectionIds: z.array(idSchema).max(500).optional(),
           tags: z.array(z.string().trim().min(1).max(64)).max(500).optional(),
           targetFolderId: idSchema.nullable().optional(),
-          storageMode: z.enum(["linked", "managed", "library-default"]).optional(),
         })
         .optional()
         .parse(options),

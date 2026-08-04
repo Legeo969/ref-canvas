@@ -300,7 +300,6 @@ describe("capacity smoke", () => {
         }
         const startedAt = performance.now();
         const result = await service.importPaths([source], {
-          storageMode: "linked",
           hierarchyMode: "collections",
         });
         const elapsedMs = performance.now() - startedAt;

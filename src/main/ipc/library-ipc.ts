@@ -51,9 +51,6 @@ export function registerLibraryIpc(
       pathsSchema.parse(paths),
       z
         .object({
-          storageMode: z
-            .enum(["linked", "managed", "library-default"])
-            .optional(),
           hierarchyMode: z.enum(["collections", "flat"]).optional(),
           targetFolderId: z.union([idSchema, z.null()]).optional(),
           parentFolderId: z.union([idSchema, z.null()]).optional(),

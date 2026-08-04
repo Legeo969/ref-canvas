@@ -203,12 +203,6 @@ export interface BatchAssetPatch {
 
 export interface ImportOptions {
   /**
-   * `linked` keeps files where they are; `managed` copies them into the
-   * library. `library-default` (or omitting the option) uses the active
-   * library's configured default.
-   */
-  storageMode?: AssetStorageMode | "library-default";
-  /**
    * `collections` recreates the source directory hierarchy as folders
    * (existing behavior); `flat` skips folder creation.
    */
@@ -530,7 +524,6 @@ export interface MaterializeOptions {
   collectionIds?: string[];
   tags?: string[];
   targetFolderId?: string | null;
-  storageMode?: AssetStorageMode | "library-default";
 }
 
 export interface MaterializeResult {

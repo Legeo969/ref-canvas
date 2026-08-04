@@ -8,6 +8,7 @@ import {
   databasePathFor,
 } from "../../../src/main/services/library-manager";
 import { LibraryService } from "../../../src/main/services/library-service";
+import type { ImportOptions } from "../../../src/shared/contracts";
 
 const temporaryDirectories: string[] = [];
 
@@ -72,24 +73,15 @@ describe("dual-mode library service", () => {
     }
   });
 
-  it("ignores a legacy managed storageMode request on import", async () => {
-    const { service, db, base } = await setupLinkedLibrary();
-    const source = path.join(base, "managed.png");
-    await writeFile(source, Buffer.alloc(1_024, 6));
-    try {
-      // 即便调用方显式请求 managed，运行时退役后导入仍恒为 linked。
-      const result = await service.importPaths([source], {
-        storageMode: "managed",
-      });
-      expect(result.copied).toBe(0);
-      const asset = db.searchAssets().items[0];
-      expect(asset.storageMode).toBe("linked");
-      expect(asset.path).toBe(source);
-      await expect(stat(source)).resolves.toBeDefined();
-    } finally {
-      await service.close();
-      db.close();
-    }
+  it("no longer exposes a storage mode on import options", () => {
+    // 计划 §13.4：managed 退役后 ImportOptions 移除 storageMode。若该字段被
+    // 重新引入，@ts-expect-error 会失效，typecheck 立即失败。
+    const legacy: ImportOptions = {
+      // @ts-expect-error storageMode 已从 ImportOptions 移除（managed 退役）
+      storageMode: "managed",
+      hierarchyMode: "collections",
+    };
+    expect(legacy.hierarchyMode).toBe("collections");
   });
 
   it("re-importing the same path reuses the linked record", async () => {
