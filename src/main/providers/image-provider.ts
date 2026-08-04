@@ -82,7 +82,7 @@ function isJxl(magic: Buffer | null): boolean {
 export const IMAGE_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "image-provider",
   version: "1.0.0",
-  kinds: ["image"],
+  kinds: ["image", "dcc"],
   extensions: [
     "heic", "heif", "avif", "jxl", "jxr",
     "psd", "psb",

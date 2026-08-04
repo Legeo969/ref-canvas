@@ -10,6 +10,7 @@ import {
   writeRawFixture,
 } from "../../fixtures/media-fixtures";
 import { AudioProvider } from "../../../src/main/providers/audio-provider";
+import { DccProvider } from "../../../src/main/providers/dcc-provider";
 import { DocumentProvider } from "../../../src/main/providers/document-provider";
 import { FontProvider } from "../../../src/main/providers/font-provider";
 import { ImageProvider } from "../../../src/main/providers/image-provider";
@@ -210,6 +211,28 @@ describe("FontProvider（阶段 4：字体）", () => {
     await writeFile(target, Buffer.from("garbage", "latin1"));
     const provider = new FontProvider();
     await expect(provider.probe({ path: target, kind: "font", extension: "ttf", size: 0 })).rejects.toThrow("FONT_PROBE_FAILED");
+    await provider.dispose();
+  });
+});
+
+describe("DccProvider（阶段 4：Alembic/DCC 降级）", () => {
+  it("Alembic probe：明确降级说明", async () => {
+    const directory = await withTemp();
+    const target = path.join(directory, "shot.abc");
+    await writeFile(target, Buffer.from("Ogawa\u0000", "latin1"));
+    const provider = new DccProvider();
+    const result = await provider.probe({ path: target, kind: "dcc", extension: "abc", size: 0 });
+    expect(result.extra.unsupportedReason).toContain("Alembic");
+    await provider.dispose();
+  });
+
+  it("Blender probe：明确降级说明（不静默依赖本机软件）", async () => {
+    const directory = await withTemp();
+    const target = path.join(directory, "scene.blend");
+    await writeFile(target, Buffer.from("BLENDER", "latin1"));
+    const provider = new DccProvider();
+    const result = await provider.probe({ path: target, kind: "dcc", extension: "blend", size: 0 });
+    expect(result.extra.unsupportedReason).toContain("Blender");
     await provider.dispose();
   });
 });

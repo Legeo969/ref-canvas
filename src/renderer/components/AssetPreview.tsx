@@ -1,10 +1,14 @@
-import { Box, Headphones, Shapes } from "lucide-react";
+import { Box, Shapes } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { browserImageExtensions } from "../../shared/asset-kind";
+import { AudioPreview } from "./AudioPreview";
+import { FontPreview } from "./FontPreview";
 import { GIFPreview } from "./GIFPreview";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import { ModelPreview } from "./ModelPreview";
+import { TextPreview } from "./TextPreview";
+import { UnsupportedNotice } from "./UnsupportedNotice";
 import { VideoPreview } from "./VideoPreview";
 
 interface AssetPreviewProps {
@@ -71,37 +75,102 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
   }
   if (lightweight) return <SystemThumbnail asset={asset} />;
 
+  // 阶段 4：无本地解码器的格式（JXL/RAW/PDF/Office/DCC）显示降级提示。
+  const needsUnsupportedCheck =
+    asset.extension === "jxl" ||
+    asset.extension === "jxr" ||
+    asset.extension === "cr2" ||
+    asset.extension === "cr3" ||
+    asset.extension === "nef" ||
+    asset.extension === "arw" ||
+    asset.extension === "rw2" ||
+    asset.extension === "orf" ||
+    asset.extension === "pef" ||
+    asset.extension === "raf" ||
+    asset.extension === "srw" ||
+    asset.extension === "dng" ||
+    asset.extension === "raw" ||
+    asset.kind === "pdf" ||
+    asset.extension === "doc" ||
+    asset.extension === "docx" ||
+    asset.extension === "xls" ||
+    asset.extension === "xlsx" ||
+    asset.extension === "ppt" ||
+    asset.extension === "pptx" ||
+    asset.extension === "odt" ||
+    asset.extension === "ods" ||
+    asset.extension === "odp" ||
+    asset.extension === "epub" ||
+    asset.extension === "abc" ||
+    asset.extension === "blend" ||
+    asset.extension === "ma" ||
+    asset.extension === "mb" ||
+    asset.extension === "max" ||
+    asset.extension === "c4d";
+
   switch (asset.kind) {
     case "image":
       if (asset.extension === "gif") return <GIFPreview asset={asset} />;
+      if (needsUnsupportedCheck) {
+        return (
+          <MediaNotesOverlay asset={asset}>
+            <div className="preview-unavailable">
+              <SystemThumbnail asset={asset} />
+              <UnsupportedNotice asset={asset} />
+            </div>
+          </MediaNotesOverlay>
+        );
+      }
       return browserImageExtensions.has(asset.extension.toLowerCase())
         ? <ProgressiveImage asset={asset} />
         : <SystemThumbnail asset={asset} />;
     case "video":
       return <VideoPreview asset={asset} />;
     case "audio":
-      return (
-        <div className="audio-preview">
-          <Headphones size={34} strokeWidth={1.25} />
-          <MediaNotesOverlay asset={asset}>
-            <audio src={asset.previewUrl} controls preload="metadata" />
-          </MediaNotesOverlay>
-        </div>
-      );
+      return <AudioPreview asset={asset} />;
     case "pdf":
       return (
-        <iframe
-          className="pdf-preview"
-          src={`${asset.previewUrl}#toolbar=0&navpanes=0`}
-          title={asset.title}
-        />
+        <MediaNotesOverlay asset={asset}>
+          <div className="preview-unavailable">
+            <iframe
+              className="pdf-preview"
+              src={`${asset.previewUrl}#toolbar=0&navpanes=0`}
+              title={asset.title}
+            />
+            <UnsupportedNotice asset={asset} />
+          </div>
+        </MediaNotesOverlay>
       );
     case "model3d":
       return <ModelPreview asset={asset} />;
-    case "dcc":
     case "font":
-    case "generic":
+      return <FontPreview asset={asset} />;
+    case "dcc":
+      return (
+        <MediaNotesOverlay asset={asset}>
+          <div className="preview-unavailable">
+            <SystemThumbnail asset={asset} />
+            <UnsupportedNotice asset={asset} />
+          </div>
+        </MediaNotesOverlay>
+      );
+    case "generic": {
+      const textExtensions = ["txt", "md", "markdown", "rtf", "srt", "vtt", "json", "yaml", "yml", "xml", "csv", "log", "ini", "toml", "conf", "html", "htm", "css", "js", "ts", "py", "sh", "bat", "ps1"];
+      if (textExtensions.includes(asset.extension.toLowerCase())) {
+        return <TextPreview asset={asset} />;
+      }
+      if (needsUnsupportedCheck) {
+        return (
+          <MediaNotesOverlay asset={asset}>
+            <div className="preview-unavailable">
+              <SystemThumbnail asset={asset} />
+              <UnsupportedNotice asset={asset} />
+            </div>
+          </MediaNotesOverlay>
+        );
+      }
       return <SystemThumbnail asset={asset} />;
+    }
     default: {
       const Icon = Box;
       return <Icon size={34} />;

@@ -32,6 +32,10 @@ interface FieldDef {
 
 function fieldsFor(asset: AssetRecord, probe: MediaProbeResult): FieldDef[] {
   const extra = probe.extra ?? {};
+  const unsupportedReason = extra.unsupportedReason;
+  if (typeof unsupportedReason === "string") {
+    return [{ label: "说明", value: unsupportedReason }];
+  }
   switch (asset.kind) {
     case "video": {
       const audioTracks = extra.audioTracks as number | undefined;
@@ -99,7 +103,40 @@ function fieldsFor(asset: AssetRecord, probe: MediaProbeResult): FieldDef[] {
         },
       ];
     }
+    case "audio": {
+      const fields: FieldDef[] = [
+        { label: "编码", value: extra.codecLongName ?? extra.codec ?? "—" },
+        { label: "采样率", value: extra.sampleRate != null ? `${formatNumber(extra.sampleRate)} Hz` : "—" },
+        { label: "声道", value: extra.channels != null ? `${extra.channels}${extra.channelLayout ? ` (${extra.channelLayout})` : ""}` : "—" },
+        { label: "位深", value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
+        { label: "码率", value: extra.bitRate != null ? formatSize(extra.bitRate) : "—" },
+        { label: "时长", value: probe.duration != null ? formatDuration(probe.duration) : "—" },
+        { label: "封面", value: extra.hasCoverArt ? "有" : "无" },
+      ];
+      if (typeof extra.formatName === "string" && extra.formatName) {
+        fields.unshift({ label: "容器", value: extra.formatName });
+      }
+      return fields;
+    }
+    case "font": {
+      const axes = extra.variableAxes as Array<{ tag: string; name: string; min: number; default: number; max: number }> | undefined;
+      return [
+        { label: "字族", value: extra.family ?? "—" },
+        { label: "样式", value: extra.subfamily ?? "—" },
+        { label: "字重", value: extra.weightClass != null ? String(extra.weightClass) : "—" },
+        { label: "斜体", value: extra.italic ? "是" : "否" },
+        { label: "字形数", value: extra.glyphCount ?? "—" },
+        { label: "字体类型", value: extra.flavor ?? "—" },
+        {
+          label: "可变轴",
+          value: Array.isArray(axes) && axes.length
+            ? axes.map((axis) => `${axis.tag} ${axis.min}-${axis.max}`).join(", ")
+            : "无",
+        },
+      ];
+    }
     default: {
+      // EXR/HDR（hdr-provider 字段）。
       if (asset.extension === "exr" || asset.extension === "hdr") {
         const channels = extra.channels as string[] | undefined;
         return [
@@ -117,6 +154,16 @@ function fieldsFor(asset: AssetRecord, probe: MediaProbeResult): FieldDef[] {
                 ? `${probe.width} × ${probe.height}`
                 : "—",
           },
+        ];
+      }
+      const textFormat = extra.format === "text";
+      if (textFormat) {
+        return [
+          { label: "格式", value: "文本" },
+          { label: "编码", value: extra.encoding ?? "—" },
+          { label: "行数", value: extra.lineCount ?? "—" },
+          { label: "字符数", value: extra.charCount ?? "—" },
+          { label: "首行", value: extra.firstLine ?? "—" },
         ];
       }
       return [];

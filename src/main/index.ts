@@ -53,6 +53,7 @@ import { ImageProvider } from "./providers/image-provider";
 import { AudioProvider } from "./providers/audio-provider";
 import { FontProvider } from "./providers/font-provider";
 import { DocumentProvider } from "./providers/document-provider";
+import { DccProvider } from "./providers/dcc-provider";
 import { registerProtocols } from "./platform/protocols";
 import {
   registerWindowsProjectFormat,
@@ -896,6 +897,11 @@ void app.whenReady().then(async () => {
   providerRegistry.register({
     provider: documentProvider,
     dispose: () => documentProvider.dispose(),
+  });
+  const dccProvider = new DccProvider();
+  providerRegistry.register({
+    provider: dccProvider,
+    dispose: () => dccProvider.dispose(),
   });
   for (const cachedFile of previewCacheIndex.prune()) {
     void rm(cachedFile, { force: true });
