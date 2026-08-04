@@ -8,7 +8,6 @@ import type {
   AssetSearchInput,
   AssetSearchWindow,
   AssetSearchWindowInput,
-  AssetStorageMode,
   AutoTagRule,
   BatchAssetPatch,
   BatchCollectionOp,
@@ -111,9 +110,6 @@ export type NewAsset = Omit<
   | "favorite"
   | "rating"
   | "colorLabel"
-  | "storageMode"
-  | "libraryRelativePath"
-  | "originalSourcePath"
   | "bpm"
   | "customFields"
   | "customThumbnailPath"
@@ -122,7 +118,12 @@ export type NewAsset = Omit<
   | "metadataUpdatedAt"
 > & {
   pathKey: string;
-  storageMode?: AssetStorageMode;
+  /**
+   * Legacy storage-mode column value. The runtime always writes `linked`;
+   * only the §13.3 managed preflight reads/seeds `managed` while retiring
+   * pre-existing stores.
+   */
+  storageMode?: "linked" | "managed";
   libraryRelativePath?: string | null;
   originalSourcePath?: string | null;
   contentHash?: string | null;
@@ -776,13 +777,19 @@ export class RefCanvasDatabase {
       asset.libraryRelativePath !== undefined ||
       asset.originalSourcePath !== undefined
     ) {
-      const current = this.getAsset(id)!;
+      const current = this.db
+        .prepare(
+          "SELECT library_relative_path, original_source_path FROM assets WHERE id = ?",
+        )
+        .get(id) as
+        | { library_relative_path: string | null; original_source_path: string | null }
+        | undefined;
       this.db.prepare(`
         UPDATE assets SET library_relative_path = ?,
           original_source_path = ? WHERE id = ?
       `).run(
-        asset.libraryRelativePath ?? current.libraryRelativePath,
-        asset.originalSourcePath ?? current.originalSourcePath,
+        asset.libraryRelativePath ?? current?.library_relative_path ?? null,
+        asset.originalSourcePath ?? current?.original_source_path ?? null,
         id,
       );
     }

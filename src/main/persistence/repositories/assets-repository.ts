@@ -43,7 +43,7 @@ export interface AssetPersistenceRow {
   metadata_job_id: string | null;
   custom_fields: string | null;
   custom_thumbnail_path: string | null;
-  storage_mode: AssetRecord["storageMode"];
+  storage_mode: "linked" | "managed";
   library_relative_path: string | null;
   original_source_path: string | null;
   created_at: string;
@@ -106,9 +106,6 @@ export function mapAssetRow(row: AssetPersistenceRow): AssetRecord {
     customThumbnailPath: row.custom_thumbnail_path,
     tags: [],
     collectionIds: [],
-    storageMode: row.storage_mode ?? "linked",
-    libraryRelativePath: row.library_relative_path,
-    originalSourcePath: row.original_source_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     previewUrl: modelUrl,

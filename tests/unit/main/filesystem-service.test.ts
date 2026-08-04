@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { FSWatcher, Stats } from "node:fs";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -363,7 +363,6 @@ describe("materialize", () => {
     try {
       const first = await service.materializePath(file);
       expect(first.created).toBe(true);
-      expect(first.copied).toBe(false);
       const second = await service.materializePath(file);
       expect(second.created).toBe(false);
       expect(second.asset.id).toBe(first.asset.id);
@@ -408,12 +407,12 @@ describe("materialize", () => {
       libraryRoot: root,
     });
     try {
-      // 磁盘唯一真相：materialize 恒为 linked，绝不复制源文件。
+      // 磁盘唯一真相：materialize 只建立 linked 引用索引，不复制源文件。
       const result = await service.materializePath(source);
-      expect(result.copied).toBe(false);
-      expect(result.verified).toBe(false);
-      expect(result.asset.storageMode).toBe("linked");
+      expect(result.created).toBe(true);
       expect(result.asset.path).toBe(source);
+      // 源文件保持原位，未被复制或修改。
+      expect((await stat(source)).size).toBe(512);
     } finally {
       await service.close();
       database.close();

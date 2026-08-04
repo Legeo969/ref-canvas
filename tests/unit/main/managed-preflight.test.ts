@@ -94,7 +94,7 @@ describe("managed preflight (plan 13.3)", () => {
       );
       const managedBefore = database.listManagedAssets();
       expect(managedBefore).toHaveLength(1);
-      expect(database.getAsset(managedBefore[0].id)!.storageMode).toBe("managed");
+      expect(managedBefore[0].id).toBe(assetId);
       const preflight = await service.prepareManagedMigration();
       expect(preflight.managedAssets).toBe(1);
       expect(preflight.canMigrateDirectly).toBe(false);
@@ -105,9 +105,8 @@ describe("managed preflight (plan 13.3)", () => {
       // managed store 已移除。
       const storeFiles = await readdir(path.join(root, "files")).catch(() => []);
       expect(storeFiles).toHaveLength(0);
-      // asset 已转为 linked 指向磁盘目录。
+      // asset 已转为 linked 指向磁盘目录（不再出现在 managed 记录中）。
       const after = database.getAsset(assetId)!;
-      expect(after.storageMode).toBe("linked");
       expect(after.path.startsWith(targetDir)).toBe(true);
       expect((await stat(after.path)).size).toBe(1_024);
       expect(database.listManagedAssets()).toHaveLength(0);

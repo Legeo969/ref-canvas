@@ -283,7 +283,11 @@ function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
 export class LibraryService {
   private readonly watchReconcile = new WatchReconcileService();
   private readonly events = new EventEmitter();
-  private readonly managedPaths = new Set<string>();
+  /**
+   * Paths the app is currently moving itself (e.g. into trash); the watcher
+   * ignores events for them so it never reacts to our own file operations.
+   */
+  private readonly selfMovedPaths = new Set<string>();
   private similarityController: AbortController | null = null;
   private similaritySnapshot: SimilarityIndexSnapshot = {
     state: "idle",
@@ -731,9 +735,6 @@ export class LibraryService {
       metadataUpdatedAt: new Date().toISOString(),
       bpm,
       customFields: existing?.customFields ?? {},
-      storageMode: "linked",
-      libraryRelativePath: null,
-      originalSourcePath: null,
     };
   }
 
@@ -770,9 +771,6 @@ export class LibraryService {
       duration: reusableMetadata ? existing.duration : null,
       bpm: reusableMetadata ? existing.bpm : null,
       customFields: existing?.customFields ?? {},
-      storageMode: "linked",
-      libraryRelativePath: null,
-      originalSourcePath: null,
       metadataStatus: needsMetadata && !reusableMetadata ? "pending" : "ready",
       metadataError: null,
       metadataUpdatedAt: reusableMetadata ? existing.metadataUpdatedAt : null,
@@ -809,39 +807,12 @@ export class LibraryService {
   }
 
   /**
-   * Copies a source file into the managed store with full SHA-256 verification
-   * and atomic rename. The store is content-addressed (`<hash><ext>`), so
-   * re-importing identical content reuses the existing copy and never creates
-   * a duplicate record.
-   */
-  private async managedCopy(
-    source: string,
-    extension: string,
-  ): Promise<{ path: string; hash: string }> {
-    const hash = await fullFileHash(source);
-    const filename = `${hash}${extension}`;
-    const target = path.join(this.managedStore, filename);
-    if (await exists(target)) return { path: target, hash };
-    await mkdir(this.managedStore, { recursive: true });
-    const temporary = `${target}.${randomUUID()}.partial`;
-    await copyFile(source, temporary);
-    const copiedHash = await fullFileHash(temporary);
-    if (copiedHash !== hash) {
-      await unlink(temporary).catch(() => undefined);
-      throw new Error("FILE_COPY_VERIFICATION_FAILED");
-    }
-    await rename(temporary, target);
-    return { path: target, hash };
-  }
-
-  /**
    * Records the persistent file identity of an asset when it lives under one
    * of the watched roots or a registered mount root. The identity key is the
    * on-disk path, so later moves and renames can be confirmed by fingerprint.
    * Called after an asset is upserted (the asset id is only known then).
    */
   private updateIdentity(asset: AssetRecord): void {
-    if (asset.storageMode === "managed") return;
     // watch roots 与 mount roots 都是合法身份根（§7.2）。
     const roots = [
       ...this.database.listWatchRoots(),
@@ -903,8 +874,6 @@ export class LibraryService {
             const inspected: Array<{
               candidate: ImportCandidate;
               asset: NewAsset;
-              copied: boolean;
-              verified: boolean;
             }> = [];
             for (let readOffset = 0; readOffset < transactionCandidates.length; readOffset += 12) {
               const readBatch = transactionCandidates.slice(readOffset, readOffset + 12);
@@ -916,7 +885,7 @@ export class LibraryService {
                      controller.signal,
                    );
                   // 恒为 linked：不复制源文件（计划 §13.2）。
-                  return { candidate, asset: linked, copied: false, verified: false };
+                  return { candidate, asset: linked };
                 } catch (error) {
                   snapshot.failed.push({
                     path: candidate.filename,
@@ -941,11 +910,7 @@ export class LibraryService {
               const saved = savedAssets[index];
               const item = inspected[index];
               if (saved.reused) snapshot.reused += 1;
-              else {
-                snapshot.imported += 1;
-                if (item.copied) snapshot.copied += 1;
-              }
-              if (item.verified) snapshot.verified += 1;
+              else snapshot.imported += 1;
               if (item.candidate.watchRootPath) {
                 identities.push({
                   pathKey: path.normalize(saved.asset.path).toLocaleLowerCase("en-US"),
@@ -1041,10 +1006,8 @@ export class LibraryService {
           reused: next.reused,
           unsupported: next.unsupported,
           failed: next.failed,
-          copied: next.copied,
           relinked: next.relinked,
           conflicted: next.conflicted,
-          verified: next.verified,
         });
       });
     });
@@ -1054,23 +1017,6 @@ export class LibraryService {
     const current = this.database.getAsset(id);
     if (!current) throw new Error("ASSET_NOT_FOUND");
     const resolved = path.resolve(filename);
-    if (current.storageMode === "managed") {
-      const linked = await this.readAsset(resolved, current);
-      const copied = await this.managedCopy(
-        resolved,
-        path.extname(resolved).toLowerCase(),
-      );
-      const next: NewAsset = {
-        ...linked,
-        path: copied.path,
-        pathKey: path.normalize(copied.path).toLocaleLowerCase("en-US"),
-        storageMode: "managed",
-        libraryRelativePath: path.relative(this.libraryRoot, copied.path),
-        originalSourcePath: resolved,
-        contentHash: copied.hash,
-      };
-      return this.database.relinkAsset(id, next);
-    }
     const next = await this.readAsset(resolved, current);
     const asset = this.database.relinkAsset(id, next);
     this.updateIdentity(asset);
@@ -1106,7 +1052,7 @@ export class LibraryService {
     }
     // 重新读取以反映集合/标签副作用后的最新记录。
     const fresh = this.database.getAsset(asset.id)!;
-    return { asset: fresh, created: !existing, copied: false, verified: false };
+    return { asset: fresh, created: !existing };
   }
 
   /**
@@ -1262,18 +1208,18 @@ export class LibraryService {
     if (!roots.length || this.watchReconcile.active) return;
     await this.watchReconcile.start(roots, {
       onAdd: (filename) => {
-        if (this.managedPaths.has(path.normalize(filename))) return;
+        if (this.selfMovedPaths.has(path.normalize(filename))) return;
         void this.tryRelinkFromRecentUnlink(filename).then((relinked) => {
           if (!relinked) void this.importPaths([filename]);
         });
       },
       onChange: (filename) => {
-        if (!this.managedPaths.has(path.normalize(filename))) {
+        if (!this.selfMovedPaths.has(path.normalize(filename))) {
           void this.importPaths([filename]);
         }
       },
       onUnlink: (filename) => {
-        if (this.managedPaths.has(path.normalize(filename))) return;
+        if (this.selfMovedPaths.has(path.normalize(filename))) return;
         const asset = this.database.getAssetByPath(filename);
         if (!asset) return;
         this.rememberUnlink(asset);
@@ -1281,7 +1227,7 @@ export class LibraryService {
         this.emitLibraryChanged({ reason: "watch", paths: [filename] });
       },
       onNativePath: (filename, _resolvedRoot) => {
-        if (this.managedPaths.has(path.normalize(filename))) return;
+        if (this.selfMovedPaths.has(path.normalize(filename))) return;
         void stat(filename)
           .then(async (fileStat) => {
             if (fileStat.isDirectory()) {
@@ -1327,12 +1273,9 @@ export class LibraryService {
   /**
    * Removes asset records from the library without moving any source file.
    *
-   * - `linked` assets: only the record is removed; the external source file is
-   *   never modified (this is the "从资料库移除" command).
-   * - `managed` assets: the record is removed and the store copy is deleted.
-   * - Records still referenced by boards are kept as purged records so canvases
-   *   keep loading; their managed store copies are deleted (a purged record
-   *   has no live file anyway).
+   * Only the record is removed; the external source file is never modified
+   * (this is the "从资料库移除" command). Records still referenced by boards are
+   * kept as purged records so canvases keep loading.
    */
   async removeFromLibrary(scope: SelectionScope): Promise<number> {
     const ids = this.database.resolveSelection(scope);
@@ -1341,20 +1284,7 @@ export class LibraryService {
       const asset = this.database.getAsset(id);
       if (!asset || asset.lifecycle !== "active") continue;
       this.database.deleteFileIdentityByAsset(id);
-      // Records with board references stay as purged; the managed store copy
-      // is removed in either case.
       this.database.purgeRecord(id);
-      if (asset.storageMode === "managed") {
-        this.managedPaths.add(path.normalize(asset.path));
-        try {
-          await unlink(asset.path).catch(() => undefined);
-        } finally {
-          setTimeout(
-            () => this.managedPaths.delete(path.normalize(asset.path)),
-            1_000,
-          );
-        }
-      }
       removed += 1;
     }
     return removed;
@@ -1373,14 +1303,14 @@ export class LibraryService {
         asset.path,
         target,
       );
-      this.managedPaths.add(path.normalize(asset.path));
+      this.selfMovedPaths.add(path.normalize(asset.path));
       try {
         await moveVerified(asset.path, target);
         this.database.markTrashed(id, target);
         this.database.completeFileOperation(operationId);
         moved += 1;
       } finally {
-        setTimeout(() => this.managedPaths.delete(path.normalize(asset.path)), 1_000);
+        setTimeout(() => this.selfMovedPaths.delete(path.normalize(asset.path)), 1_000);
       }
     }
     return moved;

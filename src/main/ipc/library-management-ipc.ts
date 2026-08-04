@@ -84,37 +84,6 @@ export function registerLibraryManagementIpc(
       throw error;
     }
   });
-  ipc.handle("libraries:merge", async (sourceId, targetId) => {
-    const parsedSourceId = idSchema.parse(sourceId);
-    const parsedTargetId = idSchema.parse(targetId);
-    const current = dependencies.getActiveLibraryEntry();
-    const activeEntry =
-      current &&
-      (current.id === parsedSourceId || current.id === parsedTargetId)
-        ? { ...current }
-        : null;
-    if (activeEntry) await dependencies.closeActiveLibrary();
-    try {
-      const report = await manager().merge(parsedSourceId, parsedTargetId);
-      if (activeEntry) {
-        await dependencies.reopenLibrary(manager().getEntry(activeEntry.id));
-        dependencies.reloadMainWindow();
-      }
-      return report;
-    } catch (error) {
-      if (activeEntry) {
-        await dependencies.reopenLibrary(manager().getEntry(activeEntry.id));
-      }
-      throw error;
-    }
-  });
-  ipc.handle("libraries:verify", (id) => manager().verify(idSchema.parse(id)));
-  ipc.handle("libraries:export", (id, destination) =>
-    manager().exportLibrary(
-      idSchema.parse(id),
-      pathSchema.parse(destination),
-    ),
-  );
 
   ipc.handle("watch-roots:reconcile", (rootId) =>
     dependencies

@@ -61,9 +61,6 @@ describe("dual-mode library service", () => {
 
       // 磁盘唯一真相：导入恒为 linked，绝不复制源文件。
       expect(result.imported).toBe(1);
-      expect(result.copied).toBe(0);
-      expect(asset.storageMode).toBe("linked");
-      expect(asset.originalSourcePath).toBeNull();
       expect(asset.path).toBe(source);
       expect(asset.contentHash).toBeNull();
       await expect(stat(source)).resolves.toBeDefined();
@@ -121,9 +118,7 @@ describe("dual-mode library service", () => {
       const result = await service.importPaths([source]);
       const asset = db.searchAssets().items[0];
       expect(result.imported).toBe(1);
-      expect(asset.storageMode).toBe("linked");
       expect(asset.path).toBe(source);
-      expect(asset.originalSourcePath).toBeNull();
 
       await service.removeFromLibrary({ mode: "ids", ids: [asset.id] });
       // Linked source file must never be modified.
@@ -188,7 +183,6 @@ describe("dual-mode library service", () => {
       await service.restoreAssets([asset.id]);
       const restored = db.getAsset(asset.id)!;
       expect(restored.lifecycle).toBe("active");
-      expect(restored.storageMode).toBe("linked");
       expect(restored.path).toBe(source);
       await expect(stat(restored.path)).resolves.toBeDefined();
     } finally {

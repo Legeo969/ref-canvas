@@ -45,9 +45,6 @@ function asset(index: number): AssetRecord {
     updatedAt: "2026-08-03T00:00:00.000Z",
     previewUrl: `refasset://asset/${id}`,
     thumbnailUrl: `refasset://thumbnail/${id}`,
-    storageMode: "linked",
-    libraryRelativePath: null,
-    originalSourcePath: null,
   };
 }
 

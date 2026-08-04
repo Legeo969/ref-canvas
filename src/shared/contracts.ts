@@ -9,8 +9,6 @@ export const assetKinds = [
   "generic",
 ] as const;
 
-export const assetStorageModes = ["linked", "managed"] as const;
-
 export const assetColorLabels = [
   "none",
   "red",
@@ -38,7 +36,6 @@ export type AssetKind = (typeof assetKinds)[number];
 export type AssetColorLabel = (typeof assetColorLabels)[number];
 export type AssetSortKey = (typeof assetSortKeys)[number];
 export type AssetOrientation = (typeof assetOrientations)[number];
-export type AssetStorageMode = (typeof assetStorageModes)[number];
 export type SortDirection = "asc" | "desc";
 export type AssetLifecycle = "active" | "trashed" | "purged";
 export type LinkState = "online" | "missing" | "searching" | "ambiguous" | "offline";
@@ -80,18 +77,6 @@ export interface AssetRecord {
   updatedAt: string;
   previewUrl: string;
   thumbnailUrl: string;
-  /**
-   * `linked` keeps the record pointing at the original external file and never
-   * modifies it; `managed` owns a copy inside the library directory. The
-   * `0.32` baseline and every pre-existing database migrate to `linked` so
-   * existing behavior is unchanged; newly created libraries default to
-   * `managed`.
-   */
-  storageMode: AssetStorageMode;
-  /** Path of the file relative to the library root, when `managed`. */
-  libraryRelativePath: string | null;
-  /** Path the asset was imported from (managed mode); equals `path` when linked. */
-  originalSourcePath: string | null;
 }
 
 export interface AssetAnnotation {
@@ -221,14 +206,10 @@ export interface ImportResult {
   reused: number;
   unsupported: number;
   failed: Array<{ path: string; reason: string }>;
-  /** Managed files physically copied into the library store. */
-  copied: number;
   /** Records repaired to a new location after identity confirmation. */
   relinked: number;
   /** Moves parked in the reconcile queue because identity was ambiguous. */
   conflicted: number;
-  /** Managed copies whose SHA-256 was verified against the source. */
-  verified: number;
 }
 
 export type ImportJobState =
@@ -531,9 +512,6 @@ export interface MaterializeResult {
   asset: AssetRecord;
   /** 是否新建记录（false 表示同路径已入库，直接复用）。 */
   created: boolean;
-  /** linked 未复制源文件；managed 完成完整 SHA-256 校验。 */
-  copied: boolean;
-  verified: boolean;
 }
 
 export interface FilesystemRenameResult {
@@ -861,47 +839,11 @@ export interface LibrarySummary {
   name: string;
   root: string;
   createdAt: string;
-  defaultStorageMode: AssetStorageMode;
   isActive: boolean;
   assetCount: number;
   databaseBytes: number;
   /** True for the pre-existing `0.32` data directory kept in place. */
   legacy: boolean;
-}
-
-export interface MergeLibraryReport {
-  sourceId: string;
-  targetId: string;
-  /** Assets created in the target library. */
-  mergedAssets: number;
-  /** Assets skipped because an identical hash+size already exists in the target. */
-  deduplicated: number;
-  /** Managed files physically copied into the target store. */
-  copiedFiles: number;
-  /** Link conflicts (same path already occupied) and unreadable sources. */
-  conflicts: Array<{ path: string; reason: string }>;
-  skipped: number;
-  /** Operation-log file written into the target library, for rollback inspection. */
-  logFile: string | null;
-}
-
-export interface LibraryVerifyReport {
-  id: string;
-  integrityOk: boolean;
-  assets: number;
-  managedFiles: number;
-  managedMissing: number;
-  orphanFiles: number;
-  errors: string[];
-}
-
-export interface LibraryExportReport {
-  id: string;
-  destination: string;
-  assets: number;
-  files: number;
-  databaseBytes: number;
-  managedBytes: number;
 }
 
 export interface ReconcileCandidate {
@@ -1080,12 +1022,6 @@ export interface RefCanvasApi {
     open(path: string): Promise<LibrarySummary>;
     switchTo(id: string): Promise<LibrarySummary>;
     move(id: string, newDirectory: string): Promise<LibrarySummary>;
-    merge(sourceId: string, targetId: string): Promise<MergeLibraryReport>;
-    verify(id: string): Promise<LibraryVerifyReport>;
-    exportLibrary(
-      id: string,
-      destination: string,
-    ): Promise<LibraryExportReport>;
     /** Managed preflight（§13.3）：统计 managed records 与 store 文件。 */
     managedPreflight(): Promise<{
       managedAssets: number;

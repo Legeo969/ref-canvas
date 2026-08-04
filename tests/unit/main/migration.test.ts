@@ -69,9 +69,6 @@ describe("database migration", () => {
         lifecycle: "active",
         favorite: false,
         rating: 0,
-        storageMode: "linked",
-        libraryRelativePath: null,
-        originalSourcePath: null,
       });
       expect(
         migrated.loadBoard("00000000-0000-4000-8000-000000000002")

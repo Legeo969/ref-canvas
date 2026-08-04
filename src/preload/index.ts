@@ -183,11 +183,6 @@ const api: RefCanvasApi = {
     switchTo: (id) => ipcRenderer.invoke("libraries:switch-to", id),
     move: (id, newDirectory) =>
       ipcRenderer.invoke("libraries:move", id, newDirectory),
-    merge: (sourceId, targetId) =>
-      ipcRenderer.invoke("libraries:merge", sourceId, targetId),
-    verify: (id) => ipcRenderer.invoke("libraries:verify", id),
-    exportLibrary: (id, destination) =>
-      ipcRenderer.invoke("libraries:export", id, destination),
     managedPreflight: () => ipcRenderer.invoke("libraries:managed-preflight"),
     managedMigrate: (targetDirectory) =>
       ipcRenderer.invoke("libraries:managed-migrate", targetDirectory),

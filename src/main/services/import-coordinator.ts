@@ -33,10 +33,8 @@ export class ImportCoordinator {
       reused: 0,
       unsupported: 0,
       failed: [],
-      copied: 0,
       relinked: 0,
       conflicted: 0,
-      verified: 0,
       createdAt: new Date().toISOString(),
       completedAt: null,
     };

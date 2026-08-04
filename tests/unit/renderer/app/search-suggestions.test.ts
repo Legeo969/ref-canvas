@@ -63,9 +63,6 @@ function asset(id: string, title: string): AssetRecord {
     updatedAt: "",
     previewUrl: "",
     thumbnailUrl: "",
-    storageMode: "linked",
-    libraryRelativePath: null,
-    originalSourcePath: null,
   };
 }
 
