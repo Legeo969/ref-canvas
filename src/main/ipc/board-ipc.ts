@@ -5,11 +5,13 @@ import { z } from "zod";
 import type { AssetRecord, BoardDocument } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import type { BoardReferenceService } from "../services/board-reference-service";
 import { boardDocumentSchema } from "./board-schema";
 import { idSchema, pathSchema } from "./schemas";
 
 interface BoardIpcDependencies {
   copyProjectAsset(assetId: string, destination: string): Promise<unknown>;
+  getBoardReferences(): BoardReferenceService;
   getDatabase(): RefCanvasDatabase;
   getMainWindow(): BrowserWindow | null;
   openBoardWindow(boardId: string): void;
@@ -67,26 +69,9 @@ export function registerBoardIpc(
       .map((assetId) => database().getAsset(assetId))
       .filter((asset): asset is NonNullable<typeof asset> => Boolean(asset));
   });
-  ipc.handle("boards:resolve-references", (id) => {
-    const assetIds = database().getBoardAssetIds(idSchema.parse(id));
-    return assetIds.map((assetId) => {
-      const asset = database().getAsset(assetId);
-      if (!asset) {
-        return { assetId, path: null, state: "missing" as const };
-      }
-      if (asset.linkState === "offline") {
-        return { assetId, path: asset.path, state: "offline" as const };
-      }
-      if (asset.linkState === "ambiguous") {
-        return { assetId, path: asset.path, state: "ambiguous" as const };
-      }
-      return {
-        assetId,
-        path: asset.path,
-        state: asset.linkState === "online" ? ("online" as const) : ("missing" as const),
-      };
-    });
-  });
+  ipc.handle("boards:resolve-references", (id) =>
+    dependencies.getBoardReferences().resolveReferences(idSchema.parse(id)),
+  );
   ipc.handle("boards:relink-reference", async (id, assetId, filename) => {
     const parsedId = idSchema.parse(id);
     const parsedAssetId = idSchema.parse(assetId);

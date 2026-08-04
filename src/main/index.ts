@@ -38,6 +38,7 @@ import { FilesystemService } from "./services/filesystem-service";
 import { FileOperationsService } from "./services/file-operations-service";
 import { MountService } from "./services/mount-service";
 import { ScriptsService } from "./services/scripts-service";
+import { BoardReferenceService } from "./services/board-reference-service";
 import { DirectoryIndexClient } from "./platform/directory-index-client";
 import { ImportEnumeratorClient } from "./platform/import-enumerator-client";
 import { DirectoryBatchService } from "./services/directory-batch-service";
@@ -119,6 +120,7 @@ let directoryBatches: DirectoryBatchService;
 let fileOperations: FileOperationsService;
 let mountService: MountService;
 let scriptsService: ScriptsService;
+let boardReferences: BoardReferenceService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -533,6 +535,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   });
   mountService = new MountService(database);
   scriptsService = new ScriptsService(database);
+  boardReferences = new BoardReferenceService(database);
   // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
   mountService.onMountStateChanged(({ mountId, state }) => {
     if (state !== "online") return;
@@ -605,6 +608,7 @@ function registerIpc(): void {
   });
   registerBoardIpc(ipc, {
     copyProjectAsset,
+    getBoardReferences: () => boardReferences,
     getDatabase: () => database,
     getMainWindow: () => mainWindow,
     openBoardWindow,

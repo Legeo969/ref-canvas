@@ -1203,13 +1203,14 @@ export class RefCanvasDatabase {
   findIdentityByFingerprint(
     fingerprint: string,
     size: number,
-  ): Array<{ pathKey: string; assetId: string }> {
+  ): Array<{ pathKey: string; assetId: string; rootPath: string | null }> {
     const rows = this.db.prepare(`
-      SELECT path_key AS pathKey, asset_id AS assetId
+      SELECT path_key AS pathKey, asset_id AS assetId, root_path AS rootPath
       FROM file_identities WHERE fingerprint = ? AND size = ?
     `).all(fingerprint, size) as Array<{
       pathKey: string;
       assetId: string;
+      rootPath: string | null;
     }>;
     return rows;
   }

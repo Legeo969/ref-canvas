@@ -1142,6 +1142,10 @@ export interface BoardReferenceResolution {
   /** 解析后的磁盘路径；缺失时为 null。 */
   path: string | null;
   state: "online" | "missing" | "offline" | "ambiguous";
+  /** fingerprint 搜索候选（ambiguous 时供 relink UI 选择）。 */
+  candidates?: Array<{ path: string; assetId: string | null }>;
+  /** 本次是否自动重连（fingerprint 匹配 → path 已更新）。 */
+  relinked?: boolean;
 }
 
 export interface RefCanvasApi {
