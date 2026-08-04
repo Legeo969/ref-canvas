@@ -25,7 +25,7 @@ async function tempDirectory(prefix: string): Promise<string> {
   return directory;
 }
 
-async function setupManagedLibrary(): Promise<{
+async function setupLinkedLibrary(): Promise<{
   entry: Awaited<ReturnType<LibraryManager["create"]>>;
   service: LibraryService;
   db: RefCanvasDatabase;
@@ -51,7 +51,7 @@ async function setupManagedLibrary(): Promise<{
 
 describe("dual-mode library service", () => {
   it("imports files as linked without copying the source", async () => {
-    const { service, db, base } = await setupManagedLibrary();
+    const { service, db, base } = await setupLinkedLibrary();
     const source = path.join(base, "photo.png");
     await writeFile(source, Buffer.alloc(1_024, 5));
     try {
@@ -73,7 +73,7 @@ describe("dual-mode library service", () => {
   });
 
   it("ignores a legacy managed storageMode request on import", async () => {
-    const { service, db, base } = await setupManagedLibrary();
+    const { service, db, base } = await setupLinkedLibrary();
     const source = path.join(base, "managed.png");
     await writeFile(source, Buffer.alloc(1_024, 6));
     try {
@@ -93,7 +93,7 @@ describe("dual-mode library service", () => {
   });
 
   it("re-importing the same path reuses the linked record", async () => {
-    const { service, db, base } = await setupManagedLibrary();
+    const { service, db, base } = await setupLinkedLibrary();
     const source = path.join(base, "photo.png");
     const content = Buffer.alloc(2_048, 8);
     await writeFile(source, content);
@@ -146,7 +146,7 @@ describe("dual-mode library service", () => {
   });
 
   it("removeFromLibrary keeps the linked source when a record is board-referenced", async () => {
-    const { service, db, base } = await setupManagedLibrary();
+    const { service, db, base } = await setupLinkedLibrary();
     const source = path.join(base, "kept.png");
     await writeFile(source, Buffer.alloc(300, 6));
     try {
@@ -179,7 +179,7 @@ describe("dual-mode library service", () => {
   });
 
   it("trash moves the linked source file to the library trash for restore", async () => {
-    const { service, db, base } = await setupManagedLibrary();
+    const { service, db, base } = await setupLinkedLibrary();
     const source = path.join(base, "trashme.png");
     await writeFile(source, Buffer.alloc(400, 4));
     try {

@@ -311,7 +311,7 @@ export function Sidebar() {
             onClick={() => void dialog.requestForm({
               title: "新建资料库",
               description:
-                "新资料库默认保留文件原位（linked）；需要复制文件进库时在资料库设置中选择“复制到资料库”。",
+                "新资料库保留文件原位（linked），浏览与入库都不会复制源文件。",
               confirmLabel: "创建",
               fields: [
                 {
