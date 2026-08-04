@@ -27,20 +27,15 @@ async function tempDirectory(prefix: string): Promise<string> {
 }
 
 async function setupLinkedLibrary(): Promise<{
-  entry: Awaited<ReturnType<LibraryManager["create"]>>;
+  entry: Awaited<ReturnType<LibraryManager["bootstrapLegacy"]>>;
   service: LibraryService;
   db: RefCanvasDatabase;
   base: string;
 }> {
   const userData = await tempDirectory("refcanvas-registry-");
   const manager = new LibraryManager(userData);
-  await manager.initialize();
-  await manager.bootstrapLegacy();
+  const entry = await manager.bootstrapLegacy();
   const base = await tempDirectory("refcanvas-dual-");
-  const entry = await manager.create({
-    name: "Dual",
-    directory: path.join(base, "lib"),
-  });
   const db = new RefCanvasDatabase(databasePathFor(entry));
   const service = new LibraryService(
     db,
@@ -104,9 +99,7 @@ describe("dual-mode library service", () => {
   it("keeps linked sources untouched on import and on removal", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
-    await manager.initialize();
-    await manager.bootstrapLegacy();
-    const legacy = manager.current()!;
+    const legacy = await manager.bootstrapLegacy();
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
@@ -194,9 +187,7 @@ describe("dual-mode library service", () => {
   it("reconciles an offline cross-directory move by fingerprint and relinks", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
-    await manager.initialize();
-    await manager.bootstrapLegacy();
-    const legacy = manager.current()!;
+    const legacy = await manager.bootstrapLegacy();
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
@@ -238,9 +229,7 @@ describe("dual-mode library service", () => {
   it("restores unchanged assets to online when a mount recovers", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
-    await manager.initialize();
-    await manager.bootstrapLegacy();
-    const legacy = manager.current()!;
+    const legacy = await manager.bootstrapLegacy();
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
@@ -270,9 +259,7 @@ describe("dual-mode library service", () => {
   it("parks ambiguous moves in the reconcile queue and resolves them by choice", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
-    await manager.initialize();
-    await manager.bootstrapLegacy();
-    const legacy = manager.current()!;
+    const legacy = await manager.bootstrapLegacy();
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,

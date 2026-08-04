@@ -104,13 +104,8 @@ describe("hardening", () => {
   it("imports linked files without copying and never alters the source", async () => {
     const userData = await tempDirectory("refcanvas-registry-");
     const manager = new LibraryManager(userData);
-    await manager.initialize();
-    await manager.bootstrapLegacy();
+    const entry = await manager.bootstrapLegacy();
     const base = await tempDirectory("refcanvas-managed-");
-    const entry = await manager.create({
-      name: "Managed",
-      directory: path.join(base, "lib"),
-    });
     const db = new RefCanvasDatabase(databasePathFor(entry));
     const service = new LibraryService(db, path.join(entry.root, "trash", "files"), {
       libraryRoot: entry.root,

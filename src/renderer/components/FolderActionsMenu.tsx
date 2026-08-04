@@ -158,8 +158,8 @@ export function FolderActionsMenu({
     } catch {
       // 查询失败时退回资料库根目录。
     }
-    if (store.currentLibrary?.root) {
-      await window.refCanvas.system.revealInFolder(store.currentLibrary.root);
+    if (store.currentLibraryRoot) {
+      await window.refCanvas.system.revealInFolder(store.currentLibraryRoot);
     }
   };
 

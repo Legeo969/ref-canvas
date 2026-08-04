@@ -176,13 +176,6 @@ const api: RefCanvasApi = {
     stats: () => ipcRenderer.invoke("library:stats"),
   },
   libraries: {
-    list: () => ipcRenderer.invoke("libraries:list"),
-    current: () => ipcRenderer.invoke("libraries:current"),
-    create: (options) => ipcRenderer.invoke("libraries:create", options),
-    open: (path) => ipcRenderer.invoke("libraries:open", path),
-    switchTo: (id) => ipcRenderer.invoke("libraries:switch-to", id),
-    move: (id, newDirectory) =>
-      ipcRenderer.invoke("libraries:move", id, newDirectory),
     managedPreflight: () => ipcRenderer.invoke("libraries:managed-preflight"),
     managedMigrate: (targetDirectory) =>
       ipcRenderer.invoke("libraries:managed-migrate", targetDirectory),

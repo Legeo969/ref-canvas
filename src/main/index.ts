@@ -111,7 +111,6 @@ let mountService: MountService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
-let activeLibraryEntry: LibraryEntry | null = null;
 let alwaysOnBottom = false;
 let clickThrough = false;
 let transparentOverlay = false;
@@ -449,7 +448,6 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   await library?.close();
   backups?.close();
   database?.close();
-  activeLibraryEntry = entry;
   databaseFilename = databasePathFor(entry);
   database = new RefCanvasDatabase(databaseFilename, {
     migrationBackupDirectory: backupDirectoryFor(entry),
@@ -572,20 +570,7 @@ function registerIpc(): void {
     windowForSender,
   });
   registerLibraryManagementIpc(ipc, {
-    closeActiveLibrary: async () => {
-      cancelBackgroundServicesStart();
-      actions?.close();
-      await library.close();
-      backups.close();
-      database.close();
-    },
-    getActiveLibraryEntry: () => activeLibraryEntry,
-    getDatabase: () => database,
-    getDatabaseFilename: () => databaseFilename,
     getLibrary: () => library,
-    getLibraryManager: () => libraryManager,
-    reloadMainWindow: () => mainWindow?.reload(),
-    reopenLibrary,
   });
   registerFilesystemIpc(ipc, {
     getDirectoryBatches: () => directoryBatches,
@@ -841,7 +826,6 @@ void app.whenReady().then(async () => {
   }
   const userData = app.getPath("userData");
   libraryManager = new LibraryManager(userData);
-  await libraryManager.initialize();
   const initialEntry = await libraryManager.bootstrapLegacy();
   await reopenLibrary(initialEntry);
   thumbnailCacheDirectory = path.join(userData, "cache", "thumbnails");

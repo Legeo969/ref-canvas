@@ -834,18 +834,6 @@ export interface BoardDocumentV3 {
 
 export type BoardDocument = BoardDocumentV1 | BoardDocumentV2 | BoardDocumentV3;
 
-export interface LibrarySummary {
-  id: string;
-  name: string;
-  root: string;
-  createdAt: string;
-  isActive: boolean;
-  assetCount: number;
-  databaseBytes: number;
-  /** True for the pre-existing `0.32` data directory kept in place. */
-  legacy: boolean;
-}
-
 export interface ReconcileCandidate {
   assetId: string;
   title: string;
@@ -1015,13 +1003,6 @@ export interface RefCanvasApi {
     stats(): Promise<LibraryStats>;
   };
   libraries: {
-    list(): Promise<LibrarySummary[]>;
-    current(): Promise<LibrarySummary | null>;
-    create(options: { name: string; directory: string }): Promise<LibrarySummary>;
-    /** Opens an existing library directory by manifest. */
-    open(path: string): Promise<LibrarySummary>;
-    switchTo(id: string): Promise<LibrarySummary>;
-    move(id: string, newDirectory: string): Promise<LibrarySummary>;
     /** Managed preflight（§13.3）：统计 managed records 与 store 文件。 */
     managedPreflight(): Promise<{
       managedAssets: number;

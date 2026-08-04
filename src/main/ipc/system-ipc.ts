@@ -303,14 +303,14 @@ export function registerSystemIpc(
     return readAppPreferences();
   });
   ipc.handle("system:get-app-info", () => {
-    const summary = libraryManager().current();
+    const entry = libraryManager().currentEntry();
     return {
       appVersion: app.getVersion(),
       electronVersion: process.versions.electron,
       nodeVersion: process.versions.node,
       databaseSchemaVersion: database().getSchemaVersion(),
-      libraryPath: summary?.root ?? null,
-      libraryName: summary?.name ?? null,
+      libraryPath: entry?.root ?? null,
+      libraryName: entry?.name ?? null,
       installChannel: app.isPackaged ? "signed" : "unsigned",
       platform: process.platform,
       userDataPath: app.getPath("userData"),

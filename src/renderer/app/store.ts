@@ -101,10 +101,6 @@ interface AppState
   addWatchFolder(): Promise<void>;
   relinkAsset(id: string, mode: "pick" | "search"): Promise<void>;
   removeFromLibrarySelection(): Promise<void>;
-  refreshLibraries(): Promise<void>;
-  createLibrary(options: { name: string; directory: string }): Promise<void>;
-  switchLibrary(id: string): Promise<void>;
-  openLibrary(directory: string): Promise<void>;
   createCollection(title: string, parentId?: string | null): Promise<void>;
   updateCollection(
     id: string,
@@ -268,14 +264,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   ...createPreferencesSliceState(),
 
   initialize: async () => {
-    const [boards, collections, tags, tagGroups, savedViews, libraries, currentLibrary, preferences] = await Promise.all([
+    const [boards, collections, tags, tagGroups, savedViews, appInfo, preferences] = await Promise.all([
       window.refCanvas.boards.list(),
       window.refCanvas.library.listCollections(),
       window.refCanvas.library.listTags(),
       window.refCanvas.library.listTagGroups(),
       window.refCanvas.library.listSavedViews(),
-      window.refCanvas.libraries.list(),
-      window.refCanvas.libraries.current(),
+      window.refCanvas.system.getAppInfo(),
       window.refCanvas.library.getPreferences(),
     ]);
     const navigation = navigationStateForCollections(
@@ -328,8 +323,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       tags,
       tagGroups,
       savedViews,
-      libraries,
-      currentLibrary,
+      currentLibraryRoot: appInfo.libraryPath,
+      currentLibraryName: appInfo.libraryName,
       preferences,
       navigationSource: navigation.navigationSource,
       directoryPath: navigation.directoryPath,
@@ -806,30 +801,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const scope = get().selectionScope();
     await window.refCanvas.library.removeFromLibrary(scope);
     await get().reloadAssets();
-  },
-
-  refreshLibraries: async () => {
-    const [libraries, currentLibrary] = await Promise.all([
-      window.refCanvas.libraries.list(),
-      window.refCanvas.libraries.current(),
-    ]);
-    set({ libraries, currentLibrary });
-  },
-
-  createLibrary: async (options) => {
-    await window.refCanvas.libraries.create(options);
-    // Switching libraries rebinds the backend and reloads the renderer.
-    await get().refreshLibraries();
-  },
-
-  switchLibrary: async (id) => {
-    await window.refCanvas.libraries.switchTo(id);
-    await get().refreshLibraries();
-  },
-
-  openLibrary: async (directory) => {
-    await window.refCanvas.libraries.open(directory);
-    await get().refreshLibraries();
   },
 
   addWatchFolder: async () => {

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,104 +24,38 @@ async function tempDirectory(prefix: string): Promise<string> {
   return directory;
 }
 
-async function makeManager(): Promise<LibraryManager> {
-  const userData = await tempDirectory("refcanvas-registry-");
-  const manager = new LibraryManager(userData);
-  await manager.initialize();
-  await manager.bootstrapLegacy();
-  return manager;
-}
+describe("LibraryManager (single active library)", () => {
+  it("bootstraps the legacy data directory as the single active library", async () => {
+    const userData = await tempDirectory("refcanvas-registry-");
+    const manager = new LibraryManager(userData);
+    const entry = await manager.bootstrapLegacy();
 
-describe("LibraryManager", () => {
-  it("bootstraps the legacy data directory as the linked default library", async () => {
-    const manager = await makeManager();
-    const current = manager.current()!;
-    expect(current.legacy).toBe(true);
-    expect(current.isActive).toBe(true);
+    expect(entry.legacy).toBe(true);
+    expect(entry.root).toBe(userData);
+    expect(manager.currentEntry()?.id).toBe(entry.id);
+    expect(manager.currentEntry()?.name).toBe("默认资料库");
   });
 
-  it("keeps the legacy library active after the registry is loaded again", async () => {
+  it("is idempotent across repeated bootstrap calls", async () => {
     const userData = await tempDirectory("refcanvas-registry-restart-");
-    const first = new LibraryManager(userData);
-    await first.initialize();
-    const initial = await first.bootstrapLegacy();
+    const manager = new LibraryManager(userData);
+    const first = await manager.bootstrapLegacy();
+    const second = await manager.bootstrapLegacy();
 
-    const restarted = new LibraryManager(userData);
-    await restarted.initialize();
-    const reopened = await restarted.bootstrapLegacy();
-
-    expect(reopened.id).toBe(initial.id);
-    expect(restarted.current()?.id).toBe(initial.id);
-    expect(restarted.list()).toHaveLength(1);
+    expect(second.id).toBe(first.id);
+    expect(second.root).toBe(userData);
   });
 
-  it("creates a self-contained linked-default library with a manifest and database", async () => {
-    const manager = await makeManager();
-    const target = await tempDirectory("refcanvas-create-");
-    const directory = path.join(target, "My Library");
-    const entry = await manager.create({ name: "My Library", directory });
-
-    expect(entry.legacy).toBe(false);
-    const manifest = JSON.parse(
-      await readFile(path.join(entry.root, "refcanvas.library.json"), "utf8"),
-    );
-    expect(manifest.format).toBe("refcanvas-library");
-    expect(manifest.name).toBe("My Library");
+  it("resolves a usable database path inside the data directory", async () => {
+    const userData = await tempDirectory("refcanvas-dbpath-");
+    const manager = new LibraryManager(userData);
+    const entry = await manager.bootstrapLegacy();
 
     const db = new RefCanvasDatabase(databasePathFor(entry));
     try {
       expect(db.getSchemaVersion()).toBe(14);
-      expect(db.listBoards()).toHaveLength(1);
     } finally {
       db.close();
     }
-    // Opening the directory again reuses the same id instead of duplicating.
-    const reopened = await manager.open(entry.root);
-    expect(reopened.id).toBe(entry.id);
-    expect(manager.list()).toHaveLength(2);
-  });
-
-  it("moves a library directory and verifies the registry follows", async () => {
-    const manager = await makeManager();
-    const base = await tempDirectory("refcanvas-move-");
-    const created = await manager.create({
-      name: "Movable",
-      directory: path.join(base, "source"),
-    });
-    const movedTo = path.join(base, "moved");
-    const moved = await manager.move(created.id, movedTo);
-
-    expect(moved.root).toBe(movedTo);
-    expect(manager.getEntry(created.id).root).toBe(movedTo);
-    // The manifest and database travelled with the directory.
-    await expect(
-      readFile(path.join(movedTo, "refcanvas.library.json")),
-    ).resolves.toBeDefined();
-    await expect(readFile(databasePathFor(moved))).resolves.toBeDefined();
-  });
-
-  it("reports databaseBytes as a numeric file size", async () => {
-    const manager = await makeManager();
-    const base = await tempDirectory("refcanvas-size-");
-    const entry = await manager.create({
-      name: "Sized",
-      directory: path.join(base, "lib"),
-    });
-
-    const summary = await manager.describe(entry.id);
-    expect(typeof summary.databaseBytes).toBe("number");
-    expect(summary.databaseBytes).toBeGreaterThan(0);
-  });
-
-  it("refuses to move a library inside itself", async () => {
-    const manager = await makeManager();
-    const base = await tempDirectory("refcanvas-cycle-");
-    const entry = await manager.create({
-      name: "Cyclic",
-      directory: path.join(base, "lib"),
-    });
-    await expect(
-      manager.move(entry.id, path.join(entry.root, "nested")),
-    ).rejects.toThrow("LIBRARY_MOVE_INVALID");
   });
 });

@@ -1,18 +1,15 @@
-import type {
-  LibraryPreferences,
-  LibrarySummary,
-} from "../../../shared/contracts";
+import type { LibraryPreferences } from "../../../shared/contracts";
 
 export interface PreferencesSliceState {
-  libraries: LibrarySummary[];
-  currentLibrary: LibrarySummary | null;
+  currentLibraryRoot: string | null;
+  currentLibraryName: string | null;
   preferences: LibraryPreferences;
 }
 
 export function createPreferencesSliceState(): PreferencesSliceState {
   return {
-    libraries: [],
-    currentLibrary: null,
+    currentLibraryRoot: null,
+    currentLibraryName: null,
     preferences: {
       layoutMode: "grid",
       cardSize: "medium",

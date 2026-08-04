@@ -29,7 +29,6 @@ describe("Sidebar asset kinds", () => {
     const setKindFilter = vi.fn();
     useAppStore.setState({
       collections: [],
-      libraries: [],
       tags: [],
       tagGroups: [],
       savedViews: [],
