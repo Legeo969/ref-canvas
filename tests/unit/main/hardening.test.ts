@@ -114,7 +114,6 @@ describe("hardening", () => {
     const db = new RefCanvasDatabase(databasePathFor(entry));
     const service = new LibraryService(db, path.join(entry.root, "trash", "files"), {
       libraryRoot: entry.root,
-      defaultStorageMode: "linked",
     });
     const source = path.join(base, "art.png");
     const content = Buffer.alloc(2048, 9);
@@ -156,7 +155,6 @@ describe("hardening", () => {
     const db = new RefCanvasDatabase(databasePathFor(entry));
     const service = new LibraryService(db, path.join(entry.root, "trash", "files"), {
       libraryRoot: entry.root,
-      defaultStorageMode: "linked",
     });
     try {
       const store = managedStorePath(entry.root);

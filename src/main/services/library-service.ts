@@ -16,7 +16,6 @@ import sharp from "sharp";
 import type {
   AssetKind,
   AssetRecord,
-  AssetStorageMode,
   DuplicateGroup,
   FilesystemRenameResult,
   ImportJobSnapshot,
@@ -307,7 +306,6 @@ export class LibraryService {
   private readonly importCoordinator: ImportCoordinator;
   private readonly metadataEnricher: MetadataEnricher;
   private pendingMetadataController: AbortController | null = null;
-  private defaultStorageMode: AssetStorageMode;
   private lastReconcileReport: ReconcileReport | null = null;
 
   constructor(
@@ -319,7 +317,6 @@ export class LibraryService {
     ),
     options: {
       libraryRoot?: string;
-      defaultStorageMode?: AssetStorageMode;
       importEnumerator?: ImportEnumerator;
     } = {},
   ) {
@@ -328,7 +325,6 @@ export class LibraryService {
         path.dirname(database.filename === ":memory:" ? "." : database.filename),
     );
     this.managedStore = managedStorePath(this.libraryRoot);
-    this.defaultStorageMode = options.defaultStorageMode ?? "linked";
     this.importEnumerator = options.importEnumerator ?? new LocalImportEnumerator();
     this.importCoordinator = new ImportCoordinator((snapshot) => {
       this.events.emit("import-progress", snapshot);
@@ -337,20 +333,6 @@ export class LibraryService {
       this.database,
       (filename, kind, signal) => this.extractMetadata(filename, kind, signal),
     );
-  }
-
-  /** Rebinds the service to a different library context (switching libraries). */
-  setLibraryContext(
-    libraryRoot: string,
-    defaultStorageMode: AssetStorageMode,
-  ): void {
-    this.libraryRoot = path.resolve(libraryRoot);
-    this.defaultStorageMode = defaultStorageMode;
-    this.database.setSetting("defaultStorageMode", defaultStorageMode);
-  }
-
-  getLibraryDefaultStorageMode(): AssetStorageMode {
-    return this.defaultStorageMode;
   }
 
   getLibraryRoot(): string {
@@ -368,7 +350,6 @@ export class LibraryService {
       detailsWidth: 286,
       collapsed: [],
     },
-    defaultStorageMode: "linked",
   };
 
   getPreferences(): LibraryPreferences {
@@ -386,8 +367,6 @@ export class LibraryService {
       panelLayout: stored?.panelLayout ?? {
         ...LibraryService.defaultPreferences.panelLayout,
       },
-      defaultStorageMode:
-        stored?.defaultStorageMode ?? this.defaultStorageMode,
     };
     // 0.33 → 0.34 一次性偏好迁移：includeSubfolderAssets 默认改为 true。
     // 该字段在 0.33 从未参与查询（collectionId 始终递归），不存在用户预期损失。

@@ -24,7 +24,6 @@ export function createPreferencesSliceState(): PreferencesSliceState {
         detailsWidth: 286,
         collapsed: [],
       },
-      defaultStorageMode: "linked",
     },
   };
 }

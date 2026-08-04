@@ -341,8 +341,6 @@ export interface LibraryPreferences {
     detailsWidth: number;
     collapsed: Array<"sidebar" | "asset" | "details">;
   };
-  /** 当前资料库的默认入库方式（linked 保留原位 / managed 复制进库）。 */
-  defaultStorageMode: AssetStorageMode;
 }
 
 export interface AppInfo {

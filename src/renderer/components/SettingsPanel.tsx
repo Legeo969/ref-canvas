@@ -215,27 +215,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             {tab === "library" && (
               <div className="settings-group">
                 <h3>资料库</h3>
-                <label className="settings-row">
-                  <span>
-                    新素材默认入库方式
-                    <small>
-                      linked 保留文件原位；managed 复制进资料库（复制到资料库）
-                    </small>
-                  </span>
-                  <select
-                    value={libraryPreferences.defaultStorageMode}
-                    onChange={(event) =>
-                      void setLibraryPreference({
-                        defaultStorageMode: event.target.value as
-                          | "linked"
-                          | "managed",
-                      })
-                    }
-                  >
-                    <option value="linked">linked（保留原位）</option>
-                    <option value="managed">复制到资料库</option>
-                  </select>
-                </label>
                 <label className="settings-toggle">
                   <input
                     type="checkbox"

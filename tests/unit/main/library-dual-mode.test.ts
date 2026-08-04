@@ -44,7 +44,7 @@ async function setupManagedLibrary(): Promise<{
   const service = new LibraryService(
     db,
     path.join(entry.root, "trash", "files"),
-    { libraryRoot: entry.root, defaultStorageMode: "managed" },
+    { libraryRoot: entry.root },
   );
   return { entry, service, db, base };
 }
@@ -121,7 +121,6 @@ describe("dual-mode library service", () => {
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
-      defaultStorageMode: "linked",
     });
     const source = path.join(await tempDirectory("refcanvas-linked-"), "art.png");
     const content = Buffer.alloc(640, 2);
@@ -215,7 +214,6 @@ describe("dual-mode library service", () => {
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
-      defaultStorageMode: "linked",
     });
     const base = await tempDirectory("refcanvas-watch-");
     const watchRoot = path.join(base, "watch");
@@ -260,7 +258,6 @@ describe("dual-mode library service", () => {
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
-      defaultStorageMode: "linked",
     });
     const base = await tempDirectory("refcanvas-recover-");
     const watchRoot = path.join(base, "watch");
@@ -293,7 +290,6 @@ describe("dual-mode library service", () => {
     const db = new RefCanvasDatabase(databasePathFor(legacy));
     const service = new LibraryService(db, path.join(legacy.root, "trash", "files"), {
       libraryRoot: legacy.root,
-      defaultStorageMode: "linked",
     });
     const base = await tempDirectory("refcanvas-ambig-");
     const watchRoot = path.join(base, "watch");

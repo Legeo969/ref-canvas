@@ -391,7 +391,6 @@ export function registerLibraryIpc(
               ).max(3),
             })
             .optional(),
-          defaultStorageMode: z.enum(["linked", "managed"]).optional(),
         })
         .parse(prefs),
     ),

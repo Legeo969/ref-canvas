@@ -164,7 +164,7 @@ describe("LibraryManager", () => {
     const service = new LibraryService(
       db,
       path.join(entry.root, "trash", "files"),
-      { libraryRoot: entry.root, defaultStorageMode: "linked" },
+      { libraryRoot: entry.root },
     );
     try {
       await seedManaged(entry, db, "photo", Buffer.alloc(256, 5));
@@ -191,7 +191,7 @@ describe("LibraryManager", () => {
     const service = new LibraryService(
       db,
       path.join(entry.root, "trash", "files"),
-      { libraryRoot: entry.root, defaultStorageMode: "linked" },
+      { libraryRoot: entry.root },
     );
     try {
       await seedManaged(entry, db, "sample", Buffer.alloc(128, 9));
@@ -237,13 +237,11 @@ describe("LibraryManager", () => {
     const sourceService = new LibraryService(
       sourceDb,
       path.join(sourceEntry.root, "trash", "files"),
-      { libraryRoot: sourceEntry.root, defaultStorageMode: "managed" },
+      { libraryRoot: sourceEntry.root },
     );
-    const first = path.join(base, "first.png");
-    const second = path.join(base, "second.png");
-    await writeFile(first, Buffer.alloc(128, 1));
-    await writeFile(second, Buffer.alloc(128, 2));
-    await sourceService.importPaths([first, second]);
+    // 直接构造存量 managed 资产（store 文件 + DB 记录）。
+    await seedManaged(sourceEntry, sourceDb, "first", Buffer.alloc(128, 1));
+    await seedManaged(sourceEntry, sourceDb, "second", Buffer.alloc(128, 2));
     await sourceService.close();
     sourceDb.close();
 
@@ -291,12 +289,10 @@ describe("LibraryManager", () => {
     const sourceDb = new RefCanvasDatabase(databasePathFor(sourceEntry));
     const sourceService = new LibraryService(sourceDb, path.join(sourceEntry.root, "trash", "files"), {
       libraryRoot: sourceEntry.root,
-      defaultStorageMode: "linked",
     });
     const targetDb = new RefCanvasDatabase(databasePathFor(targetEntry));
     const targetService = new LibraryService(targetDb, path.join(targetEntry.root, "trash", "files"), {
       libraryRoot: targetEntry.root,
-      defaultStorageMode: "linked",
     });
     const shared = Buffer.alloc(512, 3);
     const unique = Buffer.alloc(512, 7);

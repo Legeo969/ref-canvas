@@ -20,7 +20,6 @@ const preferences: LibraryPreferences = {
   thumbnailBackground: "checker",
   includeSubfolderAssets: true,
   panelLayout: { sidebarWidth: 220, assetWidth: 420, detailsWidth: 320, collapsed: [] },
-  defaultStorageMode: "linked",
 };
 
 function deferred<T>() {

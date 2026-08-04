@@ -27,7 +27,6 @@ async function createLibraryService(root: string) {
   const database = new RefCanvasDatabase(":memory:");
   const service = new LibraryService(database, path.join(root, "trash", "files"), {
     libraryRoot: root,
-    defaultStorageMode: "linked",
   });
   return { database, service };
 }

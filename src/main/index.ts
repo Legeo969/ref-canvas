@@ -451,13 +451,11 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   database?.close();
   activeLibraryEntry = entry;
   databaseFilename = databasePathFor(entry);
-  const defaultStorageMode = entry.defaultStorageMode;
   database = new RefCanvasDatabase(databaseFilename, {
     migrationBackupDirectory: backupDirectoryFor(entry),
   });
   library = new LibraryService(database, trashPathFor(entry), {
     libraryRoot: entry.root,
-    defaultStorageMode,
     importEnumerator: new ImportEnumeratorClient(
       path.join(__dirname, "import-enumerator.js"),
     ),
