@@ -188,6 +188,9 @@ const api: RefCanvasApi = {
     verify: (id) => ipcRenderer.invoke("libraries:verify", id),
     exportLibrary: (id, destination) =>
       ipcRenderer.invoke("libraries:export", id, destination),
+    managedPreflight: () => ipcRenderer.invoke("libraries:managed-preflight"),
+    managedMigrate: (targetDirectory) =>
+      ipcRenderer.invoke("libraries:managed-migrate", targetDirectory),
   },
   watchRoots: {
     reconcile: (rootId) =>

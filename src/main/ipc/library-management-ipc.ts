@@ -130,4 +130,12 @@ export function registerLibraryManagementIpc(
       idSchema.parse(assetId),
     ),
   );
+
+  // Managed preflight（计划 §13.3）：退役 managed storage 前的检查与迁移。
+  ipc.handle("libraries:managed-preflight", () =>
+    dependencies.getLibrary().prepareManagedMigration(),
+  );
+  ipc.handle("libraries:managed-migrate", (targetDirectory) =>
+    dependencies.getLibrary().migrateManagedToDisk(pathSchema.parse(targetDirectory)),
+  );
 }

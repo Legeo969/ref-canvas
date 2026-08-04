@@ -1095,6 +1095,18 @@ export interface RefCanvasApi {
       id: string,
       destination: string,
     ): Promise<LibraryExportReport>;
+    /** Managed preflight（§13.3）：统计 managed records 与 store 文件。 */
+    managedPreflight(): Promise<{
+      managedAssets: number;
+      managedFiles: number;
+      storeBytes: number;
+      canMigrateDirectly: boolean;
+    }>;
+    /** 把 managed store 迁移到磁盘目录并退役 managed storage（§13.3）。 */
+    managedMigrate(targetDirectory: string): Promise<{
+      migrated: number;
+      failed: Array<{ path: string; reason: string }>;
+    }>;
   };
   watchRoots: {
     /** Full reconciliation of watched roots against the identity index. */

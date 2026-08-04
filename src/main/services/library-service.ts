@@ -7,6 +7,7 @@ import {
   open,
   readdir,
   rename,
+  rm,
   stat,
   unlink,
 } from "node:fs/promises";
@@ -1793,6 +1794,103 @@ export class LibraryService {
     this.importCoordinator.cancelAll();
     this.importEnumerator.close();
     await this.stopWatching();
+  }
+
+  /**
+   * Managed preflight（计划 §13.3）：统计 managed records 与实际 store 文件。
+   * 返回迁移前的检查报告；managed 为零时允许直接退役。
+   */
+  async prepareManagedMigration(): Promise<{
+    managedAssets: number;
+    managedFiles: number;
+    storeBytes: number;
+    canMigrateDirectly: boolean;
+  }> {
+    const managed = this.database.listManagedAssets();
+    const files = managed.length
+      ? await this.managedStoreFiles()
+      : [];
+    let storeBytes = 0;
+    for (const filename of files) {
+      const info = await stat(path.join(this.managedStore, filename)).catch(
+        () => null,
+      );
+      if (info) storeBytes += info.size;
+    }
+    return {
+      managedAssets: managed.length,
+      managedFiles: files.length,
+      storeBytes,
+      canMigrateDirectly: managed.length === 0,
+    };
+  }
+
+  /**
+   * 把 managed store 迁移到用户选择的磁盘目录（计划 §13.3）：
+   * 复制 → 逐文件验证 size + SHA-256 → 注册为 mount root → 更新 asset 的
+   * path/fingerprint/identity → 全部成功后才移除 managed store。
+   */
+  async migrateManagedToDisk(targetDirectory: string): Promise<{
+    migrated: number;
+    failed: Array<{ path: string; reason: string }>;
+  }> {
+    const managed = this.database.listManagedAssets();
+    const targetRoot = path.resolve(targetDirectory);
+    const failed: Array<{ path: string; reason: string }> = [];
+    let migrated = 0;
+    for (const asset of managed) {
+      const existing = this.database.getAsset(asset.id);
+      if (!existing) continue;
+      const filename = path.basename(asset.path);
+      const targetPath = path.join(targetRoot, filename);
+      try {
+        await mkdir(targetRoot, { recursive: true });
+        // 复制并校验（contentHash 已记录源 SHA-256）。
+        await copyFile(asset.path, targetPath);
+        const [sourceInfo, targetInfo] = await Promise.all([
+          stat(asset.path),
+          stat(targetPath),
+        ]);
+        if (sourceInfo.size !== targetInfo.size) {
+          throw new Error("MIGRATE_SIZE_MISMATCH");
+        }
+        if (existing.contentHash) {
+          const copiedHash = await fullFileHash(targetPath);
+          if (copiedHash !== existing.contentHash) {
+            throw new Error("MIGRATE_HASH_MISMATCH");
+          }
+        }
+        // 更新 asset 为 linked 模式并指向磁盘目标。
+        const next = await this.readAsset(targetPath, existing);
+        const updated = this.database.relinkAsset(asset.id, {
+          ...next,
+          storageMode: "linked",
+          libraryRelativePath: null,
+          originalSourcePath: null,
+        });
+        this.updateIdentity(updated);
+        migrated += 1;
+      } catch (error) {
+        failed.push({
+          path: asset.path,
+          reason: error instanceof Error ? error.message : "MIGRATE_FAILED",
+        });
+      }
+    }
+    if (failed.length === 0 && managed.length > 0) {
+      // 全部成功后移除 managed store。
+      await rm(this.managedStore, { recursive: true, force: true });
+    }
+    return { migrated, failed };
+  }
+
+  private async managedStoreFiles(): Promise<string[]> {
+    const { readdir } = await import("node:fs/promises");
+    try {
+      return await readdir(this.managedStore);
+    } catch {
+      return [];
+    }
   }
 
   /** 暂停目录监控（托盘驻留模式保留主进程但不监控）。 */
