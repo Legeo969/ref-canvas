@@ -72,6 +72,26 @@ describe("dual-mode library service", () => {
     }
   });
 
+  it("ignores a legacy managed storageMode request on import", async () => {
+    const { service, db, base } = await setupManagedLibrary();
+    const source = path.join(base, "managed.png");
+    await writeFile(source, Buffer.alloc(1_024, 6));
+    try {
+      // 即便调用方显式请求 managed，运行时退役后导入仍恒为 linked。
+      const result = await service.importPaths([source], {
+        storageMode: "managed",
+      });
+      expect(result.copied).toBe(0);
+      const asset = db.searchAssets().items[0];
+      expect(asset.storageMode).toBe("linked");
+      expect(asset.path).toBe(source);
+      await expect(stat(source)).resolves.toBeDefined();
+    } finally {
+      await service.close();
+      db.close();
+    }
+  });
+
   it("re-importing the same path reuses the linked record", async () => {
     const { service, db, base } = await setupManagedLibrary();
     const source = path.join(base, "photo.png");
