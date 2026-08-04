@@ -88,19 +88,24 @@ describe("500k capacity gates", () => {
         INSERT INTO tags(id, name) VALUES ('capacity-tag', 'capacity');
         INSERT INTO collections(id, title, created_at)
           VALUES ('capacity-collection', 'Capacity', '2026-08-03');
+        INSERT INTO mount_roots(id, path, display_name)
+          VALUES ('capacity-mount', 'D:\\capacity', 'Capacity');
       `);
       const addTag = sqlite.prepare(
         "INSERT INTO asset_tags(asset_id, tag_id) VALUES (?, 'capacity-tag')",
       );
+      // v15：collection_refs 需要 mount_id/relative_path/fingerprint。
       const addCollection = sqlite.prepare(
-        "INSERT INTO collection_refs(id, collection_id, asset_id) VALUES (?, 'capacity-collection', ?)",
+        `INSERT INTO collection_refs
+          (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+         VALUES (?, 'capacity-collection', ?, 'capacity-mount', ?, ?, 'resolved')`,
       );
       sqlite.transaction(() => {
         for (const base of [249_800, 499_800]) {
           for (let index = base; index < base + 200; index += 1) {
             const id = `asset-${String(index).padStart(6, "0")}`;
             addTag.run(id);
-            addCollection.run(id);
+            addCollection.run(id, id, `${id}.png`, "capacity");
           }
         }
       })();
