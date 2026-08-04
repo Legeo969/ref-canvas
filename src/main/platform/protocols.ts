@@ -23,12 +23,15 @@ import {
 } from "./refbrowse";
 import { thumbnailCacheFilename } from "./thumbnail-cache";
 import type { ThumbnailWorkerClient } from "./thumbnail-worker-client";
+import type { ProviderRegistry } from "./provider-registry";
+import { invokeThumbnail } from "./provider-registry";
 
 interface ProtocolDependencies {
   getDatabase(): RefCanvasDatabase;
   getPreviewCacheIndex(): PreviewCacheIndex | null;
   getThumbnailCacheDirectory(): string;
   getThumbnailWorker(): ThumbnailWorkerClient | null;
+  getProviderRegistry(): ProviderRegistry;
   previewTokens: PreviewTokenRegistry;
   thumbnailQueue: PreviewQueue<Buffer>;
 }
@@ -71,6 +74,24 @@ async function generateThumbnail(
   signal: AbortSignal,
   size: { width: number; height: number } = { width: 480, height: 320 },
 ): Promise<Buffer> {
+  const extension = path.extname(source).replace(/^\./, "").toLowerCase();
+  const kind = assetKindForExtension(extension);
+  // 阶段 3：EXR/HDR 走 hdr-provider（线性 → sRGB display transform），
+  // 视频走 video-provider（ffmpeg poster 帧）；其余图片走 sharp worker。
+  if ((extension === "exr" || extension === "hdr") || kind === "video") {
+    const registry = dependencies.getProviderRegistry();
+    if (registry) {
+      const { result } = await invokeThumbnail(registry, {
+        path: source,
+        kind,
+        extension,
+        width: size.width,
+        height: size.height,
+        outputPath: cacheFile,
+      });
+      return readFile(result.path);
+    }
+  }
   const worker = dependencies.getThumbnailWorker();
   if (imageVariant && worker) {
     const converted = await worker

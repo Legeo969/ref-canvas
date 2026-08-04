@@ -46,6 +46,9 @@ import { PreviewCacheIndex } from "./platform/preview-cache-index";
 import { ThumbnailWorkerClient } from "./platform/thumbnail-worker-client";
 import { ProviderRegistry } from "./platform/provider-registry";
 import { GenericProvider } from "./providers/generic-provider";
+import { HdrProvider } from "./providers/hdr-provider";
+import { GeometryProvider } from "./providers/geometry-provider";
+import { VideoProvider } from "./providers/video-provider";
 import { registerProtocols } from "./platform/protocols";
 import {
   registerWindowsProjectFormat,
@@ -855,6 +858,21 @@ void app.whenReady().then(async () => {
     provider: genericProvider,
     dispose: () => genericProvider.dispose(),
   });
+  const hdrProvider = new HdrProvider();
+  providerRegistry.register({
+    provider: hdrProvider,
+    dispose: () => hdrProvider.dispose(),
+  });
+  const geometryProvider = new GeometryProvider();
+  providerRegistry.register({
+    provider: geometryProvider,
+    dispose: () => geometryProvider.dispose(),
+  });
+  const videoProvider = new VideoProvider();
+  providerRegistry.register({
+    provider: videoProvider,
+    dispose: () => videoProvider.dispose(),
+  });
   for (const cachedFile of previewCacheIndex.prune()) {
     void rm(cachedFile, { force: true });
   }
@@ -864,6 +882,7 @@ void app.whenReady().then(async () => {
     getPreviewCacheIndex: () => previewCacheIndex,
     getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
     getThumbnailWorker: () => thumbnailWorker,
+    getProviderRegistry: () => providerRegistry!,
     previewTokens,
     thumbnailQueue,
   });

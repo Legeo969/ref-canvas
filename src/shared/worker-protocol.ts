@@ -112,6 +112,8 @@ export interface ProviderThumbnailInput {
   /** 目标宽度（0 表示原尺寸）。 */
   width: number;
   height: number;
+  /** 输出 PNG 的固定路径（缓存目录内）；缺省时 provider 自管输出。 */
+  outputPath?: string;
 }
 
 export interface ProviderThumbnailResult {

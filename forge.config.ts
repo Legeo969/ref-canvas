@@ -20,6 +20,7 @@ const packagedRuntimePaths = [
   "/node_modules/@img/sharp-win32-x64",
   "/node_modules/@img/sharp-libvips-win32-x64",
   "/node_modules/@ffprobe-installer",
+  "/node_modules/ffmpeg-static",
 ];
 const signingConfigured = Boolean(
   process.env.REFCANVAS_CERTIFICATE_FILE ||
@@ -30,7 +31,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpackDir:
-        "node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64}",
+        "node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static}",
     },
     executableName: "RefCanvas",
     icon: "assets/installer/refcanvas.ico",

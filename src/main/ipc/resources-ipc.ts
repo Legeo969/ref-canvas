@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import { z } from "zod";
 import path from "node:path";
 import type { UserMetadataPatch } from "../../shared/contracts";
@@ -10,10 +11,12 @@ import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import {
   invokeConvert,
   invokeProbe,
+  invokeThumbnail,
   type ProviderRegistry,
 } from "../platform/provider-registry";
 import type { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
+import { extractVideoFrame } from "../services/media/ffmpeg-tools";
 import { idSchema, pathSchema } from "./schemas";
 
 interface ResourcesIpcDependencies {
@@ -145,9 +148,7 @@ export function registerResourcesIpc(
   });
   ipc.handle("media:thumbnail", async (filename, options) => {
     const resolved = path.resolve(pathSchema.parse(filename));
-    const worker = dependencies.getThumbnailWorker();
-    const cacheDirectory = dependencies.getThumbnailCacheDirectory();
-    if (!worker || !cacheDirectory) throw new Error("THUMBNAIL_WORKER_UNAVAILABLE");
+    const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
     const parsed =
       z
         .object({
@@ -156,10 +157,35 @@ export function registerResourcesIpc(
         })
         .optional()
         .parse(options) ?? {};
+    const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+    if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
     const target = path.join(
       cacheDirectory,
       `media-${thumbnailIdForPath(resolved)}.png`,
     );
+    const kind = assetKindForExtension(extension);
+    // 阶段 3：EXR/HDR 走 hdr-provider（display transform），视频走
+    // video-provider（ffmpeg poster 帧）；其余走 sharp worker。
+    if (extension === "exr" || extension === "hdr" || kind === "video") {
+      const { result } = await invokeThumbnail(
+        dependencies.getProviderRegistry(),
+        {
+          path: resolved,
+          kind,
+          extension,
+          width: parsed.width ?? 480,
+          height: parsed.height ?? 320,
+          outputPath: target,
+        },
+      );
+      return {
+        path: result.path,
+        width: result.width,
+        height: result.height,
+      };
+    }
+    const worker = dependencies.getThumbnailWorker();
+    if (!worker) throw new Error("THUMBNAIL_WORKER_UNAVAILABLE");
     await worker.convert(resolved, target, undefined, {
       width: parsed.width ?? 480,
       height: parsed.height ?? 320,
@@ -168,6 +194,42 @@ export function registerResourcesIpc(
       path: target,
       width: parsed.width ?? 480,
       height: parsed.height ?? 320,
+    };
+  });
+  /**
+   * §9.3：视频/图片序列精确取帧（frame step 不依赖 HTML video seek）。
+   * ffmpeg -ss + accurate_seek 按毫秒时间戳提取，输出缓存并签发 token。
+   */
+  ipc.handle("media:frame", async (filename, options) => {
+    const resolved = path.resolve(pathSchema.parse(filename));
+    const parsed = z
+      .object({
+        timeMs: z.number().min(0).max(86_400_000).default(0),
+        width: z.number().int().min(16).max(8_192).optional(),
+        height: z.number().int().min(16).max(8_192).optional(),
+      })
+      .parse(options ?? {});
+    const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+    if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+    const signature = createHash("sha256")
+      .update(
+        `${path.normalize(resolved)}:${Math.round(parsed.timeMs)}:${parsed.width ?? 960}:${parsed.height ?? 540}`,
+      )
+      .digest("hex")
+      .slice(0, 20);
+    const target = path.join(cacheDirectory, `frame-${signature}.png`);
+    const existing = await stat(target).catch(() => null);
+    if (!existing) {
+      await extractVideoFrame(resolved, parsed.timeMs, target, {
+        width: parsed.width ?? 960,
+        height: parsed.height ?? 540,
+      });
+    }
+    const token = dependencies.previewTokens.tokenFor(target);
+    return {
+      source: `refbrowse://preview/${token}`,
+      path: target,
+      timeMs: parsed.timeMs,
     };
   });
   ipc.handle("media:preview", (filename) => {
