@@ -10,6 +10,7 @@ const packagedRuntimePaths = [
   "/.vite",
   "/package.json",
   "/THIRD_PARTY_NOTICES.md",
+  "/LICENSE-MANIFEST.json",
   "/assets",
   "/node_modules/better-sqlite3",
   "/node_modules/node-addon-api",

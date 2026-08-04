@@ -25,6 +25,8 @@
     "test:capacity": "vitest run --config vitest.capacity.config.ts",
     "test:performance": "vitest run --config vitest.performance.config.ts",
     "test:runtime": "node scripts/qa/runtime-smoke.cjs",
+    "test:package": "node scripts/qa/package-smoke.cjs",
+    "licenses": "node scripts/qa/licenses.cjs",
     "test:watch": "vitest"
   },
   "author": "RefCanvas",

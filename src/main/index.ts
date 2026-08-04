@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  crashReporter,
   dialog,
   globalShortcut,
   Menu,
@@ -841,6 +842,17 @@ function closeAllBoardWindows(): void {
 }
 
 void app.whenReady().then(async () => {
+  // 阶段 7：本地 crash dump（不自动上传；dump 落 userData/Crashes）。
+  crashReporter.start({
+    submitURL: "",
+    uploadToServer: false,
+    compress: true,
+    extra: {
+      appVersion: app.getVersion(),
+      platform: process.platform,
+      channel: app.isPackaged ? "signed" : "unsigned",
+    },
+  });
   if (squirrelEvent) {
     if (squirrelEvent === "--squirrel-uninstall") {
       await updateSquirrelShortcut("--removeShortcut").catch(() => undefined);
