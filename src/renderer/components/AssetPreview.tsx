@@ -5,6 +5,7 @@ import { browserImageExtensions } from "../../shared/asset-kind";
 import { GIFPreview } from "./GIFPreview";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import { ModelPreview } from "./ModelPreview";
+import { VideoPreview } from "./VideoPreview";
 
 interface AssetPreviewProps {
   asset: AssetRecord;
@@ -77,13 +78,7 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
         ? <ProgressiveImage asset={asset} />
         : <SystemThumbnail asset={asset} />;
     case "video":
-      return (
-        <MediaNotesOverlay asset={asset}>
-          <video src={asset.previewUrl} controls preload="metadata">
-            <track kind="captions" />
-          </video>
-        </MediaNotesOverlay>
-      );
+      return <VideoPreview asset={asset} />;
     case "audio":
       return (
         <div className="audio-preview">

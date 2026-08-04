@@ -22,6 +22,7 @@ import { useAppStore } from "../app/store";
 import { AssetPreview } from "./AssetPreview";
 import { AssetAnnotationDialog } from "./AssetAnnotationDialog";
 import { HighlightedText } from "./HighlightedText";
+import { MediaInfoSection } from "./MediaInfoSection";
 
 interface DetailsPanelProps {
   onUpdate(
@@ -285,6 +286,8 @@ export function DetailsPanel({
           </strong>
         </div>
       </div>
+
+      <MediaInfoSection asset={asset} />
 
       <div className="path-box" title={asset.path}>
         <HighlightedText text={asset.path} query={searchQuery} />
