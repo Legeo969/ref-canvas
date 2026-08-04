@@ -71,6 +71,11 @@ export class ThumbnailWorkerClient {
     this.child = null;
   }
 
+  /** 运行时调整 libvips 并发（阶段 5：性能偏好）。 */
+  setConcurrency(threads: number): void {
+    this.child?.postMessage({ type: "configure", concurrency: threads });
+  }
+
   private assertCachePath(filename: string): void {
     const relative = path.relative(path.resolve(this.cacheRoot), path.resolve(filename));
     if (

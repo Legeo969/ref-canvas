@@ -13,7 +13,13 @@ import {
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { AppPreferences, BoardSettings } from "../../shared/contracts";
+import type {
+  AppPreferences,
+  BoardSettings,
+  FoundSettings,
+} from "../../shared/contracts";
+import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
+import { mergeFoundSettings } from "./found-settings";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryManager } from "../services/library-manager";
 import type { LibraryService } from "../services/library-service";
@@ -51,8 +57,64 @@ interface SystemIpcDependencies {
   scheduleBackgroundServices(): void;
   state: SystemIpcState;
   thumbnailQueue: PreviewQueue<Buffer>;
+  thumbnailWorker: ThumbnailWorkerClient | null;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
 }
+
+const sequenceRuleSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(128),
+  pattern: z.string().min(1).max(512),
+  minFrames: z.number().int().min(1).max(10_000),
+});
+
+const mp4PresetSchema = z.object({
+  id: z.string().min(1).max(64),
+  label: z.string().min(1).max(128),
+  maxWidth: z.number().int().min(16).max(16_384).nullable(),
+  crf: z.number().int().min(0).max(51),
+});
+
+const foundSettingsPatchSchema = z.object({
+  showHiddenFiles: z.boolean().optional(),
+  folderClickMode: z.enum(["single", "double"]).optional(),
+  defaultFlattenDepth: z.number().int().min(0).max(8).optional(),
+  flattenPerFolder: z
+    .record(z.string(), z.number().int().min(0).max(8))
+    .optional(),
+  autoplayVideo: z.boolean().optional(),
+  autoplaySequence: z.boolean().optional(),
+  autoplayModel3d: z.boolean().optional(),
+  defaultSequenceFps: z.number().int().min(1).max(240).optional(),
+  sequenceMinFrames: z.number().int().min(1).max(10_000).optional(),
+  sequenceRules: z.array(sequenceRuleSchema).max(50).optional(),
+  alphaBackground: z.enum(["black", "white", "checker", "custom"]).optional(),
+  alphaCustomColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .optional(),
+  uiScale: z.number().min(0.8).max(1.5).optional(),
+  previewConcurrency: z.number().int().min(1).max(16).optional(),
+  thumbnailWorkerThreads: z.number().int().min(1).max(8).optional(),
+  downscaleMode: z.enum(["suffix", "subdirectory", "backup"]).optional(),
+  downscaleSuffix: z
+    .string()
+    .max(32)
+    .regex(/^[a-zA-Z0-9._-]+$/)
+    .optional(),
+  downscaleSubdirectory: z
+    .string()
+    .max(128)
+    .regex(/^[^\\/:*?"<>|]+$/)
+    .optional(),
+  defaultMp4PresetId: z.string().min(1).max(64).optional(),
+  mp4Presets: z.array(mp4PresetSchema).max(20).optional(),
+  ocioConfigPath: z.string().max(4096).nullable().optional(),
+  lutDirectories: z.array(z.string().max(4096)).max(50).optional(),
+  activeLut: z.string().max(4096).nullable().optional(),
+  debugLogging: z.boolean().optional(),
+  closeBehavior: z.enum(["quit", "tray"]).optional(),
+});
 
 export function registerSystemIpc(
   ipc: SecureIpcRegistrar,
@@ -271,6 +333,10 @@ export function registerSystemIpc(
       sampling: "bilinear",
       undoLimit: 99,
     }),
+    foundSettings: {
+      ...FOUND_SETTINGS_DEFAULTS,
+      ...database().getSetting<Partial<FoundSettings>>("foundSettings", {}),
+    },
   });
   ipc.handle("system:get-preferences", readAppPreferences);
   ipc.handle("system:set-preferences", (prefs) => {
@@ -287,6 +353,7 @@ export function registerSystemIpc(
             undoLimit: z.number().int().min(1).max(500).optional(),
           })
           .optional(),
+        foundSettings: foundSettingsPatchSchema.optional(),
       })
       .parse(prefs);
     if (parsed.globalShortcuts !== undefined) {
@@ -300,6 +367,31 @@ export function registerSystemIpc(
         ...readAppPreferences().boardSettings,
         ...parsed.boardSettings,
       });
+    }
+    if (parsed.foundSettings !== undefined) {
+      const current = readAppPreferences().foundSettings;
+      const next = mergeFoundSettings(current, parsed.foundSettings);
+      database().setSetting("foundSettings", next);
+      // 偏好变更即时生效（§10 验收：进入任务参数）。
+      if (
+        parsed.foundSettings.previewConcurrency !== undefined &&
+        parsed.foundSettings.previewConcurrency !== current.previewConcurrency
+      ) {
+        dependencies.thumbnailQueue.setConcurrency(
+          parsed.foundSettings.previewConcurrency,
+        );
+      }
+      if (parsed.foundSettings.thumbnailWorkerThreads !== undefined) {
+        dependencies.thumbnailWorker?.setConcurrency(
+          parsed.foundSettings.thumbnailWorkerThreads,
+        );
+      }
+      if (parsed.foundSettings.debugLogging !== undefined) {
+        database().setSetting("debugLogging", parsed.foundSettings.debugLogging);
+      }
+      if (parsed.foundSettings.closeBehavior !== undefined) {
+        database().setSetting("closeBehavior", parsed.foundSettings.closeBehavior);
+      }
     }
     return readAppPreferences();
   });

@@ -9,9 +9,14 @@ interface WorkerRequest {
   height: number;
 }
 
+interface WorkerControl {
+  type: "configure";
+  concurrency: number;
+}
+
 interface ParentPort {
   postMessage(message: unknown): void;
-  on(event: "message", listener: (event: { data: WorkerRequest }) => void): void;
+  on(event: "message", listener: (event: { data: WorkerRequest | WorkerControl }) => void): void;
 }
 
 const parentPort = (process as NodeJS.Process & { parentPort?: ParentPort })
@@ -21,6 +26,10 @@ if (!parentPort) throw new Error("THUMBNAIL_WORKER_PARENT_MISSING");
 
 parentPort.on("message", (event) => {
   const request = event.data;
+  if (request.type === "configure") {
+    sharp.concurrency(request.concurrency);
+    return;
+  }
   if (request.type !== "convert") return;
   void sharp(request.sourcePath, { animated: false, failOn: "none" })
     .rotate()

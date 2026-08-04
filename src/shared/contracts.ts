@@ -332,13 +332,113 @@ export interface AppPreferences {
   /** 后台驻留：关闭窗口后保留主进程、目录监控与托盘。 */
   backgroundResidency: boolean;
   boardSettings: BoardSettings;
+  /** Found 高级功能设置（阶段 5），默认值见 FOUND_SETTINGS_DEFAULTS。 */
+  foundSettings: FoundSettings;
 }
+
+/** 序列检测自定义规则（阶段 5 §10.1 Sequence rules）。 */
+export interface SequenceRule {
+  id: string;
+  name: string;
+  /** 文件名正则（不含目录），如 ^frame\\.\\d+\\.exr$。 */
+  pattern: string;
+  /** 少于该帧数不构成序列。 */
+  minFrames: number;
+}
+
+/** MP4 导出预设（阶段 5 §10.1 MP4 presets）。 */
+export interface Mp4Preset {
+  id: string;
+  label: string;
+  /** 最大宽边像素；null = 原始分辨率。 */
+  maxWidth: number | null;
+  /** libx264 CRF。 */
+  crf: number;
+}
+
+/** Found 高级功能设置（全部进持久化 + cache invalidation + 任务参数）。 */
+export interface FoundSettings {
+  // §10.1 高级浏览
+  showHiddenFiles: boolean;
+  folderClickMode: "single" | "double";
+  /** 文件夹 flattening 默认深度：0 = 关闭，1/2 = 层级，>2 自定义。 */
+  defaultFlattenDepth: number;
+  /** 每个文件夹独立记忆的 flattening 深度（path → depth）。 */
+  flattenPerFolder: Record<string, number>;
+  // §10.2 高级预览
+  autoplayVideo: boolean;
+  autoplaySequence: boolean;
+  autoplayModel3d: boolean;
+  defaultSequenceFps: number;
+  /** 少于该帧数的同类文件不判定为序列。 */
+  sequenceMinFrames: number;
+  sequenceRules: SequenceRule[];
+  alphaBackground: "black" | "white" | "checker" | "custom";
+  alphaCustomColor: string;
+  /** UI 缩放（0.8–1.5）。 */
+  uiScale: number;
+  /** 预览队列并发（PreviewQueue maximumConcurrent）。 */
+  previewConcurrency: number;
+  /** 缩略图 worker（libvips）并发线程。 */
+  thumbnailWorkerThreads: number;
+  // §10.4 输出工作流
+  downscaleMode: "suffix" | "subdirectory" | "backup";
+  /** suffix 模式：文件名追加后缀，如 image_2k.png。 */
+  downscaleSuffix: string;
+  /** subdirectory 模式：输出到分辨率子目录。 */
+  downscaleSubdirectory: string;
+  defaultMp4PresetId: string;
+  mp4Presets: Mp4Preset[];
+  // §10.3 色彩管理
+  /** 显式注册的 OCIO config 路径（$OCIO 自动检测优先）。 */
+  ocioConfigPath: string | null;
+  lutDirectories: string[];
+  /** 当前生效的 LUT 文件路径（进 thumbnail cache key）。 */
+  activeLut: string | null;
+  // §10.5 本地设置
+  debugLogging: boolean;
+  closeBehavior: "quit" | "tray";
+}
+
+export const FOUND_SETTINGS_DEFAULTS: FoundSettings = {
+  showHiddenFiles: false,
+  folderClickMode: "double",
+  defaultFlattenDepth: 0,
+  flattenPerFolder: {},
+  autoplayVideo: true,
+  autoplaySequence: true,
+  autoplayModel3d: false,
+  defaultSequenceFps: 24,
+  sequenceMinFrames: 2,
+  sequenceRules: [],
+  alphaBackground: "checker",
+  alphaCustomColor: "#404040",
+  uiScale: 1,
+  previewConcurrency: 4,
+  thumbnailWorkerThreads: 1,
+  downscaleMode: "suffix",
+  downscaleSuffix: "2k",
+  downscaleSubdirectory: "downscaled",
+  defaultMp4PresetId: "original",
+  mp4Presets: [
+    { id: "original", label: "原始分辨率 H.264", maxWidth: null, crf: 18 },
+    { id: "1080p", label: "1080p（宽边 1920）", maxWidth: 1920, crf: 20 },
+    { id: "720p", label: "720p（宽边 1280）", maxWidth: 1280, crf: 21 },
+    { id: "web", label: "Web（宽边 960）", maxWidth: 960, crf: 23 },
+  ],
+  ocioConfigPath: null,
+  lutDirectories: [],
+  activeLut: null,
+  debugLogging: false,
+  closeBehavior: "quit",
+};
 
 /** 应用级偏好补丁：boardSettings 可只传要改的字段。 */
 export interface AppPreferencesPatch {
   globalShortcuts?: boolean;
   backgroundResidency?: boolean;
   boardSettings?: Partial<BoardSettings>;
+  foundSettings?: Partial<FoundSettings>;
 }
 
 export interface PanelLayoutPreference {

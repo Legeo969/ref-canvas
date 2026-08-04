@@ -32,12 +32,18 @@ export class PreviewQueue<T> {
   private sequence = 0;
 
   constructor(
-    private readonly maximumConcurrent = 4,
+    private maximumConcurrent = 4,
     private readonly maximumQueued = 512,
   ) {
     if (maximumConcurrent < 1 || maximumQueued < 1) {
       throw new Error("PREVIEW_QUEUE_LIMIT_INVALID");
     }
+  }
+
+  /** 运行时调整并发（阶段 5：性能偏好）。 */
+  setConcurrency(concurrent: number): void {
+    if (concurrent < 1) throw new Error("PREVIEW_QUEUE_LIMIT_INVALID");
+    this.maximumConcurrent = concurrent;
   }
 
   enqueue(

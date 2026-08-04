@@ -1,0 +1,46 @@
+import { describe, expect, it } from "vitest";
+import { FOUND_SETTINGS_DEFAULTS } from "../../../src/shared/contracts";
+import { mergeFoundSettings } from "../../../src/main/ipc/found-settings";
+
+describe("mergeFoundSettings（阶段 5：Found 偏好持久化）", () => {
+  it("标量字段整体替换", () => {
+    const next = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+      showHiddenFiles: true,
+      alphaBackground: "black",
+    });
+    expect(next.showHiddenFiles).toBe(true);
+    expect(next.alphaBackground).toBe("black");
+    // 未触碰字段保留默认值。
+    expect(next.autoplayVideo).toBe(true);
+  });
+
+  it("flattenPerFolder 按文件夹合并而非覆盖", () => {
+    const current = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+      flattenPerFolder: { "D:\\a": 2 },
+    });
+    const next = mergeFoundSettings(current, {
+      flattenPerFolder: { "D:\\b": 1 },
+    });
+    expect(next.flattenPerFolder).toEqual({ "D:\\a": 2, "D:\\b": 1 });
+  });
+
+  it("数组字段整体替换", () => {
+    const next = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+      sequenceRules: [
+        { id: "rule-1", name: "自定义", pattern: "^frame", minFrames: 3 },
+      ],
+      activeLut: null,
+    });
+    expect(next.sequenceRules).toHaveLength(1);
+    expect(next.mp4Presets).toHaveLength(FOUND_SETTINGS_DEFAULTS.mp4Presets.length);
+    expect(next.activeLut).toBeNull();
+  });
+
+  it("默认值可被 patch 清空（nullable 字段）", () => {
+    const current = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+      activeLut: "C:\\luts\\camera.cube",
+    });
+    const next = mergeFoundSettings(current, { activeLut: null });
+    expect(next.activeLut).toBeNull();
+  });
+});

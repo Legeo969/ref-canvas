@@ -683,6 +683,7 @@ function registerIpc(): void {
       },
     },
     thumbnailQueue,
+    thumbnailWorker,
     windowForSender,
   });
 }
