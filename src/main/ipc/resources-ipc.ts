@@ -17,6 +17,7 @@ import {
 import type { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import { extractVideoFrame } from "../services/media/ffmpeg-tools";
+import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { idSchema, pathSchema } from "./schemas";
 
 interface ResourcesIpcDependencies {
@@ -259,6 +260,34 @@ export function registerResourcesIpc(
   ipc.handle("media:cancel", (jobId) => {
     const parsed = z.string().min(1).max(128).parse(jobId);
     return Boolean(parsed);
+  });
+
+  // --- sequences（计划 §9.4 / §13.4）---
+
+  ipc.handle("sequences:detect", async (directory, options) => {
+    const resolved = path.resolve(pathSchema.parse(directory));
+    const parsed =
+      z
+        .object({ customPatterns: z.array(z.string()).max(16).optional() })
+        .optional()
+        .parse(options) ?? {};
+    const groups = await detectSequencesInDirectory(resolved, {
+      customPatterns: parsed.customPatterns,
+    });
+    return groups.map((group) => ({
+      id: group.id,
+      directory: group.directory,
+      baseName: group.baseName,
+      extension: group.extension,
+      pattern: group.pattern,
+      files: group.files,
+      frames: group.frames,
+      start: group.start,
+      end: group.end,
+      missingFrames: group.missingFrames,
+      width: group.width,
+      fps: group.fps,
+    }));
   });
 
   // --- providers（计划 §6.1 / §13.4）---

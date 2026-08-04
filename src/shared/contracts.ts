@@ -895,6 +895,32 @@ export interface MediaConvertResult {
   format: string;
 }
 
+/** media.frame 精确取帧结果（阶段 3 §9.3）。 */
+export interface MediaFrameResult {
+  /** refbrowse:// 帧图 URL。 */
+  source: string;
+  /** 缓存内帧图路径。 */
+  path: string;
+  timeMs: number;
+}
+
+/** 图片序列分组（阶段 3 §9.4）。 */
+export interface SequenceGroupInfo {
+  id: string;
+  directory: string;
+  baseName: string;
+  extension: string;
+  pattern: "standard" | "compatible" | "custom";
+  /** 组内文件绝对路径（按帧号升序）。 */
+  files: string[];
+  frames: number[];
+  start: number;
+  end: number;
+  missingFrames: number[];
+  width: number;
+  fps: number;
+}
+
 /** provider manifest 摘要（renderer 可读，不含实现）。 */
 export interface ProviderManifestInfo {
   id: string;
@@ -1100,10 +1126,22 @@ export interface RefCanvasApi {
     thumbnail(path: string, options?: MediaThumbnailOptions): Promise<MediaThumbnailResult>;
     /** 生成 refbrowse 预览源 URL。 */
     preview(path: string): Promise<MediaPreviewResult>;
+    /** 按时间戳精确取帧（视频逐帧；不依赖 HTML video seek）。 */
+    frame(
+      path: string,
+      options?: { timeMs?: number; width?: number; height?: number },
+    ): Promise<MediaFrameResult>;
     /** 格式转换（provider convert；不支持时明确失败）。 */
     convert(path: string, targetFormat: string): Promise<MediaConvertResult>;
     /** 取消进行中的转换任务。 */
     cancel(jobId: string): Promise<boolean>;
+  };
+  sequences: {
+    /** 检测目录内的图片序列分组（阶段 3 §9.4）。 */
+    detect(
+      directory: string,
+      options?: { customPatterns?: string[] },
+    ): Promise<SequenceGroupInfo[]>;
   };
   providers: {
     list(): Promise<ProviderManifestInfo[]>;

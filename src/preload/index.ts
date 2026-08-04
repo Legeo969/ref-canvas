@@ -204,9 +204,15 @@ const api: RefCanvasApi = {
     thumbnail: (path, options) =>
       ipcRenderer.invoke("media:thumbnail", path, options),
     preview: (path) => ipcRenderer.invoke("media:preview", path),
+    frame: (path, options) =>
+      ipcRenderer.invoke("media:frame", path, options),
     convert: (path, targetFormat) =>
       ipcRenderer.invoke("media:convert", path, targetFormat),
     cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),
+  },
+  sequences: {
+    detect: (directory, options) =>
+      ipcRenderer.invoke("sequences:detect", directory, options),
   },
   providers: {
     list: () => ipcRenderer.invoke("providers:list"),
