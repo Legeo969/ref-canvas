@@ -1526,6 +1526,12 @@ export interface RefCanvasApi {
       title: string;
       defaultPath?: string;
     }): Promise<string | null>;
+    /** 打开文件选择对话框（阶段 6：Board 手动 relink）。 */
+    pickFile(options: {
+      title: string;
+      defaultPath?: string;
+      filters?: Array<{ name: string; extensions: string[] }>;
+    }): Promise<string | null>;
     toggleAlwaysOnTop(): Promise<boolean>;
     /** Signals that initial renderer data is painted and background work may start. */
     markRendererInteractive(): Promise<void>;

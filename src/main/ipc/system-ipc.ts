@@ -155,6 +155,30 @@ export function registerSystemIpc(
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
+  ipc.handleWithEvent("system:pick-file", async (event, options) => {
+    const parsed = z
+      .object({
+        title: z.string().trim().min(1).max(120),
+        defaultPath: z.string().min(1).max(32_768).optional(),
+        filters: z
+          .array(
+            z.object({
+              name: z.string().max(64),
+              extensions: z.array(z.string().max(16)).max(32),
+            }),
+          )
+          .max(8)
+          .optional(),
+      })
+      .parse(options);
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: parsed.title,
+      defaultPath: parsed.defaultPath,
+      properties: ["openFile"],
+      filters: parsed.filters,
+    });
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
   ipc.handleWithEvent("system:toggle-always-on-top", (event) => {
     const window = dependencies.windowForSender(event);
     const next = !window.isAlwaysOnTop();

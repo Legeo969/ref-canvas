@@ -51,6 +51,7 @@ import {
   SlidersHorizontal,
   StickyNote,
   Square,
+  Link2,
   Trash2,
   Type,
   Undo2,
@@ -152,6 +153,7 @@ import {
   type BoardProxySize,
 } from "../app/board-proxy";
 import { ModelPreview, type ModelView } from "./ModelPreview";
+import { AssetPreview } from "./AssetPreview";
 import { useDialog } from "./DialogProvider";
 import { CropDialog, type CropRect } from "./CropDialog";
 import {
@@ -184,6 +186,8 @@ interface BoardCanvasProps {
   onRenameBoard(board: BoardSummary): Promise<void>;
   onDeleteBoard(board: BoardSummary): Promise<void>;
   onLibraryChanged(): Promise<void>;
+  /** 阶段 6：引用重连后请求父组件刷新 assets。 */
+  onReferencesChanged?(): Promise<void>;
 }
 
 type CanvasObjectWithData = FabricObject & {
@@ -263,6 +267,7 @@ export function BoardCanvas({
   onRenameBoard,
   onDeleteBoard,
   onLibraryChanged,
+  onReferencesChanged,
 }: BoardCanvasProps) {
   const dialog = useDialog();
   const canvasElementRef = useRef<HTMLCanvasElement>(null);
@@ -486,6 +491,32 @@ export function BoardCanvas({
   const [layerVersion, setLayerVersion] = useState(0);
   const [modelAsset, setModelAsset] = useState<AssetRecord | null>(null);
   const [modelView, setModelView] = useState<ModelView | null>(null);
+  // 阶段 6 §11：双击进入完整 preview（视频/音频/高位深图片）。
+  const [previewAsset, setPreviewAsset] = useState<AssetRecord | null>(null);
+  // assets 解析完成后应用引用状态：missing/offline 对象显示半透明占位
+  // （保留位置/尺寸/变换，不破坏 Board document）。
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
+      if (!(object instanceof FabricImage)) continue;
+      const image = object as CanvasObjectWithData & FabricImage;
+      const asset = assets.find((item) => item.id === image.data?.assetId);
+      if (!asset || asset.extension === "gif") continue;
+      if (asset.linkState !== "online") {
+        const missing = asset.linkState !== "offline";
+        image.set({
+          opacity: missing ? 0.3 : 0.35,
+          stroke: missing ? "#c98f5b" : "#6b7a74",
+          strokeWidth: 1.5,
+          strokeUniform: true,
+        });
+      } else {
+        image.set({ opacity: 1, stroke: null, strokeWidth: 0 });
+      }
+    }
+    canvas.requestRenderAll();
+  }, [assets]);
   // GIF 动画播放器，按对象 objectId 索引；随画布生命周期创建/销毁。
   const gifAnimatorsRef = useRef(new Map<string, GifAnimator>());
   const [cropTarget, setCropTarget] = useState<FabricImage | null>(null);
@@ -716,9 +747,20 @@ export function BoardCanvas({
         const asset = assetsRef.current.find(
           (item) => item.id === image.data?.assetId,
         );
-        if (!asset || asset.extension === "gif" || asset.linkState !== "online") {
+        // 阶段 6 §11：文件缺失时保留对象位置/尺寸/变换，视觉降级为
+        // 半透明 + 描边占位（不破坏 Board document）。
+        if (!asset || asset.extension === "gif") continue;
+        if (asset.linkState !== "online") {
+          const missing = asset.linkState !== "offline";
+          image.set({
+            opacity: missing ? 0.3 : 0.35,
+            stroke: missing ? "#c98f5b" : "#6b7a74",
+            strokeWidth: 1.5,
+            strokeUniform: true,
+          });
           continue;
         }
+        image.set({ opacity: 1, stroke: null, strokeWidth: 0 });
         if ((image.cropX ?? 0) !== 0 || (image.cropY ?? 0) !== 0) continue;
         const pixels =
           Math.max(image.getScaledWidth(), image.getScaledHeight()) *
@@ -1048,7 +1090,27 @@ export function BoardCanvas({
           (target?.data?.modelView as ModelView | undefined) ?? null,
         );
         setModelAsset(asset);
-      } else if (target?.data?.assetId) focusBoardObject(target);
+        return;
+      }
+      // 阶段 6 §11：双击进入对应格式的完整 preview。
+      // 视频/音频直接预览；高位深或需 display transform 的图片
+      // （EXR/HDR/PSD/TIFF/TGA）走 provider 转换后的完整预览。
+      if (asset) {
+        const heavyImage =
+          asset.kind === "image" &&
+          ["exr", "hdr", "psd", "psb", "tiff", "tga"].includes(
+            asset.extension,
+          );
+        if (
+          asset.kind === "video" ||
+          asset.kind === "audio" ||
+          heavyImage
+        ) {
+          setPreviewAsset(asset);
+          return;
+        }
+      }
+      if (target?.data?.assetId) focusBoardObject(target);
     });
     canvas.on("mouse:wheel", (event) => {
       setFocusPlaying(false);
@@ -2629,6 +2691,56 @@ export function BoardCanvas({
     applySampling(canvas, next);
     scheduleSaveRef.current?.();
   };
+
+  // 阶段 6 §11：手动重连引用。先按 fingerprint 解析（拿候选），
+  // ambiguous 时让用户选择；missing 时打开文件选择器。
+  const relinkBoardReference = async (assetId: string) => {
+    if (!board) return;
+    const resolutions = await window.refCanvas.boards.resolveReferences(
+      board.id,
+    );
+    const resolution = resolutions.find((item) => item.assetId === assetId);
+    if (!resolution) return;
+    if (resolution.candidates && resolution.candidates.length > 1) {
+      const values = await dialog.requestForm({
+        title: "重新连接引用（多个候选）",
+        description: "该文件在多个位置匹配 fingerprint，请选择目标。",
+        confirmLabel: "连接",
+        fields: [
+          {
+            name: "target",
+            label: "候选文件",
+            type: "select" as const,
+            required: true,
+            options: resolution.candidates.map((candidate) => ({
+              value: candidate.path,
+              label: candidate.path,
+            })),
+          },
+        ],
+        onSubmit: () => undefined,
+      });
+      if (!values?.target) return;
+      await window.refCanvas.boards.relinkReference(
+        board.id,
+        assetId,
+        values.target,
+      );
+    } else {
+      const target = await window.refCanvas.system.pickFile({
+        title: "选择原文件的新位置",
+        defaultPath: resolution.path ?? undefined,
+      });
+      if (!target) return;
+      await window.refCanvas.boards.relinkReference(board.id, assetId, target);
+    }
+    // 重新加载引用状态（自动刷新对象显示）。
+    await window.refCanvas.boards.resolveReferences(board.id);
+    void onReferencesChangedRef.current?.();
+  };
+
+  const onReferencesChangedRef = useRef(onReferencesChanged);
+  onReferencesChangedRef.current = onReferencesChanged;
 
   /** PureRef 功能键按住状态（z/c/v），松开自动复位。 */
   useEffect(() => {
@@ -4625,6 +4737,23 @@ export function BoardCanvas({
         void addAsset(asset, { x: point.x, y: point.y });
       }}
     >
+      {previewAsset && (
+        <div className="model-board-overlay">
+          <div className="model-board-dialog">
+            <header>
+              <strong>{previewAsset.title}</strong>
+              <button
+                className="icon-button"
+                onClick={() => setPreviewAsset(null)}
+                aria-label="关闭预览"
+              >
+                ×
+              </button>
+            </header>
+            <AssetPreview asset={previewAsset} />
+          </div>
+        </div>
+      )}
       {modelAsset && (
         <div className="model-board-overlay">
           <div className="model-board-dialog">
@@ -6126,6 +6255,18 @@ export function BoardCanvas({
                     在素材库中定位
                   </button>
                 )}
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    const assetId = boardContextMenu.target?.data?.assetId;
+                    setBoardContextMenu(null);
+                    if (assetId) void relinkBoardReference(assetId);
+                  }}
+                  title="文件移动/丢失后按 fingerprint 搜索或手动选择"
+                >
+                  <Link2 size={16} />
+                  重新连接引用…
+                </button>
                 <div className="folder-menu-separator" />
                 <button
                   className="danger"

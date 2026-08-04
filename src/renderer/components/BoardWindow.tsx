@@ -26,8 +26,26 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
   const [failed, setFailed] = useState(false);
 
   const loadAssets = useCallback(async (id: string) => {
-    const referenced = await window.refCanvas.boards.getAssets(id);
-    setAssets(referenced);
+    // 阶段 6 §11：打开时批量解析引用（main 侧并行 stat + fingerprint
+    // 自动重连）；解析结果修正 path 与 linkState。
+    const [referenced, resolutions] = await Promise.all([
+      window.refCanvas.boards.getAssets(id),
+      window.refCanvas.boards.resolveReferences(id),
+    ]);
+    const byId = new Map(
+      resolutions.map((resolution) => [resolution.assetId, resolution]),
+    );
+    setAssets(
+      referenced.map((asset) => {
+        const resolution = byId.get(asset.id);
+        if (!resolution) return asset;
+        return {
+          ...asset,
+          path: resolution.path ?? asset.path,
+          linkState: resolution.state as AssetRecord["linkState"],
+        };
+      }),
+    );
   }, []);
 
   useEffect(() => {
@@ -187,6 +205,7 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
         onRenameBoard={(target) => renameBoard(target)}
         onDeleteBoard={(target) => deleteBoard(target)}
         onLibraryChanged={() => loadAssets(board.id)}
+        onReferencesChanged={() => loadAssets(board.id)}
       />
     </div>
   );

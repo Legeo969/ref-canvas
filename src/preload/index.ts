@@ -379,6 +379,7 @@ const api: RefCanvasApi = {
     openDataFolder: () => ipcRenderer.invoke("system:open-data-folder"),
     pickDirectory: (options) =>
       ipcRenderer.invoke("system:pick-directory", options),
+    pickFile: (options) => ipcRenderer.invoke("system:pick-file", options),
     toggleAlwaysOnTop: () =>
       ipcRenderer.invoke("system:toggle-always-on-top"),
     markRendererInteractive: () =>
