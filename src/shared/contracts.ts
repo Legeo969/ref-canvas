@@ -1247,6 +1247,48 @@ export interface BoardReferenceResolution {
   relinked?: boolean;
 }
 
+// --- 引用集合（schema 17，found-clone.md §6.1/§6.3） ---
+
+export type CollectionItemState = "resolved" | "offline" | "missing" | "ambiguous";
+
+export interface ReferenceCollection {
+  id: string;
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceCollectionItem {
+  id: string;
+  collectionId: string;
+  identityId: string | null;
+  mountId: string | null;
+  relativePath: string | null;
+  lastResolvedPath: string;
+  pathKey: string;
+  fingerprint: string | null;
+  state: CollectionItemState;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 集合导出任务快照（found-clone.md §6.3）。 */
+export interface CollectionExportSnapshot {
+  id: string;
+  collectionId: string;
+  targetDirectory: string;
+  state: "running" | "completed" | "cancelled" | "failed";
+  copied: number;
+  skipped: number;
+  failed: number;
+  manifestPath: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 export interface RefCanvasApi {
   library: {
     search(input?: AssetSearchInput): Promise<AssetPage>;

@@ -42,6 +42,9 @@ import {
   MigrationRepository,
   type MigrationLogEntry,
 } from "./repositories/migration-repository";
+import { CollectionsRepository } from "./repositories/collections-repository-v17";
+import { CollectionService } from "../services/collection-service";
+import { CollectionResolutionService } from "../services/collection-resolution-service";
 import { SettingsRepository } from "./repositories/settings-repository";
 
 export {
@@ -176,6 +179,7 @@ export class RefCanvasDatabase {
   private readonly boardsRepository: BoardsRepository;
   private readonly migrationRepository: MigrationRepository;
   private readonly settingsRepository: SettingsRepository;
+  private readonly collectionsRepository: CollectionsRepository;
   private closed = false;
   readonly filename: string;
 
@@ -189,6 +193,7 @@ export class RefCanvasDatabase {
       options.migrationBackupDirectory,
     );
     this.settingsRepository = new SettingsRepository(this.db);
+    this.collectionsRepository = new CollectionsRepository(this.db);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.migrate();
@@ -211,6 +216,12 @@ export class RefCanvasDatabase {
   integrityCheck(): boolean {
     const result = this.db.pragma("integrity_check", { simple: true });
     return result === "ok";
+  }
+
+  /** 在内部连接的显式事务中执行操作（失败自动回滚）。 */
+  transaction<T>(fn: () => T): T {
+    const run = this.db.transaction(fn);
+    return run();
   }
 
   async backupTo(filename: string): Promise<void> {
@@ -1171,6 +1182,58 @@ export class RefCanvasDatabase {
       : null;
   }
 
+  /**
+   * 按 file_identities 主键（ref 键）读取身份（schema 17 集合引用使用）。
+   * 返回 null 表示该引用键已不存在（identity 被删除/归档）。
+   */
+  getFileIdentityByRefId(identityId: string): {
+    pathKey: string;
+    fingerprint: string;
+    size: number;
+    rootPath: string;
+    mountId: string | null;
+  } | null {
+    const row = this.db.prepare(
+      "SELECT * FROM file_identities WHERE id = ?",
+    ).get(identityId) as {
+      path_key: string;
+      fingerprint: string;
+      size: number;
+      root_path: string;
+      mount_id: string | null;
+    } | undefined;
+    return row
+      ? {
+          pathKey: row.path_key,
+          fingerprint: row.fingerprint,
+          size: row.size,
+          rootPath: row.root_path,
+          mountId: row.mount_id ?? null,
+        }
+      : null;
+  }
+
+  /** 返回某资产的全部身份行（含主键 id，供集合条目引用）。 */
+  listFileIdentitiesByAsset(assetId: string): Array<{
+    id: string;
+    pathKey: string;
+    fingerprint: string;
+    size: number;
+    rootPath: string;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT id, path_key AS pathKey, fingerprint, size, root_path AS rootPath
+      FROM file_identities WHERE asset_id = ?
+    `).all(assetId) as Array<{
+      id: string;
+      pathKey: string;
+      fingerprint: string;
+      size: number;
+      rootPath: string;
+    }>;
+    return rows;
+  }
+
   listFileIdentitiesByRoot(
     rootPath: string,
   ): Array<{
@@ -1207,6 +1270,20 @@ export class RefCanvasDatabase {
       rootPath: string | null;
     }>;
     return rows;
+  }
+
+  /**
+   * 按指纹查找已索引身份（不限定 size，schema 17 集合条目无 size 字段）。
+   * 返回挂载内候选（rootPath 非空），供集合引用按指纹自动重定位。
+   */
+  findIdentityByFingerprintAnySize(
+    fingerprint: string,
+  ): Array<{ pathKey: string; rootPath: string }> {
+    return this.db.prepare(`
+      SELECT path_key AS pathKey, root_path AS rootPath
+      FROM file_identities
+      WHERE fingerprint = ? AND root_path IS NOT NULL AND root_path <> ''
+    `).all(fingerprint) as Array<{ pathKey: string; rootPath: string }>;
   }
 
   listAssetIdentityStatus(): Array<{
@@ -1794,6 +1871,24 @@ export class RefCanvasDatabase {
 
   setSetting(key: string, value: unknown): void {
     this.settingsRepository.set(key, value);
+  }
+
+  /**
+   * schema 17 引用集合仓储（FND-003）。仓储直接使用内部连接；
+   * IPC 层只通过这里访问集合 CRUD/解析/导出。
+   */
+  collections(): CollectionsRepository {
+    return this.collectionsRepository;
+  }
+
+  /** 引用集合业务服务（异步 addPaths/relink/export + 解析）。 */
+  collectionService(): CollectionService {
+    return new CollectionService(this, this.collectionsRepository);
+  }
+
+  /** 引用集合解析服务（复用本连接的 identity/mount 数据）。 */
+  collectionResolution(): CollectionResolutionService {
+    return new CollectionResolutionService(this, this.collectionsRepository);
   }
 
   getPlaybackState(assetId: string): PlaybackState | null {
