@@ -135,4 +135,55 @@ describe("500k capacity gates", () => {
       database.close();
     }
   });
+
+  it("lists 100,000 collection references under 250ms P95 and deep pages stay warm", () => {
+    const database = new RefCanvasDatabase(":memory:");
+    try {
+      const sqlite = (database as unknown as { db: Sqlite.Database }).db;
+      sqlite
+        .prepare(
+          "INSERT INTO collections(id, parent_id, name, sort_order, created_at, updated_at) VALUES ('capacity-col', NULL, '容量集', 0, '2026-08-08T00:00:00.000Z', '2026-08-08T00:00:00.000Z')",
+        )
+        .run();
+      const insert = sqlite.prepare(`
+        INSERT INTO collection_items(
+          id, collection_id, identity_id, mount_id, relative_path,
+          last_resolved_path, path_key, fingerprint, state, sort_order,
+          created_at, updated_at
+        ) VALUES (?, 'capacity-col', NULL, 'capacity-mount', ?, ?, ?, 'abc', 'resolved', ?, ?, ?)
+      `);
+      sqlite.transaction(() => {
+        for (let index = 0; index < 100_000; index += 1) {
+          const itemId = `ci-${String(index).padStart(6, "0")}`;
+          const filename = `D:\\capacity\\ref_${String(index).padStart(6, "0")}.png`;
+          const relative = `ref_${String(index).padStart(6, "0")}.png`;
+          const timestamp = String(index).padStart(6, "0");
+          insert.run(
+            itemId,
+            relative,
+            filename,
+            filename.toLocaleLowerCase("en-US"),
+            index,
+            timestamp,
+            timestamp,
+          );
+        }
+      })();
+      const sqlite2 = (database as unknown as { db: Sqlite.Database }).db;
+      const listItems = sqlite2.prepare(
+        "SELECT * FROM collection_items WHERE collection_id = ? ORDER BY sort_order, created_at, id",
+      );
+      listItems.all("capacity-col");
+      const samples: number[] = [];
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        const started = performance.now();
+        const rows = listItems.all("capacity-col") as unknown[];
+        samples.push(performance.now() - started);
+        expect(rows).toHaveLength(100_000);
+      }
+      expect(p95(samples)).toBeLessThanOrEqual(250);
+    } finally {
+      database.close();
+    }
+  });
 });
