@@ -1583,6 +1583,22 @@ export interface RefCanvasApi {
     list(): Promise<ProviderManifestInfo[]>;
     health(providerId: string): Promise<ProviderHealthInfo>;
   };
+  /** AI Design Supervisor（FND-008 §9；Mock 仅开发/测试构建可见）。 */
+  ai: {
+    listProviders(): Promise<AiProviderSummary[]>;
+    listJobs(limit?: number): Promise<AiJobSnapshot[]>;
+    getJob(id: string): Promise<AiJobSnapshot | null>;
+    start(
+      provider: AiProviderKind,
+      request: AiDesignRequest,
+    ): Promise<AiJobSnapshot>;
+    cancel(id: string): Promise<AiJobSnapshot>;
+    retry(id: string): Promise<AiJobSnapshot>;
+    getSettings(): Promise<AiSettings>;
+    setSettings(patch: Partial<AiSettings>): Promise<AiSettings>;
+    health(kind: AiProviderKind): Promise<AiProviderHealth>;
+    onChanged(callback: (snapshot: AiJobSnapshot | null) => void): () => void;
+  };
   color: {
     /** 色彩管理状态（$OCIO 检测 + LUT）。 */
     getStatus(): Promise<ColorStatus>;

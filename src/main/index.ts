@@ -84,6 +84,9 @@ import { registerLibraryManagementIpc } from "./ipc/library-management-ipc";
 import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
 import { registerResourcesIpc } from "./ipc/resources-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
+import { registerAiIpc } from "./ipc/ai-ipc";
+import { AiJobService } from "./services/ai/ai-job-service";
+import { MockAiProvider } from "./services/ai/mock-ai-provider";
 import { trayIconPaths } from "./platform/tray-icon";
 import {
   hardenWindowNavigation,
@@ -131,6 +134,7 @@ let fileOperations: FileOperationsService;
 let mountService: MountService;
 let scriptsService: ScriptsService;
 let boardReferences: BoardReferenceService;
+let aiJobService: AiJobService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -647,6 +651,17 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   mountService = new MountService(database);
   scriptsService = new ScriptsService(database);
   boardReferences = new BoardReferenceService(database);
+  // AI Design Supervisor（FND-008 §9）：Mock 仅在开发/测试构建注册。
+  aiJobService = new AiJobService(
+    database.aiJobs(),
+    new Map(
+      mockAiAllowed()
+        ? [["mock", new MockAiProvider()]]
+        : [],
+    ),
+  );
+  // 重启恢复：对非终态 job 尝试 Provider.recover，不支持则标记 failed。
+  void aiJobService.recoverInterrupted();
   // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
   mountService.onMountStateChanged(({ mountId, state }) => {
     broadcastAll("mounts:changed", { type: "state", mountId, state });
@@ -672,6 +687,11 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
     broadcastAll("actions:progress", snapshot);
   });
   if (rendererInteractive) scheduleBackgroundServices();
+}
+
+/** Mock Provider 仅在开发/测试构建允许（found-clone.md §9.4；正式打包隐藏）。 */
+function mockAiAllowed(): boolean {
+  return !app.isPackaged;
 }
 
 function scheduleBackgroundServices(): void {
@@ -706,6 +726,12 @@ function registerIpc(): void {
   registerCollectionsIpc(ipc, {
     getDatabase: () => database,
     notifyCollectionsChanged: () => broadcastAll("collections:changed"),
+  });
+  registerAiIpc(ipc, {
+    getDatabase: () => database,
+    getAiJobService: () => aiJobService,
+    isMockAllowed: () => mockAiAllowed(),
+    notifyAiChanged: (snapshot) => broadcastAll("ai:changed", snapshot),
   });
   registerFilesystemIpc(ipc, {
     getDirectoryBatches: () => directoryBatches,

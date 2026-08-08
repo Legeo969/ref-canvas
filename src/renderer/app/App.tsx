@@ -13,6 +13,7 @@ import {
   PinOff,
   PackageOpen,
   Settings,
+  Sparkles,
   SquareArrowOutUpRight,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -22,6 +23,7 @@ import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
 import { parseBoardWindowParams } from "./board-window";
 import { useFoundSettings } from "./found-settings";
 import { ActionsPanel } from "../components/ActionsPanel";
+import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { CaptureOverlay } from "../components/CaptureOverlay";
@@ -68,6 +70,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "found">("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [panelLayout, setPanelLayout] = useState(() =>
@@ -384,6 +387,9 @@ export function App() {
           onClose={() => setMaintenanceOpen(false)}
         />
       )}
+      {aiPanelOpen && (
+        <AiDesignSupervisorPanel onClose={() => setAiPanelOpen(false)} />
+      )}
       {notice && <div className="app-toast">{notice}</div>}
       <header className="titlebar">
         <div className="titlebar-left">
@@ -551,6 +557,15 @@ export function App() {
               </button>
             </>
           )}
+          <button
+            className={`icon-button${aiPanelOpen ? " active" : ""}`}
+            onClick={() => setAiPanelOpen((value) => !value)}
+            aria-label="AI 设计"
+            aria-pressed={aiPanelOpen}
+            title="AI Design Supervisor"
+          >
+            <Sparkles size={16} />
+          </button>
           <button
             className="icon-button"
             onClick={() => {

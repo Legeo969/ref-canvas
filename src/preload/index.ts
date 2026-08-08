@@ -205,6 +205,27 @@ const api: RefCanvasApi = {
       return () => ipcRenderer.off("collections:changed", listener);
     },
   },
+  ai: {
+    listProviders: () => ipcRenderer.invoke("ai:list-providers"),
+    listJobs: (limit) => ipcRenderer.invoke("ai:list-jobs", { limit }),
+    getJob: (id) => ipcRenderer.invoke("ai:get", id),
+    start: (provider, request) =>
+      ipcRenderer.invoke("ai:start", { provider, request }),
+    cancel: (id) => ipcRenderer.invoke("ai:cancel", id),
+    retry: (id) => ipcRenderer.invoke("ai:retry", id),
+    getSettings: () => ipcRenderer.invoke("ai:get-settings"),
+    setSettings: (patch) =>
+      ipcRenderer.invoke("ai:set-settings", patch),
+    health: (kind) => ipcRenderer.invoke("ai:health", kind),
+    onChanged: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("ai:changed", listener);
+      return () => ipcRenderer.off("ai:changed", listener);
+    },
+  },
   metadata: {
     ensure: (path) => ipcRenderer.invoke("metadata:ensure", path),
     patch: (assetId, patch) =>
