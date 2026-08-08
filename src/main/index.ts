@@ -85,10 +85,23 @@ import { registerLibraryManagementIpc } from "./ipc/library-management-ipc";
 import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
 import { registerResourcesIpc } from "./ipc/resources-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
-import { registerAiIpc } from "./ipc/ai-ipc";
+import { registerAiIpc, readAiSettings } from "./ipc/ai-ipc";
 import { registerTaskCenterIpc } from "./ipc/task-center-ipc";
 import { AiJobService } from "./services/ai/ai-job-service";
+import type { AiProvider } from "./services/ai/ai-provider";
+import type { AiProviderKind } from "../shared/contracts";
 import { MockAiProvider } from "./services/ai/mock-ai-provider";
+import { ComfyUiProvider } from "./services/ai/comfyui-provider";
+import { RemoteRestProvider } from "./services/ai/remote-ai-provider";
+import {
+  HttpComfyTransport,
+  HttpRemoteTransport,
+} from "./services/ai/http-transports";
+import { AiSecretStore } from "./services/ai/ai-secret-store";
+import {
+  parseWorkflow,
+  type ComfyWorkflowBinding,
+} from "./services/ai/comfyui-workflow";
 import { TaskCenterService } from "./services/task-center-service";
 import { ZipArchiveService } from "./services/zip-archive-service";
 import { trayIconPaths } from "./platform/tray-icon";
@@ -139,6 +152,7 @@ let mountService: MountService;
 let scriptsService: ScriptsService;
 let boardReferences: BoardReferenceService;
 let aiJobService: AiJobService;
+let aiSecretStore: AiSecretStore;
 let taskCenter: TaskCenterService;
 let zipArchiveService: ZipArchiveService;
 let captureWasFullScreen = false;
@@ -666,15 +680,42 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   mountService = new MountService(database);
   scriptsService = new ScriptsService(database);
   boardReferences = new BoardReferenceService(database);
-  // AI Design Supervisor（FND-008 §9）：Mock 仅在开发/测试构建注册。
-  aiJobService = new AiJobService(
-    database.aiJobs(),
-    new Map(
-      mockAiAllowed()
-        ? [["mock", new MockAiProvider()]]
-        : [],
-    ),
-  );
+  // AI Design Supervisor（FND-008 §9）：Mock 仅在开发/测试构建注册；
+  // ComfyUI 与 Remote REST 按持久化配置注册真实 Provider（FND-009/010）。
+  aiSecretStore = new AiSecretStore({
+    filePath: path.join(app.getPath("userData"), "ai-secret.bin"),
+  });
+  const aiProviders = new Map<AiProviderKind, AiProvider>();
+  if (mockAiAllowed()) aiProviders.set("mock", new MockAiProvider());
+  const aiSettings = readAiSettings(database);
+  if (aiSettings.comfyuiWorkflowPath && aiSettings.comfyuiBinding) {
+    try {
+      const workflowText = await readFile(aiSettings.comfyuiWorkflowPath, "utf8");
+      const workflow = parseWorkflow(workflowText);
+      if (workflow) {
+        aiProviders.set(
+          "comfyui",
+          new ComfyUiProvider({
+            address: aiSettings.comfyuiAddress,
+            workflow,
+            binding: aiSettings.comfyuiBinding as ComfyWorkflowBinding,
+            transport: new HttpComfyTransport(aiSettings.comfyuiAddress),
+          }),
+        );
+      }
+    } catch {
+      // workflow 文件缺失/损坏：不注册，health 呈现不可用。
+    }
+  }
+  if (aiSettings.remoteBaseUrl) {
+    const remoteProvider = new RemoteRestProvider({
+      baseUrl: aiSettings.remoteBaseUrl,
+      transport: new HttpRemoteTransport(),
+    });
+    remoteProvider.setTokenProvider(() => aiSecretStore.read());
+    aiProviders.set("remote-rest", remoteProvider);
+  }
+  aiJobService = new AiJobService(database.aiJobs(), aiProviders);
   // 重启恢复：对非终态 job 尝试 Provider.recover，不支持则标记 failed。
   void aiJobService.recoverInterrupted();
   // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/AI 任务。
@@ -764,6 +805,7 @@ function registerIpc(): void {
     getDatabase: () => database,
     getAiJobService: () => aiJobService,
     isMockAllowed: () => mockAiAllowed(),
+    getSecretStore: () => aiSecretStore,
     notifyAiChanged: (snapshot) => broadcastAll("ai:changed", snapshot),
   });
   registerTaskCenterIpc(ipc, {

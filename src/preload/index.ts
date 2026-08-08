@@ -217,6 +217,11 @@ const api: RefCanvasApi = {
     setSettings: (patch) =>
       ipcRenderer.invoke("ai:set-settings", patch),
     health: (kind) => ipcRenderer.invoke("ai:health", kind),
+    secretStatus: () => ipcRenderer.invoke("ai:secret-status"),
+    saveSecret: (token) => ipcRenderer.invoke("ai:save-secret", { token }),
+    clearSecret: () => ipcRenderer.invoke("ai:clear-secret"),
+    importComfyuiWorkflow: (path) =>
+      ipcRenderer.invoke("ai:import-comfyui-workflow", { path }),
     onChanged: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,

@@ -15,6 +15,7 @@ import {
   ScanLine,
   Settings2,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -36,6 +37,7 @@ import type { AppLanguage } from "../../shared/contracts";
 import { PANEL_DEFAULTS } from "../app/panel-layout";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
+import { AiProviderSettings } from "./AiProviderSettings";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -46,6 +48,7 @@ export type SettingsTab =
   | "general"
   | "board"
   | "found"
+  | "ai"
   | "maintenance"
   | "about";
 
@@ -58,6 +61,7 @@ const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Info }> = [
   { id: "general", label: "通用", icon: SlidersHorizontal },
   { id: "board", label: "白板", icon: MonitorCog },
   { id: "found", label: "选项", icon: ScanLine },
+  { id: "ai", label: "AI", icon: Sparkles },
   { id: "maintenance", label: "数据维护", icon: Gauge },
   { id: "about", label: "关于", icon: Info },
 ];
@@ -1140,6 +1144,8 @@ export function SettingsPanel({
                 </label>
               </div>
             )}
+
+            {tab === "ai" && <AiProviderSettings />}
 
             {tab === "maintenance" && (
               <div className="settings-group">

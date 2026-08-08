@@ -1651,6 +1651,31 @@ export interface RefCanvasApi {
     getSettings(): Promise<AiSettings>;
     setSettings(patch: Partial<AiSettings>): Promise<AiSettings>;
     health(kind: AiProviderKind): Promise<AiProviderHealth>;
+    /** Bearer token 状态（Renderer 只读 configured）。 */
+    secretStatus(): Promise<{
+      configured: boolean;
+      source: "safe-storage" | "test";
+    }>;
+    /** 保存 Bearer token（safeStorage 加密）。 */
+    saveSecret(token: string): Promise<{
+      configured: boolean;
+      source: "safe-storage" | "test";
+    }>;
+    /** 清除 Bearer token。 */
+    clearSecret(): Promise<{
+      configured: boolean;
+      source: "safe-storage" | "test";
+    }>;
+    /** 导入 API-format workflow 并返回绑定元数据。 */
+    importComfyuiWorkflow(path: string): Promise<{
+      valid: boolean;
+      errors: string[];
+      nodeCount: number;
+      outputNodeIds: string[];
+      imageInputNodes: Array<{ nodeId: string; type: string }>;
+      nodes: Array<{ nodeId: string; type: string; inputNames: string[] }>;
+      workflowPath: string;
+    }>;
     onChanged(callback: (snapshot: AiJobSnapshot | null) => void): () => void;
   };
   color: {

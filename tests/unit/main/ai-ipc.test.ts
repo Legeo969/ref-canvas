@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
 import { registerAiIpc } from "../../../src/main/ipc/ai-ipc";
 import { AiJobService } from "../../../src/main/services/ai/ai-job-service";
+import {
+  AiSecretStore,
+  InsecureTestCipher,
+} from "../../../src/main/services/ai/ai-secret-store";
 import { MockAiProvider } from "../../../src/main/services/ai/mock-ai-provider";
 import type { SecureIpcRegistrar } from "../../../src/main/platform/secure-ipc";
 import {
@@ -107,6 +111,10 @@ describe("AI IPC registration (FND-008 §9)", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-aiipc-"));
     temporaryDirectories.push(directory);
     const database = new RefCanvasDatabase(path.join(directory, "app.db"));
+    const secretStore = new AiSecretStore({
+      filePath: path.join(directory, "ai-secret.bin"),
+      cipher: new InsecureTestCipher(),
+    });
     const service = new AiJobService(
       database.aiJobs(),
       new Map(options.mockAllowed === false ? [] : [["mock", new MockAiProvider()]]),
@@ -121,6 +129,7 @@ describe("AI IPC registration (FND-008 §9)", () => {
       getDatabase: () => database,
       getAiJobService: () => service,
       isMockAllowed: () => options.mockAllowed !== false,
+      getSecretStore: () => secretStore,
       notifyAiChanged,
     });
     const invoke = async (channel: string, ...args: unknown[]): Promise<unknown> => {
@@ -156,6 +165,19 @@ describe("AI IPC registration (FND-008 §9)", () => {
       expect(updated.defaultProvider).toBe("comfyui");
       expect(updated.remoteConfigured).toBe(true);
       expect(database.getSetting("aiSettings", null)).not.toBeNull();
+
+      // 非本机 ComfyUI 地址在保存时即被拒绝（§9.5）。
+      await expect(
+        invoke("ai:set-settings", { comfyuiAddress: "http://192.168.1.10:8188" }),
+      ).rejects.toThrow("COMFYUI_ADDRESS_NOT_LOCAL");
+      await expect(
+        invoke("ai:set-settings", { comfyuiAddress: "http://comfy.example.com" }),
+      ).rejects.toThrow("COMFYUI_ADDRESS_NOT_LOCAL");
+      // 本机地址规范化保存。
+      const normalized = (await invoke("ai:set-settings", {
+        comfyuiAddress: "http://127.0.0.1:8188/",
+      })) as { comfyuiAddress: string };
+      expect(normalized.comfyuiAddress).toBe("http://127.0.0.1:8188");
     } finally {
       database.close();
     }
@@ -248,6 +270,98 @@ describe("AI IPC registration (FND-008 §9)", () => {
         }),
       ).rejects.toThrow();
       expect(database.aiJobs().count()).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("saves, reports and clears the bearer token without leaking plaintext (FND-010)", async () => {
+    const { database, directory, invoke } = await setup({ mockAllowed: false });
+    try {
+      const initial = (await invoke("ai:secret-status")) as {
+        configured: boolean;
+        source: string;
+      };
+      expect(initial.configured).toBe(false);
+      // 保存后状态可见；无 IPC 通道返回明文。
+      const saved = (await invoke("ai:save-secret", { token: "sk-secret-value" })) as {
+        configured: boolean;
+      };
+      expect(saved.configured).toBe(true);
+      const after = (await invoke("ai:secret-status")) as { configured: boolean };
+      expect(after.configured).toBe(true);
+      // Renderer 可见响应只含 configured/source，永不携带 token 明文。
+      expect(JSON.stringify(after)).not.toContain("sk-secret-value");
+      expect(JSON.stringify(saved)).not.toContain("sk-secret-value");
+      // 明文只存在于加密文件中：生产 safeStorage blob 不可搜到明文。
+      const blob = (await import("node:fs/promises")).readFile(
+        path.join(directory, "ai-secret.bin"),
+        "utf8",
+      ).catch(() => "");
+      // 注：InsecureTestCipher 是明文测试实现，blob 可能含明文；
+      // 生产路径由 ai-secret-store 的 safeStorage 加密测试覆盖。
+      void blob;
+      // 清除。
+      const cleared = (await invoke("ai:clear-secret")) as { configured: boolean };
+      expect(cleared.configured).toBe(false);
+      // 非法输入拒绝。
+      await expect(invoke("ai:save-secret", { token: "" })).rejects.toThrow();
+    } finally {
+      database.close();
+    }
+  });
+
+  it("imports an API-format workflow, inspects it and persists the path (FND-009)", async () => {
+    const { database, directory, invoke } = await setup({ mockAllowed: false });
+    try {
+      const workflowPath = path.join(directory, "workflow.json");
+      await writeFile(
+        workflowPath,
+        JSON.stringify({
+          nodes: [
+            {
+              id: 1,
+              type: "LoadImage",
+              inputs: { image: "example.png" },
+              outputs: [{ name: "IMAGE" }],
+            },
+            {
+              id: 9,
+              type: "SaveImage",
+              inputs: { images: [] },
+              outputs: [{ name: "IMAGE" }],
+            },
+          ],
+        }),
+        "utf8",
+      );
+      const result = (await invoke("ai:import-comfyui-workflow", {
+        path: workflowPath,
+      })) as {
+        valid: boolean;
+        nodeCount: number;
+        outputNodeIds: string[];
+        imageInputNodes: Array<{ nodeId: string; type: string }>;
+        nodes: Array<{ nodeId: string; type: string; inputNames: string[] }>;
+      };
+      expect(result.valid).toBe(true);
+      expect(result.nodeCount).toBe(2);
+      expect(result.outputNodeIds).toContain("9");
+      expect(result.imageInputNodes[0]).toEqual({ nodeId: "1", type: "LoadImage" });
+      expect(result.nodes.find((node) => node.nodeId === "1")?.inputNames).toEqual([
+        "image",
+      ]);
+      // 路径已持久化。
+      const settings = (await invoke("ai:get-settings")) as {
+        comfyuiWorkflowPath: string | null;
+      };
+      expect(settings.comfyuiWorkflowPath).toBe(workflowPath);
+      // 损坏 JSON 被拒绝且不落路径。
+      const brokenPath = path.join(directory, "broken.json");
+      await writeFile(brokenPath, "{ not json", "utf8");
+      await expect(
+        invoke("ai:import-comfyui-workflow", { path: brokenPath }),
+      ).rejects.toThrow("COMFYUI_WORKFLOW_INVALID_JSON");
     } finally {
       database.close();
     }

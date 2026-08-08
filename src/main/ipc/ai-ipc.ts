@@ -22,6 +22,11 @@ import {
   aiJobIdSchema,
   aiProviderKindSchema,
 } from "./schemas";
+import {
+  assertComfyAddressAllowed,
+  inspectWorkflow,
+  parseWorkflow,
+} from "../services/ai/comfyui-workflow";
 
 const aiSettingsPatchSchema = z.object({
   comfyuiAddress: z
@@ -46,12 +51,39 @@ const listJobsSchema = z.object({
   limit: z.number().int().min(1).max(500).optional(),
 });
 
+const saveSecretSchema = z.object({
+  token: z.string().min(1).max(4096),
+});
+
+const importWorkflowSchema = z.object({
+  path: z.string().min(1).max(4096),
+});
+
+/** workflow 导入结果：inspection + 节点输入元数据（绑定编辑器用）。 */
+export interface ComfyWorkflowImportResult {
+  valid: boolean;
+  errors: string[];
+  nodeCount: number;
+  outputNodeIds: string[];
+  imageInputNodes: Array<{ nodeId: string; type: string }>;
+  /** 节点 input 名列表（按节点分组，供绑定下拉）。 */
+  nodes: Array<{ nodeId: string; type: string; inputNames: string[] }>;
+  workflowPath: string;
+}
+
+export interface AiSecretStatus {
+  configured: boolean;
+  source: "safe-storage" | "test";
+}
+
 export interface AiIpcDependencies {
   getDatabase(): RefCanvasDatabase;
   /** AiJobService（index.ts 注入，含已注册 Provider 与 Mock 可用性）。 */
   getAiJobService(): AiJobService;
   /** 是否为 Mock 允许的构建（开发/测试）；打包构建返回 false。 */
   isMockAllowed(): boolean;
+  /** Bearer token 加密存储（Renderer 只读 configured 状态）。 */
+  getSecretStore(): import("../services/ai/ai-secret-store").AiSecretStore;
   /** 变更广播（index.ts 注入 broadcastAll）。 */
   notifyAiChanged(snapshot: AiJobSnapshot | null): void;
 }
@@ -168,6 +200,10 @@ export function registerAiIpc(
     } else if (typeof patch.remoteBaseUrl === "string") {
       patch.remoteConfigured = true;
     }
+    // ComfyUI 只允许本机地址：保存时同样拒绝局域网/公网（§9.5）。
+    if (typeof patch.comfyuiAddress === "string" && patch.comfyuiAddress.trim()) {
+      patch.comfyuiAddress = assertComfyAddressAllowed(patch.comfyuiAddress);
+    }
     return writeAiSettings(dependencies.getDatabase(), patch);
   });
 
@@ -178,5 +214,53 @@ export function registerAiIpc(
       throw new Error("AI_MOCK_FORBIDDEN");
     }
     return service().providerFor(parsed).health();
+  });
+
+  /** Bearer token 状态（Renderer 只读 configured，永不接触明文）。 */
+  ipc.handle("ai:secret-status", () =>
+    dependencies.getSecretStore().status(),
+  );
+
+  /** 保存 Bearer token（safeStorage 加密落盘；SQLite/日志无明文）。 */
+  ipc.handle("ai:save-secret", async (input) => {
+    const parsed = saveSecretSchema.parse(input ?? {});
+    await dependencies.getSecretStore().save(parsed.token);
+    return dependencies.getSecretStore().status();
+  });
+
+  /** 清除 Bearer token。 */
+  ipc.handle("ai:clear-secret", async () => {
+    await dependencies.getSecretStore().clear();
+    return dependencies.getSecretStore().status();
+  });
+
+  /** 导入 API-format workflow：解析、结构检查并保存路径，返回绑定元数据。 */
+  ipc.handle("ai:import-comfyui-workflow", async (input) => {
+    const parsed = importWorkflowSchema.parse(input ?? {});
+    const { readFile } = await import("node:fs/promises");
+    const raw = await readFile(parsed.path, "utf8");
+    const workflow = parseWorkflow(raw);
+    if (!workflow) {
+      throw new Error("COMFYUI_WORKFLOW_INVALID_JSON");
+    }
+    const inspection = inspectWorkflow(workflow);
+    const nodes = (workflow.nodes ?? []).map((node) => ({
+      nodeId: String(node.id),
+      type: node.type,
+      inputNames: Object.keys(node.inputs ?? {}),
+    }));
+    const result: ComfyWorkflowImportResult = {
+      valid: inspection.valid,
+      errors: inspection.errors,
+      nodeCount: inspection.nodeCount,
+      outputNodeIds: inspection.outputNodeIds,
+      imageInputNodes: inspection.imageInputNodes,
+      nodes,
+      workflowPath: parsed.path,
+    };
+    writeAiSettings(dependencies.getDatabase(), {
+      comfyuiWorkflowPath: parsed.path,
+    });
+    return result;
   });
 }

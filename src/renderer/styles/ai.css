@@ -421,3 +421,91 @@
   right: 8px;
   top: 8px;
 }
+
+/* AI Provider 设置（FND-009/010）：Settings > AI 页签。 */
+.ai-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ai-settings .settings-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+
+.ai-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(127, 184, 160, 0.12);
+  color: #7fb8a0;
+}
+
+.ai-health.fail {
+  background: rgba(224, 139, 122, 0.12);
+  color: #e08b7a;
+}
+
+.ai-settings-note {
+  font-size: 11px;
+  color: #8d9a94;
+  margin: 2px 0;
+  word-break: break-all;
+}
+
+.ai-settings-errors {
+  color: #e08b7a;
+  font-size: 12px;
+  margin: 2px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai-settings-errors li {
+  margin: 2px 0;
+}
+
+.ai-binding-editor {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ai-binding-editor h4 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ai-binding-row {
+  align-items: flex-start;
+}
+
+.ai-binding-outputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-binding-outputs label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
