@@ -26,6 +26,7 @@ import { ActionsPanel } from "../components/ActionsPanel";
 import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
+import { BrowserTabBar } from "../components/BrowserTabBar";
 import { CaptureOverlay } from "../components/CaptureOverlay";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
 import { DirectoryDetailsPanel } from "../components/DirectoryDetailsPanel";
@@ -615,7 +616,10 @@ export function App() {
           )
         ) : store.activeCollectionId ? (
           <>
-            <CollectionDetailsPanel />
+            <div className="workspace-main-column">
+              <BrowserTabBar />
+              <CollectionDetailsPanel />
+            </div>
             <PanelDividers
               panel="details"
               layout={panelLayout}
@@ -629,7 +633,10 @@ export function App() {
           </>
         ) : (
           <>
-            <DirectoryAssetPanel />
+            <div className="workspace-main-column">
+              <BrowserTabBar />
+              <DirectoryAssetPanel />
+            </div>
             <PanelDividers
               panel="details"
               layout={panelLayout}

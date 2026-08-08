@@ -1812,6 +1812,8 @@ export interface RefCanvasApi {
     onPresentationModeChanged(callback: (enabled: boolean) => void): () => void;
     /** Fired when the main-process emergency shortcut restores normal mode. */
     onWindowModeReset(callback: () => void): () => void;
+    /** FND-002：第二实例打开目录 → 主窗口在新标签打开。 */
+    onOpenDirectoryTab(callback: (path: string) => void): () => void;
     captureClipboard(): Promise<AssetRecord | null>;
     prepareRegionCapture(): Promise<CaptureSource | null>;
     saveRegionCapture(dataUrl: string): Promise<AssetRecord | null>;

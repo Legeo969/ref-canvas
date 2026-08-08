@@ -13,6 +13,7 @@ import {
   Scissors,
   Settings2,
   Shrink,
+  SquareArrowOutUpRight,
   Star,
   Tags,
   TerminalSquare,
@@ -1706,6 +1707,22 @@ export function DirectoryAssetPanel() {
               </button>
             </>
           )}
+          <button
+            role="menuitem"
+            onClick={() => {
+              const path = contextMenu.entry.path;
+              setContextMenu(null);
+              if (contextMenu.entry.isDirectory) {
+                void store.openDirectoryInNewTab(path);
+              } else {
+                const directory = dirnameOf(path);
+                void store.openDirectoryInNewTab(directory);
+              }
+            }}
+          >
+            <SquareArrowOutUpRight size={16} />
+            在新标签打开
+          </button>
           {contextMenu.entry.isDirectory && (
             <button
               role="menuitem"

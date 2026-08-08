@@ -447,6 +447,15 @@ const api: RefCanvasApi = {
       ipcRenderer.on("system:window-mode-reset", listener);
       return () => ipcRenderer.off("system:window-mode-reset", listener);
     },
+    /** FND-002：第二实例打开目录 → 主窗口在新标签打开。 */
+    onOpenDirectoryTab: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        path: string,
+      ) => callback(path);
+      ipcRenderer.on("browser:open-directory-tab", listener);
+      return () => ipcRenderer.off("browser:open-directory-tab", listener);
+    },
     captureClipboard: () =>
       ipcRenderer.invoke("system:capture-clipboard"),
     prepareRegionCapture: () =>

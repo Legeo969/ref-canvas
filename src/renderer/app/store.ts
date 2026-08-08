@@ -17,6 +17,13 @@ import type {
 } from "../../shared/contracts";
 import { readDurableNavigationState, updateNavigationState } from "./navigation-state";
 import {
+  readDurableNavigationStateV3,
+  updateNavigationStateV3,
+  createBrowserTab,
+  type BrowserTabState,
+  type NavigationStateV3,
+} from "./navigation-v3";
+import {
   isPathInsideMount,
   startupDirectoryCandidates,
 } from "./startup-navigation";
@@ -150,6 +157,19 @@ interface AppState
   refreshCollections(): Promise<void>;
   /** 切换到本地目录浏览（不产生素材数据库记录）。 */
   openDirectory(path: string): Promise<void>;
+  /** 在新标签打开目录（不修改来源标签历史；FND-002 §5.2）。 */
+  openDirectoryInNewTab(path: string): Promise<void>;
+  /** 浏览器标签（FND-002）：新建/关闭/切换/重排 + 活动标签状态保存恢复。 */
+  browserTabs: BrowserTabState[];
+  activeTabId: string;
+  createBrowserTabForPath(path: string): Promise<void>;
+  closeBrowserTab(id: string): Promise<void>;
+  switchBrowserTab(id: string): Promise<void>;
+  reorderBrowserTab(sourceId: string, targetId: string): void;
+  /** 更新活动标签的持久字段（query 等）。 */
+  updateActiveBrowserTab(patch: Partial<BrowserTabState>): void;
+  /** 内部：加载目录并恢复指定历史（不修改标签栈）。 */
+  loadDirectoryState(path: string, history: string[], historyIndex: number): Promise<void>;
   /** 挂载移除后清理该根下的当前目录、选择与历史。 */
   clearRemovedMount(path: string): void;
   selectDirectoryEntry(entry: DirectoryEntry | null): void;
@@ -205,6 +225,28 @@ function selectionState(
 
 let navigationHydrated = false;
 let assetQueryRevision = 0;
+
+/** 路径规范化（大小写与分隔符；Windows 不区分大小写）。 */
+function normalizeDirectoryPath(value: string): string {
+  return value.replace(/[\\/]+/g, "\\").replace(/\\$/, "").toLocaleLowerCase("en-US");
+}
+
+/** 标签标题：路径最后一段。 */
+function titleFromPath(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+/** 持久化 V3 标签（local + durable，不阻塞浏览）。 */
+function persistV3Tabs(tabs: BrowserTabState[], activeTabId: string): void {
+  const state: NavigationStateV3 = {
+    schemaVersion: 3,
+    activeWorkspace: "browser",
+    activeTabId,
+    tabs,
+  };
+  updateNavigationStateV3(state);
+}
 let libraryRefreshTimer: number | null = null;
 let directoryOpenGeneration = 0;
 const assetWindow = new AssetQueryWindow();
@@ -290,6 +332,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       window.refCanvas.mounts.list().catch(() => []),
     ]);
     const navigation = await readDurableNavigationState();
+    // V3 多标签导航（FND-002 §5.2）：V2 自动迁移为一个 directory tab。
+    const navigationV3 = await readDurableNavigationStateV3(() => navigation);
     const activeBoard = boards[0] ?? null;
     const loaded = activeBoard
       ? await window.refCanvas.boards.load(activeBoard.id)
@@ -314,12 +358,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         void get().reloadAssets();
       }, 80);
     });
+    const unsubscribeOpenDirectoryTab =
+      window.refCanvas.system?.onOpenDirectoryTab?.((directoryPath) => {
+        void get().openDirectoryInNewTab(directoryPath).catch(() => undefined);
+      });
     window.addEventListener(
       "beforeunload",
       () => {
         unsubscribeImport();
         unsubscribeCollections?.();
         unsubscribeLibrary();
+        unsubscribeOpenDirectoryTab?.();
         if (libraryRefreshTimer !== null) window.clearTimeout(libraryRefreshTimer);
       },
       { once: true },
@@ -334,6 +383,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentLibraryName: appInfo.libraryName,
       preferences,
       workspaceMode: "directory",
+      browserTabs: navigationV3.tabs,
+      activeTabId: navigationV3.activeTabId ?? navigationV3.tabs[0]?.id ?? "",
       navigationSource: "directory",
       directoryPath: navigation.directoryPath,
       quickAccess,
@@ -371,8 +422,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     void get().refreshCollections().catch(() => undefined);
     await get().reloadAssets();
+    // V3：优先恢复活动标签的目录；无标签目录时回退 V2 记忆路径。
+    const activeTab = navigationV3.tabs.find(
+      (tab) => tab.id === navigationV3.activeTabId,
+    );
+    const rememberedPath =
+      activeTab?.kind === "directory" &&
+      activeTab.targetId &&
+      activeTab.targetId !== "browser://empty"
+        ? activeTab.targetId
+        : navigation.directoryPath;
     const candidates = startupDirectoryCandidates({
-      rememberedPath: navigation.directoryPath,
+      rememberedPath,
       mounts,
       roots,
       quickAccess,
@@ -1116,6 +1177,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   collections: [],
   collectionTree: {},
   collectionItems: {},
+  browserTabs: [],
+  activeTabId: "",
 
   openCollection: (id) =>
     set({
@@ -1191,8 +1254,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openDirectory: async (path) => {
-    const generation = ++directoryOpenGeneration;
+    const normalized = normalizeDirectoryPath(path);
+    // 已在某个标签打开 → 直接切换到该标签（不修改来源标签历史）。
+    const existing = get().browserTabs.find(
+      (tab) => tab.kind === "directory" && normalizeDirectoryPath(tab.targetId) === normalized,
+    );
+    if (existing) {
+      await get().switchBrowserTab(existing.id);
+      return;
+    }
     const previous = get().directoryPath;
+    const history = previous
+      ? [path, ...get().directoryHistory.filter((item) => normalizeDirectoryPath(item) !== normalized)].slice(0, 60)
+      : [path];
+    await get().loadDirectoryState(path, history, 0);
+    get().updateActiveBrowserTab({ targetId: path, title: titleFromPath(path) });
+  },
+
+  openDirectoryInNewTab: async (path) => {
+    await get().createBrowserTabForPath(path);
+  },
+
+  createBrowserTabForPath: async (path) => {
+    const tab = createBrowserTab("directory", path, titleFromPath(path));
+    set((state) => ({ browserTabs: [...state.browserTabs, tab] }));
+    await get().switchBrowserTab(tab.id);
+  },
+
+  /** 内部：加载目录并恢复指定历史（不修改标签栈）。 */
+  loadDirectoryState: async (path, history, historyIndex) => {
+    const generation = ++directoryOpenGeneration;
     set({
       workspaceMode: "directory",
       navigationSource: "directory",
@@ -1213,26 +1304,113 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({
         directoryEntries: page.entries,
         directoryTotal: page.total,
+        directoryHistory: history,
+        directoryHistoryIndex: historyIndex,
       });
-      const history = previous
-        ? [path, ...get().directoryHistory.filter((item) => item !== path)].slice(0, 60)
-        : [path];
       updateNavigationState({
         navigationSource: "directory",
         directoryPath: path,
         directoryHistory: history,
-        directoryHistoryIndex: 0,
+        directoryHistoryIndex: historyIndex,
       });
-      set({ directoryHistory: history, directoryHistoryIndex: 0 });
     } catch (error) {
       if (generation !== directoryOpenGeneration) return;
-      set({ directoryPath: previous, directoryEntries: [], directoryTotal: 0 });
+      set({ directoryPath: null, directoryEntries: [], directoryTotal: 0 });
       throw error;
     } finally {
       if (generation === directoryOpenGeneration) {
         set({ directoryLoading: false });
       }
     }
+  },
+
+  switchBrowserTab: async (id) => {
+    const state = get();
+    if (state.activeTabId === id) return;
+    // 保存当前标签状态。
+    const current = state.directoryPath;
+    const history = state.directoryHistory;
+    const index = state.directoryHistoryIndex;
+    const savedTabs = state.browserTabs.map((tab) =>
+      tab.id === state.activeTabId
+        ? {
+            ...tab,
+            ...(current
+              ? {
+                  targetId: current,
+                  title: titleFromPath(current),
+                  backStack: history.slice(index + 1),
+                  forwardStack: history.slice(0, index),
+                }
+              : {}),
+          }
+        : tab,
+    );
+    const target = savedTabs.find((tab) => tab.id === id);
+    if (!target) return;
+    const nextTabs = savedTabs.map((tab) =>
+      tab.id === id
+        ? {
+            ...tab,
+            backStack: [],
+            forwardStack: [],
+          }
+        : tab,
+    );
+    set({ browserTabs: nextTabs, activeTabId: id });
+    persistV3Tabs(nextTabs, id);
+    if (target.kind === "directory" && target.targetId) {
+      const restoredHistory = [...target.forwardStack, target.targetId, ...target.backStack];
+      await get().loadDirectoryState(
+        target.targetId,
+        restoredHistory.length ? restoredHistory : [target.targetId],
+        target.forwardStack.length,
+      );
+    }
+  },
+
+  closeBrowserTab: async (id) => {
+    const state = get();
+    const index = state.browserTabs.findIndex((tab) => tab.id === id);
+    if (index < 0) return;
+    const remaining = state.browserTabs.filter((tab) => tab.id !== id);
+    const nextTabs = remaining.length > 0 ? remaining : [createBrowserTab("directory", "browser://empty", "浏览")];
+    const wasActive = state.activeTabId === id;
+    const nextActiveId = wasActive
+      ? nextTabs[Math.min(index, nextTabs.length - 1)].id
+      : state.activeTabId;
+    set({ browserTabs: nextTabs, activeTabId: nextActiveId });
+    persistV3Tabs(nextTabs, nextActiveId);
+    if (wasActive) {
+      const active = nextTabs.find((tab) => tab.id === nextActiveId);
+      if (active?.kind === "directory" && active.targetId && active.targetId !== "browser://empty") {
+        await get().loadDirectoryState(active.targetId, [active.targetId], 0);
+      } else {
+        set({ directoryPath: null, directoryEntries: [], directoryTotal: 0 });
+      }
+    }
+  },
+
+  reorderBrowserTab: (sourceId, targetId) => {
+    const state = get();
+    const sourceIndex = state.browserTabs.findIndex((tab) => tab.id === sourceId);
+    const targetIndex = state.browserTabs.findIndex((tab) => tab.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+    const nextTabs = [...state.browserTabs];
+    const [moved] = nextTabs.splice(sourceIndex, 1);
+    nextTabs.splice(targetIndex, 0, moved);
+    set({ browserTabs: nextTabs });
+    persistV3Tabs(nextTabs, state.activeTabId);
+  },
+
+  updateActiveBrowserTab: (patch) => {
+    const state = get();
+    if (!state.activeTabId) return;
+    const nextTabs = state.browserTabs.map((tab) =>
+      tab.id === state.activeTabId ? { ...tab, ...patch } : tab,
+    );
+    set({ browserTabs: nextTabs });
+    persistV3Tabs(nextTabs, state.activeTabId);
   },
 
   goBackDirectory: async () => {

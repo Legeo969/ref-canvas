@@ -22,6 +22,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { statSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import Database from "better-sqlite3";
@@ -336,6 +337,15 @@ function registerOverlayEmergencyShortcut(): boolean {
     overlayExitAccelerator,
     restoreSafeWindowMode,
   );
+}
+
+/** 路径是否为可访问目录（FND-002 第二实例目录标签）。 */
+function isDirectoryPath(filename: string): boolean {
+  try {
+    return statSync(filename).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 async function importCommandLineEntries(entries: string[]): Promise<boolean> {
@@ -1197,6 +1207,12 @@ app.on("second-instance", (_event, argv) => {
   }
   const files = argv.slice(1).filter((value) => !value.startsWith("-"));
   if (files.length && library) {
+    // 第二实例打开目录 → 在新标签打开；文件 → 定位其父目录（FND-002）。
+    const directories = files.filter((entry) => isDirectoryPath(entry));
+    if (directories.length > 0) {
+      mainWindow?.webContents.send("browser:open-directory-tab", directories[0]);
+      return;
+    }
     void importCommandLineEntries(files).then((importedProject) => {
       if (importedProject) mainWindow?.reload();
     });
