@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "posttooluse-0d81dbec87630abef4158176163d32e4",
+  "runId": null,
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "PostToolUse"
+  },
+  "revision": null,
+  "diffHash": null,
+  "rulesVersion": null,
+  "sessionHash": "4a776eddb2929cf1be7db58357a5e08ae27d4eb2ee68a7fa2e05776c67e14b22",
+  "reportRef": null,
+  "events": [
+    {
+      "eventId": "hook-e7b36ee8cd0d8965f6462cbe08338c5d",
+      "findingId": "mimosa-71f78c2800d4d66374c5edbb",
+      "type": "static_fix_verified",
+      "at": "2026-08-08T09:46:03.092Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/collection-restore-migrations.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 51,
+      "endLine": 51,
+      "reasonCode": "static_rescan_passed",
+      "reportedToAgent": false,
+      "evidence": {
+        "kind": "static_scan",
+        "boundary": "observed",
+        "producer": "deterministic",
+        "evidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200"
+      },
+      "sequence": 0
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-08-08T09:46:03.448Z"
+}

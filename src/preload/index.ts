@@ -66,33 +66,6 @@ const api: RefCanvasApi = {
     listWatchRoots: () => ipcRenderer.invoke("library:list-watch-roots"),
     removeWatchRoot: (id) =>
       ipcRenderer.invoke("library:remove-watch-root", id),
-    listCollections: () => ipcRenderer.invoke("library:list-collections"),
-    createCollection: (title, parentId) =>
-      ipcRenderer.invoke("library:create-collection", title, parentId),
-    updateCollection: (id, patch) =>
-      ipcRenderer.invoke("library:update-collection", id, patch),
-    deleteCollection: (id) =>
-      ipcRenderer.invoke("library:delete-collection", id),
-    batchCollections: (op) =>
-      ipcRenderer.invoke("library:batch-collections", op),
-    setFolderLock: (id, password) =>
-      ipcRenderer.invoke("library:set-folder-lock", id, password),
-    unlockFolder: (id, password) =>
-      ipcRenderer.invoke("library:unlock-folder", id, password),
-    isFolderUnlocked: (id) =>
-      ipcRenderer.invoke("library:is-folder-unlocked", id),
-    addToCollection: (assetId, collectionId) =>
-      ipcRenderer.invoke(
-        "library:add-to-collection",
-        assetId,
-        collectionId,
-      ),
-    removeFromCollection: (assetId, collectionId) =>
-      ipcRenderer.invoke(
-        "library:remove-from-collection",
-        assetId,
-        collectionId,
-      ),
     setTags: (assetId, tags) =>
       ipcRenderer.invoke("library:set-tags", assetId, tags),
     listTags: () => ipcRenderer.invoke("library:list-tags"),
@@ -185,19 +158,19 @@ const api: RefCanvasApi = {
     add: (path) => ipcRenderer.invoke("mounts:add", path),
     remove: (id) => ipcRenderer.invoke("mounts:remove", id),
     reconnect: (id) => ipcRenderer.invoke("mounts:reconnect", id),
+    onChanged: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        change: Parameters<typeof callback>[0],
+      ) => callback(change);
+      ipcRenderer.on("mounts:changed", listener);
+      return () => ipcRenderer.off("mounts:changed", listener);
+    },
   },
   metadata: {
     ensure: (path) => ipcRenderer.invoke("metadata:ensure", path),
     patch: (assetId, patch) =>
       ipcRenderer.invoke("metadata:patch", assetId, patch),
-  },
-  collections: {
-    addReferences: (collectionId, paths) =>
-      ipcRenderer.invoke("collections:add-references", collectionId, paths),
-    removeReferences: (collectionId, paths) =>
-      ipcRenderer.invoke("collections:remove-references", collectionId, paths),
-    listReferences: (collectionId) =>
-      ipcRenderer.invoke("collections:list-references", collectionId),
   },
   media: {
     probe: (path) => ipcRenderer.invoke("media:probe", path),
@@ -207,8 +180,9 @@ const api: RefCanvasApi = {
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
     downscale: (request) => ipcRenderer.invoke("media:downscale", request),
-    convert: (path, targetFormat) =>
-      ipcRenderer.invoke("media:convert", path, targetFormat),
+    convert: (path, targetFormat, jobId) =>
+      ipcRenderer.invoke("media:convert", path, targetFormat, jobId),
+    exportGif: (request) => ipcRenderer.invoke("media:exportGif", request),
     cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),
     waveform: (path, options) =>
       ipcRenderer.invoke("media:waveform", path, options),
@@ -219,6 +193,7 @@ const api: RefCanvasApi = {
     detect: (directory, options) =>
       ipcRenderer.invoke("sequences:detect", directory, options),
     exportMp4: (request) => ipcRenderer.invoke("sequences:exportMp4", request),
+    exportGif: (request) => ipcRenderer.invoke("sequences:exportGif", request),
   },
   providers: {
     list: () => ipcRenderer.invoke("providers:list"),
@@ -258,8 +233,8 @@ const api: RefCanvasApi = {
     },
     locateEntry: (path, entryPath, revision) =>
       ipcRenderer.invoke("filesystem:locate-entry", path, entryPath, revision),
-    startSearch: (path, query) =>
-      ipcRenderer.invoke("filesystem:start-search", path, query),
+    startSearch: (path, query, options) =>
+      ipcRenderer.invoke("filesystem:start-search", path, query, options),
     cancelSearch: (id) => ipcRenderer.invoke("filesystem:cancel-search", id),
     getSearch: (id) => ipcRenderer.invoke("filesystem:get-search", id),
     getSearchPage: (id, options) =>
@@ -282,15 +257,16 @@ const api: RefCanvasApi = {
     listQuickAccess: () => ipcRenderer.invoke("filesystem:list-quick-access"),
     materialize: (path) =>
       ipcRenderer.invoke("filesystem:materialize", path),
-    rename: (path, newName) =>
-      ipcRenderer.invoke("filesystem:rename", path, newName),
+    rename: (path, newName, options) =>
+      ipcRenderer.invoke("filesystem:rename", path, newName, options),
     createFolder: (parentPath, name, options) =>
       ipcRenderer.invoke("filesystem:create-folder", parentPath, name, options),
     copy: (sources, targetDirectory, options) =>
       ipcRenderer.invoke("filesystem:copy", sources, targetDirectory, options),
     move: (sources, targetDirectory, options) =>
       ipcRenderer.invoke("filesystem:move", sources, targetDirectory, options),
-    trash: (paths) => ipcRenderer.invoke("filesystem:trash", paths),
+    trash: (paths, options) =>
+      ipcRenderer.invoke("filesystem:trash", paths, options),
     open: (path) => ipcRenderer.invoke("filesystem:open", path),
     reveal: (path) => ipcRenderer.invoke("filesystem:reveal", path),
     previewToken: (path) =>
@@ -373,6 +349,7 @@ const api: RefCanvasApi = {
   system: {
     openExternal: (path) =>
       ipcRenderer.invoke("system:open-external", path),
+    openRecycleBin: () => ipcRenderer.invoke("system:open-recycle-bin"),
     openFilesWithDefaultApp: (paths) =>
       ipcRenderer.invoke("system:open-files-with-default-app", paths),
     revealInFolder: (path) => ipcRenderer.invoke("system:reveal", path),
@@ -380,6 +357,8 @@ const api: RefCanvasApi = {
     pickDirectory: (options) =>
       ipcRenderer.invoke("system:pick-directory", options),
     pickFile: (options) => ipcRenderer.invoke("system:pick-file", options),
+    saveRenderedImage: (dataUrl, options) =>
+      ipcRenderer.invoke("system:save-rendered-image", dataUrl, options),
     toggleAlwaysOnTop: () =>
       ipcRenderer.invoke("system:toggle-always-on-top"),
     markRendererInteractive: () =>
@@ -427,6 +406,8 @@ const api: RefCanvasApi = {
     setPreferences: (prefs) =>
       ipcRenderer.invoke("system:set-preferences", prefs),
     getAppInfo: () => ipcRenderer.invoke("system:get-app-info"),
+    getMigrationFailure: () =>
+      ipcRenderer.invoke("system:get-migration-failure"),
     writeClipboard: (text) =>
       ipcRenderer.invoke("system:write-clipboard", text),
     getNavigationState: () =>

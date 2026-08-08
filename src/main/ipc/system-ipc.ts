@@ -26,6 +26,7 @@ import type { LibraryService } from "../services/library-service";
 import { resolveNativeDragAssets } from "../platform/native-drag";
 import type { PreviewCacheIndex } from "../platform/preview-cache-index";
 import type { PreviewQueue } from "../platform/preview-queue";
+import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { thumbnailCacheFilename } from "../platform/thumbnail-cache";
 import { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
@@ -48,6 +49,8 @@ interface SystemIpcDependencies {
   getDatabaseFilename(): string;
   getLibrary(): LibraryService;
   getLibraryManager(): LibraryManager;
+  /** 启动期迁移失败时的恢复信息；失败时 Renderer 展示恢复页而非主工作区。 */
+  getMigrationRecovery(): MigrationRecoveryInfo;
   getMainWindow(): BrowserWindow | null;
   overlayExitAccelerator: string;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
@@ -61,6 +64,24 @@ interface SystemIpcDependencies {
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
 }
 
+/**
+ * 启动期迁移失败的恢复信息（FND-001）。
+ *
+ * 迁移失败时应用停留在恢复页，不进入主工作区；Renderer 展示数据库路径、
+ * 迁移备份目录与失败步骤，供用户定位备份文件。
+ */
+export interface MigrationRecoveryInfo {
+  failed: boolean;
+  databasePath: string | null;
+  backupDirectory: string | null;
+  entries: Array<{
+    stepId: string;
+    fromVersion: number;
+    toVersion: number;
+    error: string | null;
+  }>;
+}
+
 const sequenceRuleSchema = z.object({
   id: z.string().min(1).max(64),
   name: z.string().min(1).max(128),
@@ -71,8 +92,18 @@ const sequenceRuleSchema = z.object({
 const mp4PresetSchema = z.object({
   id: z.string().min(1).max(64),
   label: z.string().min(1).max(128),
-  maxWidth: z.number().int().min(16).max(16_384).nullable(),
-  crf: z.number().int().min(0).max(51),
+  enabled: z.boolean(),
+  codec: z.enum(["h264", "h265"]),
+  quality: z.enum(["medium", "high", "best"]),
+  resolution: z.enum(["original", "half", "quarter"]),
+});
+
+const foundFormatGroupSchema = z.object({
+  id: z.enum(["model3d", "image", "video", "audio", "pdf"]),
+  label: z.string().trim().min(1).max(32),
+  extensions: z
+    .array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i))
+    .max(128),
 });
 
 const foundSettingsPatchSchema = z.object({
@@ -82,10 +113,21 @@ const foundSettingsPatchSchema = z.object({
   flattenPerFolder: z
     .record(z.string(), z.number().int().min(0).max(8))
     .optional(),
+  formatGroups: z.array(foundFormatGroupSchema).max(5).optional(),
+  formatWhitelist: z
+    .array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i))
+    .max(256)
+    .optional(),
   autoplayVideo: z.boolean().optional(),
   autoplaySequence: z.boolean().optional(),
+  collapseImageSequences: z.boolean().optional(),
   autoplayModel3d: z.boolean().optional(),
   defaultSequenceFps: z.number().int().min(1).max(240).optional(),
+  sequenceFpsPresets: z
+    .array(z.number().int().min(1).max(240))
+    .min(1)
+    .max(10)
+    .optional(),
   sequenceMinFrames: z.number().int().min(1).max(10_000).optional(),
   sequenceRules: z.array(sequenceRuleSchema).max(50).optional(),
   alphaBackground: z.enum(["black", "white", "checker", "custom"]).optional(),
@@ -108,7 +150,7 @@ const foundSettingsPatchSchema = z.object({
     .regex(/^[^\\/:*?"<>|]+$/)
     .optional(),
   defaultMp4PresetId: z.string().min(1).max(64).optional(),
-  mp4Presets: z.array(mp4PresetSchema).max(20).optional(),
+  mp4Presets: z.array(mp4PresetSchema).min(1).max(3).optional(),
   ocioConfigPath: z.string().max(4096).nullable().optional(),
   lutDirectories: z.array(z.string().max(4096)).max(50).optional(),
   activeLut: z.string().max(4096).nullable().optional(),
@@ -129,14 +171,20 @@ export function registerSystemIpc(
   ipc.handle("system:open-external", async (filename) => {
     await shell.openPath(z.string().min(1).parse(filename));
   });
+  ipc.handle("system:open-recycle-bin", async () => {
+    if (process.platform !== "win32") {
+      throw new Error("RECYCLE_BIN_UNAVAILABLE");
+    }
+    await shell.openExternal("shell:RecycleBinFolder");
+  });
   ipc.handle("system:open-files-with-default-app", async (paths) => {
     const parsed = z.array(z.string().min(1).max(32_768)).min(1).max(500).parse(paths);
     await Promise.all(
       parsed.map((filename) => shell.openPath(filename)),
     );
   });
-  ipc.handle("system:reveal", (filename) => {
-    shell.showItemInFolder(z.string().min(1).parse(filename));
+  ipc.handle("system:reveal", async (filename) => {
+    await revealInFileManager(z.string().min(1).parse(filename), shell);
   });
   ipc.handle("system:open-data-folder", async () => {
     await shell.openPath(app.getPath("userData"));
@@ -178,6 +226,36 @@ export function registerSystemIpc(
       filters: parsed.filters,
     });
     return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+  ipc.handleWithEvent("system:save-rendered-image", async (event, dataUrl, options) => {
+    const parsedData = z.string().max(100_000_000).regex(/^data:image\/png;base64,/).parse(dataUrl);
+    const parsed = z.object({
+      mode: z.enum(["export", "thumbnail"]),
+      assetId: z.string().uuid().optional(),
+      defaultName: z.string().min(1).max(128).optional(),
+    }).parse(options);
+    const png = dependencies.pngDataUrlToBuffer(parsedData);
+    if (parsed.mode === "thumbnail") {
+      if (!parsed.assetId) throw new Error("MODEL_THUMBNAIL_ASSET_REQUIRED");
+      const directory = path.join(app.getPath("userData"), "custom-thumbnails");
+      const filename = path.join(directory, `${parsed.assetId}.png`);
+      await mkdir(directory, { recursive: true });
+      await writeFile(filename, png);
+      database().setCustomThumbnail(parsed.assetId, filename);
+      return filename;
+    }
+    const safeName = (parsed.defaultName ?? "RefCanvas-3D")
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .replace(/\.png$/i, "")
+      .slice(0, 120);
+    const result = await dialog.showSaveDialog(dependencies.windowForSender(event), {
+      title: "保存 3D 视图",
+      defaultPath: path.join(app.getPath("pictures"), `${safeName}.png`),
+      filters: [{ name: "PNG", extensions: ["png"] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, png);
+    return result.filePath;
   });
   ipc.handleWithEvent("system:toggle-always-on-top", (event) => {
     const window = dependencies.windowForSender(event);
@@ -357,10 +435,10 @@ export function registerSystemIpc(
       sampling: "bilinear",
       undoLimit: 99,
     }),
-    foundSettings: {
-      ...FOUND_SETTINGS_DEFAULTS,
-      ...database().getSetting<Partial<FoundSettings>>("foundSettings", {}),
-    },
+    foundSettings: mergeFoundSettings(
+      FOUND_SETTINGS_DEFAULTS,
+      database().getSetting<Partial<FoundSettings>>("foundSettings", {}),
+    ),
   });
   ipc.handle("system:get-preferences", readAppPreferences);
   ipc.handle("system:set-preferences", (prefs) => {
@@ -432,6 +510,10 @@ export function registerSystemIpc(
       platform: process.platform,
       userDataPath: app.getPath("userData"),
     };
+  });
+  ipc.handle("system:get-migration-failure", () => {
+    // 迁移失败时不依赖 database（可能未打开），恢复信息由启动流程缓存提供。
+    return dependencies.getMigrationRecovery();
   });
   ipc.handle("system:write-clipboard", (text) => {
     const value = z.string().max(100_000).parse(text);

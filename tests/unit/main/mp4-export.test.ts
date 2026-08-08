@@ -58,8 +58,9 @@ describe("exportSequenceToMp4（阶段 5：序列导出 MP4）", () => {
     const result = await exportSequenceToMp4({
       files: frames,
       fps: 24,
-      maxWidth: null,
-      crf: 20,
+      codec: "h264",
+      quality: "high",
+      resolution: "original",
       outputPath: output,
     });
     expect(result.width).toBe(320);
@@ -80,8 +81,9 @@ describe("exportSequenceToMp4（阶段 5：序列导出 MP4）", () => {
     const result = await exportSequenceToMp4({
       files: frames,
       fps: 12,
-      maxWidth: 160,
-      crf: 23,
+      codec: "h264",
+      quality: "medium",
+      resolution: "half",
       outputPath: output,
     });
     expect(result.width).toBe(160);
@@ -94,8 +96,9 @@ describe("exportSequenceToMp4（阶段 5：序列导出 MP4）", () => {
       exportSequenceToMp4({
         files: [],
         fps: 24,
-        maxWidth: null,
-        crf: 20,
+        codec: "h264",
+        quality: "high",
+        resolution: "original",
         outputPath: path.join(directory, "empty.mp4"),
       }),
     ).rejects.toThrow("MP4_EXPORT_EMPTY");
@@ -104,18 +107,41 @@ describe("exportSequenceToMp4（阶段 5：序列导出 MP4）", () => {
   it("临时 concat 文件被清理", async () => {
     const directory = await withTemp();
     const frames = [await makeFrame(directory, "a_0001.png", "red")];
+    const osTemp = path.join(os.tmpdir());
+    // 并行 vitest worker 中其他用例可能同时在 os.tmpdir 创建 refcanvas-mp4-*
+    // 目录；因此先快照导出前的同名条目，只断言“本次导出没有新增残留”，
+    // 而不是对整个临时目录做全局计数。
+    const before = new Set(
+      (await readdir(osTemp)).filter((entry) => entry.startsWith("refcanvas-mp4-")),
+    );
     await exportSequenceToMp4({
       files: frames,
       fps: 24,
-      maxWidth: null,
-      crf: 20,
+      codec: "h264",
+      quality: "high",
+      resolution: "original",
       outputPath: path.join(directory, "clean.mp4"),
     });
-    const osTemp = path.join(os.tmpdir());
-    const leftovers = (await readdir(osTemp)).filter((entry) =>
-      entry.startsWith("refcanvas-mp4-"),
+    const after = (await readdir(osTemp)).filter(
+      (entry) => entry.startsWith("refcanvas-mp4-") && !before.has(entry),
     );
-    // 测试自身创建的临时目录由 afterEach 清理；这里只验证导出不留残留。
-    expect(leftovers.length).toBeLessThanOrEqual(tempDirectories.length);
+    // 本次导出不得留下新的 refcanvas-mp4-* 目录（本测试自身目录由 afterEach 清理）。
+    expect(after).toEqual([]);
+  });
+
+  it("支持 H.265 与四分之一分辨率预设", async () => {
+    const directory = await withTemp();
+    const frame = await makeFrame(directory, "frame_0001.png", "purple");
+    const output = path.join(directory, "h265.mp4");
+    const result = await exportSequenceToMp4({
+      files: [frame],
+      fps: 24,
+      codec: "h265",
+      quality: "best",
+      resolution: "quarter",
+      outputPath: output,
+    });
+    expect(result.width).toBe(80);
+    expect(result.height).toBe(44);
   });
 });

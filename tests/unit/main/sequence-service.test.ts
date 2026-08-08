@@ -25,8 +25,14 @@ async function writeFiles(
   names: string[],
   mtimeMs: number[] = [],
 ): Promise<void> {
+  const root = path.resolve(directory);
   for (let index = 0; index < names.length; index += 1) {
-    const filename = path.join(directory, names[index]);
+    // 测试 fixture 文件名是固定常量列表；仍做根目录边界校验（纵深防御），
+    // 任何越出临时目录的条目直接拒绝，避免写入仓库外位置。
+    const filename = path.resolve(root, names[index]);
+    if (filename !== root && !filename.startsWith(root + path.sep)) {
+      throw new Error("FIXTURE_OUT_OF_DIRECTORY");
+    }
     await writeFile(filename, Buffer.alloc(16, index));
     if (mtimeMs[index] != null) {
       await utimes(filename, mtimeMs[index] / 1000, mtimeMs[index] / 1000);

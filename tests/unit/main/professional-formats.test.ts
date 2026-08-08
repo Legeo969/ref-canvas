@@ -70,7 +70,9 @@ describe("ImageProvider（阶段 4：PSD/HEIC/JXL/RAW）", () => {
     expect(result.height).toBe(854);
     expect(result.extra.format).toBe("heif");
     await provider.dispose();
-  });
+    // 首次加载 libvips/libheif 需要编译并注册 HEIC 解码器，完整并行测试中可能
+    // 超过默认超时；这里只给本用例定向超时（不提高全局超时，见 FND-001 基线）。
+  }, 60_000);
 
   it("JXL：明确降级（unsupportedReason，不伪装支持）", async () => {
     const directory = await withTemp();

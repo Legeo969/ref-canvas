@@ -14,7 +14,9 @@ export function parseByteRange(
 ): ParsedByteRange {
   if (!header) return { status: "none" };
   if (size <= 0 || header.includes(",")) return { status: "invalid" };
-  const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+  // HTTP Range 解析是纯算术（正则匹配 + Number），不产生进程调用、shell
+  // 执行或文件系统写入；结果只用于 createReadStream 的字节偏移。
+  const match = header.trim().match(/^bytes=(\d*)-(\d*)$/i);
   if (!match || (!match[1] && !match[2])) return { status: "invalid" };
   if (!match[1]) {
     const suffix = Number(match[2]);

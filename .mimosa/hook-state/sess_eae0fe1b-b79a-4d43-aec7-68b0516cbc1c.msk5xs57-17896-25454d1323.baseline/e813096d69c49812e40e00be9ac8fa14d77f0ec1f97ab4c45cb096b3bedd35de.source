@@ -1,0 +1,2 @@
+node-linker=hoisted
+block-exotic-subdeps=false

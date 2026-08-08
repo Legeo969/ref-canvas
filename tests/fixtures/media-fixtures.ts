@@ -21,15 +21,40 @@ function writeHalf(buffer: Buffer, offset: number, value: number): void {
 }
 
 /**
+ * fixture 生成器把输出文件写入调用方传入的临时目录；文件名要么是固定常量、
+ * 要么是纯字母数字扩展名。这里统一限制文件名与目录边界（resolve 后必须位于
+ * 根目录内），防止 `..` 越出临时目录（纵深防御）。
+ */
+function fixtureTarget(directory: string, filename: string): string {
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/.test(filename) ||
+    filename.includes("..") ||
+    filename.includes("/") ||
+    filename.includes("\\")
+  ) {
+    throw new Error("FIXTURE_INVALID_FILENAME");
+  }
+  const root = path.resolve(directory);
+  const target = path.resolve(root, filename);
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error("FIXTURE_OUT_OF_DIRECTORY");
+  }
+  return target;
+}
+
+/**
  * 生成 2×2 的最小 EXR（NONE 压缩，RGB half）。
  * 像素：全图 0.5 灰（线性中灰，用于验证 tone map 输出）。
  */
 export async function writeExrFixture(
   directory: string,
   filename = "midgray.exr",
+  extraHeaderBytes = 0,
+  channelNames: string[] = ["R", "G", "B"],
+  channelValues: Record<string, 0 | 0.5 | 1> = {},
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
 
   const channelList = (name: string): Buffer => {
     const nameBytes = Buffer.from(`${name}\0`, "utf8");
@@ -43,9 +68,7 @@ export async function writeExrFixture(
     return block;
   };
   const channelBlock = Buffer.concat([
-    channelList("R"),
-    channelList("G"),
-    channelList("B"),
+    ...channelNames.map(channelList),
     Buffer.from([0]), // channels 结束
   ]);
 
@@ -108,12 +131,22 @@ export async function writeExrFixture(
     ),
     attribute("screenWindowCenter", "v2f", v2f(0, 0)),
     attribute("screenWindowWidth", "float", float32(1.0)),
+    ...(extraHeaderBytes > 0
+      ? [
+          attribute(
+            "comment",
+            "string",
+            Buffer.alloc(extraHeaderBytes, 65),
+          ),
+        ]
+      : []),
     Buffer.from([0]), // 空 attribute = header 结束
   ]);
 
-  // 每行数据：y(4) + 数据大小(4) + 交织像素（R,G,B half × 2 像素）。
-  // OpenEXR scanline block：y 坐标 + 块大小 + 按通道顺序交织的采样。
-  const rowBytes = 4 + 4 + 2 * 3 * 2;
+  // 每行数据：y(4) + 数据大小(4) + 各通道 half × 2 像素。
+  // OpenEXR scanline block 按 channel-major 顺序存储一整行采样。
+  const scanlineDataBytes = 2 * channelNames.length * 2;
+  const rowBytes = 4 + 4 + scanlineDataBytes;
   const offsetTable = Buffer.alloc(2 * 8);
   const firstRow = header.length + offsetTable.length;
   offsetTable.writeBigInt64LE(BigInt(firstRow), 0);
@@ -123,10 +156,15 @@ export async function writeExrFixture(
   for (let y = 0; y < 2; y += 1) {
     const row = Buffer.alloc(rowBytes);
     row.writeInt32LE(y, 0); // y 坐标
-    row.writeInt32LE(2 * 3 * 2, 4); // 像素数据大小（交织 half）
-    for (let pixel = 0; pixel < 2; pixel += 1) {
-      for (let channel = 0; channel < 3; channel += 1) {
-        writeHalf(row, 8 + (pixel * 3 + channel) * 2, HALF_HALF);
+    row.writeInt32LE(scanlineDataBytes, 4); // 像素数据大小（交织 half）
+    for (let channel = 0; channel < channelNames.length; channel += 1) {
+      for (let pixel = 0; pixel < 2; pixel += 1) {
+        const value = channelValues[channelNames[channel]] ?? 0.5;
+        writeHalf(
+          row,
+          8 + (channel * 2 + pixel) * 2,
+          value === 0 ? 0 : value === 1 ? 0x3c00 : HALF_HALF,
+        );
       }
     }
     rows.push(row);
@@ -142,7 +180,7 @@ export async function writeHdrFixture(
   filename = "midgray.hdr",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const head = Buffer.from(
     "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 2\n",
     "latin1",
@@ -160,7 +198,7 @@ export async function writeGlbFixture(
   filename = "empty.glb",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const json = Buffer.from(
     JSON.stringify({
       asset: { version: "2.0", generator: "refcanvas-fixture" },
@@ -194,7 +232,7 @@ export async function writeGltfFixture(
   filename = "triangle.gltf",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const document = {
     asset: { version: "2.0" },
     scene: 0,
@@ -228,7 +266,7 @@ export async function writeObjFixture(
   filename = "triangle.obj",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   await writeFile(
     target,
     "v 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvn 0 0 1\nf 1/1/1 2/1/1 3/1/1\n",
@@ -243,7 +281,7 @@ export async function writeStlAsciiFixture(
   filename = "twins.stl",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const facet = (normal: string, vertices: Array<[number, number, number]>): string =>
     [
       `facet normal ${normal}`,
@@ -275,7 +313,7 @@ export async function writeStlBinaryFixture(
   filename = "twins-binary.stl",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const triangles: Array<Array<[number, number, number]>> = [
     [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
     [[1, 0, 0], [2, 2, 0], [0, 1, 0]],
@@ -302,7 +340,7 @@ export async function writeVideoFixture(
   filename = "sample.mp4",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const executable = process.env.REFCANVAS_FFMPEG || ffmpegStatic;
   await execFileAsync(
     executable,
@@ -343,7 +381,7 @@ export async function writePsdFixture(
   filename = "minimal.psd",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const header = Buffer.alloc(26);
   header.write("8BPS", 0, "latin1");
   header.writeUInt16BE(1, 4); // version 1 (PSD)
@@ -369,7 +407,7 @@ export async function writeJxlFixture(
   filename = "fake.jxl",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const head = Buffer.from([0xff, 0x0a]);
   const body = Buffer.alloc(64, 0x42);
   await writeFile(target, Buffer.concat([head, body]));
@@ -382,7 +420,7 @@ export async function writeRawFixture(
   filename = "fake.nef",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const head = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00]);
   await writeFile(target, head);
   return target;
@@ -394,7 +432,7 @@ export async function writeAudioFixture(
   filename = "tone.wav",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const target = fixtureTarget(directory, filename);
   const executable = process.env.REFCANVAS_FFMPEG || ffmpegStatic;
   await execFileAsync(
     executable,
@@ -417,9 +455,17 @@ export async function writeAudioWithCoverFixture(
   filename = "cover.mp3",
 ): Promise<string> {
   await mkdir(directory, { recursive: true });
-  const target = path.join(directory, filename);
+  const root = path.resolve(directory);
+  const target = path.resolve(root, filename);
+  const cover = path.resolve(root, "cover.png");
+  // 封面/输出必须留在传入的临时目录内（文件名固定常量，防御性校验）。
+  if (
+    target !== root &&
+    !target.startsWith(root + path.sep)
+  ) {
+    throw new Error("FIXTURE_OUT_OF_DIRECTORY");
+  }
   const executable = process.env.REFCANVAS_FFMPEG || ffmpegStatic;
-  const cover = path.join(directory, "cover.png");
   const { default: sharp } = await import("sharp");
   await sharp({
     create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 60, b: 40 } },

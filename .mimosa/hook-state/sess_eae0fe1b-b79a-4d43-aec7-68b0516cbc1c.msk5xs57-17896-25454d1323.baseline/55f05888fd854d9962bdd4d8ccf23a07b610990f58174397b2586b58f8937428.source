@@ -1,0 +1,39 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref so pushes don't pile up.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Windows is the only shipping target and matches local development, so a
+    # green check here means the same thing it means on a maintainer's machine.
+    runs-on: windows-latest
+    env:
+      # `pnpm check` runs typecheck + vitest in Node; no test imports the
+      # Electron binary at runtime, so skip the multi-hundred-MB download.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Gate (repository, lint, typecheck, architecture, unit, integration)
+        run: pnpm check

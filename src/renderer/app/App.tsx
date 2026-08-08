@@ -4,9 +4,11 @@ import {
   Expand,
   FileJson,
   FolderOpen,
+  HardDrive,
   ImageDown,
   MonitorPlay,
   PanelLeftClose,
+  PanelsTopLeft,
   Pin,
   PinOff,
   PackageOpen,
@@ -15,21 +17,16 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type {
-  AssetRecord,
-  BoardSummary,
-  SimilarAsset,
-  SimilarityIndexSnapshot,
-} from "../../shared/contracts";
+import type { BoardSummary } from "../../shared/contracts";
 import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
 import { parseBoardWindowParams } from "./board-window";
 import { useFoundSettings } from "./found-settings";
-import { AssetPanel } from "../components/AssetPanel";
 import { ActionsPanel } from "../components/ActionsPanel";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { CaptureOverlay } from "../components/CaptureOverlay";
-import { DetailsPanel } from "../components/DetailsPanel";
+import { DirectoryDetailsPanel } from "../components/DirectoryDetailsPanel";
+import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
 import { useDialog } from "../components/DialogProvider";
 import { DuplicatesPanel } from "../components/DuplicatesPanel";
 import {
@@ -38,7 +35,6 @@ import {
 } from "../components/PanelDividers";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { Sidebar } from "../components/Sidebar";
-import { SimilarPanel } from "../components/SimilarPanel";
 import { useAppStore } from "./store";
 
 export function App() {
@@ -53,6 +49,14 @@ export function App() {
     }) => state),
   );
   const dialog = useDialog();
+  const uiScale = useFoundSettings().uiScale;
+  // 迁移失败恢复模式（?recovery=1）：只展示恢复信息，不进入主工作区。
+  const [recoveryMode] = useState(() =>
+    new URLSearchParams(window.location.search).get("recovery") === "1",
+  );
+  const [migrationFailure, setMigrationFailure] = useState<Awaited<
+    ReturnType<typeof window.refCanvas.system.getMigrationFailure>
+  > | null>(null);
   // 独立白板窗口（?board=<id>&mode=window）：只渲染目标白板。
   const [boardWindowParams] = useState(() =>
     parseBoardWindowParams(window.location.search),
@@ -63,6 +67,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"general" | "found">("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [panelLayout, setPanelLayout] = useState(() =>
     panelLayoutForWindow(PANEL_DEFAULTS, window.innerWidth),
@@ -70,40 +75,25 @@ export function App() {
   const [presentationMode, setPresentationModeState] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [pinPending, setPinPending] = useState(false);
-  const [similarSource, setSimilarSource] = useState<AssetRecord | null>(null);
-  const [similarResults, setSimilarResults] = useState<SimilarAsset[]>([]);
-  const [similarLoading, setSimilarLoading] = useState(false);
-  const [similarMinScore, setSimilarMinScore] = useState(70);
-  const [similarityIndex, setSimilarityIndex] =
-    useState<SimilarityIndexSnapshot>({
-      state: "idle",
-      total: 0,
-      processed: 0,
-      indexed: 0,
-      failed: 0,
-    });
 
   useEffect(() => {
-    if (!boardWindowParams) {
-      void store.initialize();
+    if (recoveryMode) {
+      void window.refCanvas.system.getMigrationFailure().then(setMigrationFailure);
     }
-  }, [boardWindowParams]);
+  }, [recoveryMode]);
+
+  useEffect(() => {
+    if (boardWindowParams) return;
+    if (recoveryMode) return; // 恢复模式不初始化主工作区。
+    void store.initialize();
+  }, [boardWindowParams, recoveryMode]);
 
   useEffect(() => {
     if (boardWindowParams) return;
     void window.refCanvas.filesystem.setObservedDirectory(
-      store.navigationSource === "directory" ? store.directoryPath : null,
+      store.workspaceMode === "directory" ? store.directoryPath : null,
     );
-  }, [boardWindowParams, store.directoryPath, store.navigationSource]);
-
-  useEffect(
-    () => () => {
-      if (!boardWindowParams) {
-        void window.refCanvas.filesystem.setObservedDirectory(null);
-      }
-    },
-    [boardWindowParams],
-  );
+  }, [boardWindowParams, store.directoryPath, store.workspaceMode]);
 
   useEffect(() => {
     if (!store.preferences) return;
@@ -126,20 +116,20 @@ export function App() {
   }, [windowWidth]);
 
   useEffect(() => {
-    void window.refCanvas.library
-      .getSimilarityIndex()
-      .then(setSimilarityIndex);
-    return window.refCanvas.library.onSimilarityProgress(setSimilarityIndex);
-  }, []);
-
-  useEffect(() => {
     const openDuplicates = () => setDuplicatesOpen(true);
+    const openSettings = (event: Event) => {
+      const detail = (event as CustomEvent<"general" | "found">).detail;
+      setSettingsTab(detail === "found" ? "found" : "general");
+      setMaintenanceOpen(true);
+    };
     window.addEventListener("refcanvas:duplicates", openDuplicates);
+    window.addEventListener("refcanvas:open-settings", openSettings);
     const unsubscribe = window.refCanvas.system.onRegionCaptureRequest(() => {
       void window.refCanvas.system.prepareRegionCapture().then(setCaptureSource);
     });
     return () => {
       window.removeEventListener("refcanvas:duplicates", openDuplicates);
+      window.removeEventListener("refcanvas:open-settings", openSettings);
       unsubscribe();
     };
   }, []);
@@ -191,7 +181,7 @@ export function App() {
         target?.matches("input, textarea, select") ||
         target?.isContentEditable ||
         Boolean(target?.closest('[role="dialog"]'));
-      if (event.key === "F11") {
+      if (event.key === "F11" && store.workspaceMode === "board") {
         event.preventDefault();
         void setPresentationMode(!presentationMode);
         return;
@@ -210,7 +200,8 @@ export function App() {
         !event.ctrlKey &&
         !event.altKey &&
         !isEditing &&
-        !presentationMode
+        !presentationMode &&
+        store.workspaceMode === "board"
       ) {
         event.preventDefault();
         store.toggleFocusMode();
@@ -221,6 +212,7 @@ export function App() {
   }, [
     presentationMode,
     setPresentationMode,
+    store.workspaceMode,
     store.toggleFocusMode,
   ]);
 
@@ -238,11 +230,61 @@ export function App() {
     return () => window.removeEventListener("unhandledrejection", onUnhandled);
   }, []);
 
+  if (recoveryMode) {
+    return (
+      <div className="recovery-screen">
+        <div className="recovery-card">
+          <span className="brand-mark">R</span>
+          <h1>数据库升级未完成</h1>
+          <p>
+            RefCanvas 升级数据库时失败，已停止在恢复页，没有改动原数据库文件。
+          </p>
+          <dl>
+            <div>
+              <dt>数据库文件</dt>
+              <dd>{migrationFailure?.databasePath ?? "…"}</dd>
+            </div>
+            <div>
+              <dt>迁移备份目录</dt>
+              <dd>{migrationFailure?.backupDirectory ?? "…"}</dd>
+            </div>
+          </dl>
+          {migrationFailure?.entries.map((entry) => (
+            <div key={entry.stepId} className="recovery-entry">
+              <code>{entry.stepId}</code>
+              <span>
+                v{entry.fromVersion} → v{entry.toVersion}
+              </span>
+              <pre>{entry.error}</pre>
+            </div>
+          ))}
+          <div className="recovery-actions">
+            <button
+              className="secondary-button"
+              onClick={() => {
+                if (migrationFailure?.backupDirectory) {
+                  void window.refCanvas.system.openExternal(
+                    migrationFailure.backupDirectory,
+                  );
+                }
+              }}
+            >
+              打开备份目录
+            </button>
+            <button className="primary-button" onClick={() => window.close()}>
+              退出
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (store.loading) {
     return (
       <div className="loading-screen">
         <span className="brand-mark">R</span>
-        <span>正在打开素材库…</span>
+        <span>正在打开磁盘工作区…</span>
       </div>
     );
   }
@@ -298,30 +340,14 @@ export function App() {
     }
   };
 
-  const findSimilar = async (
-    asset: AssetRecord,
-    minScore = similarMinScore,
-  ) => {
-    setSimilarSource(asset);
-    setSimilarLoading(true);
-    try {
-      const results = await window.refCanvas.library.findSimilar(asset.id, {
-        limit: 200,
-        minScore,
-      });
-      setSimilarResults(results);
-      setSimilarityIndex(await window.refCanvas.library.getSimilarityIndex());
-    } finally {
-      setSimilarLoading(false);
-    }
+  const openPickedDirectory = async (directory: string) => {
+    await store.openDirectory(directory);
   };
 
   // 独立白板窗口：只渲染目标白板（跳过主窗口 store 初始化与工作台）。
   if (boardWindowParams) {
     return <BoardWindow boardId={boardWindowParams.boardId} />;
   }
-
-  const uiScale = useFoundSettings().uiScale;
 
   return (
     <main
@@ -352,45 +378,66 @@ export function App() {
         />
       )}
       {maintenanceOpen && (
-        <SettingsPanel onClose={() => setMaintenanceOpen(false)} />
-      )}
-      {similarSource && (
-        <SimilarPanel
-          source={similarSource}
-          results={similarResults}
-          index={similarityIndex}
-          loading={similarLoading}
-          minScore={similarMinScore}
-          onMinScoreChange={setSimilarMinScore}
-          onRefresh={() => void findSimilar(similarSource)}
-          onCancelIndex={() =>
-            void window.refCanvas.library.cancelSimilarityIndex()
-          }
-          onSelect={(asset) => {
-            store.selectAsset(asset);
-            setSimilarSource(null);
-          }}
-          onClose={() => setSimilarSource(null)}
+        <SettingsPanel
+          initialTab={settingsTab}
+          onClose={() => setMaintenanceOpen(false)}
         />
       )}
       {notice && <div className="app-toast">{notice}</div>}
       <header className="titlebar">
-        <div className="brand">
-          <span className="brand-mark">R</span>
-          <span>RefCanvas</span>
+        <div className="titlebar-left">
+          <div className="brand">
+            <span className="brand-mark">R</span>
+            <span>RefCanvas</span>
+          </div>
+          <div className="workspace-mode-switch" role="tablist" aria-label="工作区">
+            <button
+              role="tab"
+              aria-selected={store.workspaceMode === "directory"}
+              className={store.workspaceMode === "directory" ? "active" : ""}
+              onClick={async () => {
+                if (store.directoryPath) {
+                  store.showDirectoryWorkspace();
+                  return;
+                }
+                const directory = await window.refCanvas.system.pickDirectory({
+                  title: "打开磁盘文件夹",
+                });
+                if (directory) await openPickedDirectory(directory);
+              }}
+            >
+              <HardDrive size={14} />
+              磁盘
+            </button>
+            <button
+              role="tab"
+              aria-selected={store.workspaceMode === "board"}
+              className={store.workspaceMode === "board" ? "active" : ""}
+              onClick={() => {
+                if (store.activeBoard) {
+                  void store.switchBoard(store.activeBoard.id);
+                } else {
+                  void createBoard();
+                }
+              }}
+            >
+              <PanelsTopLeft size={14} />
+              参考板
+            </button>
+          </div>
         </div>
         <div className="titlebar-actions">
           <button
             className="titlebar-button"
             onClick={async () => {
               const directory = await window.refCanvas.system.pickDirectory({
-                title: "打开本地文件夹",
+                title: "打开磁盘文件夹",
               });
-              if (directory) await store.openDirectory(directory);
+              if (directory) await openPickedDirectory(directory);
             }}
           >
             <FolderOpen size={15} />
-            打开本地文件夹
+            打开文件夹
           </button>
           <button
             className="titlebar-button"
@@ -413,50 +460,59 @@ export function App() {
             <Camera size={15} />
             区域
           </button>
-          <span className="titlebar-separator" />
-          <button
-            className="icon-button"
-            onClick={() => {
-              if (store.activeBoard) {
-                void window.refCanvas.boards.exportJson(store.activeBoard.id);
-              }
-            }}
-            aria-label="导出 JSON"
-          >
-            <FileJson size={16} />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() =>
-              window.dispatchEvent(new Event("refcanvas:export-png"))
-            }
-            aria-label="导出 PNG"
-          >
-            <ImageDown size={16} />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => {
-              if (store.activeBoard) {
-                void window.refCanvas.boards.openWindow(store.activeBoard.id);
-              }
-            }}
-            aria-label="在新窗口打开白板"
-            title="在新窗口打开白板"
-          >
-            <SquareArrowOutUpRight size={16} />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => {
-              if (store.activeBoard) {
-                void window.refCanvas.library.collectProject(store.activeBoard.id);
-              }
-            }}
-            aria-label="收集白板项目"
-          >
-            <PackageOpen size={16} />
-          </button>
+          {store.workspaceMode === "board" && (
+            <>
+              <span className="titlebar-separator" />
+              <button
+                className="icon-button"
+                onClick={() => {
+                  if (store.activeBoard) {
+                    void window.refCanvas.boards.exportJson(store.activeBoard.id);
+                  }
+                }}
+                aria-label="导出 JSON"
+              >
+                <FileJson size={16} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() =>
+                  window.dispatchEvent(new Event("refcanvas:export-png"))
+                }
+                aria-label="导出 PNG"
+              >
+                <ImageDown size={16} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => {
+                  if (store.activeBoard) {
+                    void window.refCanvas.boards.openWindow(store.activeBoard.id);
+                  }
+                }}
+                aria-label="在新窗口打开白板"
+                title="在新窗口打开白板"
+              >
+                <SquareArrowOutUpRight size={16} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={async () => {
+                  if (!store.activeBoard) return;
+                  const destination = await window.refCanvas.library.collectProject(
+                    store.activeBoard.id,
+                  );
+                  if (!destination) return;
+                  setNotice(`参考板项目已打包到 ${destination}`);
+                  window.setTimeout(() => setNotice(null), 4200);
+                }}
+                aria-label="打包参考板及源文件"
+                title="打包参考板及源文件"
+              >
+                <PackageOpen size={16} />
+              </button>
+            </>
+          )}
           <span className="titlebar-separator" />
           <button
             className={`icon-button pin-toggle${alwaysOnTop ? " active" : ""}`}
@@ -470,29 +526,36 @@ export function App() {
               <PinOff className="pin-icon-active" size={16} />
             </span>
           </button>
+          {store.workspaceMode === "board" && (
+            <>
+              <button
+                className="icon-button"
+                onClick={store.toggleFocusMode}
+                aria-label="专注白板"
+                data-shortcut="Tab"
+              >
+                {store.focusMode ? (
+                  <PanelLeftClose size={16} />
+                ) : (
+                  <Expand size={16} />
+                )}
+              </button>
+              <button
+                className="icon-button"
+                onClick={() => void setPresentationMode(true)}
+                aria-label="全屏展示白板"
+                data-shortcut="F11"
+              >
+                <MonitorPlay size={16} />
+              </button>
+            </>
+          )}
           <button
             className="icon-button"
-            onClick={store.toggleFocusMode}
-            aria-label="专注白板"
-            data-shortcut="Tab"
-          >
-            {store.focusMode ? (
-              <PanelLeftClose size={16} />
-            ) : (
-              <Expand size={16} />
-            )}
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => void setPresentationMode(true)}
-            aria-label="全屏展示白板"
-            data-shortcut="F11"
-          >
-            <MonitorPlay size={16} />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => setMaintenanceOpen(true)}
+            onClick={() => {
+              setSettingsTab("general");
+              setMaintenanceOpen(true);
+            }}
             aria-label="设置"
           >
             <Settings size={16} />
@@ -500,7 +563,7 @@ export function App() {
         </div>
       </header>
 
-      <div className="workspace">
+      <div className={`workspace ${store.workspaceMode}-workspace`}>
         <Sidebar />
         <PanelDividers
           panel="sidebar"
@@ -511,54 +574,44 @@ export function App() {
             void store.setPreferences({ panelLayout: next });
           }}
         />
-        <AssetPanel />
-        <PanelDividers
-          panel="asset"
-          layout={panelLayout}
-          windowWidth={windowWidth}
-          onCommit={(next) => {
-            setPanelLayout(next);
-            void store.setPreferences({ panelLayout: next });
-          }}
-        />
-        {store.activeBoard && store.boardDocument ? (
-          <BoardCanvas
-            board={store.activeBoard}
-            document={store.boardDocument}
-            assets={store.assets}
-            boards={store.boards}
-            onSelectAsset={store.selectAsset}
-            onLocateAsset={store.locateAssetInLibrary}
-            onSave={store.saveBoard}
-            onSwitchBoard={store.switchBoard}
-            onCreateBoard={createBoard}
-            onRenameBoard={renameBoard}
-            onDeleteBoard={deleteBoard}
-            onLibraryChanged={store.reloadAssets}
-          />
+        {store.workspaceMode === "board" ? (
+          store.activeBoard && store.boardDocument ? (
+            <BoardCanvas
+              board={store.activeBoard}
+              document={store.boardDocument}
+              assets={store.assets}
+              boards={store.boards}
+              onSelectAsset={store.selectAsset}
+              onLocateAsset={store.locateAssetInLibrary}
+              onSave={store.saveBoard}
+              onSwitchBoard={store.switchBoard}
+              onCreateBoard={createBoard}
+              onRenameBoard={renameBoard}
+              onDeleteBoard={deleteBoard}
+              onLibraryChanged={store.reloadAssets}
+              pendingAssetIds={store.pendingBoardAssetIds}
+              onPendingAssetsConsumed={store.consumePendingBoardAssets}
+            />
+          ) : (
+            <section className="board-panel board-unavailable">
+              无法打开白板
+            </section>
+          )
         ) : (
-          <section className="board-panel board-unavailable">
-            无法打开白板
-          </section>
+          <>
+            <DirectoryAssetPanel />
+            <PanelDividers
+              panel="details"
+              layout={panelLayout}
+              windowWidth={windowWidth}
+              onCommit={(next) => {
+                setPanelLayout(next);
+                void store.setPreferences({ panelLayout: next });
+              }}
+            />
+            <DirectoryDetailsPanel entry={store.selectedDirectoryEntry} />
+          </>
         )}
-        <PanelDividers
-          panel="details"
-          layout={panelLayout}
-          windowWidth={windowWidth}
-          onCommit={(next) => {
-            setPanelLayout(next);
-            void store.setPreferences({ panelLayout: next });
-          }}
-        />
-        <DetailsPanel
-          onUpdate={store.updateAsset}
-          onRelink={store.relinkAsset}
-          collections={store.collections}
-          onAddToCollection={store.addToCollection}
-          onRemoveFromCollection={store.removeFromCollection}
-          onSetTags={store.setTags}
-          onFindSimilar={(asset) => void findSimilar(asset)}
-        />
       </div>
 
       {presentationMode && (
@@ -574,7 +627,13 @@ export function App() {
       )}
 
       <footer className="statusbar">
-        <span>{store.importing ? "正在索引素材…" : "素材库已就绪"}</span>
+        <span>
+          {store.importing
+            ? "正在更新文件索引…"
+            : store.workspaceMode === "directory"
+              ? "磁盘浏览已就绪"
+            : "参考板已就绪"}
+        </span>
         <span className="status-hint">
           方向键浏览 · Space 预览 · F 收藏 · 0–5 评分 · 素材 Alt+拖到外部
         </span>

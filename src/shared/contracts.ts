@@ -72,7 +72,6 @@ export interface AssetRecord {
   /** Optional user-chosen image overriding the generated thumbnail. */
   customThumbnailPath: string | null;
   tags: string[];
-  collectionIds: string[];
   createdAt: string;
   updatedAt: string;
   previewUrl: string;
@@ -96,12 +95,6 @@ export interface AssetSearchInput {
   lifecycle?: AssetLifecycle;
   pageSize?: number;
   cursor?: string;
-  collectionId?: string;
-  /**
-   * When true (default when omitted), a collectionId search includes assets
-   * in descendant subfolders. Set to false to query direct members only.
-   */
-  includeSubcollections?: boolean;
   tag?: string;
   favorite?: boolean;
   ratingMin?: number;
@@ -178,8 +171,6 @@ export interface BatchAssetPatch {
   addTags?: string[];
   removeTags?: string[];
   replaceTags?: string[];
-  addCollectionId?: string;
-  removeCollectionId?: string;
   favorite?: boolean;
   rating?: number;
   colorLabel?: AssetColorLabel;
@@ -237,6 +228,12 @@ export interface MountRoot {
   lastSeenAt: string | null;
 }
 
+export interface MountChangedEvent {
+  type: "added" | "removed" | "state";
+  mountId: string;
+  state?: MountRoot["state"];
+}
+
 /** 文件身份：磁盘上真实文件的路径 + fingerprint（计划 §7.2）。 */
 export interface FileIdentity {
   id: string;
@@ -248,26 +245,6 @@ export interface FileIdentity {
   quickHash: string | null;
   contentHash: string | null;
   linkState: "online" | "missing" | "offline" | "ambiguous";
-}
-
-export interface CollectionRecord {
-  id: string;
-  title: string;
-  parentId: string | null;
-  sortOrder: number;
-  directAssetCount: number;
-  assetCount: number;
-  /** Local interface access lock; never claims disk encryption. */
-  locked: boolean;
-  createdAt: string;
-}
-
-/** Batch folder operations (create several at once, rename/move with a pattern). */
-export interface BatchCollectionOp {
-  create?: string[];
-  rename?: Array<{ id: string; title: string }>;
-  move?: Array<{ id: string; parentId: string | null }>;
-  reorder?: Array<{ id: string; sortOrder: number }>;
 }
 
 export interface AutoTagRule {
@@ -314,6 +291,23 @@ export interface AppInfo {
   userDataPath: string;
 }
 
+/**
+ * 启动期数据库迁移失败的恢复信息（FND-001）。
+ * 迁移失败时应用停留在恢复页，不进入主工作区；UI 据此展示可恢复的
+ * 数据库文件与迁移备份目录，并列出失败步骤。
+ */
+export interface MigrationRecoveryInfo {
+  failed: boolean;
+  databasePath: string | null;
+  backupDirectory: string | null;
+  entries: Array<{
+    stepId: string;
+    fromVersion: number;
+    toVersion: number;
+    error: string | null;
+  }>;
+}
+
 export interface BoardSettings {
   /** PureRef 2.1 相近的直接操作预设。 */
   interactionPreset: "pureref" | "standard";
@@ -329,7 +323,7 @@ export interface BoardSettings {
 /** 应用级偏好（非资料库级），存主进程 settings 表。 */
 export interface AppPreferences {
   globalShortcuts: boolean;
-  /** 后台驻留：关闭窗口后保留主进程、目录监控与托盘。 */
+  /** 后台驻留：关闭窗口后保留主进程与托盘。 */
   backgroundResidency: boolean;
   boardSettings: BoardSettings;
   /** Found 高级功能设置（阶段 5），默认值见 FOUND_SETTINGS_DEFAULTS。 */
@@ -350,11 +344,59 @@ export interface SequenceRule {
 export interface Mp4Preset {
   id: string;
   label: string;
-  /** 最大宽边像素；null = 原始分辨率。 */
-  maxWidth: number | null;
-  /** libx264 CRF。 */
-  crf: number;
+  enabled: boolean;
+  codec: "h264" | "h265";
+  quality: "medium" | "high" | "best";
+  resolution: "original" | "half" | "quarter";
 }
+
+export const foundFormatGroupIds = [
+  "model3d",
+  "image",
+  "video",
+  "audio",
+  "pdf",
+] as const;
+
+export type FoundFormatGroupId = (typeof foundFormatGroupIds)[number];
+
+export interface FoundFormatGroup {
+  id: FoundFormatGroupId;
+  label: string;
+  extensions: string[];
+}
+
+export const FOUND_FORMAT_GROUP_DEFAULTS: FoundFormatGroup[] = [
+  {
+    id: "model3d",
+    label: "3D",
+    extensions: ["obj", "abc", "fbx", "gltf", "glb", "stl"],
+  },
+  {
+    id: "image",
+    label: "IMG",
+    extensions: [
+      "jpg", "jpeg", "png", "bmp", "tif", "tiff", "webp", "gif", "exr", "hdr",
+      "raw", "dng", "arw", "nef", "heic", "heif", "avif", "jxl", "jp2", "svg",
+      "psd", "psb", "tga", "dds",
+    ],
+  },
+  {
+    id: "video",
+    label: "VIDS",
+    extensions: ["mp4", "mpeg", "mpg", "mov", "webm", "wmv", "mkv", "m4v", "flv", "avi", "gif", "mxf", "ts", "vcc", "h266", "evc", "apv", "rmvb", "rv60"],
+  },
+  {
+    id: "audio",
+    label: "MP3",
+    extensions: ["mp3", "wav", "flac", "ogg", "aac", "m4a", "opus", "wma", "aiff", "ape"],
+  },
+  {
+    id: "pdf",
+    label: "PDF",
+    extensions: ["pdf"],
+  },
+];
 
 /** Found 高级功能设置（全部进持久化 + cache invalidation + 任务参数）。 */
 export interface FoundSettings {
@@ -365,11 +407,18 @@ export interface FoundSettings {
   defaultFlattenDepth: number;
   /** 每个文件夹独立记忆的 flattening 深度（path → depth）。 */
   flattenPerFolder: Record<string, number>;
+  /** Found 式可编辑格式分组；扩展名不含点、统一小写。 */
+  formatGroups: FoundFormatGroup[];
+  /** 纳入 OTHER 筛选的非视觉扩展名；默认不隐藏磁盘上的未知文件。 */
+  formatWhitelist: string[];
   // §10.2 高级预览
   autoplayVideo: boolean;
   autoplaySequence: boolean;
+  /** 目录网格是否把连续图片帧折叠成一个序列卡片。 */
+  collapseImageSequences: boolean;
   autoplayModel3d: boolean;
   defaultSequenceFps: number;
+  sequenceFpsPresets: number[];
   /** 少于该帧数的同类文件不判定为序列。 */
   sequenceMinFrames: number;
   sequenceRules: SequenceRule[];
@@ -405,10 +454,17 @@ export const FOUND_SETTINGS_DEFAULTS: FoundSettings = {
   folderClickMode: "double",
   defaultFlattenDepth: 0,
   flattenPerFolder: {},
+  formatGroups: FOUND_FORMAT_GROUP_DEFAULTS,
+  formatWhitelist: [
+    "txt", "md", "json", "xml", "csv", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "zip", "rar", "7z", "tar", "gz", "svg", "ai", "eps", "hip", "nk", "max", "ma", "mb",
+  ],
   autoplayVideo: true,
   autoplaySequence: true,
+  collapseImageSequences: true,
   autoplayModel3d: false,
-  defaultSequenceFps: 24,
+  defaultSequenceFps: 25,
+  sequenceFpsPresets: [15, 24, 25, 30, 60, 90, 120],
   sequenceMinFrames: 2,
   sequenceRules: [],
   alphaBackground: "checker",
@@ -419,12 +475,32 @@ export const FOUND_SETTINGS_DEFAULTS: FoundSettings = {
   downscaleMode: "suffix",
   downscaleSuffix: "2k",
   downscaleSubdirectory: "downscaled",
-  defaultMp4PresetId: "original",
+  defaultMp4PresetId: "convert-default",
   mp4Presets: [
-    { id: "original", label: "原始分辨率 H.264", maxWidth: null, crf: 18 },
-    { id: "1080p", label: "1080p（宽边 1920）", maxWidth: 1920, crf: 20 },
-    { id: "720p", label: "720p（宽边 1280）", maxWidth: 1280, crf: 21 },
-    { id: "web", label: "Web（宽边 960）", maxWidth: 960, crf: 23 },
+    {
+      id: "convert-default",
+      label: "默认转换",
+      enabled: true,
+      codec: "h264",
+      quality: "high",
+      resolution: "original",
+    },
+    {
+      id: "convert-2",
+      label: "转换 2",
+      enabled: false,
+      codec: "h265",
+      quality: "medium",
+      resolution: "half",
+    },
+    {
+      id: "convert-3",
+      label: "转换 3",
+      enabled: false,
+      codec: "h265",
+      quality: "best",
+      resolution: "quarter",
+    },
   ],
   ocioConfigPath: null,
   lutDirectories: [],
@@ -457,7 +533,7 @@ export interface DirectoryEntry {
   isDirectory: boolean;
   /** 小写扩展名（不含点）；目录为空字符串。 */
   extension: string;
-  /** Folder flattening 深度（阶段 5；0 = 当前目录层）。 */
+  /** 包含子目录的层级；0 = 仅当前目录。 */
   depth?: number;
   /** 按需分批补齐的元数据，排序依赖字段时先完成补齐再稳定排序。 */
   size?: number;
@@ -467,6 +543,8 @@ export interface DirectoryEntry {
   duration?: number;
   /** 同目录文件序列的轻量识别结果；仅用于浏览和预览。 */
   sequence?: import("./file-sequence").FileSequenceInfo;
+  /** 本地索引中的用户标签；磁盘模式下按需回填。 */
+  tags?: string[];
 }
 
 export interface DirectoryPage {
@@ -497,6 +575,7 @@ export type DirectorySelectionScope =
       directoryPath: string;
       revision: string;
       excludedPaths: string[];
+      extensions?: string[];
     }
   | {
       mode: "search";
@@ -507,7 +586,6 @@ export type DirectorySelectionScope =
 
 export type DirectoryBatchAction =
   | { type: "materialize" }
-  | { type: "addCollection"; collectionId: string }
   | { type: "tag"; tags: string[] }
   | { type: "trash" }
   | { type: "exportPaths"; destination: string };
@@ -586,21 +664,16 @@ export interface QuickAccessEntry {
 }
 
 export interface MaterializeResult {
-  /** 复用同路径记录的 assetId。 */
+  /** 复用同路径索引记录的 assetId。 */
   asset: AssetRecord;
-  /** 是否新建记录（false 表示同路径已入库，直接复用）。 */
+  /** 是否新建记录（false 表示同路径已有索引，直接复用）。 */
   created: boolean;
 }
 
 export interface FilesystemRenameResult {
   path: string;
-  /** 该路径是否已入库（入库则同步 path/identity/白板引用/缩略图缓存，assetId 不变）。 */
+  /** 该路径是否已索引（若已索引则同步 path/identity/白板引用/缩略图缓存，assetId 不变）。 */
   syncedAsset: AssetRecord | null;
-}
-
-export interface FolderLockStatus {
-  collectionId: string;
-  locked: boolean;
 }
 
 export interface TagRecord {
@@ -947,22 +1020,13 @@ export interface ReconcileSnapshot {
   pending: ReconcileEntry[];
 }
 
-// --- §13.4 新增 API 类型（mounts / metadata / collections refs / media / providers）---
+// --- §13.4 新增 API 类型（mounts / metadata / media / providers）---
 
 /** 用户自定义 metadata 补丁：tags、rating、notes（计划 §7.2）。 */
 export interface UserMetadataPatch {
   tags?: string[];
   rating?: number;
   notes?: string;
-}
-
-/** Collection 的磁盘文件引用（计划 §7.2 CollectionReference）。 */
-export interface CollectionReferenceInfo {
-  collectionId: string;
-  mountId: string;
-  relativePath: string;
-  fingerprint: string;
-  state: "resolved" | "missing" | "ambiguous" | "offline";
 }
 
 /** media.probe 结果（计划 §9）。 */
@@ -977,6 +1041,8 @@ export interface MediaProbeResult {
 export interface MediaThumbnailOptions {
   width?: number;
   height?: number;
+  /** EXR/HDR 标准通道（R/G/B/A）；缺省为合成预览。 */
+  channel?: string;
 }
 
 export interface MediaThumbnailResult {
@@ -1004,6 +1070,7 @@ export interface MediaFrameResult {
   /** 缓存内帧图路径。 */
   path: string;
   timeMs: number;
+  jobId?: string;
 }
 
 /** media.waveform 波形结果（阶段 4：音频）。 */
@@ -1037,6 +1104,7 @@ export interface ExportMp4Request {
   outputDirectory: string;
   /** 输出文件名（不含扩展名）。 */
   baseName: string;
+  jobId?: string;
 }
 
 export interface ExportMp4Result {
@@ -1045,6 +1113,34 @@ export interface ExportMp4Result {
   frameCount: number;
   width: number;
   height: number;
+  jobId?: string;
+}
+
+export interface ExportGifRequest {
+  files: string[];
+  fps: number;
+  outputDirectory: string;
+  baseName: string;
+  maxWidth?: number;
+  jobId?: string;
+}
+
+export interface ExportVideoGifRequest {
+  inputPath: string;
+  outputDirectory: string;
+  baseName: string;
+  fps?: number;
+  maxWidth?: number;
+  jobId?: string;
+}
+
+export interface ExportGifResult {
+  outputPath: string;
+  durationSeconds: number;
+  frameCount: number | null;
+  width: number;
+  height: number;
+  jobId?: string;
 }
 
 /** Downscale 请求（阶段 5 §10.4）。 */
@@ -1052,6 +1148,7 @@ export interface DownscaleRequest {
   paths: string[];
   maxDimension: number;
   mode: "suffix" | "subdirectory" | "backup";
+  jobId?: string;
 }
 
 export interface DownscaleItemResult {
@@ -1065,6 +1162,7 @@ export interface DownscaleResult {
   results: DownscaleItemResult[];
   /** backup 模式覆盖了原路径（UI 需先确认）。 */
   modifiesSources: boolean;
+  jobId?: string;
 }
 
 /** 色彩管理状态（阶段 5 §10.3）。 */
@@ -1093,6 +1191,7 @@ export interface ScriptRunResult {
   exitCode: number | null;
   output: string;
   timedOut: boolean;
+  failureReason: "TIMEOUT" | "OUTPUT_LIMIT_EXCEEDED" | null;
   durationMs: number;
 }
 
@@ -1205,26 +1304,6 @@ export interface RefCanvasApi {
     addWatchFolder(): Promise<WatchRoot | null>;
     listWatchRoots(): Promise<WatchRoot[]>;
     removeWatchRoot(id: string): Promise<WatchRoot>;
-    listCollections(): Promise<CollectionRecord[]>;
-    createCollection(
-      title: string,
-      parentId?: string | null,
-    ): Promise<CollectionRecord>;
-    updateCollection(
-      id: string,
-      patch: { title?: string; parentId?: string | null; sortOrder?: number },
-    ): Promise<CollectionRecord>;
-    deleteCollection(id: string): Promise<void>;
-    /** Batch create/rename/move/reorder folders in one call. */
-    batchCollections(op: BatchCollectionOp): Promise<CollectionRecord[]>;
-    setFolderLock(id: string, password: string | null): Promise<FolderLockStatus>;
-    unlockFolder(id: string, password: string): Promise<boolean>;
-    isFolderUnlocked(id: string): Promise<boolean>;
-    addToCollection(assetId: string, collectionId: string): Promise<AssetRecord>;
-    removeFromCollection(
-      assetId: string,
-      collectionId: string,
-    ): Promise<AssetRecord>;
     setTags(assetId: string, tags: string[]): Promise<AssetRecord>;
     listTags(): Promise<TagRecord[]>;
     listTagGroups(): Promise<TagGroupRecord[]>;
@@ -1300,20 +1379,16 @@ export interface RefCanvasApi {
     remove(id: string): Promise<void>;
     /** 刷新挂载状态；离线恢复后触发增量 reconcile。 */
     reconnect(id: string): Promise<MountRoot>;
+    /** 运行时挂载状态变化（磁盘/NAS 断连或恢复）。 */
+    onChanged(
+      callback: (change: MountChangedEvent) => void,
+    ): () => void;
   };
   metadata: {
     /** 确保路径已建立索引（等价 materialize，§13.4 metadata.ensure）。 */
     ensure(path: string): Promise<MaterializeResult>;
     /** 更新用户 metadata（tags/rating/notes；不可重建数据，参与备份）。 */
     patch(assetId: string, patch: UserMetadataPatch): Promise<AssetRecord>;
-  };
-  collections: {
-    /** 以 path + fingerprint 引用向合集添加磁盘文件（计划 §7.2）。 */
-    addReferences(collectionId: string, paths: string[]): Promise<number>;
-    /** 按 path 从合集移除引用（不删除磁盘文件）。 */
-    removeReferences(collectionId: string, paths: string[]): Promise<number>;
-    /** 列出合集当前的磁盘文件引用。 */
-    listReferences(collectionId: string): Promise<CollectionReferenceInfo[]>;
   };
   media: {
     /** 探测媒体基本信息（provider probe，§6.2）。 */
@@ -1328,7 +1403,13 @@ export interface RefCanvasApi {
       options?: { timeMs?: number; width?: number; height?: number },
     ): Promise<MediaFrameResult>;
     /** 格式转换（provider convert；不支持时明确失败）。 */
-    convert(path: string, targetFormat: string): Promise<MediaConvertResult>;
+    convert(
+      path: string,
+      targetFormat: string,
+      jobId?: string,
+    ): Promise<MediaConvertResult>;
+    /** 视频转循环 GIF。 */
+    exportGif(request: ExportVideoGifRequest): Promise<ExportGifResult>;
     /** 取消进行中的转换任务。 */
     cancel(jobId: string): Promise<boolean>;
     /**
@@ -1355,6 +1436,8 @@ export interface RefCanvasApi {
     ): Promise<SequenceGroupInfo[]>;
     /** 序列导出 MP4（阶段 5 §10.1 MP4 presets）。 */
     exportMp4(request: ExportMp4Request): Promise<ExportMp4Result>;
+    /** 图片序列导出循环 GIF。 */
+    exportGif(request: ExportGifRequest): Promise<ExportGifResult>;
   };
   providers: {
     list(): Promise<ProviderManifestInfo[]>;
@@ -1395,6 +1478,8 @@ export interface RefCanvasApi {
         pageSize?: number;
         flattenDepth?: number;
         showHidden?: boolean;
+        collapseSequences?: boolean;
+        extensions?: string[];
       },
     ): Promise<DirectoryPage>;
     onDirectoryProgress(
@@ -1402,7 +1487,11 @@ export interface RefCanvasApi {
     ): () => void;
     locateEntry(path: string, entryPath: string, revision: string): Promise<number | null>;
     /** 目录搜索：当前层即时结果 + 子目录流式追加；更换路径/关键词自动取消旧任务。 */
-    startSearch(path: string, query: string): Promise<string>;
+    startSearch(
+      path: string,
+      query: string,
+      options?: { collapseSequences?: boolean; extensions?: string[] },
+    ): Promise<string>;
     cancelSearch(id: string): Promise<void>;
     getSearch(id: string): Promise<DirectorySearchSnapshot | null>;
     getSearchPage(
@@ -1415,10 +1504,14 @@ export interface RefCanvasApi {
     updateQuickAccess(id: string, patch: { name?: string; expanded?: boolean }): Promise<QuickAccessEntry[]>;
     removeQuickAccess(id: string): Promise<QuickAccessEntry[]>;
     listQuickAccess(): Promise<QuickAccessEntry[]>;
-    /** 未入库文件按需入库：复用同路径 assetId，仅计算 quick fingerprint。 */
+    /** 未索引文件按需建立记录：复用同路径 assetId，仅计算 quick fingerprint。 */
     materialize(path: string): Promise<MaterializeResult>;
-    /** 真实改名源文件并同步已入库记录（assetId 不变）。 */
-    rename(path: string, newName: string): Promise<FilesystemRenameResult>;
+    /** 真实改名源文件并同步已有索引记录（assetId 不变）。 */
+    rename(
+      path: string,
+      newName: string,
+      options?: FileOperationOptions,
+    ): Promise<FilesystemRenameResult>;
     /** 在父目录下新建文件夹（同名冲突时自动改名）。 */
     createFolder(
       parentPath: string,
@@ -1438,7 +1531,7 @@ export interface RefCanvasApi {
       options?: FileOperationOptions,
     ): Promise<FileOperationReport>;
     /** 删除未入库文件到系统回收站；已入库记录同步为 missing。 */
-    trash(paths: string[]): Promise<void>;
+    trash(paths: string[], options?: FileOperationOptions): Promise<void>;
     open(path: string): Promise<void>;
     reveal(path: string): Promise<void>;
     /** 为未入库路径生成会话级 refbrowse token 供预览。 */
@@ -1518,6 +1611,8 @@ export interface RefCanvasApi {
     setPlaybackState(assetId: string, state: Partial<PlaybackState>): Promise<PlaybackState>;  };
   system: {
     openExternal(path: string): Promise<void>;
+    /** 打开系统回收站；Windows 使用 Shell URI。 */
+    openRecycleBin(): Promise<void>;
     /** Opens each file with the OS default app (batch). */
     openFilesWithDefaultApp(paths: string[]): Promise<void>;
     revealInFolder(path: string): Promise<void>;
@@ -1532,6 +1627,15 @@ export interface RefCanvasApi {
       defaultPath?: string;
       filters?: Array<{ name: string; extensions: string[] }>;
     }): Promise<string | null>;
+    /** 保存 WebGL/Canvas 渲染结果；thumbnail 模式同时关联资产缩略图。 */
+    saveRenderedImage(
+      dataUrl: string,
+      options: {
+        mode: "export" | "thumbnail";
+        assetId?: string;
+        defaultName?: string;
+      },
+    ): Promise<string | null>;
     toggleAlwaysOnTop(): Promise<boolean>;
     /** Signals that initial renderer data is painted and background work may start. */
     markRendererInteractive(): Promise<void>;
@@ -1563,6 +1667,11 @@ export interface RefCanvasApi {
     setPreferences(prefs: AppPreferencesPatch): Promise<AppPreferences>;
     /** 关于页与版本信息，版本必须来自 app.getVersion()。 */
     getAppInfo(): Promise<AppInfo>;
+    /**
+     * 启动期数据库迁移失败信息（FND-001）。迁移失败时应用停留在恢复页，
+     * Renderer 据此展示数据库路径、备份目录与失败步骤。
+     */
+    getMigrationFailure(): Promise<MigrationRecoveryInfo>;
     /** 写入系统剪贴板文本（用于"复制版本信息"）。 */
     writeClipboard(text: string): Promise<void>;
     getNavigationState(): Promise<string | null>;

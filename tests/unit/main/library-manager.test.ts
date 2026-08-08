@@ -33,7 +33,7 @@ describe("LibraryManager (single active library)", () => {
     expect(entry.legacy).toBe(true);
     expect(entry.root).toBe(userData);
     expect(manager.currentEntry()?.id).toBe(entry.id);
-    expect(manager.currentEntry()?.name).toBe("默认资料库");
+    expect(manager.currentEntry()?.name).toBe("本地索引");
   });
 
   it("is idempotent across repeated bootstrap calls", async () => {
@@ -53,7 +53,7 @@ describe("LibraryManager (single active library)", () => {
 
     const db = new RefCanvasDatabase(databasePathFor(entry));
     try {
-      expect(db.getSchemaVersion()).toBe(15);
+      expect(db.getSchemaVersion()).toBe(17);
     } finally {
       db.close();
     }

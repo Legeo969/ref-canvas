@@ -2,8 +2,13 @@ import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+import {
+  archiveLegacyCollections,
+  createV17Tables,
+  restoreCollectionsV17,
+} from "./collection-restore-migrations";
 
-export const DATABASE_SCHEMA_VERSION = 15;
+export const DATABASE_SCHEMA_VERSION = 17;
 
 /**
  * Ordered migration model.
@@ -27,7 +32,18 @@ export interface MigrationStep {
   readonly id: string;
   /** Human-readable summary of the change. */
   readonly description: string;
-  apply(db: Database.Database): void;
+  apply(db: Database.Database, context: MigrationContext): void;
+}
+
+/**
+ * Context passed to every migration step. Currently carries the pre-migration
+ * snapshot directory so a step can fall back to importing data from a
+ * migration backup when the primary data source is gone (v17 collection
+ * restore). Kept as an interface so future steps can extend it without
+ * changing every `apply` signature.
+ */
+export interface MigrationContext {
+  migrationBackupDirectory?: string;
 }
 
 export interface MigrationLogEntry {
@@ -181,6 +197,29 @@ export const MIGRATIONS: readonly MigrationStep[] = [
       "统一 Collection 引用：collection_refs 增加 asset_id 列并放宽挂载列为可空，collection_assets 数据并入后删除该表。",
     apply(db) {
       V15CollectionRefsUnified.apply(db);
+    },
+  },
+  {
+    version: 16,
+    id: "v16-archive-reference-collections",
+    description:
+      "Archives legacy reference-collection tables when they contain recoverable data (renamed, never destroyed); empty tables are retired. Preserves saved searches and disk metadata.",
+    apply(db) {
+      // 实现位于 collection-restore-migrations.ts（schema 17 规格 §6.4）。
+      archiveLegacyCollections(db);
+    },
+  },
+  {
+    version: 17,
+    id: "v17-reference-collections-and-ai-jobs",
+    description:
+      "Reference collections (schema 17): restores the collections/collection_items model with disk-native identity refs and adds the ai_jobs table. Imports recoverable collection data from the v16 archive first, then from the pre-migration backup snapshot; validates counts before committing and never fabricates data that was already lost.",
+    apply(db, context) {
+      // 实现位于 collection-restore-migrations.ts（schema 17 规格 §6.1/§6.4）。
+      createV17Tables(db);
+      restoreCollectionsV17(db, {
+        migrationBackupDirectory: context.migrationBackupDirectory,
+      });
     },
   },
 ];
@@ -656,9 +695,12 @@ export function runMigrationSteps(
       );
     }
     const logId = randomUUID();
+    const context: MigrationContext = {
+      migrationBackupDirectory: options.migrationBackupDirectory,
+    };
     try {
       current = db.transaction(() => {
-        step.apply(db);
+        step.apply(db, context);
         db.pragma(`user_version = ${step.version}`);
         return step.version;
       })();
@@ -761,10 +803,13 @@ export class MigrationRepository {
       const startedAt = new Date().toISOString();
       const snapshotPath = this.snapshot(current, step.version);
       const id = randomUUID();
+      const context: MigrationContext = {
+        migrationBackupDirectory: this.backupDirectory,
+      };
       try {
         const fromVersion = current;
         current = this.db.transaction(() => {
-          step.apply(this.db);
+          step.apply(this.db, context);
           this.db.pragma(`user_version = ${step.version}`);
           return step.version;
         })();
@@ -996,6 +1041,20 @@ class V14NativeFilesystem {
  */
 class V15CollectionRefsUnified {
   static apply(db: Database.Database): void {
+    const collectionsExist = Boolean(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collections'",
+        )
+        .get(),
+    );
+    // A database whose physical schema already passed v16 can be reopened
+    // after only user_version was restored (for example, a failed upgrade
+    // recovery). There is no collection data left to migrate in that case.
+    if (!collectionsExist) {
+      db.exec("DROP TABLE IF EXISTS collection_refs; DROP TABLE IF EXISTS collection_assets;");
+      return;
+    }
     // 1) 重建 collection_refs：加 asset_id、放宽挂载列、增加资产唯一键。
     const refsExist = db
       .prepare(

@@ -29,6 +29,123 @@ afterEach(async () => {
 });
 
 describe("database migration", () => {
+  it("archives legacy collection data and restores it at schema 17 without losing saved searches", () => {
+    const database = new Sqlite(":memory:");
+    try {
+      const v15 = runMigrationSteps(
+        database,
+        MIGRATIONS.filter((step) => step.version <= 15),
+      );
+      expect(v15).toMatchObject({ completed: true, finalVersion: 15 });
+      database.prepare(`
+        INSERT INTO saved_views(id, title, search_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        "saved-search-1",
+        "五星图片",
+        JSON.stringify({ kind: "image", ratingMin: 5 }),
+        "2026-08-05T00:00:00.000Z",
+        "2026-08-05T00:00:00.000Z",
+      );
+      // v15 里放一份真实集合数据（含嵌套与条目），验证归档→恢复闭环。
+      database.prepare(`
+        INSERT INTO collections (id, title, parent_id, sort_order, lock_hash, created_at)
+        VALUES (?, ?, NULL, 0, NULL, ?)
+      `).run(
+        "collection-1",
+        "参考素材",
+        "2026-08-05T00:00:00.000Z",
+      );
+      database.prepare(`
+        INSERT INTO collections (id, title, parent_id, sort_order, lock_hash, created_at)
+        VALUES (?, ?, ?, 1, NULL, ?)
+      `).run(
+        "collection-2",
+        "子集",
+        "collection-1",
+        "2026-08-05T00:00:00.000Z",
+      );
+      database.prepare(`
+        INSERT INTO collection_refs
+          (id, collection_id, asset_id, mount_id, relative_path, fingerprint, state)
+        VALUES (?, ?, NULL, NULL, NULL, 'fp-1', 'resolved')
+      `).run("ref-1", "collection-1");
+
+      const result = runMigrationSteps(database, MIGRATIONS);
+
+      expect(result).toMatchObject({ completed: true, finalVersion: 17 });
+      // v16（修订）把含数据的旧表改名归档，绝不无条件删除。
+      const retiredTables = database
+        .prepare(`
+          SELECT name FROM sqlite_master
+          WHERE type = 'table'
+            AND name IN (
+              'collection_sources', 'collection_refs',
+              'collection_assets', 'collections'
+            )
+        `)
+        .all();
+      // v17 已按 schema 17 重建 collections；旧 collection_sources /
+      // collection_refs / collection_assets 均已退役（归档或删除）。
+      expect(retiredTables.map((row) => (row as { name: string }).name).sort()).toEqual([
+        "collections",
+      ]);
+      expect(
+        database
+          .prepare("SELECT COUNT(*) AS count FROM _legacy_collections_v16")
+          .get(),
+      ).toEqual({ count: 2 });
+      expect(
+        database
+          .prepare("SELECT COUNT(*) AS count FROM _legacy_collection_refs_v16")
+          .get(),
+      ).toEqual({ count: 1 });
+      // v17 从归档恢复：层级、名称与条目都在。
+      const collections = database
+        .prepare(
+          "SELECT id, parent_id, name, sort_order FROM collections ORDER BY sort_order",
+        )
+        .all();
+      expect(collections).toEqual([
+        { id: "collection-1", parent_id: null, name: "参考素材", sort_order: 0 },
+        {
+          id: "collection-2",
+          parent_id: "collection-1",
+          name: "子集",
+          sort_order: 1,
+        },
+      ]);
+      const items = database
+        .prepare(
+          "SELECT collection_id, fingerprint, state FROM collection_items",
+        )
+        .all();
+      expect(items).toEqual([
+        { collection_id: "collection-1", fingerprint: "fp-1", state: "resolved" },
+      ]);
+      // 重复执行迁移入口不产生重复行。
+      const rerun = runMigrationSteps(database, MIGRATIONS);
+      expect(rerun.completed).toBe(true);
+      expect(rerun.finalVersion).toBe(17);
+      expect(
+        database.prepare("SELECT COUNT(*) AS count FROM collections").get(),
+      ).toEqual({ count: 2 });
+      expect(
+        database.prepare("SELECT COUNT(*) AS count FROM collection_items").get(),
+      ).toEqual({ count: 1 });
+      expect(
+        database
+          .prepare("SELECT title, search_json FROM saved_views WHERE id = ?")
+          .get("saved-search-1"),
+      ).toEqual({
+        title: "五星图片",
+        search_json: JSON.stringify({ kind: "image", ratingMin: 5 }),
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it("upgrades the original schema without losing assets or boards", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-migrate-"));
     temporaryDirectories.push(directory);
@@ -63,7 +180,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(15);
+      expect(migrated.getSchemaVersion()).toBe(17);
       expect(migrated.searchAssets().items[0]).toMatchObject({
         title: "Legacy",
         lifecycle: "active",
@@ -150,7 +267,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(15);
+      expect(migrated.getSchemaVersion()).toBe(17);
       const v1 = migrated.loadBoard("00000000-0000-4000-8000-000000000001")!;
       expect(v1.document.schemaVersion).toBe(3);
       expect(v1.document.windowMode).toBe("normal");
@@ -202,17 +319,16 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(15);
+      expect(migrated.getSchemaVersion()).toBe(17);
       const verification = new Sqlite(filename, { readonly: true });
       try {
         const tables = verification
           .prepare(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('mount_roots', 'collection_refs', 'cache_entries', 'media_metadata')",
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('mount_roots', 'cache_entries', 'media_metadata')",
           )
           .all() as Array<{ name: string }>;
         expect(tables.map((item) => item.name).sort()).toEqual([
           "cache_entries",
-          "collection_refs",
           "media_metadata",
           "mount_roots",
         ]);
@@ -237,15 +353,25 @@ describe("database migration", () => {
             "link_state",
           ]),
         );
-        // collection_refs.mount_id 外键引用 mount_roots。
-        const refForeignKeys = verification.pragma(
-          "foreign_key_list(collection_refs)",
-        ) as Array<{ table: string; from: string }>;
-        expect(
-          refForeignKeys.some(
-            (fk) => fk.table === "mount_roots" && fk.from === "mount_id",
-          ),
-        ).toBe(true);
+        // schema 17：旧 collection_refs / collection_sources / collection_assets
+        // 已退役（该 fixture 无数据，v16 空表直接退休）；v17 重建 collections 与
+        // collection_items / ai_jobs。
+        const retiredTables = verification
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('collection_sources', 'collection_refs', 'collection_assets')",
+          )
+          .all();
+        expect(retiredTables).toHaveLength(0);
+        const v17Tables = verification
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('collections', 'collection_items', 'ai_jobs')",
+          )
+          .all() as Array<{ name: string }>;
+        expect(v17Tables.map((item) => item.name).sort()).toEqual([
+          "ai_jobs",
+          "collection_items",
+          "collections",
+        ]);
         // cache_entries/media_metadata 引用 file_identities.id 而非 assets。
         const cacheForeignKeys = verification.pragma(
           "foreign_key_list(cache_entries)",
@@ -266,15 +392,13 @@ describe("database migration", () => {
       } finally {
         verification.close();
       }
-      // 真正重跑 v14 迁移步骤：把 user_version 重置到 13（保留 v14 schema），
-      // runner 会执行 v14 的 apply()——CREATE IF NOT EXISTS / 列守卫必须
-      // 在 schema 已存在时幂等通过。
+      // v16 退役迁移可在已完成的连接上安全重跑。
       const rerun = new Sqlite(filename);
       try {
-        rerun.pragma("user_version = 13");
+        rerun.pragma("user_version = 15");
         const result = runMigrationSteps(rerun, MIGRATIONS, {});
         expect(result.completed).toBe(true);
-        expect(result.finalVersion).toBe(15);
+        expect(result.finalVersion).toBe(17);
       } finally {
         rerun.close();
       }
@@ -283,131 +407,4 @@ describe("database migration", () => {
     }
   });
 
-  it("merges collection_assets into unified collection_refs and drops the table", async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-v15-"));
-    temporaryDirectories.push(directory);
-    const filename = path.join(directory, "v15.db");
-    // 1) 构造真实 v14 库：跑 1-14 全部迁移，再写入旧数据。
-    const legacy = new Sqlite(filename);
-    try {
-      const result = runMigrationSteps(
-        legacy,
-        MIGRATIONS.filter((step) => step.version <= 14),
-        {},
-      );
-      expect(result.completed).toBe(true);
-      expect(result.finalVersion).toBe(14);
-      legacy.exec(`
-        INSERT INTO assets(
-          id, title, kind, path, path_key, extension, size, mtime_ms,
-          fingerprint, link_state, notes, created_at, updated_at
-        ) VALUES
-          ('asset-in-mount', 'InMount', 'image', 'D:\\mount\\in.png',
-           'd:\\mount\\in.png', 'png', 10, 1, 'fp-a', 'online', '',
-           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'),
-          ('asset-outside', 'Outside', 'image', 'C:\\out\\out.png',
-           'c:\\out\\out.png', 'png', 20, 1, 'fp-b', 'online', '',
-           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-        INSERT INTO collections(id, title, created_at) VALUES
-          ('col-1', 'One', '2026-01-01T00:00:00.000Z'),
-          ('col-2', 'Two', '2026-01-01T00:00:00.000Z');
-        INSERT INTO mount_roots(id, path, display_name) VALUES
-          ('mount-d', 'D:\\mount', 'Mount D');
-        INSERT INTO file_identities(
-          path_key, asset_id, fingerprint, size, root_path,
-          created_at, updated_at, id, mount_id, relative_path
-        ) VALUES (
-          'd:\\mount\\in.png', 'asset-in-mount', 'fp-a', 10, 'D:\\mount',
-          '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z',
-          'identity-1', 'mount-d', 'in.png'
-        );
-        -- 旧式资产引用：一个在挂载内（可解析挂载键），一个在挂载外（仅资产引用）。
-        INSERT INTO collection_assets(collection_id, asset_id) VALUES
-          ('col-1', 'asset-in-mount'),
-          ('col-1', 'asset-outside'),
-          ('col-2', 'asset-outside');
-        -- v14 路径引用：无 asset_id，迁移时应尽力回填。
-        INSERT INTO collection_refs(
-          id, collection_id, mount_id, relative_path, fingerprint, state
-        ) VALUES (
-          'ref-path-1', 'col-2', 'mount-d', 'in.png', 'fp-a', 'resolved'
-        );
-      `);
-    } finally {
-      legacy.close();
-    }
-
-    // 2) RefCanvasDatabase 打开 → 触发 v15 迁移。
-    const migrated = new RefCanvasDatabase(filename);
-    try {
-      expect(migrated.getSchemaVersion()).toBe(15);
-      const verification = new Sqlite(filename, { readonly: true });
-      try {
-        // collection_assets 已删除。
-        const dropped = verification
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collection_assets'",
-          )
-          .all();
-        expect(dropped).toHaveLength(0);
-        const refs = verification
-          .prepare(
-            `SELECT collection_id, asset_id, mount_id, relative_path, fingerprint
-             FROM collection_refs ORDER BY collection_id, asset_id`,
-          )
-          .all() as Array<{
-          collection_id: string;
-          asset_id: string | null;
-          mount_id: string | null;
-          relative_path: string | null;
-          fingerprint: string | null;
-        }>;
-        // col-1：asset-in-mount 解析出挂载键；asset-outside 仅资产引用。
-        // col-2：asset-outside 仅资产引用；ref-path-1 回填 asset_id。
-        expect(refs).toEqual([
-          {
-            collection_id: "col-1",
-            asset_id: "asset-in-mount",
-            mount_id: "mount-d",
-            relative_path: "in.png",
-            fingerprint: "fp-a",
-          },
-          {
-            collection_id: "col-1",
-            asset_id: "asset-outside",
-            mount_id: null,
-            relative_path: null,
-            fingerprint: null,
-          },
-          {
-            collection_id: "col-2",
-            asset_id: "asset-in-mount",
-            mount_id: "mount-d",
-            relative_path: "in.png",
-            fingerprint: "fp-a",
-          },
-          {
-            collection_id: "col-2",
-            asset_id: "asset-outside",
-            mount_id: null,
-            relative_path: null,
-            fingerprint: null,
-          },
-        ]);
-        // asset_id 外键引用 assets（ON DELETE CASCADE）。
-        const assetForeignKey = verification.pragma(
-          "foreign_key_list(collection_refs)",
-        ) as Array<{ table: string; from: string }>;
-        expect(
-          assetForeignKey.some(
-            (fk) => fk.table === "assets" && fk.from === "asset_id",
-          ),
-        ).toBe(true);
-      } finally {
-        verification.close();
-      }
-    } finally {
-      migrated.close();
-    }
-  });
 });

@@ -1,0 +1,192 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "pretooluse-ab8fe47fc1b199720bf9c49e1801703a",
+  "runId": null,
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "PreToolUse"
+  },
+  "revision": null,
+  "diffHash": null,
+  "rulesVersion": null,
+  "sessionHash": "4a776eddb2929cf1be7db58357a5e08ae27d4eb2ee68a7fa2e05776c67e14b22",
+  "reportRef": null,
+  "events": [
+    {
+      "eventId": "hook-4e93c43462ffa2a927a9dfefada5d838",
+      "findingId": "mimosa-a65e58d9fd474defef5ddf31",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.951Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "833c80717cbb4d997d85572abc4a479f60ebfd16c01b535caa38d9c910cc1eea",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1194,
+      "endLine": 1194,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "833c80717cbb4d997d85572abc4a479f60ebfd16c01b535caa38d9c910cc1eea"
+      },
+      "sequence": 0
+    },
+    {
+      "eventId": "hook-8f3cf03c6257c5e12d038c3bf21355f3",
+      "findingId": "mimosa-db161d57bf2a09d64a3c40b9",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.951Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "6c3bd0f5bf0336e142853ef8784c8101bae90cdf3e7f078e46444d8d8bff7fdd",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1202,
+      "endLine": 1202,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "6c3bd0f5bf0336e142853ef8784c8101bae90cdf3e7f078e46444d8d8bff7fdd"
+      },
+      "sequence": 1
+    },
+    {
+      "eventId": "hook-e2efcff2db5b2e497785a171690d80bb",
+      "findingId": "mimosa-a65e58d9fd474defef5ddf31",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.952Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "833c80717cbb4d997d85572abc4a479f60ebfd16c01b535caa38d9c910cc1eea",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1205,
+      "endLine": 1205,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "833c80717cbb4d997d85572abc4a479f60ebfd16c01b535caa38d9c910cc1eea"
+      },
+      "sequence": 2
+    },
+    {
+      "eventId": "hook-0e5b84c9f70772c21427f3cfac70ba04",
+      "findingId": "mimosa-e3f1d83ccee24d5fcf7dce6e",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.952Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1249,
+      "endLine": 1249,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200"
+      },
+      "sequence": 3
+    },
+    {
+      "eventId": "hook-5aa37773608a1a4d5f6c4acc3f9ff570",
+      "findingId": "mimosa-e3f1d83ccee24d5fcf7dce6e",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.952Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1405,
+      "endLine": 1405,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200"
+      },
+      "sequence": 4
+    },
+    {
+      "eventId": "hook-260d039dedf577544bb7156dffbdec10",
+      "findingId": "mimosa-e3f1d83ccee24d5fcf7dce6e",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.952Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1422,
+      "endLine": 1422,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200"
+      },
+      "sequence": 5
+    },
+    {
+      "eventId": "hook-5b14cda364f601b1261656f5330b157a",
+      "findingId": "mimosa-e3f1d83ccee24d5fcf7dce6e",
+      "type": "finding_blocked",
+      "at": "2026-08-08T09:35:36.953Z",
+      "identity": {
+        "projectRelativeFile": "src/main/persistence/repositories/migration-repository.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1448,
+      "endLine": 1448,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "39f3c4fadddf28dac4d4a882b71ce35511cddc98a48867049d5b191d23919200"
+      },
+      "sequence": 6
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-08-08T09:35:37.354Z"
+}

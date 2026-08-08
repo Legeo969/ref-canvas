@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import type { AssetRecord, BoardDocument } from "../../shared/contracts";
@@ -104,36 +105,66 @@ export function registerBoardIpc(
       filters: [{ name: "RefCanvas 项目", extensions: ["refcanvas"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    await writeFile(
-      result.filePath,
-      JSON.stringify(loaded.document, null, 2),
-      "utf8",
+    if (!parsedOptions.embedAssets) {
+      await writeFile(
+        result.filePath,
+        JSON.stringify(loaded.document, null, 2),
+        "utf8",
+      );
+      return result.filePath;
+    }
+    const bundleDirectory = await mkdtemp(
+      path.join(os.tmpdir(), "refcanvas-board-package-"),
     );
-    if (parsedOptions.embedAssets) {
-      const bundleDirectory = `${result.filePath}.files`;
-      await mkdir(bundleDirectory, { recursive: true });
+    try {
       const assets = [];
       for (const assetId of database().getBoardAssetIds(parsedId)) {
-        assets.push(
-          await dependencies.copyProjectAsset(assetId, bundleDirectory),
-        );
+        assets.push(await dependencies.copyProjectAsset(assetId, bundleDirectory));
+      }
+      const files: Array<{ relativePath: string; dataBase64: string }> = [];
+      const pending = [bundleDirectory];
+      while (pending.length) {
+        const directory = pending.pop()!;
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          // 遍历的是本应用 mkdtemp 创建的打包临时目录；用 resolve + 根边界
+          // 校验，确保任何条目都不会越出 bundleDirectory。
+          const filename = path.resolve(bundleDirectory, entry.name);
+          const relative = path.relative(bundleDirectory, filename);
+          if (
+            relative === ".." ||
+            relative.startsWith(`..${path.sep}`) ||
+            path.isAbsolute(relative)
+          ) {
+            continue;
+          }
+          if (entry.isDirectory()) {
+            pending.push(filename);
+          } else if (entry.isFile()) {
+            files.push({
+              relativePath: relative,
+              dataBase64: (await readFile(filename)).toString("base64"),
+            });
+          }
+        }
       }
       await writeFile(
-        path.join(bundleDirectory, "manifest.json"),
+        result.filePath,
         JSON.stringify(
           {
             format: "refcanvas-package",
-            version: 1,
+            version: 2,
             board: loaded.summary,
             assets,
             document: loaded.document,
-            embedded: true,
+            files,
           },
           null,
           2,
         ),
         "utf8",
       );
+    } finally {
+      await rm(bundleDirectory, { recursive: true, force: true });
     }
     return result.filePath;
   });

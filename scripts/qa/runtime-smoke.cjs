@@ -22,6 +22,7 @@ const executable = process.argv[2] ?? path.join(
 const runId = `${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${process.pid}`;
 const qaRoot = path.join(os.tmpdir(), "RefCanvas-QA", runId);
 const profile = path.join(qaRoot, "profile");
+const browseRoot = path.join(qaRoot, "mounted-files");
 const reportPath = path.join(qaRoot, "runtime-report.json");
 
 function reservePort() {
@@ -61,7 +62,7 @@ async function launchOnce(label) {
   let client;
   try {
     client = await connectCdp(port);
-    const result = await runPackagedSmoke(client);
+    const result = await runPackagedSmoke(client, browseRoot);
     await client.send("Browser.close").catch(() => undefined);
     const exited = await waitForExit(child, 10_000);
     if (!exited) {
@@ -87,6 +88,18 @@ function downgradeFixtureToV12() {
   const database = new Sqlite(filename);
   try {
     database.exec(`
+      DROP TABLE IF EXISTS cache_entries;
+      DROP TABLE IF EXISTS media_metadata;
+      DROP TABLE IF EXISTS collection_refs;
+      DROP TABLE IF EXISTS mount_roots;
+      DROP TRIGGER IF EXISTS file_identities_mount_fk;
+      DROP TRIGGER IF EXISTS file_identities_mount_update_fk;
+      CREATE TABLE IF NOT EXISTS collection_sources (
+        collection_id TEXT PRIMARY KEY REFERENCES collections(id) ON DELETE CASCADE,
+        watch_root_path TEXT NOT NULL,
+        relative_path TEXT NOT NULL,
+        UNIQUE(watch_root_path, relative_path)
+      );
       DROP INDEX IF EXISTS assets_metadata_pending;
       DROP INDEX IF EXISTS assets_lifecycle_updated;
       DROP INDEX IF EXISTS assets_lifecycle_mtime;
@@ -111,16 +124,18 @@ async function main() {
     throw new Error(`PACKAGED_EXECUTABLE_NOT_FOUND:${executable}`);
   }
   fs.mkdirSync(profile, { recursive: true });
+  fs.mkdirSync(browseRoot, { recursive: true });
+  fs.writeFileSync(path.join(browseRoot, "runtime-smoke.txt"), "RefCanvas");
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
-  const migrated = await launchOnce("schema-12-to-13");
+  const migrated = await launchOnce("schema-12-to-17");
   const verification = new Sqlite(path.join(profile, "refcanvas.db"), {
     readonly: true,
   });
   const schemaVersion = verification.pragma("user_version", { simple: true });
   const columns = verification.pragma("table_info(assets)").map((row) => row.name);
   verification.close();
-  if (schemaVersion !== 13 || !columns.includes("metadata_status")) {
+  if (schemaVersion !== 17 || !columns.includes("metadata_status")) {
     throw new Error("PACKAGED_MIGRATION_VERIFICATION_FAILED");
   }
   const report = {

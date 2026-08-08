@@ -142,8 +142,13 @@ describe("BoardReferenceService（阶段 6：Board V4 引用解析）", () => {
       await rm(file, { force: true });
       const content = await stat(file).catch(() => null);
       const fingerprint = database.getAsset(assetId)!.fingerprint;
+      const rootPath = path.resolve(root);
       for (const candidate of ["dup_a.png", "dup_b.png"]) {
-        const full = path.join(root, candidate);
+        const full = path.resolve(rootPath, candidate);
+        // 候选文件是固定常量名，仍做根目录边界校验（纵深防御）。
+        if (full !== rootPath && !full.startsWith(rootPath + path.sep)) {
+          throw new Error("FIXTURE_OUT_OF_DIRECTORY");
+        }
         // 候选文件真实存在（磁盘校验只发生在唯一候选时）。
         await writeFile(full, Buffer.alloc(4096, 9));
         const candidateStat = await stat(full);

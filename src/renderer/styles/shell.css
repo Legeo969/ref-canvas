@@ -73,7 +73,7 @@ button[aria-label] {
 
 .app-shell {
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr) 28px;
+  grid-template-rows: 48px minmax(0, 1fr) 28px;
   width: 100%;
   height: 100%;
   background: var(--bg-base);
@@ -90,10 +90,16 @@ button[aria-label] {
   -webkit-app-region: drag;
 }
 
+.titlebar-left,
 .brand,
 .titlebar-actions {
   display: flex;
   align-items: center;
+}
+
+.titlebar-left {
+  min-width: 0;
+  gap: 18px;
 }
 
 .brand {
@@ -101,7 +107,55 @@ button[aria-label] {
   color: #dce4df;
   font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
+}
+
+.workspace-mode-switch {
+  display: grid;
+  height: 40px;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 2px;
+  padding: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055);
+  -webkit-app-region: no-drag;
+}
+
+.workspace-mode-switch button {
+  display: inline-flex;
+  min-width: 68px;
+  height: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #7f8984;
+  font-size: 11px;
+  cursor: pointer;
+  transition-property: background-color, color, box-shadow, scale;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.workspace-mode-switch button:hover {
+  color: #dbe3df;
+}
+
+.workspace-mode-switch button.active {
+  background: #2b3232;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.25);
+  color: #83d8bd;
+}
+
+.workspace-mode-switch button:active {
+  scale: 0.96;
 }
 
 .brand-mark {
@@ -140,12 +194,35 @@ button[aria-label] {
 }
 
 .titlebar-button {
-  min-height: 32px;
+  min-height: 40px;
   gap: 7px;
   padding: 0 10px 0 12px;
   border-radius: 7px;
   color: #aeb6b2;
   font-size: 12px;
+}
+
+.titlebar-actions {
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+@media (max-width: 1120px) {
+  .titlebar-button {
+    width: 40px;
+    padding: 0;
+    gap: 0;
+    font-size: 0;
+  }
+
+  .brand > span:last-child {
+    display: none;
+  }
+
+  .titlebar-left {
+    gap: 10px;
+  }
 }
 
 .titlebar-button:hover,
@@ -228,8 +305,15 @@ button[aria-label] {
 
 .workspace {
   display: grid;
-  grid-template-columns: var(--panel-sidebar, 260px) 8px var(--panel-asset, 350px) 8px minmax(360px, 1fr) 8px var(--panel-details, 286px);
   min-height: 0;
+}
+
+.workspace.directory-workspace {
+  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(0, 1fr) 8px var(--panel-details, 286px);
+}
+
+.workspace.board-workspace {
+  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(360px, 1fr);
 }
 
 .panel-divider {
@@ -278,6 +362,35 @@ body.panel-resizing {
   border-right: 1px solid var(--line);
 }
 
+.sidebar-recycle-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 8px 2px 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #8c9791;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition-property: background-color, color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.sidebar-recycle-button:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #dbe3df;
+}
+
+.sidebar-recycle-button:active {
+  scale: 0.96;
+}
+
 .sidebar-section + .sidebar-section {
   margin-top: 17px;
 }
@@ -288,7 +401,7 @@ body.panel-resizing {
   color: #717a76;
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   line-height: 40px;
   text-transform: uppercase;
 }

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -26,6 +26,7 @@ export interface ScriptRunResult {
   output: string;
   /** 是否超时被终止。 */
   timedOut: boolean;
+  failureReason: "TIMEOUT" | "OUTPUT_LIMIT_EXCEEDED" | null;
   durationMs: number;
 }
 
@@ -34,6 +35,22 @@ export interface ScriptsServiceOptions {
   pythonCommand?: string;
   /** 覆盖 powershell 可执行名（测试注入）。 */
   powershellCommand?: string;
+}
+
+function terminateProcessTree(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  if (process.platform !== "win32") {
+    child.kill("SIGKILL");
+    return;
+  }
+  execFile(
+    "taskkill",
+    ["/pid", String(child.pid), "/T", "/F"],
+    { windowsHide: true },
+    () => {
+      if (child.exitCode === null) child.kill();
+    },
+  );
 }
 
 /**
@@ -63,7 +80,24 @@ export class ScriptsService {
     name: string | undefined,
     timeoutMs: number,
   ): Promise<RegisteredScript> {
+    // 注册路径来自用户文件选择器。做边界校验：有界普通字符串、不含 NUL，
+    // 解析后其父目录必须真实存在、文件必须是普通文件，且文件名只含
+    // 安全字符（无路径分隔符/控制字符）。信任锚点是注册时记录的 sha256，
+    // 运行前重新校验（SCRIPT_HASH_CHANGED）；路径从不进入 shell 拼接。
+    if (
+      typeof scriptPath !== "string" ||
+      scriptPath.length === 0 ||
+      scriptPath.length > 4096 ||
+      scriptPath.includes("\0")
+    ) {
+      throw new Error("SCRIPT_INVALID_PATH");
+    }
     const resolved = path.resolve(scriptPath);
+    if (!/^[A-Za-z0-9._ -]+$/.test(path.basename(resolved))) {
+      throw new Error("SCRIPT_INVALID_FILENAME");
+    }
+    const parent = await stat(path.dirname(resolved)).catch(() => null);
+    if (!parent || !parent.isDirectory()) throw new Error("SCRIPT_DIR_NOT_FOUND");
     const info = await stat(resolved);
     if (!info.isFile()) throw new Error("SCRIPT_NOT_FOUND");
     const content = await readFile(resolved);
@@ -128,18 +162,27 @@ export class ScriptsService {
         shell: false,
       });
       const chunks: Buffer[] = [];
-      child.stdout?.on("data", (chunk: Buffer) => {
+      let outputBytes = 0;
+      let failureReason: ScriptRunResult["failureReason"] = null;
+      const appendOutput = (chunk: Buffer) => {
+        if (failureReason === "OUTPUT_LIMIT_EXCEEDED") return;
+        outputBytes += chunk.length;
         chunks.push(chunk);
-        if (Buffer.concat(chunks).length > 65_536) child.kill();
+        if (outputBytes <= 65_536) return;
+        failureReason = "OUTPUT_LIMIT_EXCEEDED";
+        terminateProcessTree(child);
+      };
+      child.stdout?.on("data", (chunk: Buffer) => {
+        appendOutput(chunk);
       });
       child.stderr?.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-        if (Buffer.concat(chunks).length > 65_536) child.kill();
+        appendOutput(chunk);
       });
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill();
+        failureReason = "TIMEOUT";
+        terminateProcessTree(child);
       }, Math.max(1_000, script.timeoutMs));
       child.on("error", (error) => {
         clearTimeout(timer);
@@ -148,12 +191,13 @@ export class ScriptsService {
       child.on("close", (exitCode) => {
         clearTimeout(timer);
         const output = Buffer.concat(chunks)
-          .toString("utf8")
-          .slice(0, 65_536);
+          .subarray(0, 65_536)
+          .toString("utf8");
         resolve({
           exitCode,
           output,
           timedOut,
+          failureReason,
           durationMs: Date.now() - started,
         });
       });

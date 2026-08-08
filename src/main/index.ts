@@ -24,9 +24,15 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import Database from "better-sqlite3";
 import { BackupService } from "./services/backup-service";
 import { ActionService } from "./services/action-service";
 import { RefCanvasDatabase } from "./persistence/database";
+import type { MigrationRecoveryInfo } from "./ipc/system-ipc";
+import {
+  rewriteBoardAssetId,
+  toBoardV2,
+} from "./persistence/repositories/boards-repository";
 import {
   LibraryManager,
   backupDirectoryFor,
@@ -48,11 +54,13 @@ import { PreviewQueue } from "./platform/preview-queue";
 import { PreviewCacheIndex } from "./platform/preview-cache-index";
 import { ThumbnailWorkerClient } from "./platform/thumbnail-worker-client";
 import { ProviderRegistry } from "./platform/provider-registry";
+import { WorkerSupervisor } from "./platform/worker-supervisor";
+import { WorkerBackedProvider } from "./platform/provider-worker-client";
 import { GenericProvider } from "./providers/generic-provider";
-import { HdrProvider } from "./providers/hdr-provider";
-import { GeometryProvider } from "./providers/geometry-provider";
-import { VideoProvider } from "./providers/video-provider";
-import { ImageProvider } from "./providers/image-provider";
+import { HDR_PROVIDER_MANIFEST } from "./providers/hdr-provider";
+import { GEOMETRY_PROVIDER_MANIFEST } from "./providers/geometry-provider";
+import { VIDEO_PROVIDER_MANIFEST } from "./providers/video-provider";
+import { IMAGE_PROVIDER_MANIFEST } from "./providers/image-provider";
 import { AudioProvider } from "./providers/audio-provider";
 import { FontProvider } from "./providers/font-provider";
 import { DocumentProvider } from "./providers/document-provider";
@@ -131,7 +139,6 @@ let transparentOverlay = false;
 let rendererInteractive = false;
 let backgroundStartTimer: NodeJS.Timeout | null = null;
 let tray: Electron.Tray | null = null;
-let trayPaused = false;
 let quitting = false;
 let shutdownComplete = false;
 let shutdownPromise: Promise<void> | null = null;
@@ -144,6 +151,7 @@ let previewCacheIndex: PreviewCacheIndex | null = null;
 let thumbnailWorker: ThumbnailWorkerClient | null = null;
 /** 全局 typed provider registry（计划 §6.1）：Renderer 不加载第三方 DLL。 */
 let providerRegistry: ProviderRegistry | null = null;
+let providerSupervisor: WorkerSupervisor | null = null;
 const overlayExitAccelerator = "CommandOrControl+Alt+Shift+R";
 const squirrelEvent = process.argv.find((value) =>
   value.startsWith("--squirrel-"),
@@ -334,10 +342,62 @@ async function importCommandLineEntries(entries: string[]): Promise<boolean> {
       continue;
     }
     try {
-      const document = boardDocumentSchema.parse(
-        JSON.parse(await readFile(entry, "utf8")),
-      ) as BoardDocument;
-      const summary = database.createBoard(path.basename(entry, ".refcanvas"));
+      const raw = JSON.parse(await readFile(entry, "utf8")) as unknown;
+      const packageResult = z
+        .object({
+          format: z.literal("refcanvas-package"),
+          version: z.literal(2),
+          board: z.object({ title: z.string().trim().min(1).max(120) }),
+          assets: z.array(
+            z.object({
+              id: z.string().min(1).max(128),
+              relativePath: z.string().min(1).max(4_096),
+            }),
+          ),
+          files: z.array(
+            z.object({
+              relativePath: z.string().min(1).max(4_096),
+              dataBase64: z.string(),
+            }),
+          ),
+          document: boardDocumentSchema,
+        })
+        .safeParse(raw);
+      let title = path.basename(entry, ".refcanvas");
+      let document: BoardDocument;
+      if (packageResult.success) {
+        const extractionRoot = path.join(
+          path.dirname(entry),
+          `${path.basename(entry, ".refcanvas")}.assets-${Date.now()}`,
+        );
+        await mkdir(extractionRoot, { recursive: true });
+        for (const file of packageResult.data.files) {
+          const target = path.resolve(extractionRoot, file.relativePath);
+          const relative = path.relative(extractionRoot, target);
+          if (
+            relative.startsWith("..") ||
+            path.isAbsolute(relative)
+          ) {
+            throw new Error("BOARD_PACKAGE_PATH_OUTSIDE_ROOT");
+          }
+          await mkdir(path.dirname(target), { recursive: true });
+          await writeFile(target, Buffer.from(file.dataBase64, "base64"));
+        }
+        document = toBoardV2(packageResult.data.document as BoardDocument);
+        for (const asset of packageResult.data.assets) {
+          const filename = path.resolve(extractionRoot, asset.relativePath);
+          const relative = path.relative(extractionRoot, filename);
+          if (relative.startsWith("..") || path.isAbsolute(relative)) {
+            throw new Error("BOARD_PACKAGE_ASSET_OUTSIDE_ROOT");
+          }
+          const materialized = await library.materializePath(filename);
+          rewriteBoardAssetId(document, asset.id, materialized.asset.id);
+        }
+        title = packageResult.data.board.title;
+      } else {
+        document = boardDocumentSchema.parse(raw) as BoardDocument;
+      }
+      const summary = database.createBoard(title);
       database.saveBoard(summary.id, document);
       importedProject = true;
     } catch {
@@ -376,7 +436,7 @@ function broadcastAll(channel: string, ...args: unknown[]): void {
   }
 }
 
-/** 后台驻留：关闭窗口后保留主进程、目录监控与托盘（可选设置，默认关闭）。 */
+/** 后台驻留：关闭窗口后保留主进程与托盘（可选设置，默认关闭）。 */
 function backgroundResidencyEnabled(): boolean {
   if (quitting) return false;
   // 阶段 5 §10.5：closeBehavior=tray 与 backgroundResidency 等效。
@@ -400,18 +460,6 @@ function rebuildTrayMenu(): void {
           } else {
             createWindow();
           }
-          void library?.resumeWatching();
-          trayPaused = false;
-          rebuildTrayMenu();
-        },
-      },
-      {
-        label: trayPaused ? "恢复目录监控" : "暂停目录监控",
-        click: () => {
-          trayPaused = !trayPaused;
-          if (trayPaused) void library?.pauseWatching();
-          else void library?.resumeWatching();
-          rebuildTrayMenu();
         },
       },
       { type: "separator" },
@@ -424,7 +472,7 @@ function rebuildTrayMenu(): void {
       },
     ]),
   );
-  tray.setToolTip(trayPaused ? "RefCanvas（监控已暂停）" : "RefCanvas");
+  tray.setToolTip("RefCanvas");
 }
 
 function createTray(): void {
@@ -454,12 +502,68 @@ function destroyTray(): void {
   tray = null;
 }
 
+/** 启动期数据库迁移失败的恢复信息（FND-001：失败时不进入主工作区）。 */
+let migrationRecovery: MigrationRecoveryInfo = {
+  failed: false,
+  databasePath: null,
+  backupDirectory: null,
+  entries: [],
+};
+
+/**
+ * 读取迁移日志，生成恢复页所需信息。
+ *
+ * 迁移失败时 `RefCanvasDatabase` 构造函数抛错、实例不存在，但失败的日志行
+ * 已由迁移 runner 在事务外写入 `migration_log` 表并提交，因此这里直接以只读
+ * 方式打开数据库文件读取，不依赖已打开的实例。
+ */
+function computeMigrationRecovery(
+  entry: LibraryEntry | null,
+  openDatabase: RefCanvasDatabase | null,
+): MigrationRecoveryInfo {
+  const databasePath = entry ? databasePathFor(entry) : null;
+  let failedEntries: MigrationRecoveryInfo["entries"] = [];
+  if (openDatabase) {
+    failedEntries = openDatabase
+      .getMigrationLog()
+      .filter((log) => log.result === "failed")
+      .map((log) => ({
+        stepId: log.stepId,
+        fromVersion: log.fromVersion,
+        toVersion: log.toVersion,
+        error: log.error,
+      }));
+  } else if (databasePath) {
+    try {
+      const raw = new Database(databasePath, { readonly: true });
+      try {
+        failedEntries = raw
+          .prepare(
+            `SELECT step_id AS stepId, from_version AS fromVersion,
+               to_version AS toVersion, error
+             FROM migration_log WHERE result = 'failed' ORDER BY started_at`,
+          )
+          .all() as MigrationRecoveryInfo["entries"];
+      } finally {
+        raw.close();
+      }
+    } catch {
+      failedEntries = [];
+    }
+  }
+  return {
+    failed: failedEntries.length > 0,
+    databasePath,
+    backupDirectory: entry ? backupDirectoryFor(entry) : null,
+    entries: failedEntries,
+  };
+}
+
 /**
  * Tears down the currently open library connections and reopens them bound to
  * the given library entry. Used at startup and when switching libraries.
  */
-async function reopenLibrary(entry: LibraryEntry): Promise<void> {
-  cancelBackgroundServicesStart();
+async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgroundServicesStart();
   actions?.close();
   directoryBatches?.close();
   directoryService?.close();
@@ -494,6 +598,9 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   directoryService.onDirectoryProgress((snapshot) => {
     broadcastAll("filesystem:directory-progress", snapshot);
   });
+  const filesystemRootPaths = (await directoryService.listRoots()).map(
+    (root) => root.path,
+  );
   directoryBatches = new DirectoryBatchService({
     resolveSelection: (selection, offset) =>
       selection.mode === "all"
@@ -502,6 +609,8 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
             selection.revision,
             selection.excludedPaths,
             offset,
+            undefined,
+            selection.extensions,
           )
         : directoryService.resolveSearchSelection(
             selection.searchId,
@@ -514,9 +623,6 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
         await appendFile(action.destination, `${filename}\r\n`, "utf8");
       } else if (action.type === "trash") {
         await trashDirectoryPath(filename);
-      } else if (action.type === "addCollection") {
-        const result = await library.materializePath(filename);
-        database.addAssetToCollection(result.asset.id, action.collectionId);
       } else if (action.type === "tag") {
         const result = await library.materializePath(filename);
         database.setAssetTags(result.asset.id, action.tags);
@@ -529,7 +635,10 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
     broadcastAll("filesystem:batch-progress", snapshot);
   });
   fileOperations = new FileOperationsService({
-    allowedRoots: () => [entry.root],
+    allowedRoots: () => [
+      ...filesystemRootPaths,
+      ...database.listMountRoots().map((mount) => mount.path),
+    ],
     trash: (filename) => trashDirectoryPath(filename),
     validateRevision: (directoryPath, revision) =>
       directoryService.validateRevision(directoryPath, revision),
@@ -539,6 +648,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {
   boardReferences = new BoardReferenceService(database);
   // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
   mountService.onMountStateChanged(({ mountId, state }) => {
+    broadcastAll("mounts:changed", { type: "state", mountId, state });
     if (state !== "online") return;
     const root = database.listWatchRoots().find((item) => item.id === mountId);
     if (root) void library.reconcileRoots(root.id);
@@ -597,6 +707,7 @@ function registerIpc(): void {
     getDirectoryService: () => directoryService,
     getFileOperations: () => fileOperations,
     getLibrary: () => library,
+    getMountRoots: () => database.listMountRoots(),
     previewTokens,
     trashDirectoryPath,
     windowForSender,
@@ -628,6 +739,7 @@ function registerIpc(): void {
     getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
     getScriptsService: () => scriptsService,
     previewTokens,
+    notifyMountsChanged: (change) => broadcastAll("mounts:changed", change),
   });
 
   registerActionIpc(ipc, () => actions);
@@ -638,6 +750,7 @@ function registerIpc(): void {
     getDatabaseFilename: () => databaseFilename,
     getLibrary: () => library,
     getLibraryManager: () => libraryManager,
+    getMigrationRecovery: () => migrationRecovery,
     getMainWindow: () => mainWindow,
     overlayExitAccelerator,
     pngDataUrlToBuffer,
@@ -701,6 +814,45 @@ function registerIpc(): void {
   });
 }
 
+/**
+ * 迁移失败恢复窗口（FND-001）：不初始化任何依赖 database 的服务，只加载
+ * 渲染层并展示恢复信息。窗口关闭即退出应用。
+ */
+function createRecoveryWindow(): void {
+  mainWindow = new BrowserWindow({
+    width: 880,
+    height: 620,
+    minWidth: 640,
+    minHeight: 480,
+    backgroundColor: "#171a1c",
+    show: false,
+    title: "RefCanvas — 数据库恢复",
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#171a1c",
+      symbolColor: "#aeb5b2",
+      height: 40,
+    },
+    webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
+  });
+  hardenWindowNavigation(mainWindow.webContents);
+  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    app.quit();
+  });
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    void mainWindow.loadURL(
+      `${MAIN_WINDOW_VITE_DEV_SERVER_URL}?recovery=1`,
+    );
+  } else {
+    void mainWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      { query: { recovery: "1" } },
+    );
+  }
+}
+
 function createWindow(): void {
   const savedBounds = database.getSetting<{
     x?: number;
@@ -750,12 +902,10 @@ function createWindow(): void {
   mainWindow.on("close", (event) => {
     if (!mainWindow) return;
     if (!quitting) saveMainWindowBounds();
-    // 后台驻留开启：关窗不退出，销毁 renderer，保留主进程、目录监控与托盘。
+    // 后台驻留开启：隐藏并保留 renderer，托盘恢复无需重新加载整个应用。
     if (!quitting && backgroundResidencyEnabled()) {
       event.preventDefault();
-      const window = mainWindow;
-      mainWindow = null;
-      window.destroy();
+      mainWindow.hide();
       createTray();
       // 驻留模式：白板窗口随主窗口一并关闭，避免失去托管的编辑入口。
       closeAllBoardWindows();
@@ -873,7 +1023,19 @@ void app.whenReady().then(async () => {
   const userData = app.getPath("userData");
   libraryManager = new LibraryManager(userData);
   const initialEntry = await libraryManager.bootstrapLegacy();
-  await reopenLibrary(initialEntry);
+  try {
+    await reopenLibrary(initialEntry);
+  } catch (error) {
+    // FND-001：迁移失败时停留在恢复页，不进入主工作区。记录可诊断信息，
+    // 创建恢复窗口展示数据库/备份位置。
+    console.error("STARTUP_MIGRATION_FAILED", error);
+    migrationRecovery = computeMigrationRecovery(initialEntry, database);
+  }
+  if (migrationRecovery.failed) {
+    // 数据库未成功打开：不初始化任何依赖 database 的服务，只展示恢复页。
+    createRecoveryWindow();
+    return;
+  }
   thumbnailCacheDirectory = path.join(userData, "cache", "thumbnails");
   previewCacheIndex = new PreviewCacheIndex(
     path.join(userData, "cache", "preview-index.sqlite"),
@@ -883,27 +1045,45 @@ void app.whenReady().then(async () => {
     thumbnailCacheDirectory,
   );
   providerRegistry = new ProviderRegistry();
+  providerSupervisor = new WorkerSupervisor({
+    workerPath: path.join(__dirname, "provider-worker.js"),
+    serviceName: "RefCanvas Provider Worker",
+    maxConcurrency: 2,
+    defaultDeadlineMs: 60_000,
+  });
   const genericProvider = new GenericProvider();
   providerRegistry.register({
     provider: genericProvider,
     dispose: () => genericProvider.dispose(),
   });
-  const hdrProvider = new HdrProvider();
+  const hdrProvider = new WorkerBackedProvider(
+    HDR_PROVIDER_MANIFEST,
+    providerSupervisor,
+  );
   providerRegistry.register({
     provider: hdrProvider,
     dispose: () => hdrProvider.dispose(),
   });
-  const geometryProvider = new GeometryProvider();
+  const geometryProvider = new WorkerBackedProvider(
+    GEOMETRY_PROVIDER_MANIFEST,
+    providerSupervisor,
+  );
   providerRegistry.register({
     provider: geometryProvider,
     dispose: () => geometryProvider.dispose(),
   });
-  const videoProvider = new VideoProvider();
+  const videoProvider = new WorkerBackedProvider(
+    VIDEO_PROVIDER_MANIFEST,
+    providerSupervisor,
+  );
   providerRegistry.register({
     provider: videoProvider,
     dispose: () => videoProvider.dispose(),
   });
-  const imageProvider = new ImageProvider();
+  const imageProvider = new WorkerBackedProvider(
+    IMAGE_PROVIDER_MANIFEST,
+    providerSupervisor,
+  );
   providerRegistry.register({
     provider: imageProvider,
     dispose: () => imageProvider.dispose(),
@@ -948,16 +1128,7 @@ void app.whenReady().then(async () => {
   // 启动时修复存量 watch root 与 mount root 的 1:1 关联，再刷新挂载状态。
   repairMountRoots();
   const refreshMounts = () => {
-    void mountService.refreshAll().then((changes) => {
-      for (const change of changes) {
-        if (change.state === "online") {
-          const root = database
-            .listWatchRoots()
-            .find((item) => item.id === change.mountId);
-          if (root) void library.reconcileRoots(root.id);
-        }
-      }
-    });
+    void mountService.refreshAll();
   };
   refreshMounts();
   // 运行期间受控轮询挂载状态，检测断连/重连（计划 §7.5 外部增删改语义）。
@@ -1026,6 +1197,7 @@ async function shutdownServices(): Promise<void> {
   thumbnailWorker?.close();
   previewCacheIndex?.close();
   await providerRegistry?.dispose();
+  await providerSupervisor?.close();
   directoryBatches?.close();
   directoryService?.close();
   await library?.close();
