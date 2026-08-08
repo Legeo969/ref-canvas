@@ -6,6 +6,7 @@ coverage/
 artifacts/
 .ui-verify-profile/
 .local/
+.mimosa/
 *.log
 .env
 .env.*
