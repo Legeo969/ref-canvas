@@ -357,6 +357,13 @@ button[aria-label] {
   text-overflow: ellipsis;
 }
 
+.browser-tab .browser-tab-collection {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #b39ddb;
+}
+
 .browser-tab:hover {
   background: rgba(255, 255, 255, 0.04);
   color: #dbe3df;

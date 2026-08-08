@@ -117,4 +117,73 @@ describe("browser tabs (FND-002 §5.2)", () => {
     expect(state.directoryPath).toBe("D:\\x");
     expect(listDirectory).toHaveBeenCalledWith("D:\\x", expect.anything());
   });
+
+  it("opens a collection in a new tab and switches back without losing directory state", async () => {
+    const listDirectory = installRefCanvas();
+    const refreshCollections = vi.fn(async () => undefined);
+    useAppStore.setState({
+      browserTabs: [],
+      activeTabId: "",
+      directoryPath: null,
+      directoryHistory: [],
+      directoryHistoryIndex: 0,
+      collections: [],
+      collectionTree: {},
+      collectionItems: {},
+      refreshCollections,
+    });
+    await useAppStore.getState().createBrowserTabForPath("D:\\a");
+    await useAppStore.getState().openCollectionInNewTab("col-1", "灵感");
+
+    let state = useAppStore.getState();
+    expect(state.browserTabs).toHaveLength(2);
+    expect(state.browserTabs[1].kind).toBe("collection");
+    expect(state.activeTabId).toBe(state.browserTabs[1].id);
+    expect(state.activeCollectionId).toBe("col-1");
+
+    // 切回目录标签恢复目录路径。
+    await useAppStore.getState().switchBrowserTab(state.browserTabs[0].id);
+    state = useAppStore.getState();
+    expect(state.directoryPath).toBe("D:\\a");
+    expect(state.activeCollectionId).toBeNull();
+    expect(listDirectory).toHaveBeenCalledWith("D:\\a", expect.anything());
+
+    // 再切回集合标签恢复集合视图。
+    await useAppStore.getState().switchBrowserTab(state.browserTabs[1].id);
+    state = useAppStore.getState();
+    expect(state.activeCollectionId).toBe("col-1");
+  });
+
+  it("persists per-tab query and scroll into BrowserTabState", async () => {
+    installRefCanvas();
+    useAppStore.setState({
+      browserTabs: [],
+      activeTabId: "",
+      directoryPath: null,
+      directoryHistory: [],
+      directoryHistoryIndex: 0,
+      collections: [],
+      collectionTree: {},
+      collectionItems: {},
+    });
+    await useAppStore.getState().createBrowserTabForPath("D:\\q1");
+    await useAppStore.getState().createBrowserTabForPath("D:\\q2");
+
+    // 活动标签（q2）写回查询与滚动。
+    useAppStore.getState().updateActiveBrowserTab({ query: "#构图", scrollOffset: 1200 });
+    let state = useAppStore.getState();
+    const q2 = state.browserTabs.find((tab) => tab.targetId === "D:\\q2")!;
+    expect(q2.query).toBe("#构图");
+    expect(q2.scrollOffset).toBe(1200);
+
+    // 切到 q1 不影响 q2 状态。
+    await useAppStore.getState().switchBrowserTab(state.browserTabs[0].id);
+    state = useAppStore.getState();
+    expect(state.directoryPath).toBe("D:\\q1");
+    await useAppStore.getState().switchBrowserTab(state.browserTabs[1].id);
+    state = useAppStore.getState();
+    const q2Again = state.browserTabs.find((tab) => tab.targetId === "D:\\q2")!;
+    expect(q2Again.query).toBe("#构图");
+    expect(q2Again.scrollOffset).toBe(1200);
+  });
 });

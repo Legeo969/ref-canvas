@@ -152,6 +152,7 @@ interface AppState
   collectionTree: Record<string, ReferenceCollection[]>;
   collectionItems: Record<string, ReferenceCollectionItem[]>;
   openCollection(id: string): void;
+  openCollectionInNewTab(id: string, name: string): Promise<void>;
   closeCollection(): void;
   /** 重新拉取集合树与展开/活动集合条目（FND-003）。 */
   refreshCollections(): Promise<void>;
@@ -1180,13 +1181,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   browserTabs: [],
   activeTabId: "",
 
-  openCollection: (id) =>
+  openCollection: (id) => {
     set({
       workspaceMode: "directory",
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: id,
-    }),
+    });
+    get().refreshCollections();
+  },
+
+  openCollectionInNewTab: async (id, name) => {
+    const tab = createBrowserTab("collection", id, name);
+    set((state) => ({ browserTabs: [...state.browserTabs, tab] }));
+    await get().switchBrowserTab(tab.id);
+  },
 
   closeCollection: () => set({ activeCollectionId: null }),
 
@@ -1359,7 +1368,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     set({ browserTabs: nextTabs, activeTabId: id });
     persistV3Tabs(nextTabs, id);
+    if (target.kind === "collection" && target.targetId) {
+      // 集合标签：切换到对应集合视图（集合引用不依赖目录路径）。
+      set({
+        workspaceMode: "directory",
+        navigationSource: "directory",
+        focusMode: false,
+        directoryPath: null,
+        activeCollectionId: target.targetId,
+      });
+      get().refreshCollections();
+      return;
+    }
     if (target.kind === "directory" && target.targetId) {
+      // 目录标签：清除集合视图。
+      if (state.activeCollectionId !== null) {
+        set({ activeCollectionId: null });
+      }
       const restoredHistory = [...target.forwardStack, target.targetId, ...target.backStack];
       await get().loadDirectoryState(
         target.targetId,
@@ -1383,10 +1408,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistV3Tabs(nextTabs, nextActiveId);
     if (wasActive) {
       const active = nextTabs.find((tab) => tab.id === nextActiveId);
-      if (active?.kind === "directory" && active.targetId && active.targetId !== "browser://empty") {
+      if (active?.kind === "collection" && active.targetId) {
+        set({ activeCollectionId: active.targetId });
+        get().refreshCollections();
+      } else if (active?.kind === "directory" && active.targetId && active.targetId !== "browser://empty") {
         await get().loadDirectoryState(active.targetId, [active.targetId], 0);
       } else {
-        set({ directoryPath: null, directoryEntries: [], directoryTotal: 0 });
+        set({ directoryPath: null, directoryEntries: [], directoryTotal: 0, activeCollectionId: null });
       }
     }
   },

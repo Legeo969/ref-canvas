@@ -542,6 +542,66 @@ export function DirectoryAssetPanel() {
     setSelectedPaths(new Set());
   };
 
+  // FND-002 §5.2：每标签独立保存查询与滚动位置。
+  // 切换标签/目录时从 BrowserTabState 恢复；变更时写回（滚动节流）。
+  const activeTab = store.browserTabs.find((tab) => tab.id === store.activeTabId);
+
+  useEffect(() => {
+    if (!activeTab || activeTab.kind !== "directory") return;
+    if (activeTab.query) {
+      setQuery(activeTab.query);
+      void window.refCanvas.filesystem
+        .startSearch(store.directoryPath ?? "", activeTab.query, {
+          collapseSequences: foundSettings.collapseImageSequences,
+          extensions: formatFilterExtensions,
+        })
+        .then((id) => {
+          activeSearchIdRef.current = id;
+          setSearchId(id);
+        })
+        .catch(() => undefined);
+    }
+    const restoreScroll = () => {
+      const node = viewportRef.current;
+      if (node && activeTab.scrollOffset > 0) {
+        node.scrollTop = activeTab.scrollOffset;
+        pendingScrollTopRef.current = activeTab.scrollOffset;
+      }
+    };
+    restoreScroll();
+    const timer = window.setTimeout(restoreScroll, 60);
+    return () => window.clearTimeout(timer);
+  }, [store.activeTabId, store.directoryPath]);
+
+  useEffect(() => {
+    if (!activeTab || activeTab.kind !== "directory") return;
+    if (activeTab.query === query) return;
+    store.updateActiveBrowserTab({ query });
+  }, [query]);
+
+  // 滚动写回：rAF 节流到标签状态（避免每次 scroll 都触发 store 更新）。
+  useEffect(() => {
+    if (!activeTab || activeTab.kind !== "directory") return;
+    const node = viewportRef.current;
+    if (!node) return;
+    let frame: number | null = null;
+    const write = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        const top = Math.round(node.scrollTop);
+        if (Math.abs(top - (activeTab.scrollOffset ?? 0)) >= 8) {
+          store.updateActiveBrowserTab({ scrollOffset: top });
+        }
+      });
+    };
+    node.addEventListener("scroll", write, { passive: true });
+    return () => {
+      node.removeEventListener("scroll", write);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [store.activeTabId, store.directoryPath]);
+
   const directoryEntries = useMemo(
     () => [...directoryPages.entries()]
       .sort(([left], [right]) => left - right)

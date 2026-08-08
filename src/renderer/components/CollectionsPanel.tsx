@@ -27,6 +27,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  SquareArrowOutUpRight,
   Trash2,
   Upload,
   X,
@@ -329,6 +330,10 @@ function CollectionNode({
             <button role="menuitem" onClick={() => { setMenuOpen(false); void onExport(collection.id); }}>
               <ArrowDownToLine size={15} />
               导出…
+            </button>
+            <button role="menuitem" onClick={() => { setMenuOpen(false); void store.openCollectionInNewTab(collection.id, collection.name); }}>
+              <SquareArrowOutUpRight size={15} />
+              在新标签打开
             </button>
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => void remove()}>

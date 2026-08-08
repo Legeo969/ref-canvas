@@ -4,12 +4,19 @@
  * 目录/集合标签支持新建、切换、关闭与拖拽重排；最后一个标签关闭后
  * 自动创建空目录标签（不显示无导航出口的空壳）。
  */
-import { Plus, X } from "lucide-react";
+import { Layers, Plus, X } from "lucide-react";
 import type { DragEvent } from "react";
 import { useAppStore } from "../app/store";
 
 function TabTitle({ tab }: { tab: ReturnType<typeof useAppStore.getState>["browserTabs"][number] }) {
-  if (tab.kind === "collection") return <span>集合：{tab.title}</span>;
+  if (tab.kind === "collection") {
+    return (
+      <span className="browser-tab-collection" title={tab.targetId}>
+        <Layers size={11} />
+        {tab.title}
+      </span>
+    );
+  }
   if (tab.targetId === "browser://empty") return <span>浏览</span>;
   return <span title={tab.targetId}>{tab.title}</span>;
 }
