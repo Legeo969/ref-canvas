@@ -24,12 +24,19 @@ export function MediaNotesOverlay({
   asset,
   children,
 }: MediaNotesOverlayProps) {
-  const mediaRef = useRef<HTMLMediaElement | null>(null);
+  const mediaRef = useRef<HTMLDivElement | null>(null);
   const [notes, setNotes] = useState<MediaNote[]>([]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftTime, setDraftTime] = useState(0);
   const [adding, setAdding] = useState(false);
+
+  /** 包裹层内的原生 <video>/<audio>（子元素由各 Provider 提供）。 */
+  const mediaElement = (): HTMLMediaElement | null => {
+    const host = mediaRef.current;
+    if (!host) return null;
+    return host.querySelector<HTMLMediaElement>("video,audio");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +44,7 @@ export function MediaNotesOverlay({
       if (!cancelled) setNotes(list);
     });
     void window.refCanvas.mediaNotes.getPlaybackState(asset.id).then((state) => {
-      const media = mediaRef.current;
+      const media = mediaElement();
       if (!media || !state || cancelled) return;
       media.playbackRate = state.playbackRate;
       media.muted = state.muted;
@@ -49,7 +56,7 @@ export function MediaNotesOverlay({
   }, [asset.id]);
 
   const persist = () => {
-    const current = mediaRef.current;
+    const current = mediaElement();
     if (!current) return;
     void window.refCanvas.mediaNotes.setPlaybackState(asset.id, {
       playbackRate: current.playbackRate,
@@ -74,6 +81,7 @@ export function MediaNotesOverlay({
   return (
     <div className="media-notes-root">
       <div
+        ref={mediaRef}
         className="media-notes-media"
         onPlayCapture={persist}
         onPauseCapture={persist}
@@ -113,7 +121,7 @@ export function MediaNotesOverlay({
                   className="media-note-time"
                   title="跳到该时间点"
                   onClick={() => {
-                    const current = mediaRef.current;
+                    const current = mediaElement();
                     if (current) current.currentTime = note.timeMs / 1000;
                   }}
                 >
@@ -153,7 +161,7 @@ export function MediaNotesOverlay({
             <button
               className="media-note-add-button"
               onClick={() => {
-                const current = mediaRef.current;
+                const current = mediaElement();
                 const timeMs = current
                   ? Math.round(current.currentTime * 1000)
                   : 0;

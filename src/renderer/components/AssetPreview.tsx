@@ -1,11 +1,12 @@
 import { Box, Shapes } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { browserImageExtensions } from "../../shared/asset-kind";
 import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
 import { AudioPreview } from "./AudioPreview";
 import { FontPreview } from "./FontPreview";
 import { GIFPreview } from "./GIFPreview";
+import { ImageReviewPreview } from "./ImageReviewPreview";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import { ModelPreview } from "./ModelPreview";
 import { TextPreview } from "./TextPreview";
@@ -15,40 +16,6 @@ import { VideoPreview } from "./VideoPreview";
 interface AssetPreviewProps {
   asset: AssetRecord;
   lightweight?: boolean;
-}
-
-function ProgressiveImage({ asset }: { asset: AssetRecord }) {
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    setReady(false);
-    setFailed(false);
-    const image = new Image();
-    image.src = asset.previewUrl;
-    let cancelled = false;
-    const loaded = image.decode ? image.decode() : new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error("IMAGE_DECODE_FAILED"));
-    });
-    void loaded.then(() => {
-      if (!cancelled) setReady(true);
-    }).catch(() => {
-      if (!cancelled) setFailed(true);
-    });
-    return () => {
-      cancelled = true;
-      image.src = "";
-    };
-  }, [asset.id, asset.previewUrl]);
-  return (
-    <img
-      className={`progressive-preview ${ready ? "ready" : "proxy"}`}
-      src={ready && !failed
-        ? asset.previewUrl
-        : `${asset.thumbnailUrl}?priority=preview`}
-      alt=""
-    />
-  );
 }
 
 function SystemThumbnail({ asset }: { asset: AssetRecord }) {
@@ -132,7 +99,7 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
       return browserImageExtensions.has(asset.extension.toLowerCase())
         ? (
             <div style={{ background: alphaBackgroundStyle(foundSettings) }}>
-              <ProgressiveImage asset={asset} />
+              <ImageReviewPreview asset={asset} />
             </div>
           )
         : <SystemThumbnail asset={asset} />;
