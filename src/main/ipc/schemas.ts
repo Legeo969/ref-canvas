@@ -85,3 +85,18 @@ export const selectionSchema = z.union([
     excludedIds: z.array(idSchema).max(10_000),
   }),
 ]);
+
+// --- AI Design Supervisor（FND-008 §9.1：共享 Zod schema） ---
+
+export const aiProviderKindSchema = z.enum(["remote-rest", "comfyui", "mock"]);
+
+export const aiDesignRequestSchema = z.object({
+  sourcePath: pathSchema,
+  referencePaths: z.array(pathSchema).min(0).max(6),
+  prompt: z.string().trim().min(1).max(20_000),
+  majorChange: z.boolean(),
+  outputCount: z.number().int().min(1).max(4),
+  outputDirectory: pathSchema,
+});
+
+export const aiJobIdSchema = z.string().min(1).max(64);

@@ -1289,6 +1289,65 @@ export interface CollectionExportSnapshot {
   errorMessage: string | null;
 }
 
+// --- AI Design Supervisor（found-clone.md §9） ---
+
+export type AiProviderKind = "remote-rest" | "comfyui" | "mock";
+
+export type AiJobState =
+  | "queued"
+  | "uploading"
+  | "generating"
+  | "downloading"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface AiDesignRequest {
+  sourcePath: string;
+  referencePaths: string[]; // 0..6
+  prompt: string;
+  majorChange: boolean;
+  outputCount: number; // 1..4，默认 2
+  outputDirectory: string;
+}
+
+export interface AiJobSnapshot {
+  id: string;
+  provider: AiProviderKind;
+  state: AiJobState;
+  stage: string;
+  progress: number | null; // 0..1；未知时为 null
+  outputs: string[];
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiProviderSummary {
+  kind: AiProviderKind;
+  label: string;
+  available: boolean;
+  detail: string | null;
+}
+
+export interface AiProviderHealth {
+  kind: AiProviderKind;
+  ok: boolean;
+  detail: string;
+  latencyMs: number | null;
+}
+
+export interface AiSettings {
+  comfyuiAddress: string;
+  comfyuiWorkflowPath: string | null;
+  comfyuiBinding: unknown | null;
+  remoteBaseUrl: string | null;
+  remoteConfigured: boolean;
+  defaultProvider: AiProviderKind;
+  enabledProviders: AiProviderKind[];
+}
+
 export interface RefCanvasApi {
   library: {
     search(input?: AssetSearchInput): Promise<AssetPage>;

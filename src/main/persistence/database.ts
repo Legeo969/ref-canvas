@@ -43,6 +43,7 @@ import {
   type MigrationLogEntry,
 } from "./repositories/migration-repository";
 import { CollectionsRepository } from "./repositories/collections-repository-v17";
+import { AiJobsRepository } from "./repositories/ai-jobs-repository";
 import { CollectionService } from "../services/collection-service";
 import { CollectionResolutionService } from "../services/collection-resolution-service";
 import { SettingsRepository } from "./repositories/settings-repository";
@@ -1889,6 +1890,11 @@ export class RefCanvasDatabase {
   /** 引用集合解析服务（复用本连接的 identity/mount 数据）。 */
   collectionResolution(): CollectionResolutionService {
     return new CollectionResolutionService(this, this.collectionsRepository);
+  }
+
+  /** AI 任务持久化仓储（FND-008 §9.3）。 */
+  aiJobs(): AiJobsRepository {
+    return new AiJobsRepository(this.db);
   }
 
   getPlaybackState(assetId: string): PlaybackState | null {
