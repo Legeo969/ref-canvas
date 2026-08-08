@@ -419,6 +419,7 @@ export function CollectionDetailsPanel() {
   const [resolving, setResolving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportSnapshot, setExportSnapshot] = useState<CollectionExportSnapshot | null>(null);
+  const [runningExportId, setRunningExportId] = useState<string | null>(null);
   const [itemMenu, setItemMenu] = useState<{
     item: ReferenceCollectionItem;
     x: number;
@@ -486,12 +487,25 @@ export function CollectionDetailsPanel() {
     if (!targetDirectory) return;
     setExporting(true);
     setExportSnapshot(null);
+    const jobId = `collection-export-${collectionId}-${Date.now()}`;
+    setRunningExportId(jobId);
     try {
-      const snapshot = await window.refCanvas.collections.export(collectionId, targetDirectory);
+      const snapshot = await window.refCanvas.collections.export(
+        collectionId,
+        targetDirectory,
+        { jobId },
+      );
       setExportSnapshot(snapshot);
     } finally {
       setExporting(false);
+      setRunningExportId(null);
     }
+  };
+
+  const cancelRunningExport = async () => {
+    if (!runningExportId) return;
+    await window.refCanvas.collections.cancelExport(runningExportId);
+    setRunningExportId(null);
   };
 
   return (
@@ -507,10 +521,17 @@ export function CollectionDetailsPanel() {
             <RefreshCw size={14} className={resolving ? "spin" : ""} />
             {resolving ? "解析中…" : "重新解析"}
           </button>
-          <button className="secondary-button" onClick={() => void exportCollection()} disabled={exporting}>
-            <ArrowDownToLine size={14} />
-            {exporting ? "导出中…" : "导出…"}
-          </button>
+          {runningExportId ? (
+            <button className="secondary-button" onClick={() => void cancelRunningExport()}>
+              <X size={14} />
+              取消导出
+            </button>
+          ) : (
+            <button className="secondary-button" onClick={() => void exportCollection()} disabled={exporting}>
+              <ArrowDownToLine size={14} />
+              {exporting ? "导出中…" : "导出…"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -708,7 +729,9 @@ export function CollectionsPanel() {
       title: `导出“${collection.name}”到…`,
     });
     if (!targetDirectory) return;
-    await window.refCanvas.collections.export(id, targetDirectory);
+    await window.refCanvas.collections.export(id, targetDirectory, {
+      jobId: `collection-export-${id}-${Date.now()}`,
+    });
   };
 
   const onDrop = (event: DragEvent<HTMLElement>) => {

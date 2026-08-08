@@ -137,8 +137,14 @@ export class CollectionService {
   export(
     collectionId: string,
     targetDirectory: string,
+    options?: { jobId?: string },
   ): Promise<CollectionExportSnapshot> {
-    return this.exportService.export(collectionId, targetDirectory);
+    return this.exportService.export(collectionId, targetDirectory, options);
+  }
+
+  /** 取消进行中的导出（jobId 为 export 返回的 id）；已复制文件保留。 */
+  cancelExport(jobId: string): boolean {
+    return this.exportService.cancel(jobId);
   }
 
   /** 路径 → 挂载引用（最长路径前缀优先）。 */

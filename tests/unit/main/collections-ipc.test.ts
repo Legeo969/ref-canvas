@@ -147,4 +147,42 @@ describe("collections IPC (FND-003)", () => {
       database.close();
     }
   });
+
+  it("exports with a caller jobId and cancels through IPC", async () => {
+    const { database, directory, invoke } = await setup();
+    try {
+      const collection = (await invoke("collections:create", {
+        name: "导出",
+      })) as { id: string };
+      // 多个源文件让导出循环在取消时仍在运行。
+      for (let index = 0; index < 12; index += 1) {
+        const source = path.join(directory, `f${index}.bin`);
+        await writeFile(source, Buffer.alloc(4 * 1024 * 1024, index));
+        await invoke("collections:add-paths", {
+          collectionId: collection.id,
+          paths: [source],
+        });
+      }
+      const target = path.join(directory, "out");
+      const jobId = "ipc-export-job";
+      const exportPromise = invoke("collections:export", {
+        collectionId: collection.id,
+        targetDirectory: target,
+        jobId,
+      }) as Promise<{ state: string; errorCode: string | null }>;
+      // 轮询直至取消被接受（导出循环仍在运行时 cancelExport 返回 true）。
+      let cancelled = false;
+      for (let attempt = 0; attempt < 200 && !cancelled; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        cancelled = (await invoke("collections:cancel-export", jobId)) as boolean;
+      }
+      expect(cancelled).toBe(true);
+      const snapshot = await exportPromise;
+      expect(snapshot.state).toBe("cancelled");
+      expect(snapshot.errorCode).toBe("COLLECTION_EXPORT_CANCELLED");
+      expect((await invoke("collections:cancel-export", jobId))).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
 });

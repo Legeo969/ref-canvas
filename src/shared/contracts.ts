@@ -1518,7 +1518,10 @@ export interface RefCanvasApi {
     export(
       collectionId: string,
       targetDirectory: string,
+      options?: { jobId?: string },
     ): Promise<CollectionExportSnapshot>;
+    /** 取消进行中的导出（jobId 为 export 返回的 id）；已复制文件保留。 */
+    cancelExport(jobId: string): Promise<boolean>;
     onChanged(callback: () => void): () => void;
   };
   metadata: {

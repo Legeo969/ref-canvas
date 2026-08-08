@@ -51,7 +51,10 @@ const relinkSchema = z.object({
 const exportSchema = z.object({
   collectionId: collectionIdSchema,
   targetDirectory: pathSchemaLocal,
+  jobId: z.string().min(1).max(256).optional(),
 });
+
+const exportJobIdSchema = z.string().min(1).max(256);
 
 export interface CollectionsIpcDependencies {
   getDatabase(): RefCanvasDatabase;
@@ -124,6 +127,13 @@ export function registerCollectionsIpc(
 
   ipc.handle("collections:export", (input) => {
     const parsed = exportSchema.parse(input);
-    return service().export(parsed.collectionId, parsed.targetDirectory);
+    return service().export(parsed.collectionId, parsed.targetDirectory, {
+      jobId: parsed.jobId,
+    });
+  });
+
+  ipc.handle("collections:cancel-export", (jobId) => {
+    const parsed = exportJobIdSchema.parse(jobId);
+    return service().cancelExport(parsed);
   });
 }

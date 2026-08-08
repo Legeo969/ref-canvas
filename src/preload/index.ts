@@ -191,11 +191,14 @@ const api: RefCanvasApi = {
         path,
         confirmFingerprintChange,
       }),
-    export: (collectionId, targetDirectory) =>
+    export: (collectionId, targetDirectory, options) =>
       ipcRenderer.invoke("collections:export", {
         collectionId,
         targetDirectory,
+        jobId: options?.jobId,
       }),
+    cancelExport: (jobId) =>
+      ipcRenderer.invoke("collections:cancel-export", jobId),
     onChanged: (callback) => {
       const listener = () => callback();
       ipcRenderer.on("collections:changed", listener);

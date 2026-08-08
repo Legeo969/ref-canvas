@@ -255,7 +255,11 @@ describe("CollectionsPanel", () => {
       );
       exportItem?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(api.export).toHaveBeenCalledWith("c-1", "D:\\out");
+    expect(api.export).toHaveBeenCalledWith(
+      "c-1",
+      "D:\\out",
+      expect.objectContaining({ jobId: expect.any(String) }),
+    );
   });
 
   it("relinks an item and confirms a fingerprint change", async () => {
