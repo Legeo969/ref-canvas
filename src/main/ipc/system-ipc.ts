@@ -52,6 +52,7 @@ interface SystemIpcDependencies {
   /** 启动期迁移失败时的恢复信息；失败时 Renderer 展示恢复页而非主工作区。 */
   getMigrationRecovery(): MigrationRecoveryInfo;
   getMainWindow(): BrowserWindow | null;
+  openPreviewWindow(filename: string): void;
   overlayExitAccelerator: string;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
   registerOverlayEmergencyShortcut(): boolean;
@@ -185,6 +186,9 @@ export function registerSystemIpc(
   });
   ipc.handle("system:reveal", async (filename) => {
     await revealInFileManager(z.string().min(1).parse(filename), shell);
+  });
+  ipc.handle("system:open-preview-window", async (filename) => {
+    dependencies.openPreviewWindow(z.string().min(1).max(32_768).parse(filename));
   });
   ipc.handle("system:open-data-folder", async () => {
     await shell.openPath(app.getPath("userData"));

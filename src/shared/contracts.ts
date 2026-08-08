@@ -1772,6 +1772,8 @@ export interface RefCanvasApi {
     /** Opens each file with the OS default app (batch). */
     openFilesWithDefaultApp(paths: string[]): Promise<void>;
     revealInFolder(path: string): Promise<void>;
+    /** FND-004：打开浮动预览窗口（独立窗口渲染统一预览会话）。 */
+    openPreviewWindow(path: string): Promise<void>;
     openDataFolder(): Promise<void>;
     pickDirectory(options: {
       title: string;

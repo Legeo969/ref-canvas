@@ -412,6 +412,8 @@ const api: RefCanvasApi = {
     openFilesWithDefaultApp: (paths) =>
       ipcRenderer.invoke("system:open-files-with-default-app", paths),
     revealInFolder: (path) => ipcRenderer.invoke("system:reveal", path),
+    openPreviewWindow: (path) =>
+      ipcRenderer.invoke("system:open-preview-window", path),
     openDataFolder: () => ipcRenderer.invoke("system:open-data-folder"),
     pickDirectory: (options) =>
       ipcRenderer.invoke("system:pick-directory", options),

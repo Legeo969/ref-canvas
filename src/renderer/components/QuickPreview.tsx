@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Heart,
   Minus,
+  PanelRight,
   Plus,
   Star,
   X,
@@ -172,6 +173,13 @@ export function QuickPreview({
               onClick={() => void window.refCanvas.system.revealInFolder(asset.path)}
             >
               <FolderOpen size={17} />
+            </button>
+            <button
+              aria-label="浮动预览"
+              title="在浮动窗口预览"
+              onClick={() => void window.refCanvas.system.openPreviewWindow(asset.path)}
+            >
+              <PanelRight size={17} />
             </button>
             <button
               aria-label="使用默认应用打开"

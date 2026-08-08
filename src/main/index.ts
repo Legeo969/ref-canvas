@@ -793,6 +793,7 @@ function registerIpc(): void {
     getLibraryManager: () => libraryManager,
     getMigrationRecovery: () => migrationRecovery,
     getMainWindow: () => mainWindow,
+    openPreviewWindow,
     overlayExitAccelerator,
     pngDataUrlToBuffer,
     registerOverlayEmergencyShortcut,
@@ -1032,6 +1033,66 @@ function closeAllBoardWindows(): void {
   boardWindows.clear();
 }
 
+const previewWindows = new Set<BrowserWindow>();
+
+/** base64url 编码预览路径（renderer 侧 preview-window.ts 解码）。 */
+function encodePreviewWindowPath(filename: string): string {
+  return Buffer.from(filename, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/** 打开浮动预览窗口（FND-004 §5 会话）；主窗口退出时一并关闭。 */
+function openPreviewWindow(filename: string): void {
+  const existing = [...previewWindows].find((window) => !window.isDestroyed());
+  if (existing) {
+    if (existing.isMinimized()) existing.restore();
+    existing.focus();
+    return;
+  }
+  const encoded = encodePreviewWindowPath(filename);
+  const window = new BrowserWindow({
+    width: 960,
+    height: 720,
+    minWidth: 480,
+    minHeight: 360,
+    backgroundColor: "#171a1c",
+    show: false,
+    title: "RefCanvas · 浮动预览",
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#171a1c",
+      symbolColor: "#aeb5b2",
+      height: 40,
+    },
+    webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
+  });
+  hardenWindowNavigation(window.webContents);
+  window.once("ready-to-show", () => window.show());
+  window.on("closed", () => previewWindows.delete(window));
+  previewWindows.add(window);
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    void window.loadURL(
+      `${MAIN_WINDOW_VITE_DEV_SERVER_URL}?preview=${encodeURIComponent(encoded)}&mode=window`,
+    );
+  } else {
+    void window.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      { query: { preview: encoded, mode: "window" } },
+    );
+  }
+}
+
+/** 关闭全部浮动预览窗口（主窗口退出时）。 */
+function closeAllPreviewWindows(): void {
+  for (const window of previewWindows) {
+    if (!window.isDestroyed()) window.close();
+  }
+  previewWindows.clear();
+}
+
 void app.whenReady().then(async () => {
   // 阶段 7：本地 crash dump（不自动上传；dump 落 userData/Crashes）。
   crashReporter.start({
@@ -1236,6 +1297,7 @@ async function shutdownServices(): Promise<void> {
   saveMainWindowBounds();
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();
+  closeAllPreviewWindows();
   mainWindow?.destroy();
   cancelBackgroundServicesStart();
   globalShortcut.unregisterAll();

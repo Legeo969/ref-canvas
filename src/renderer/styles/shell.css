@@ -790,3 +790,62 @@ body.panel-resizing {
   color: #7f8984;
   font-size: 12px;
 }
+
+/* --- 浮动预览窗口（FND-004） --- */
+
+.preview-window {
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  background: var(--bg-base);
+  -webkit-app-region: drag;
+}
+
+.preview-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.preview-window-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #aeb6b2;
+  font-size: 12px;
+}
+
+.preview-window-actions {
+  display: flex;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.preview-window-body {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  overflow: hidden;
+}
+
+.preview-window-body > * {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.preview-window-loading,
+.preview-window-error {
+  color: #9aa39e;
+  font-size: 13px;
+}
+
+.preview-window-error {
+  color: #e08b7a;
+}

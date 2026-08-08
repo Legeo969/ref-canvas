@@ -21,6 +21,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { BoardSummary } from "../../shared/contracts";
 import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
 import { parseBoardWindowParams } from "./board-window";
+import { parsePreviewWindowParams } from "./preview-window";
 import { useFoundSettings } from "./found-settings";
 import { ActionsPanel } from "../components/ActionsPanel";
 import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
@@ -28,6 +29,7 @@ import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { BrowserTabBar } from "../components/BrowserTabBar";
 import { CaptureOverlay } from "../components/CaptureOverlay";
+import { PreviewWindow } from "../components/PreviewWindow";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
 import { DirectoryDetailsPanel } from "../components/DirectoryDetailsPanel";
 import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
@@ -64,6 +66,10 @@ export function App() {
   // 独立白板窗口（?board=<id>&mode=window）：只渲染目标白板。
   const [boardWindowParams] = useState(() =>
     parseBoardWindowParams(window.location.search),
+  );
+  // 浮动预览窗口（?preview=<path>&mode=window）：只渲染单资产预览会话。
+  const [previewWindowParams] = useState(() =>
+    parsePreviewWindowParams(window.location.search),
   );
   const [captureSource, setCaptureSource] = useState<Awaited<
     ReturnType<typeof window.refCanvas.system.prepareRegionCapture>
@@ -352,6 +358,16 @@ export function App() {
   // 独立白板窗口：只渲染目标白板（跳过主窗口 store 初始化与工作台）。
   if (boardWindowParams) {
     return <BoardWindow boardId={boardWindowParams.boardId} />;
+  }
+
+  // 浮动预览窗口：只渲染单资产预览会话。
+  if (previewWindowParams) {
+    return (
+      <PreviewWindow
+        path={previewWindowParams.previewPath}
+        onClose={() => window.close()}
+      />
+    );
   }
 
   return (
