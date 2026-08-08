@@ -56,7 +56,7 @@ describe("TaskCenter (FND-007 §8.3)", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(host.textContent).toContain("任务中心");
+    expect(host.textContent).toContain("Task Center");
     expect(host.textContent).toContain("导入");
     expect(host.textContent).toContain("AI");
     expect(host.textContent).toContain("批处理");
@@ -108,6 +108,6 @@ describe("TaskCenter (FND-007 §8.3)", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(host.textContent).toContain("暂无任务");
+    expect(host.textContent).toContain("No tasks yet");
   });
 });

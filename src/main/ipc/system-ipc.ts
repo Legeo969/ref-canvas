@@ -14,6 +14,7 @@ import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type {
+  AppLanguage,
   AppPreferences,
   BoardSettings,
   FoundSettings,
@@ -436,6 +437,7 @@ export function registerSystemIpc(
   const readAppPreferences = (): AppPreferences => ({
     globalShortcuts: database().getSetting("globalShortcuts", false),
     backgroundResidency: database().getSetting("backgroundResidency", false),
+    language: database().getSetting<AppLanguage>("language", "en"),
     boardSettings: database().getSetting<BoardSettings>("boardSettings", {
       interactionPreset: "pureref",
       snapEnabled: true,
@@ -454,6 +456,9 @@ export function registerSystemIpc(
       .object({
         globalShortcuts: z.boolean().optional(),
         backgroundResidency: z.boolean().optional(),
+        language: z
+          .enum(["zh-CN", "zh-TW", "en", "ja", "ko", "es", "fr"])
+          .optional(),
         boardSettings: z
           .object({
             interactionPreset: z.enum(["pureref", "standard"]).optional(),
@@ -471,6 +476,9 @@ export function registerSystemIpc(
     }
     if (parsed.backgroundResidency !== undefined) {
       database().setSetting("backgroundResidency", parsed.backgroundResidency);
+    }
+    if (parsed.language !== undefined) {
+      database().setSetting("language", parsed.language);
     }
     if (parsed.boardSettings !== undefined) {
       database().setSetting("boardSettings", {

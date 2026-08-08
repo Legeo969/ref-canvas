@@ -24,6 +24,7 @@ import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
 import { parseBoardWindowParams } from "./board-window";
 import { parsePreviewWindowParams } from "./preview-window";
 import { useFoundSettings } from "./found-settings";
+import { translate, useAppLanguage } from "./i18n";
 import { ActionsPanel } from "../components/ActionsPanel";
 import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
 import { BoardCanvas } from "../components/BoardCanvas";
@@ -58,6 +59,8 @@ export function App() {
   );
   const dialog = useDialog();
   const uiScale = useFoundSettings().uiScale;
+  // FND-011：应用语言（七语言即时切换，英文回退）。
+  useAppLanguage();
   // 迁移失败恢复模式（?recovery=1）：只展示恢复信息，不进入主工作区。
   const [recoveryMode] = useState(() =>
     new URLSearchParams(window.location.search).get("recovery") === "1",
@@ -686,10 +689,10 @@ export function App() {
       <footer className="statusbar">
         <span>
           {store.importing
-            ? "正在更新文件索引…"
+            ? translate("status.importing")
             : store.workspaceMode === "directory"
-              ? "磁盘浏览已就绪"
-            : "参考板已就绪"}
+              ? translate("status.diskReady")
+            : translate("status.boardReady")}
         </span>
         <span className="status-hint">
           方向键浏览 · Space 预览 · F 收藏 · 0–5 评分 · 素材 Alt+拖到外部

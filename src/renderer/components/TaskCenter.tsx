@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { TaskKind, TaskSnapshot } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 
 interface TaskCenterProps {
   onClose(): void;
@@ -184,7 +185,7 @@ export function TaskCenter({ onClose }: TaskCenterProps) {
           <div className="task-center-title">
             <Clock size={16} />
             <div>
-              <h2>任务中心</h2>
+              <h2>{translate("tasks.title")}</h2>
               <p>导入、批处理与 AI 任务统一进度。</p>
             </div>
           </div>
@@ -194,7 +195,7 @@ export function TaskCenter({ onClose }: TaskCenterProps) {
         </header>
         <div className="task-center-body">
           {tasks.length === 0 ? (
-            <p className="task-center-empty">暂无任务。</p>
+            <p className="task-center-empty">{translate("tasks.empty")}</p>
           ) : (
             <ul className="task-list">
               {tasks.map((task) => (

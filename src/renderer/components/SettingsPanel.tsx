@@ -31,6 +31,8 @@ import type {
   RegisteredScript,
 } from "../../shared/contracts";
 import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
+import { APP_LANGUAGES } from "../app/i18n";
+import type { AppLanguage } from "../../shared/contracts";
 import { PANEL_DEFAULTS } from "../app/panel-layout";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
@@ -111,6 +113,13 @@ export function SettingsPanel({
   ) => {
     const next = await window.refCanvas.system.setPreferences(patch);
     setAppPreferences(next);
+    if (next.language) {
+      window.dispatchEvent(
+        new CustomEvent("refcanvas:language-changed", {
+          detail: next.language,
+        }),
+      );
+    }
     window.dispatchEvent(
       new CustomEvent("refcanvas:board-settings", {
         detail: next.boardSettings,
@@ -248,6 +257,26 @@ export function SettingsPanel({
             {tab === "general" && (
               <div className="settings-group">
                 <h3>通用</h3>
+                <label className="settings-row">
+                  <span>
+                    界面语言
+                    <small>七种语言即时切换，缺失文案回退英文</small>
+                  </span>
+                  <select
+                    value={appPreferences?.language ?? "en"}
+                    onChange={(event) =>
+                      void setAppPreference({
+                        language: event.target.value as AppLanguage,
+                      })
+                    }
+                  >
+                    {APP_LANGUAGES.map((language) => (
+                      <option key={language.code} value={language.code}>
+                        {language.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
