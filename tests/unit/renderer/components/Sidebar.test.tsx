@@ -64,7 +64,8 @@ describe("Sidebar workspaces", () => {
       "directory-browser",
     );
     expect(host.textContent).toContain("参考板");
-    expect(host.textContent).not.toContain("引用集合");
+    expect(host.textContent).toContain("引用集合");
+    expect(host.textContent).toContain("还没有集合");
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>(".sidebar-recycle-button")?.click();

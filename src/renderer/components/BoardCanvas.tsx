@@ -2771,8 +2771,8 @@ export function BoardCanvas({
         title: "选择原文件的新位置",
         defaultPath: resolution.path ?? undefined,
       });
-      if (!target) return;
-      await window.refCanvas.boards.relinkReference(board.id, assetId, target);
+      if (!target[0]) return;
+      await window.refCanvas.boards.relinkReference(board.id, assetId, target[0]);
     }
     // 重新加载引用状态（自动刷新对象显示）。
     await window.refCanvas.boards.resolveReferences(board.id);

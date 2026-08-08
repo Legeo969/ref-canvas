@@ -1758,12 +1758,13 @@ export interface RefCanvasApi {
       title: string;
       defaultPath?: string;
     }): Promise<string | null>;
-    /** 打开文件选择对话框（阶段 6：Board 手动 relink）。 */
+    /** 打开文件选择对话框（阶段 6：Board 手动 relink；multiSelections 批量选择）。 */
     pickFile(options: {
       title: string;
       defaultPath?: string;
       filters?: Array<{ name: string; extensions: string[] }>;
-    }): Promise<string | null>;
+      multiSelections?: boolean;
+    }): Promise<string[]>;
     /** 保存 WebGL/Canvas 渲染结果；thumbnail 模式同时关联资产缩略图。 */
     saveRenderedImage(
       dataUrl: string,

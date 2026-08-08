@@ -2,6 +2,7 @@ import { PanelsTopLeft, Plus, Trash2 } from "lucide-react";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
 import { DirectoryBrowser } from "./DirectoryBrowser";
+import { CollectionsPanel } from "./CollectionsPanel";
 
 /** Navigation for the disk browser and Fabric reference boards. */
 export function Sidebar() {
@@ -11,6 +12,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <DirectoryBrowser />
+      <CollectionsPanel />
       <div className="sidebar-section sidebar-board-section">
         <div className="section-label row-label">
           <span>参考板</span>

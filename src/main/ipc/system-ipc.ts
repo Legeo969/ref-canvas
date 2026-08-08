@@ -217,15 +217,19 @@ export function registerSystemIpc(
           )
           .max(8)
           .optional(),
+        multiSelections: z.boolean().optional(),
       })
       .parse(options);
     const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
       title: parsed.title,
       defaultPath: parsed.defaultPath,
-      properties: ["openFile"],
+      properties: [
+        "openFile",
+        ...(parsed.multiSelections ? (["multiSelections"] as const) : []),
+      ],
       filters: parsed.filters,
     });
-    return result.canceled ? null : result.filePaths[0] ?? null;
+    return result.canceled ? [] : result.filePaths;
   });
   ipc.handleWithEvent("system:save-rendered-image", async (event, dataUrl, options) => {
     const parsedData = z.string().max(100_000_000).regex(/^data:image\/png;base64,/).parse(dataUrl);

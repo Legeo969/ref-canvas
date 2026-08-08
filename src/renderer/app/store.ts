@@ -9,6 +9,8 @@ import type {
   BoardDocumentV3,
   DirectoryEntry,
   LibraryPreferences,
+  ReferenceCollection,
+  ReferenceCollectionItem,
   SavedView,
   SelectionScope,
   SortDirection,
@@ -137,6 +139,15 @@ interface AppState
   consumePendingBoardAssets(ids: string[]): void;
   showDirectoryWorkspace(): void;
   toggleFocusMode(): void;
+  /** 引用集合（FND-003 §6.3）：打开集合视图；null 关闭。 */
+  activeCollectionId: string | null;
+  collections: ReferenceCollection[];
+  collectionTree: Record<string, ReferenceCollection[]>;
+  collectionItems: Record<string, ReferenceCollectionItem[]>;
+  openCollection(id: string): void;
+  closeCollection(): void;
+  /** 重新拉取集合树与展开/活动集合条目（FND-003）。 */
+  refreshCollections(): Promise<void>;
   /** 切换到本地目录浏览（不产生素材数据库记录）。 */
   openDirectory(path: string): Promise<void>;
   /** 挂载移除后清理该根下的当前目录、选择与历史。 */
@@ -292,6 +303,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           void get().reloadAssets();
       }
     });
+    const unsubscribeCollections =
+      window.refCanvas.collections?.onChanged?.(() => {
+        void get().refreshCollections();
+      });
     const unsubscribeLibrary = window.refCanvas.library.onLibraryChanged(() => {
       if (libraryRefreshTimer !== null) window.clearTimeout(libraryRefreshTimer);
       libraryRefreshTimer = window.setTimeout(() => {
@@ -303,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       "beforeunload",
       () => {
         unsubscribeImport();
+        unsubscribeCollections?.();
         unsubscribeLibrary();
         if (libraryRefreshTimer !== null) window.clearTimeout(libraryRefreshTimer);
       },
@@ -353,6 +369,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (navigation.visualColor) {
       void window.refCanvas.library.startSimilarityIndex();
     }
+    void get().refreshCollections().catch(() => undefined);
     await get().reloadAssets();
     const candidates = startupDirectoryCandidates({
       rememberedPath: navigation.directoryPath,
@@ -1094,6 +1111,47 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
 
   toggleFocusMode: () => set((state) => ({ focusMode: !state.focusMode })),
+
+  activeCollectionId: null,
+  collections: [],
+  collectionTree: {},
+  collectionItems: {},
+
+  openCollection: (id) =>
+    set({
+      workspaceMode: "directory",
+      navigationSource: "directory",
+      focusMode: false,
+      activeCollectionId: id,
+    }),
+
+  closeCollection: () => set({ activeCollectionId: null }),
+
+  refreshCollections: async () => {
+    const previousActive = get().activeCollectionId;
+    const [collections, items] = await Promise.all([
+      window.refCanvas.collections.list(),
+      previousActive
+        ? window.refCanvas.collections.listItems(previousActive).catch(() => [])
+        : Promise.resolve<ReferenceCollectionItem[]>([]),
+    ]);
+    const collectionTree: Record<string, ReferenceCollection[]> = {};
+    for (const collection of collections) {
+      const parentId = collection.parentId ?? "";
+      (collectionTree[parentId] ??= []).push(collection);
+    }
+    const currentActive = get().activeCollectionId;
+    set((state) => ({
+      collections,
+      collectionTree,
+      collectionItems:
+        currentActive === previousActive && currentActive !== null
+          ? { ...state.collectionItems, [currentActive]: items }
+          : currentActive !== null
+            ? { [currentActive]: state.collectionItems[currentActive] ?? [] }
+            : {},
+    }));
+  },
 
   selectDirectoryEntry: (selectedDirectoryEntry) =>
     set({ selectedDirectoryEntry }),

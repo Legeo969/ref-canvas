@@ -25,6 +25,7 @@ import { ActionsPanel } from "../components/ActionsPanel";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { CaptureOverlay } from "../components/CaptureOverlay";
+import { CollectionDetailsPanel } from "../components/CollectionsPanel";
 import { DirectoryDetailsPanel } from "../components/DirectoryDetailsPanel";
 import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
 import { useDialog } from "../components/DialogProvider";
@@ -597,6 +598,20 @@ export function App() {
               无法打开白板
             </section>
           )
+        ) : store.activeCollectionId ? (
+          <>
+            <CollectionDetailsPanel />
+            <PanelDividers
+              panel="details"
+              layout={panelLayout}
+              windowWidth={windowWidth}
+              onCommit={(next) => {
+                setPanelLayout(next);
+                void store.setPreferences({ panelLayout: next });
+              }}
+            />
+            <DirectoryDetailsPanel entry={store.selectedDirectoryEntry} />
+          </>
         ) : (
           <>
             <DirectoryAssetPanel />
