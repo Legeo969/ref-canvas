@@ -46,13 +46,15 @@ import type {
   ReferenceCollectionItem,
 } from "../../shared/contracts";
 import { useAppStore } from "../app/store";
+import { translate, type MessageKey } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
 
-const stateLabels: Record<CollectionItemState, string> = {
-  resolved: "可解析",
-  offline: "离线",
-  missing: "缺失",
-  ambiguous: "歧义",
+/** 状态标签直接映射 i18n key（值随语言切换）。 */
+const stateLabelKeys: Record<CollectionItemState, MessageKey> = {
+  resolved: "collections.state.resolved",
+  offline: "collections.state.offline",
+  missing: "collections.state.missing",
+  ambiguous: "collections.state.ambiguous",
 };
 
 const stateClasses: Record<CollectionItemState, string> = {
@@ -61,6 +63,11 @@ const stateClasses: Record<CollectionItemState, string> = {
   missing: "state-missing",
   ambiguous: "state-ambiguous",
 };
+
+/** 状态标签（渲染时取当前语言）。 */
+function stateLabel(state: CollectionItemState): string {
+  return translate(stateLabelKeys[state]);
+}
 
 /** 目录条目拖拽 MIME（DirectoryAssetPanel 注入）。 */
 const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
@@ -112,7 +119,7 @@ function CollectionNode({
   const rename = async () => {
     setMenuOpen(false);
     const values = await dialog.requestForm({
-      title: "重命名集合",
+      title: translate("collections.rename"),
       confirmLabel: "保存",
       fields: [
         { name: "name", label: "集合名称", required: true, maxLength: 256, initialValue: collection.name },
@@ -129,9 +136,9 @@ function CollectionNode({
     const itemCount = items?.length ?? 0;
     if (childCount === 0 && itemCount === 0) {
       const confirmed = await dialog.requestConfirm({
-        title: "删除集合",
-        description: `确定删除“${collection.name}”吗？此操作不可撤销。`,
-        confirmLabel: "删除",
+        title: translate("collections.delete"),
+        description: `确定删除“${collection.name}”吗？${translate("collections.deleteConfirm")}`,
+        confirmLabel: translate("collections.delete"),
         danger: true,
       });
       if (!confirmed) return;
@@ -152,9 +159,9 @@ function CollectionNode({
       ? `${children.length} 个子集合、${items?.length ?? 0} 个条目`
       : `${items?.length ?? 0} 个条目`;
     const confirmed = await dialog.requestConfirm({
-      title: "递归删除集合",
-      description: `“${collection.name}”包含 ${scope}。删除不会移除磁盘上的任何文件，但集合引用将永久丢失。`,
-      confirmLabel: "删除集合",
+      title: translate("collections.recursiveDelete"),
+      description: `“${collection.name}”包含 ${scope}。${translate("collections.recursiveDelete")}`,
+      confirmLabel: translate("collections.delete"),
       danger: true,
     });
     if (!confirmed) return;
@@ -170,7 +177,7 @@ function CollectionNode({
   const createChild = async () => {
     setMenuOpen(false);
     const values = await dialog.requestForm({
-      title: "新建子集合",
+      title: translate("collections.newChild"),
       confirmLabel: "创建",
       fields: [{ name: "name", label: "子集合名称", required: true, maxLength: 256 }],
       onSubmit: ({ name }) =>
@@ -307,15 +314,15 @@ function CollectionNode({
           <div className="collection-menu">
             <button role="menuitem" onClick={() => { void onAddFiles(collection.id); setMenuOpen(false); }}>
               <Plus size={15} />
-              添加文件…
+              {translate("collections.addFiles")}
             </button>
             <button role="menuitem" onClick={() => void createChild()}>
               <FolderPlus size={15} />
-              新建子集合
+              {translate("collections.newChild")}
             </button>
             <button role="menuitem" onClick={() => void rename()}>
               <Pencil size={15} />
-              重命名
+              {translate("collections.rename")}
             </button>
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => void reorderSibling(-1)}>
@@ -329,16 +336,16 @@ function CollectionNode({
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => { setMenuOpen(false); void onExport(collection.id); }}>
               <ArrowDownToLine size={15} />
-              导出…
+              {translate("collections.export")}
             </button>
             <button role="menuitem" onClick={() => { setMenuOpen(false); void store.openCollectionInNewTab(collection.id, collection.name); }}>
               <SquareArrowOutUpRight size={15} />
-              在新标签打开
+              {translate("collections.openInNewTab")}
             </button>
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => void remove()}>
               <Trash2 size={15} />
-              删除集合
+              {translate("collections.delete")}
             </button>
           </div>
           <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
@@ -421,7 +428,7 @@ function CollectionItemCard({
           </span>
         )}
         <span className={`collection-state-badge ${stateClasses[item.state]}`}>
-          {stateLabels[item.state]}
+          {stateLabel(item.state)}
         </span>
       </span>
       <span className="asset-title" title={item.lastResolvedPath}>
@@ -430,8 +437,8 @@ function CollectionItemCard({
       <span className="collection-item-actions">
         <button
           className="mini-icon-button"
-          title="重定位"
-          aria-label={`重定位 ${displayName}`}
+          title={translate("preview.reveal")}
+          aria-label={`${translate("collections.resolve")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
             onRelink(item);
@@ -441,8 +448,8 @@ function CollectionItemCard({
         </button>
         <button
           className="mini-icon-button"
-          title="复制路径"
-          aria-label={`复制 ${displayName} 的路径`}
+          title={translate("preview.reveal")}
+          aria-label={`${translate("preview.reveal")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
             void window.refCanvas.system.writeClipboard(item.lastResolvedPath);
@@ -452,8 +459,8 @@ function CollectionItemCard({
         </button>
         <button
           className="mini-icon-button danger-hover"
-          title="从集合移除"
-          aria-label={`从集合移除 ${displayName}`}
+          title={translate("tasks.cancel")}
+          aria-label={`${translate("tasks.cancel")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
             onRemove(item);
@@ -489,9 +496,9 @@ export function CollectionDetailsPanel() {
   if (!collection) {
     return (
       <section className="board-panel board-unavailable">
-        <p>集合不存在或已被删除。</p>
+        <p>{translate("preview.error")}</p>
         <button className="secondary-button" onClick={() => store.closeCollection()}>
-          返回浏览
+          {translate("workspace.disk")}
         </button>
       </section>
     );
@@ -515,7 +522,7 @@ export function CollectionDetailsPanel() {
 
   const relinkItem = async (item: ReferenceCollectionItem) => {
     const picked = await window.refCanvas.system.pickFile({
-      title: `重定位：${item.lastResolvedPath.split(/[\\/]/).pop() ?? item.pathKey}`,
+      title: `${translate("collections.resolve")}：${item.lastResolvedPath.split(/[\\/]/).pop() ?? item.pathKey}`,
       defaultPath: item.lastResolvedPath,
     });
     if (!picked[0]) return;
@@ -524,9 +531,9 @@ export function CollectionDetailsPanel() {
     } catch (error) {
       if (error instanceof Error && error.message === "RELINE_FINGERPRINT_CHANGED") {
         const confirmed = await dialog.requestConfirm({
-          title: "指纹不一致",
-          description: "所选文件与集合中记录的文件内容不一致。确认仍要更新引用吗？",
-          confirmLabel: "仍要重定位",
+          title: translate("collections.fingerprintChanged"),
+          description: translate("collections.fingerprintChangedDesc"),
+          confirmLabel: translate("collections.resolve"),
           danger: true,
         });
         if (confirmed) {
@@ -542,7 +549,7 @@ export function CollectionDetailsPanel() {
   const exportCollection = async () => {
     if (!collectionId) return;
     const targetDirectory = await window.refCanvas.system.pickDirectory({
-      title: `导出“${collection.name}”到…`,
+      title: `${translate("collections.export")}“${collection.name}”`,
     });
     if (!targetDirectory) return;
     setExporting(true);
@@ -574,22 +581,24 @@ export function CollectionDetailsPanel() {
         <div className="collection-title-row">
           <Layers size={17} strokeWidth={1.8} />
           <h2 title={collection.name}>{collection.name}</h2>
-          <span className="nav-count">{items.length} 项</span>
+          <span className="nav-count">
+            {translate("collections.itemCount").replace("{count}", String(items.length))}
+          </span>
         </div>
         <div className="collection-detail-actions">
           <button className="secondary-button" onClick={() => void resolve()} disabled={resolving}>
             <RefreshCw size={14} className={resolving ? "spin" : ""} />
-            {resolving ? "解析中…" : "重新解析"}
+            {resolving ? translate("collections.exporting") : translate("collections.resolve")}
           </button>
           {runningExportId ? (
             <button className="secondary-button" onClick={() => void cancelRunningExport()}>
               <X size={14} />
-              取消导出
+              {translate("collections.cancelExport")}
             </button>
           ) : (
             <button className="secondary-button" onClick={() => void exportCollection()} disabled={exporting}>
               <ArrowDownToLine size={14} />
-              {exporting ? "导出中…" : "导出…"}
+              {exporting ? translate("collections.exporting") : translate("collections.export")}
             </button>
           )}
         </div>
@@ -598,8 +607,10 @@ export function CollectionDetailsPanel() {
       {exportSnapshot && (
         <div className="collection-export-summary">
           <Check size={15} />
-          已复制 {exportSnapshot.copied} · 已跳过 {exportSnapshot.skipped} · 失败{" "}
-          {exportSnapshot.failed}
+          {translate("collections.exportSummary")
+            .replace("{copied}", String(exportSnapshot.copied))
+            .replace("{skipped}", String(exportSnapshot.skipped))
+            .replace("{failed}", String(exportSnapshot.failed))}
           {exportSnapshot.manifestPath && (
             <span className="collection-export-manifest" title={exportSnapshot.manifestPath}>
               · {exportSnapshot.manifestPath.split(/[\\/]/).pop()}
@@ -610,7 +621,7 @@ export function CollectionDetailsPanel() {
           )}
           <button
             className="mini-icon-button"
-            aria-label="关闭导出摘要"
+            aria-label={translate("preview.close")}
             onClick={() => setExportSnapshot(null)}
           >
             <X size={13} />
@@ -623,8 +634,8 @@ export function CollectionDetailsPanel() {
           <span className="empty-icon">
             <Upload size={25} />
           </span>
-          <h3>集合为空</h3>
-          <p>拖入文件、文件夹，或点击侧栏集合旁的 + 添加。</p>
+          <h3>{translate("collections.empty")}</h3>
+          <p>{translate("collections.emptyHint")}</p>
         </div>
       ) : (
         <div className="collection-items-grid">
@@ -719,7 +730,7 @@ export function CollectionsPanel() {
   const createCollection = async () => {
     setMenuOpen(false);
     const values = await dialog.requestForm({
-      title: "新建集合",
+      title: translate("collections.create"),
       confirmLabel: "创建",
       fields: [{ name: "name", label: "集合名称", required: true, maxLength: 256 }],
       onSubmit: ({ name }) => void window.refCanvas.collections.create({ name }),
@@ -730,7 +741,7 @@ export function CollectionsPanel() {
   const createCollectionWithFiles = async () => {
     setMenuOpen(false);
     const picked = await window.refCanvas.system.pickFile({
-      title: "选择要加入新集合的文件",
+      title: translate("collections.create"),
       multiSelections: true,
       filters: [
         { name: "所有文件", extensions: ["*"] },
@@ -740,7 +751,7 @@ export function CollectionsPanel() {
     });
     if (!picked.length) return;
     const values = await dialog.requestForm({
-      title: "新建集合",
+      title: translate("collections.create"),
       confirmLabel: "创建",
       fields: [{ name: "name", label: "集合名称", required: true, maxLength: 256 }],
     });
@@ -753,8 +764,8 @@ export function CollectionsPanel() {
     store.openCollection(collection.id);
     if (added.length === 0) {
       void dialog.requestConfirm({
-        title: "未能添加",
-        description: "所选路径没有可加入集合的文件（文件夹不会被加入）。",
+        title: translate("collections.empty"),
+        description: translate("collections.emptyHint"),
         confirmLabel: "知道了",
       });
     }
@@ -860,11 +871,11 @@ export function CollectionsPanel() {
       onDrop={(event) => onDrop(event)}
     >
       <div className="section-label row-label">
-        <span>引用集合</span>
+        <span>{translate("sidebar.collections")}</span>
         <button
           className="mini-icon-button"
-          aria-label="新建集合"
-          title="新建集合"
+          aria-label={translate("collections.create")}
+          title={translate("collections.create")}
           onClick={() => setMenuOpen((value) => !value)}
         >
           <Plus size={14} />
@@ -875,19 +886,19 @@ export function CollectionsPanel() {
           <div className="collection-menu collection-menu-head">
             <button role="menuitem" onClick={() => void createCollection()}>
               <FolderPlus size={15} />
-              新建集合
+              {translate("collections.create")}
             </button>
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => void createCollectionWithFiles()}>
               <Upload size={15} />
-              选择文件并新建…
+              {translate("collections.addFiles")}
             </button>
           </div>
           <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
         </>
       )}
       {roots.length === 0 ? (
-        <p className="directory-empty">还没有集合。点击 + 创建引用集合，或拖入文件。</p>
+        <p className="directory-empty">{translate("collections.empty")}</p>
       ) : (
         <div className="collection-tree">
           {roots.map((collection) => (

@@ -19,18 +19,19 @@ import {
 import { useEffect, useState } from "react";
 import type { TaskKind, TaskSnapshot } from "../../shared/contracts";
 import { translate } from "../app/i18n";
+import type { MessageKey } from "../app/i18n";
 
 interface TaskCenterProps {
   onClose(): void;
 }
 
-const kindLabels: Record<TaskKind, string> = {
-  import: "导入",
-  batch: "批处理",
-  convert: "转换",
-  export: "导出",
-  archive: "归档",
-  ai: "AI",
+const kindKeys: Record<TaskKind, MessageKey> = {
+  import: "tasks.kind.import",
+  batch: "tasks.kind.batch",
+  convert: "tasks.kind.convert",
+  export: "tasks.kind.export",
+  archive: "tasks.kind.archive",
+  ai: "tasks.kind.ai",
 };
 
 const kindIcons: Record<TaskKind, typeof Clock> = {
@@ -42,12 +43,12 @@ const kindIcons: Record<TaskKind, typeof Clock> = {
   ai: Sparkles,
 };
 
-const stateLabels: Record<TaskSnapshot["state"], string> = {
-  queued: "排队中",
-  running: "进行中",
-  completed: "已完成",
-  failed: "失败",
-  cancelled: "已取消",
+const stateKeys: Record<TaskSnapshot["state"], MessageKey> = {
+  queued: "tasks.state.queued",
+  running: "tasks.state.running",
+  completed: "tasks.state.completed",
+  failed: "tasks.state.failed",
+  cancelled: "tasks.state.cancelled",
 };
 
 function formatTime(iso: string): string {
@@ -76,7 +77,7 @@ function TaskRow({
       </span>
       <div className="task-main">
         <div className="task-title-row">
-          <span className="task-kind">{kindLabels[task.kind]}</span>
+          <span className="task-kind">{translate(kindKeys[task.kind])}</span>
           <span className={`task-state task-state-${task.state}`}>
             {running ? (
               <Loader2 size={11} className="spin" />
@@ -87,7 +88,7 @@ function TaskRow({
             ) : (
               <Clock size={11} />
             )}
-            {stateLabels[task.state]}
+            {translate(stateKeys[task.state])}
           </span>
           {task.progress !== null && task.state === "running" && (
             <span className="task-progress">
@@ -117,8 +118,8 @@ function TaskRow({
         {running && (
           <button
             className="mini-icon-button"
-            aria-label={`取消任务 ${task.id}`}
-            title="取消"
+            aria-label={translate("tasks.cancelTask").replace("{id}", task.id)}
+            title={translate("tasks.cancel")}
             onClick={() => onCancel(task.id)}
           >
             <X size={13} />
@@ -127,8 +128,8 @@ function TaskRow({
         {task.state === "failed" && task.kind === "ai" && (
           <button
             className="mini-icon-button"
-            aria-label={`重试任务 ${task.id}`}
-            title="重试"
+            aria-label={translate("tasks.retryTask").replace("{id}", task.id)}
+            title={translate("tasks.retry")}
             onClick={() => onRetry(task.id)}
           >
             <RotateCcw size={13} />
@@ -178,7 +179,7 @@ export function TaskCenter({ onClose }: TaskCenterProps) {
         className="task-center-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="任务中心"
+        aria-label={translate("tasks.title")}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
@@ -186,10 +187,10 @@ export function TaskCenter({ onClose }: TaskCenterProps) {
             <Clock size={16} />
             <div>
               <h2>{translate("tasks.title")}</h2>
-              <p>导入、批处理与 AI 任务统一进度。</p>
+              <p>{translate("tasks.subtitle")}</p>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <button className="icon-button" onClick={onClose} aria-label={translate("preview.close")}>
             <X size={16} />
           </button>
         </header>

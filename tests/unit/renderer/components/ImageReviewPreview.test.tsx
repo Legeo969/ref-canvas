@@ -4,9 +4,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FOUND_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { ImageReviewPreview } from "../../../../src/renderer/components/ImageReviewPreview";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
 
 function assetFixture(extension = "png") {
   return {
@@ -62,7 +65,7 @@ describe("ImageReviewPreview (FND-005)", () => {
     expect(host.querySelector("[aria-label='缩小']")).toBeTruthy();
     expect(host.querySelector("[aria-label='适配窗口']")).toBeTruthy();
     expect(host.querySelector("[aria-label='100% 原始大小']")).toBeTruthy();
-    expect(host.querySelector("[aria-label='旋转 90 度']")).toBeTruthy();
+    expect(host.querySelector("[aria-label='旋转 90°']")).toBeTruthy();
     expect(host.querySelector("[aria-label='棋盘透明背景']")).toBeTruthy();
     expect(host.querySelector("[aria-label='像素取色']")).toBeTruthy();
     expect(host.querySelector("[aria-label='提取主色板']")).toBeTruthy();

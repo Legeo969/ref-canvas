@@ -2,6 +2,7 @@ import { Download, FolderOpen, Pause, Play, SkipBack, SkipForward } from "lucide
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
+import { translate } from "../app/i18n";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import type { ExportGifResult } from "../../shared/contracts";
 
@@ -111,7 +112,7 @@ export function VideoPreview({
   const exportGif = async () => {
     setGifError(null);
     const outputDirectory = await window.refCanvas.system.pickDirectory({
-      title: "选择 GIF 导出目录",
+      title: translate("sequence.pickGifDir"),
       defaultPath: parentDirectory(asset.path),
     });
     if (!outputDirectory) return;
@@ -127,7 +128,7 @@ export function VideoPreview({
       setGifResult(result);
       setGifState("done");
     } catch (error) {
-      setGifError(error instanceof Error ? error.message : "GIF 导出失败");
+      setGifError(error instanceof Error ? error.message : translate("sequence.exportFailed"));
       setGifState("idle");
     }
   };
@@ -160,23 +161,23 @@ export function VideoPreview({
           <img
             className="video-frame-step"
             src={frameSource}
-            alt={`精确帧 ${formatTimecode(timecode)}`}
+            alt={translate("video.frameAlt").replace("{timecode}", formatTimecode(timecode))}
             draggable={false}
           />
         )}
         {failed && (
-          <span className="video-frame-error">无法提取该帧</span>
+          <span className="video-frame-error">{translate("video.frameError")}</span>
         )}
         <div className="video-step-controls">
           <button
-            aria-label="上一帧"
+            aria-label={translate("sequence.previousFrame")}
             disabled={stepping || frameRate === null}
             onClick={() => step(-1)}
           >
             <SkipBack size={15} />
           </button>
           <button
-            aria-label={playing ? "暂停" : "播放"}
+            aria-label={playing ? translate("sequence.pause") : translate("sequence.play")}
             onClick={() => {
               const video = videoRef.current;
               if (!video) return;
@@ -191,7 +192,7 @@ export function VideoPreview({
             {playing ? <Pause size={15} /> : <Play size={15} />}
           </button>
           <button
-            aria-label="下一帧"
+            aria-label={translate("sequence.nextFrame")}
             disabled={stepping || frameRate === null}
             onClick={() => step(1)}
           >
@@ -206,18 +207,18 @@ export function VideoPreview({
             className="video-gif-button"
             disabled={gifState === "running"}
             onClick={() => void exportGif()}
-            title="导出为 GIF"
+            title={translate("sequence.exportGifTitle")}
           >
             <Download size={14} />
-            {gifState === "running" ? "导出中" : "GIF"}
+            {gifState === "running" ? translate("video.exporting") : "GIF"}
           </button>
         </div>
         {gifState === "done" && gifResult && (
           <div className="video-gif-result">
-            <span title={gifResult.outputPath}>已导出 GIF</span>
+            <span title={gifResult.outputPath}>{translate("video.exportedGif")}</span>
             <button
               type="button"
-              aria-label="定位 GIF 文件"
+              aria-label={translate("sequence.revealGif")}
               title={gifResult.outputPath}
               onClick={() => void window.refCanvas.filesystem.reveal(gifResult.outputPath)}
             >

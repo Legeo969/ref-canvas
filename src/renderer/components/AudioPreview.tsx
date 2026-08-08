@@ -1,6 +1,7 @@
 import { Headphones } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 
 /**
@@ -66,7 +67,7 @@ export function AudioPreview({
       context.fillRect(0, height / 2 - 1, width, 2);
       context.fillStyle = "#5d6f67";
       context.font = "12px Segoe UI, sans-serif";
-      context.fillText("波形加载中…", 12, 18);
+      context.fillText(translate("audio.loadingWaveform"), 12, 18);
       return;
     }
     const step = width / data.length;
@@ -121,7 +122,7 @@ export function AudioPreview({
           <Headphones size={15} />
           <span>{asset.extension.toUpperCase()}</span>
           <span>{formatDuration(duration)}</span>
-          {peaks ? <span>{peaks.length} 采样点</span> : null}
+          {peaks ? <span>{translate("audio.sampleCount").replace("{count}", String(peaks.length))}</span> : null}
         </div>
       </div>
     </MediaNotesOverlay>

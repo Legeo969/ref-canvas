@@ -7,9 +7,12 @@ import {
   encodePreviewWindowPath,
   parsePreviewWindowParams,
 } from "../../../../src/renderer/app/preview-window";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { PreviewWindow } from "../../../../src/renderer/components/PreviewWindow";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
 
 describe("preview window (FND-004)", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];

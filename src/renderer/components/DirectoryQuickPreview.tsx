@@ -16,6 +16,7 @@ import {
   browserImageExtensions,
 } from "../../shared/asset-kind";
 import { formatBytes } from "../app/format-bytes";
+import { translate } from "../app/i18n";
 import { HighlightedText } from "./HighlightedText";
 import { MediaInfoSection } from "./MediaInfoSection";
 import { ModelPreview } from "./ModelPreview";
@@ -211,12 +212,12 @@ export function DirectoryQuickPreview({
       <div
         className="directory-preview"
         role="dialog"
-        aria-label={`预览 ${entry.name}`}
+        aria-label={translate("preview.previewNamed").replace("{name}", entry.name)}
         onPointerDown={(event) => event.stopPropagation()}
       >
         <button
           className="icon-button preview-close"
-          aria-label="关闭预览"
+          aria-label={translate("preview.close")}
           onClick={onClose}
         >
           <X size={17} />
@@ -234,7 +235,9 @@ export function DirectoryQuickPreview({
           <p className="directory-preview-meta">
             {index >= 0 ? `${index + 1} / ${files.length} · ` : ""}
             {entry.sequence
-              ? `序列 ${entry.sequence.frame} · ${entry.sequence.count} 帧 · `
+              ? translate("preview.sequenceMeta")
+                  .replace("{frame}", String(entry.sequence.frame))
+                  .replace("{count}", String(entry.sequence.count))
               : ""}
             {formatBytes(entry.size, "")}
           </p>
@@ -253,40 +256,40 @@ export function DirectoryQuickPreview({
             onClick={() => onOpen(entry)}
           >
             <Eye size={14} />
-            打开
+            {translate("preview.open")}
           </button>
           <button
             className="secondary-button"
             onClick={() => onReveal(entry)}
           >
             <FolderOpen size={14} />
-            定位
+            {translate("preview.revealShort")}
           </button>
           <button
             className="secondary-button"
             onClick={() => onCopyPath(entry)}
           >
             <Copy size={14} />
-            复制路径
+            {translate("preview.copyPath")}
           </button>
           <button
             className="secondary-button"
             onClick={() => onTag(entry)}
           >
             <Tags size={14} />
-            设置标签
+            {translate("preview.setTags")}
           </button>
           <button
             className="secondary-button danger"
             onClick={() => onTrash(entry)}
           >
             <Trash2 size={14} />
-            移入回收站
+            {translate("preview.moveToTrash")}
           </button>
         </div>
         <button
           className="preview-nav preview-prev"
-          aria-label="上一个文件"
+          aria-label={translate("preview.previousFile")}
           disabled={files.length < 2}
           onClick={(event) => {
             event.stopPropagation();
@@ -297,7 +300,7 @@ export function DirectoryQuickPreview({
         </button>
         <button
           className="preview-nav preview-next"
-          aria-label="下一个文件"
+          aria-label={translate("preview.nextFile")}
           disabled={files.length < 2}
           onClick={(event) => {
             event.stopPropagation();

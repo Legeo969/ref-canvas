@@ -4,9 +4,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TaskSnapshot } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { TaskCenter } from "../../../../src/renderer/components/TaskCenter";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
 
 function task(overrides: Partial<TaskSnapshot> = {}): TaskSnapshot {
   return {
@@ -56,7 +59,7 @@ describe("TaskCenter (FND-007 §8.3)", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(host.textContent).toContain("Task Center");
+    expect(host.textContent).toContain("任务中心");
     expect(host.textContent).toContain("导入");
     expect(host.textContent).toContain("AI");
     expect(host.textContent).toContain("批处理");
@@ -108,6 +111,6 @@ describe("TaskCenter (FND-007 §8.3)", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(host.textContent).toContain("No tasks yet");
+    expect(host.textContent).toContain("暂无任务");
   });
 });

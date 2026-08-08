@@ -1,6 +1,7 @@
 import { Type } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 
 /**
@@ -99,11 +100,11 @@ export function FontPreview({ asset }: { asset: AssetRecord }) {
       if (failed) {
         context.fillStyle = "#c99a5b";
         context.font = "13px Segoe UI, sans-serif";
-        context.fillText("无法加载该字体", 24, 70);
+        context.fillText(translate("font.loadFailed"), 24, 70);
       } else {
         context.fillStyle = "#8d9a94";
         context.font = "13px Segoe UI, sans-serif";
-        context.fillText("字体加载中…", 24, 70);
+        context.fillText(translate("font.loading"), 24, 70);
       }
       return;
     }
@@ -135,7 +136,7 @@ export function FontPreview({ asset }: { asset: AssetRecord }) {
     context.fillStyle = "#6b7670";
     context.font = "12px Segoe UI, sans-serif";
     const axesText = axes.length
-      ? `可变轴: ${axes.map((axis) => `${axis.name} ${axis.value.toFixed(2)}`).join(" · ")}`
+      ? translate("font.variableAxes").replace("{axes}", axes.map((axis) => `${axis.name} ${axis.value.toFixed(2)}`).join(" · "))
       : `${probe.glyphCount ?? "?"} glyphs`;
     context.fillText(axesText, 24, height - 42);
   }, [loaded, probe, axes, failed, asset.title]);

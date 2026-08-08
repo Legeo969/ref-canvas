@@ -8,8 +8,13 @@ import {
   type RefCanvasApi,
 } from "../../../../src/shared/contracts";
 import { useAppStore } from "../../../../src/renderer/app/store";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { DialogProvider } from "../../../../src/renderer/components/DialogProvider";
 import { DirectoryAssetPanel } from "../../../../src/renderer/components/DirectoryAssetPanel";
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 网格中嵌入已翻译的 SequenceCard 等子组件；断言基于简体中文 catalog。
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 

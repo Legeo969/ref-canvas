@@ -6,6 +6,7 @@
  */
 import { Layers, Plus, X } from "lucide-react";
 import type { DragEvent } from "react";
+import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
 
 function TabTitle({ tab }: { tab: ReturnType<typeof useAppStore.getState>["browserTabs"][number] }) {
@@ -17,7 +18,7 @@ function TabTitle({ tab }: { tab: ReturnType<typeof useAppStore.getState>["brows
       </span>
     );
   }
-  if (tab.targetId === "browser://empty") return <span>浏览</span>;
+  if (tab.targetId === "browser://empty") return <span>{translate("browser.empty")}</span>;
   return <span title={tab.targetId}>{tab.title}</span>;
 }
 
@@ -30,7 +31,7 @@ export function BrowserTabBar() {
 
   const openNewTab = async () => {
     const directory = await window.refCanvas.system.pickDirectory({
-      title: "在新标签打开文件夹",
+      title: translate("directory.newTab"),
     });
     if (directory) await store.createBrowserTabForPath(directory);
   };
@@ -42,7 +43,7 @@ export function BrowserTabBar() {
   };
 
   return (
-    <div className="browser-tabbar" role="tablist" aria-label="浏览标签">
+    <div className="browser-tabbar" role="tablist" aria-label={translate("browser.tabList")}>
       {tabs.map((tab) => (
         <div
           key={tab.id}
@@ -61,8 +62,8 @@ export function BrowserTabBar() {
           <TabTitle tab={tab} />
           <button
             className="browser-tab-close"
-            aria-label={`关闭标签 ${tab.title}`}
-            title="关闭标签"
+            aria-label={translate("browser.closeTabNamed").replace("{title}", tab.title)}
+            title={translate("browser.tab.close")}
             onClick={(event) => {
               event.stopPropagation();
               void store.closeBrowserTab(tab.id);
@@ -74,8 +75,8 @@ export function BrowserTabBar() {
       ))}
       <button
         className="browser-tab-new"
-        aria-label="新建标签"
-        title="在新标签打开文件夹"
+        aria-label={translate("browser.tab.new")}
+        title={translate("directory.newTab")}
         onClick={() => void openNewTab()}
       >
         <Plus size={13} />

@@ -16,6 +16,7 @@ import type {
   SequenceGroupInfo,
 } from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
+import { translate } from "../app/i18n";
 
 /**
  * 图片序列预览（阶段 3 §9.4）：播放、逐帧、FPS 调节、帧范围/缺帧显示。
@@ -191,7 +192,7 @@ export function SequencePreviewDialog({
   const exportMp4 = async () => {
     setExportError(null);
     const outputDirectory = await window.refCanvas.system.pickDirectory({
-      title: "选择 MP4 导出目录",
+      title: translate("sequence.pickMp4Dir"),
       defaultPath: sequence.directory,
     });
     if (!outputDirectory) return;
@@ -207,7 +208,7 @@ export function SequencePreviewDialog({
       setExportResult(result);
       setExportState("done");
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : "导出失败");
+      setExportError(error instanceof Error ? error.message : translate("sequence.exportFailed"));
       setExportState("idle");
     }
   };
@@ -215,7 +216,7 @@ export function SequencePreviewDialog({
   const exportGif = async () => {
     setGifError(null);
     const outputDirectory = await window.refCanvas.system.pickDirectory({
-      title: "选择 GIF 导出目录",
+      title: translate("sequence.pickGifDir"),
       defaultPath: sequence.directory,
     });
     if (!outputDirectory) return;
@@ -231,7 +232,7 @@ export function SequencePreviewDialog({
       setGifResult(result);
       setGifState("done");
     } catch (error) {
-      setGifError(error instanceof Error ? error.message : "GIF 导出失败");
+      setGifError(error instanceof Error ? error.message : translate("sequence.exportFailed"));
       setGifState("idle");
     }
   };
@@ -252,7 +253,7 @@ export function SequencePreviewDialog({
       className="quick-preview-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`序列 ${sequence.baseName}`}
+      aria-label={translate("sequence.previewNamed").replace("{name}", sequence.baseName)}
       onMouseDown={onClose}
     >
       <section
@@ -265,28 +266,37 @@ export function SequencePreviewDialog({
               <Film size={16} />
               {sequence.baseName}
               <span className="sequence-label">
-                {sequence.start}-{sequence.end} · {sequence.frames.length} 帧
-                {missing.length > 0 ? ` · 缺 ${missing.length}` : ""}
+                {translate("sequence.framesMeta")
+                  .replace("{start}", String(sequence.start))
+                  .replace("{end}", String(sequence.end))
+                  .replace("{count}", String(sequence.frames.length))}
+                {missing.length > 0
+                  ? translate("sequence.missingSuffix").replace("{count}", String(missing.length))
+                  : ""}
               </span>
             </h2>
             <span>
-              {sequence.extension.toUpperCase()} · 播放 {fps} FPS
+              {translate("sequence.playbackMeta")
+                .replace("{ext}", sequence.extension.toUpperCase())
+                .replace("{fps}", String(fps))}
               {sequence.pattern !== "standard" ? ` · ${sequence.pattern}` : ""}
             </span>
           </div>
           <div className="quick-preview-actions">
-            <button aria-label="关闭序列预览 Esc" onClick={onClose}>
+            <button aria-label={translate("sequence.closeNamed")} onClick={onClose}>
               <X size={18} />
             </button>
           </div>
         </header>
         {exportState === "running" && (
-          <div className="sequence-export-banner">正在导出 MP4…</div>
+          <div className="sequence-export-banner">{translate("sequence.exportingMp4")}</div>
         )}
         {exportState === "done" && exportResult && (
           <div className="sequence-export-banner sequence-export-done">
-            已导出 {exportResult.width}×{exportResult.height} ·{" "}
-            {Math.round(exportResult.durationSeconds * 10) / 10}s ·{" "}
+            {translate("sequence.exportedMp4")
+              .replace("{width}", String(exportResult.width))
+              .replace("{height}", String(exportResult.height))
+              .replace("{duration}", String(Math.round(exportResult.durationSeconds * 10) / 10))}{" "}·{" "}
             <code title={exportResult.outputPath}>
               {exportResult.outputPath}
             </code>
@@ -298,17 +308,20 @@ export function SequencePreviewDialog({
           </div>
         )}
         {gifState === "running" && (
-          <div className="sequence-export-banner">正在导出 GIF…</div>
+          <div className="sequence-export-banner">{translate("sequence.exportingGif")}</div>
         )}
         {gifState === "done" && gifResult && (
           <div className="sequence-export-banner sequence-export-done">
-            已导出 GIF · {gifResult.width}×{gifResult.height} · {Math.round(gifResult.durationSeconds * 10) / 10}s ·{" "}
+            {translate("sequence.exportedGif")
+              .replace("{width}", String(gifResult.width))
+              .replace("{height}", String(gifResult.height))
+              .replace("{duration}", String(Math.round(gifResult.durationSeconds * 10) / 10))}{" "}·{" "}
             <code title={gifResult.outputPath}>{gifResult.outputPath}</code>
             <button
               type="button"
               className="sequence-reveal-button"
-              aria-label="定位 GIF 文件"
-              title="在文件夹中显示"
+              aria-label={translate("sequence.revealGif")}
+              title={translate("preview.reveal")}
               onClick={() => void window.refCanvas.filesystem.reveal(gifResult.outputPath)}
             >
               <FolderOpen size={14} />
@@ -323,13 +336,15 @@ export function SequencePreviewDialog({
           {displayedSource && !failed ? (
             <img
               src={displayedSource}
-              alt={`${sequence.baseName} 第 ${frameLabel(frameIndex)} 帧`}
+              alt={translate("sequence.frameAlt")
+                .replace("{name}", sequence.baseName)
+                .replace("{frame}", frameLabel(frameIndex))}
               draggable={false}
               onError={() => setFailed(true)}
             />
           ) : (
             <span className="preview-message">
-              {failed ? "无法加载序列帧" : "正在加载…"}
+              {failed ? translate("sequence.frameLoadFailed") : translate("directory.loading")}
             </span>
           )}
         </div>
@@ -337,13 +352,13 @@ export function SequencePreviewDialog({
         <footer className="sequence-controls">
           <div className="sequence-transport-row">
             <button
-              aria-label={playing ? "暂停" : "播放"}
+              aria-label={playing ? translate("sequence.pause") : translate("sequence.play")}
               onClick={() => setPlaying((value) => !value)}
             >
               {playing ? <Pause size={15} /> : <Play size={15} />}
             </button>
             <button
-              aria-label="上一帧"
+              aria-label={translate("sequence.previousFrame")}
               onClick={() =>
                 setFrameIndex(
                   (frameIndex - 1 + frames.length) % Math.max(1, frames.length),
@@ -353,7 +368,7 @@ export function SequencePreviewDialog({
               <SkipBack size={15} />
             </button>
             <button
-              aria-label="下一帧"
+              aria-label={translate("sequence.nextFrame")}
               onClick={() =>
                 setFrameIndex((frameIndex + 1) % Math.max(1, frames.length))
               }
@@ -363,7 +378,7 @@ export function SequencePreviewDialog({
             <select
               className="fps-select"
               value={fps}
-              aria-label="帧率"
+              aria-label={translate("sequence.fps")}
               onChange={(event) => {
                 const value = Number(event.target.value);
                 setFps(Number.isFinite(value) ? value : fpsPresets[0]);
@@ -381,7 +396,7 @@ export function SequencePreviewDialog({
               min={0}
               max={Math.max(0, frames.length - 1)}
               value={frameIndex}
-              aria-label="序列时间轴"
+              aria-label={translate("sequence.timeline")}
               onChange={(event) => setFrameIndex(Number(event.target.value))}
             />
             <span className="sequence-frame-count">
@@ -390,15 +405,15 @@ export function SequencePreviewDialog({
           </div>
           <div className="sequence-export-row">
             <div className="sequence-export-summary">
-              <span>输出预设</span>
+              <span>{translate("sequence.exportPreset")}</span>
               <select
                 value={exportPresetId}
-                aria-label="导出预设"
+                aria-label={translate("sequence.exportPreset")}
                 onChange={(event) => setExportPresetId(event.target.value)}
               >
                 {availableMp4Presets.map((preset) => (
                   <option key={preset.id} value={preset.id}>
-                    {preset.label} · {preset.codec === "h265" ? "H.265" : "H.264"} · {preset.resolution === "original" ? "原始" : preset.resolution === "half" ? "1/2" : "1/4"}
+                    {preset.label} · {preset.codec === "h265" ? "H.265" : "H.264"} · {preset.resolution === "original" ? translate("sequence.resolutionOriginal") : preset.resolution === "half" ? "1/2" : "1/4"}
                   </option>
                 ))}
               </select>
@@ -407,32 +422,32 @@ export function SequencePreviewDialog({
               className="secondary-button sequence-export-button"
               disabled={exportState === "running" || availableMp4Presets.length === 0}
               onClick={() => void exportMp4()}
-              title="导出为 MP4"
+              title={translate("sequence.exportMp4Title")}
             >
               <Download size={14} />
-              {exportState === "running" ? "正在导出…" : "导出 MP4"}
+              {exportState === "running" ? translate("sequence.exporting") : translate("sequence.exportMp4")}
             </button>
             <button
               className="secondary-button sequence-export-button sequence-gif-button"
               disabled={gifState === "running" || frames.length === 0}
               onClick={() => void exportGif()}
-              title="导出为 GIF"
+              title={translate("sequence.exportGifTitle")}
             >
               <Film size={14} />
-              {gifState === "running" ? "正在导出…" : "导出 GIF"}
+              {gifState === "running" ? translate("sequence.exporting") : translate("sequence.exportGif")}
             </button>
           </div>
         </footer>
 
         {missing.length > 0 && (
           <div className="sequence-missing">
-            缺帧：
+            {translate("sequence.missingFrames")}
             {missing.slice(0, 12).map((frame) => (
               <code key={frame}>
                 {String(frame).padStart(sequence.width, "0")}
               </code>
             ))}
-            {missing.length > 12 ? `… 共 ${missing.length} 帧` : ""}
+            {missing.length > 12 ? translate("sequence.missingMore").replace("{count}", String(missing.length)) : ""}
           </div>
         )}
       </section>
@@ -492,11 +507,11 @@ export function SequenceCard({
         ) : (
           <span className="asset-placeholder">
             <Film size={26} strokeWidth={1.35} />
-            <span>序列</span>
+            <span>{translate("sequence.cardLabel")}</span>
           </span>
         )}
         <span className="sequence-badge">
-          {sequence.frames.length} 帧
+          {translate("sequence.framesShort").replace("{count}", String(sequence.frames.length))}
         </span>
         {tags && tags.length > 0 && (
           <span className="directory-tag-badge" title={tags.join(", ")}>
@@ -509,7 +524,7 @@ export function SequenceCard({
       </span>
       <span className="asset-meta">
         {sequence.start}-{sequence.end}
-        {missing > 0 ? ` · 缺 ${missing}` : ""}
+        {missing > 0 ? translate("sequence.missingSuffix").replace("{count}", String(missing)) : ""}
       </span>
     </button>
   );

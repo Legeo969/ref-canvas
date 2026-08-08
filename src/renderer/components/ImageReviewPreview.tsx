@@ -28,6 +28,7 @@ import {
 } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
+import { translate } from "../app/i18n";
 
 /** 分层格式（可解析时显示图层面板）。 */
 const LAYERED_FORMATS = new Set(["psd", "tif", "tiff", "svg"]);
@@ -241,7 +242,7 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
           onError={() => setImageFailed(true)}
         />
         {imageFailed && (
-          <p className="image-review-error">图片解码失败或格式不受支持。</p>
+          <p className="image-review-error">{translate("imageReview.error")}</p>
         )}
         <canvas ref={canvasRef} hidden />
       </div>
@@ -249,64 +250,64 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
       <div className="image-review-toolbar">
         <button
           className="mini-icon-button"
-          title="缩小"
-          aria-label="缩小"
+          title={translate("imageReview.zoomOut")}
+          aria-label={translate("imageReview.zoomOut")}
           onClick={() => zoomBy(-0.25)}
         >
           <Minus size={14} />
         </button>
         <button
           className="mini-icon-button"
-          title="放大"
-          aria-label="放大"
+          title={translate("imageReview.zoomIn")}
+          aria-label={translate("imageReview.zoomIn")}
           onClick={() => zoomBy(0.25)}
         >
           <Plus size={14} />
         </button>
         <button
           className="mini-icon-button"
-          title="适配窗口"
-          aria-label="适配窗口"
+          title={translate("imageReview.fit")}
+          aria-label={translate("imageReview.fit")}
           onClick={fitView}
         >
           <Maximize2 size={14} />
         </button>
         <button
           className="mini-icon-button"
-          title="100% 原始大小"
-          aria-label="100% 原始大小"
+          title={translate("imageReview.original")}
+          aria-label={translate("imageReview.original")}
           onClick={naturalSize}
         >
           <Crop size={14} />
         </button>
         <button
           className="mini-icon-button"
-          title="旋转 90°"
-          aria-label="旋转 90 度"
+          title={translate("imageReview.rotate")}
+          aria-label={translate("imageReview.rotate")}
           onClick={rotate}
         >
           <RotateCw size={14} />
         </button>
         <button
           className={`mini-icon-button ${showChecker ? "active" : ""}`}
-          title="棋盘透明背景"
-          aria-label="棋盘透明背景"
+          title={translate("imageReview.checker")}
+          aria-label={translate("imageReview.checker")}
           onClick={() => setShowChecker((value) => !value)}
         >
           <RefreshCw size={14} />
         </button>
         <button
           className={`mini-icon-button ${eyedropActive ? "active" : ""}`}
-          title="像素取色"
-          aria-label="像素取色"
+          title={translate("imageReview.eyedrop")}
+          aria-label={translate("imageReview.eyedrop")}
           onClick={() => setEyedropActive((value) => !value)}
         >
           <Droplet size={14} />
         </button>
         <button
           className="mini-icon-button"
-          title="提取主色板"
-          aria-label="提取主色板"
+          title={translate("imageReview.palette")}
+          aria-label={translate("imageReview.palette")}
           onClick={extractPaletteNow}
         >
           <Palette size={14} />
@@ -314,15 +315,15 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
         {isLayered && (
           <button
             className={`mini-icon-button ${layersOpen ? "active" : ""}`}
-            title="图层"
-            aria-label="图层"
+            title={translate("imageReview.layers")}
+            aria-label={translate("imageReview.layers")}
             onClick={() => setLayersOpen((value) => !value)}
           >
             <Layers size={14} />
           </button>
         )}
         <span className="image-review-zoom-level">
-          {fit ? "适配" : `${Math.round(zoom * 100)}%`}
+          {fit ? translate("imageReview.fitShort") : `${Math.round(zoom * 100)}%`}
         </span>
       </div>
 
@@ -333,17 +334,17 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
           <span className="image-review-sample-rgb">
             RGB {sample.rgb[0]} {sample.rgb[1]} {sample.rgb[2]}
           </span>
-          <span className="image-review-sample-note">显示色值</span>
+          <span className="image-review-sample-note">{translate("imageReview.displayColorNote")}</span>
           <button className="secondary-button" onClick={() => void copySample()}>
             <Copy size={13} />
-            {copied ? "已复制" : "复制"}
+            {copied ? translate("imageReview.copied") : translate("imageReview.copy")}
           </button>
         </div>
       )}
 
       {palette.length > 0 && (
         <div className="image-review-palette">
-          <span className="image-review-palette-label">主色</span>
+          <span className="image-review-palette-label">{translate("imageReview.paletteLabel")}</span>
           {palette.map((color) => (
             <span
               key={color.hex}
@@ -359,8 +360,8 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
         <div className="image-review-layers">
           <p>
             {isLayered
-              ? "该格式支持分层，但当前无图层解析 Provider，保留合成图预览。"
-              : "当前格式无可解析图层。"}
+              ? translate("imageReview.layerNote")
+              : translate("imageReview.noLayers")}
           </p>
         </div>
       )}

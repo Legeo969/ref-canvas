@@ -1,4 +1,5 @@
 import { PanelsTopLeft, Plus, Trash2 } from "lucide-react";
+import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
 import { DirectoryBrowser } from "./DirectoryBrowser";
@@ -15,18 +16,18 @@ export function Sidebar() {
       <CollectionsPanel />
       <div className="sidebar-section sidebar-board-section">
         <div className="section-label row-label">
-          <span>参考板</span>
+          <span>{translate("sidebar.boards")}</span>
           <button
             className="mini-icon-button"
-            aria-label="新建白板"
+            aria-label={translate("boards.new")}
             onClick={() =>
               void dialog.requestForm({
-                title: "新建白板",
-                confirmLabel: "创建",
+                title: translate("boards.new"),
+                confirmLabel: translate("boards.createConfirm"),
                 fields: [
                   {
                     name: "title",
-                    label: "白板名称",
+                    label: translate("boards.nameLabel"),
                     required: true,
                     maxLength: 120,
                   },
@@ -58,10 +59,10 @@ export function Sidebar() {
       <button
         className="sidebar-recycle-button"
         onClick={() => void window.refCanvas.system.openRecycleBin()}
-        title="打开系统回收站"
+        title={translate("sidebar.openRecycleBin")}
       >
         <Trash2 size={15} />
-        回收站
+        {translate("sidebar.recycleBin")}
       </button>
     </aside>
   );

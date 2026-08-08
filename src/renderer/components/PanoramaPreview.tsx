@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useEffect, useRef, useState } from "react";
+import { translate } from "../app/i18n";
 
 export function PanoramaPreview({ source, alt }: { source: string; alt: string }) {
   const canvasHostRef = useRef<HTMLDivElement>(null);
@@ -35,7 +36,7 @@ export function PanoramaPreview({ source, alt }: { source: string; alt: string }
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true });
     } catch {
-      setPanoramaError("当前环境不支持 360 WebGL 预览");
+      setPanoramaError(translate("panorama.error"));
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -104,14 +105,14 @@ export function PanoramaPreview({ source, alt }: { source: string; alt: string }
         </span>
       )}
       {isPanorama && (
-        <div className="panorama-toolbar" role="group" aria-label="全景查看">
+        <div className="panorama-toolbar" role="group" aria-label={translate("panorama.viewer")}>
           <button
             type="button"
             className={mode === "flat" ? "active" : ""}
             aria-pressed={mode === "flat"}
             onClick={() => setMode("flat")}
           >
-            平面
+            {translate("panorama.flat")}
           </button>
           <button
             type="button"

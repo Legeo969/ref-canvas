@@ -1,6 +1,7 @@
 import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord, TextPreviewResult } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 
 /**
@@ -65,12 +66,12 @@ export function TextPreview({ asset }: { asset: AssetRecord }) {
     return (
       <div className="text-preview text-preview-empty">
         <FileText size={30} strokeWidth={1.25} />
-        <span>无法作为文本读取（二进制或读取失败）</span>
+        <span>{translate("text.readFailed")}</span>
       </div>
     );
   }
   if (!result) {
-    return <div className="text-preview text-preview-empty">加载中…</div>;
+    return <div className="text-preview text-preview-empty">{translate("directory.loading")}</div>;
   }
   const markdown = asset.extension === "md" || asset.extension === "markdown";
   const lines = result.text.split(/\r\n|\n|\r/);
@@ -86,9 +87,12 @@ export function TextPreview({ asset }: { asset: AssetRecord }) {
         <div className="text-preview-meta">
           <FileText size={14} />
           <span>
-            {result.lineCount} 行 · {result.byteLength} 字节 · {result.encoding}
+            {translate("text.meta")
+              .replace("{lines}", String(result.lineCount))
+              .replace("{bytes}", String(result.byteLength))
+              .replace("{encoding}", result.encoding)}
           </span>
-          {result.truncated ? <span className="text-truncated">（预览截断）</span> : null}
+          {result.truncated ? <span className="text-truncated">{translate("text.truncated")}</span> : null}
         </div>
         <pre className="text-preview-body">{content}</pre>
       </div>

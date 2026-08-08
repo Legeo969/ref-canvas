@@ -11,6 +11,7 @@ import type {
   DirectoryEntry,
   LibraryChangedEvent,
 } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
 
 function normalizePath(value: string): string {
@@ -38,9 +39,13 @@ function FavoriteButton({ path, name }: { path: string; name: string }) {
   return (
     <button
       className={`mini-icon-button favorite-button ${entry ? "active" : ""}`}
-      aria-label={entry ? `取消收藏 ${name}` : `收藏 ${name}`}
+      aria-label={
+        entry
+          ? translate("directory.unfavoriteNamed").replace("{name}", name)
+          : translate("directory.favoriteNamed").replace("{name}", name)
+      }
       aria-pressed={Boolean(entry)}
-      title={entry ? "取消收藏" : "收藏目录"}
+      title={entry ? translate("directory.unfavorite") : translate("directory.favoriteDir")}
       disabled={pending}
       onClick={() => void toggle()}
     >
@@ -98,7 +103,7 @@ function DirectoryNode({
       >
         <button
           className="dir-tree-chevron"
-          aria-label={expanded ? "折叠" : "展开"}
+          aria-label={expanded ? translate("directory.collapse") : translate("directory.expand")}
           onClick={() => setExpanded((value) => !value)}
         >
           {loading ? (
@@ -168,7 +173,9 @@ function RootNode({
       <div className={`dir-root-row ${active ? "active" : ""}`}>
         <button
           className="dir-tree-chevron"
-          aria-label={expanded ? "折叠磁盘" : "展开磁盘"}
+          aria-label={
+            expanded ? translate("directory.collapseDrive") : translate("directory.expandDrive")
+          }
           onClick={onToggle}
         >
           {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -244,7 +251,7 @@ export function DirectoryBrowser() {
   return (
     <div className="sidebar-section directory-browser">
       <div className="directory-subsection directory-quick-access">
-        <div className="directory-subsection-label">快速访问</div>
+        <div className="directory-subsection-label">{translate("sidebar.quickAccess")}</div>
         {store.quickAccess.length > 0 ? (
           <div className="quick-access-list">
             {store.quickAccess.map((entry) => (
@@ -268,14 +275,14 @@ export function DirectoryBrowser() {
             ))}
           </div>
         ) : (
-          <p className="directory-empty">点击目录旁的星标添加收藏。</p>
+          <p className="directory-empty">{translate("directory.favoriteHint")}</p>
         )}
       </div>
 
       <div className="directory-subsection directory-roots-section">
-        <div className="directory-subsection-label">磁盘</div>
+        <div className="directory-subsection-label">{translate("sidebar.drives")}</div>
         <div className="dir-roots">
-          {roots === null && <p className="directory-empty">正在读取磁盘…</p>}
+          {roots === null && <p className="directory-empty">{translate("directory.loadingDrives")}</p>}
           {roots?.map((root) => (
             <RootNode
               key={root.path}
@@ -295,7 +302,7 @@ export function DirectoryBrowser() {
             />
           ))}
           {roots?.length === 0 && (
-            <p className="directory-empty">没有检测到可访问的磁盘。</p>
+            <p className="directory-empty">{translate("directory.noDrives")}</p>
           )}
         </div>
       </div>
@@ -332,7 +339,7 @@ function DirectoryContents({
       cancelled = true;
     };
   }, [path, refreshToken]);
-  if (children === null) return <p className="directory-empty">加载中…</p>;
+  if (children === null) return <p className="directory-empty">{translate("directory.loading")}</p>;
   return (
     <>
       {children

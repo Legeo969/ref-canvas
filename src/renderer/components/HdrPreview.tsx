@@ -4,6 +4,7 @@ import {
   alphaBackgroundStyle,
   useFoundSettings,
 } from "../app/found-settings";
+import { translate } from "../app/i18n";
 
 type ToneMappingName = "aces" | "reinhard" | "neutral";
 type DisplayComponent = "R" | "G" | "B" | "A";
@@ -214,7 +215,7 @@ export function HdrPreview({
         <img
           className="hdr-preview-fallback"
           src={displaySource}
-          alt={`${extension.toUpperCase()} 预览`}
+          alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
           draggable={false}
         />
         <div
@@ -223,26 +224,26 @@ export function HdrPreview({
           style={{ opacity: status === "ready" ? 1 : 0 }}
         />
         {status === "loading" && (
-          <span className="preview-message">正在生成 HDR 预览...</span>
+          <span className="preview-message">{translate("hdr.generating")}</span>
         )}
         {status === "failed" && (
-          <span className="preview-message">无法生成 HDR 预览</span>
+          <span className="preview-message">{translate("hdr.failed")}</span>
         )}
       </div>
       <div className="hdr-preview-controls">
         {layers.length > 0 && (
-          <div className="hdr-channel-control" role="group" aria-label="EXR 图层与通道">
+          <div className="hdr-channel-control" role="group" aria-label={translate("hdr.channelsGroup")}>
             <label className="hdr-layer-select">
-              <span>图层</span>
+              <span>{translate("hdr.layers")}</span>
               <select
-                aria-label="EXR 图层"
+                aria-label={translate("hdr.layersSelect")}
                 value={layer}
                 onChange={(event) => {
                   setLayer(event.target.value);
                   setComponent("composite");
                 }}
               >
-                <option value={AUTO_LAYER}>自动</option>
+                <option value={AUTO_LAYER}>{translate("hdr.auto")}</option>
                 {layers.map((item) => (
                   <option
                     key={item.name || MAIN_LAYER}
@@ -253,14 +254,14 @@ export function HdrPreview({
                 ))}
               </select>
             </label>
-            <div className="hdr-component-control" role="group" aria-label="EXR 通道">
+            <div className="hdr-component-control" role="group" aria-label={translate("hdr.channels")}>
               <button
                 type="button"
                 className={component === "composite" ? "active" : ""}
                 aria-pressed={component === "composite"}
                 onClick={() => setComponent("composite")}
               >
-                合成
+                {translate("hdr.composite")}
               </button>
               {(selectedLayer?.components ?? ["R", "G", "B", "A"]).map((item) => (
                 <button
@@ -277,7 +278,7 @@ export function HdrPreview({
           </div>
         )}
         <label>
-          <span>映射</span>
+          <span>{translate("hdr.mapping")}</span>
           <select
             value={toneMapping}
             onChange={(event) =>
@@ -290,7 +291,7 @@ export function HdrPreview({
           </select>
         </label>
         <label>
-          <span>曝光</span>
+          <span>{translate("hdr.exposure")}</span>
           <input
             type="range"
             min="0.1"

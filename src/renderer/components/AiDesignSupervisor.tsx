@@ -35,6 +35,8 @@ import type {
   AiProviderSummary,
   AiSettings,
 } from "../../shared/contracts";
+import { translate } from "../app/i18n";
+import type { MessageKey } from "../app/i18n";
 
 interface AiPanelProps {
   onClose(): void;
@@ -42,14 +44,14 @@ interface AiPanelProps {
 
 const MAX_REFERENCES = 6;
 
-const stateLabels: Record<AiJobSnapshot["state"], string> = {
-  queued: "排队中",
-  uploading: "上传中",
-  generating: "生成中",
-  downloading: "下载中",
-  completed: "已完成",
-  failed: "失败",
-  cancelled: "已取消",
+const stateKeys: Record<AiJobSnapshot["state"], MessageKey> = {
+  queued: "ai.state.queued",
+  uploading: "ai.state.uploading",
+  generating: "ai.state.generating",
+  downloading: "ai.state.downloading",
+  completed: "ai.state.completed",
+  failed: "ai.state.failed",
+  cancelled: "ai.state.cancelled",
 };
 
 function FileThumb({ path }: { path: string }) {
@@ -97,7 +99,7 @@ function InputThumb({
       <span className="ai-input-thumb-label">{label}</span>
       <button
         className="ai-input-thumb-remove"
-        aria-label={`移除 ${label}`}
+        aria-label={translate("ai.removeInput").replace("{label}", label)}
         onClick={onRemove}
       >
         <X size={11} />
@@ -206,11 +208,11 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
 
   const pickInput = async () => {
     const picked = await window.refCanvas.system.pickFile({
-      title: sourcePath ? "选择参考图" : "选择源图",
+      title: sourcePath ? translate("ai.pickReference") : translate("ai.pickSource"),
       multiSelections: true,
       filters: [
-        { name: "图像", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif", "avif", "tif", "tiff"] },
-        { name: "所有文件", extensions: ["*"] },
+        { name: translate("ai.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "heif", "avif", "tif", "tiff"] },
+        { name: translate("ai.fileFilterAll"), extensions: ["*"] },
       ],
     });
     if (picked.length) addPaths(picked);
@@ -218,7 +220,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
 
   const pickOutputDirectory = async () => {
     const selected = await window.refCanvas.system.pickDirectory({
-      title: "选择输出目录",
+      title: translate("ai.pickOutput"),
       defaultPath: outputDirectory || undefined,
     });
     if (selected) setOutputDirectory(selected);
@@ -228,15 +230,15 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
     setFieldError("");
     const trimmedPrompt = prompt.trim();
     if (!sourcePath) {
-      setFieldError("请选择源图");
+      setFieldError(translate("ai.error.sourceRequired"));
       return;
     }
     if (!trimmedPrompt) {
-      setFieldError("提示词不能为空");
+      setFieldError(translate("ai.error.promptRequired"));
       return;
     }
     if (!outputDirectory.trim()) {
-      setFieldError("请选择输出目录");
+      setFieldError(translate("ai.error.outputRequired"));
       return;
     }
     const request: AiDesignRequest = {
@@ -275,7 +277,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
       return (
         <span className="ai-job-badge completed">
           <Check size={12} />
-          {stateLabels.completed}
+          {translate(stateKeys.completed)}
         </span>
       );
     }
@@ -283,17 +285,17 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
       return (
         <span className="ai-job-badge failed">
           <AlertTriangle size={12} />
-          {stateLabels.failed}
+          {translate(stateKeys.failed)}
         </span>
       );
     }
     if (job.state === "cancelled") {
-      return <span className="ai-job-badge cancelled">{stateLabels.cancelled}</span>;
+      return <span className="ai-job-badge cancelled">{translate(stateKeys.cancelled)}</span>;
     }
     return (
       <span className="ai-job-badge running">
         <Loader2 size={12} className="spin" />
-        {stateLabels[job.state]}
+        {translate(stateKeys[job.state])}
       </span>
     );
   };
@@ -304,18 +306,18 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
         className="ai-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="AI 设计"
+        aria-label={translate("ai.title")}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
           <div className="ai-panel-title">
             <Sparkles size={17} />
             <div>
-              <h2>AI 设计</h2>
-              <p>源图 + 参考图 + 提示词生成方案（Mock 本地确定性）。</p>
+              <h2>{translate("ai.title")}</h2>
+              <p>{translate("ai.subtitle")}</p>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <button className="icon-button" onClick={onClose} aria-label={translate("preview.close")}>
             <X size={17} />
           </button>
         </header>
@@ -323,11 +325,11 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
         <div className="ai-panel-body">
           <section className="ai-form-section">
             <div className="ai-section-label">
-              <span>输入</span>
+              <span>{translate("ai.input")}</span>
               <button
                 className="mini-icon-button"
-                aria-label="选择输入图片"
-                title="选择图片"
+                aria-label={translate("ai.pickInput")}
+                title={translate("ai.pickInput")}
                 onClick={() => void pickInput()}
               >
                 <FolderOpen size={14} />
@@ -352,14 +354,14 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                   <div className="ai-thumb-row">
                     <InputThumb
                       path={sourcePath}
-                      label="源图"
+                      label={translate("ai.source")}
                       onRemove={() => setSourcePath(null)}
                     />
                     {referencePaths.map((reference, index) => (
                       <InputThumb
                         key={reference}
                         path={reference}
-                        label={`参考 ${index + 1}`}
+                        label={translate("ai.referenceIndex").replace("{index}", String(index + 1))}
                         onRemove={() =>
                           setReferencePaths((current) =>
                             current.filter((item) => item !== reference),
@@ -370,7 +372,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                     {referencePaths.length < MAX_REFERENCES && (
                       <button
                         className="ai-input-add"
-                        aria-label="添加参考图"
+                        aria-label={translate("ai.addReference")}
                         onClick={() => void pickInput()}
                       >
                         <PlusIcon />
@@ -378,13 +380,13 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                     )}
                   </div>
                   <p className="ai-drop-hint">
-                    拖放图片可替换/追加；参考图最多 {MAX_REFERENCES} 张
+                    {translate("ai.dropHint").replace("{max}", String(MAX_REFERENCES))}
                   </p>
                 </>
               ) : (
                 <div className="ai-drop-empty">
                   <Upload size={22} />
-                  <p>拖放图片到此处，或点击右侧选择</p>
+                  <p>{translate("ai.dropEmpty")}</p>
                 </div>
               )}
             </div>
@@ -392,14 +394,14 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
 
           <section className="ai-form-section">
             <label className="ai-field-label" htmlFor="ai-prompt">
-              提示词
+              {translate("ai.prompt")}
             </label>
             <textarea
               id="ai-prompt"
               className="ai-prompt-input"
               rows={3}
               maxLength={20000}
-              placeholder="描述希望生成的方案，例如：cinematic volumetric lighting…"
+              placeholder={translate("ai.promptPlaceholder")}
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
             />
@@ -412,10 +414,10 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                 checked={majorChange}
                 onChange={(event) => setMajorChange(event.target.checked)}
               />
-              <span>重大改动</span>
+              <span>{translate("ai.majorChange")}</span>
             </label>
             <label className="ai-field-label ai-inline">
-              输出数量
+              {translate("ai.outputCount")}
               <select
                 value={outputCount}
                 onChange={(event) => setOutputCount(Number(event.target.value))}
@@ -431,13 +433,13 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
 
           <section className="ai-form-section ai-output-row">
             <label className="ai-field-label" htmlFor="ai-output">
-              输出目录
+              {translate("ai.outputDirectory")}
             </label>
             <div className="ai-output-picker">
               <input
                 id="ai-output"
                 value={outputDirectory}
-                placeholder="选择输出目录"
+                placeholder={translate("ai.pickOutput")}
                 onChange={(event) => setOutputDirectory(event.target.value)}
               />
               <button
@@ -445,7 +447,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                 onClick={() => void pickOutputDirectory()}
               >
                 <FolderOpen size={14} />
-                浏览
+                {translate("ai.outputBrowse")}
               </button>
             </div>
           </section>
@@ -453,7 +455,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
           {availableProviders.length > 0 && (
             <section className="ai-form-section ai-provider-row">
               <label className="ai-field-label" htmlFor="ai-provider">
-                Provider
+                {translate("ai.provider")}
               </label>
               <select
                 id="ai-provider"
@@ -463,7 +465,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                 {availableProviders.map((item) => (
                   <option key={item.kind} value={item.kind}>
                     {item.label}
-                    {item.available ? "" : "（不可用）"}
+                    {item.available ? "" : translate("ai.unavailable")}
                   </option>
                 ))}
               </select>
@@ -483,24 +485,24 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
               ) : (
                 <Sparkles size={15} />
               )}
-              {submitting ? "启动中…" : "生成方案"}
+              {submitting ? translate("ai.generating") : translate("ai.generate")}
             </button>
           </footer>
         </div>
 
         <div className="ai-history">
           <div className="ai-section-label">
-            <span>任务历史</span>
+            <span>{translate("ai.history")}</span>
             <button
               className="mini-icon-button"
-              aria-label="刷新任务列表"
+              aria-label={translate("ai.refresh")}
               onClick={() => void refreshJobs()}
             >
               <RefreshCw size={13} />
             </button>
           </div>
           {jobs.length === 0 ? (
-            <p className="ai-history-empty">还没有任务。</p>
+            <p className="ai-history-empty">{translate("ai.noJobs")}</p>
           ) : (
             <ul className="ai-job-list">
               {jobs.map((job) => (
@@ -525,7 +527,7 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                     </span>
                     {job.outputs.length > 0 && (
                       <span className="ai-job-outputs">
-                        {job.outputs.length} 个输出
+                        {translate("ai.outputCountResult").replace("{count}", String(job.outputs.length))}
                       </span>
                     )}
                   </div>
@@ -534,22 +536,22 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                     <div className="ai-job-actions">
                       <span className="ai-job-error">
                         {job.errorCode ?? "AI_JOB_FAILED"}
-                        {job.errorMessage ? `：${job.errorMessage}` : ""}
+                        {job.errorMessage ? ` · ${job.errorMessage}` : ""}
                       </span>
                       <button
                         className="secondary-button"
                         onClick={() => void retryJob(job.id)}
                       >
                         <RotateCcw size={13} />
-                        重试
+                        {translate("ai.retry")}
                       </button>
                     </div>
                   )}
                   {isRunning(job.state) && (
                     <button
                       className="mini-icon-button ai-job-cancel"
-                      aria-label={`取消任务 ${job.id}`}
-                      title="取消"
+                      aria-label={translate("tasks.cancelTask").replace("{id}", job.id)}
+                      title={translate("tasks.cancel")}
                       onClick={() => void window.refCanvas.ai.cancel(job.id)}
                     >
                       <Trash2 size={13} />

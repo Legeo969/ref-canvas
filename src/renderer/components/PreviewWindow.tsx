@@ -8,6 +8,7 @@
 import { FolderOpen, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { AssetPreview } from "./AssetPreview";
 
 interface PreviewWindowProps {
@@ -54,10 +55,10 @@ export function PreviewWindow({ path, onClose }: PreviewWindowProps) {
           {path.split(/[\\/]/).pop() ?? path}
         </span>
         <div className="preview-window-actions">
-          <button className="icon-button" onClick={() => void window.refCanvas.filesystem.reveal(path)} aria-label="在资源管理器中显示">
+          <button className="icon-button" onClick={() => void window.refCanvas.filesystem.reveal(path)} aria-label={translate("preview.reveal")}>
             <FolderOpen size={15} />
           </button>
-          <button className="icon-button" onClick={onClose} aria-label="关闭浮动预览">
+          <button className="icon-button" onClick={onClose} aria-label={translate("preview.closeFloating")}>
             <X size={15} />
           </button>
         </div>
@@ -66,9 +67,9 @@ export function PreviewWindow({ path, onClose }: PreviewWindowProps) {
         {asset ? (
           <AssetPreview asset={asset} />
         ) : failed ? (
-          <p className="preview-window-error">无法加载预览：素材未建立索引或不可访问。</p>
+          <p className="preview-window-error">{translate("preview.error")}</p>
         ) : (
-          <p className="preview-window-loading">正在加载预览…</p>
+          <p className="preview-window-loading">{translate("preview.loading")}</p>
         )}
       </div>
     </main>
