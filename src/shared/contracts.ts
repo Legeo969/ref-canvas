@@ -1485,6 +1485,42 @@ export interface RefCanvasApi {
       callback: (change: MountChangedEvent) => void,
     ): () => void;
   };
+  /** 引用集合（schema 17，found-clone.md §6）。 */
+  collections: {
+    list(): Promise<ReferenceCollection[]>;
+    create(input: {
+      parentId?: string | null;
+      name: string;
+    }): Promise<ReferenceCollection>;
+    update(
+      id: string,
+      patch: {
+        name?: string;
+        parentId?: string | null;
+        sortOrder?: number;
+      },
+    ): Promise<ReferenceCollection>;
+    delete(id: string, options: { recursive: boolean }): Promise<void>;
+    listItems(collectionId: string): Promise<ReferenceCollectionItem[]>;
+    addPaths(
+      collectionId: string,
+      paths: string[],
+    ): Promise<ReferenceCollectionItem[]>;
+    removeItems(collectionId: string, itemIds: string[]): Promise<void>;
+    resolve(collectionId: string): Promise<
+      Array<{ item: ReferenceCollectionItem; relinked: boolean }>
+    >;
+    relink(
+      itemId: string,
+      path: string,
+      confirmFingerprintChange: boolean,
+    ): Promise<ReferenceCollectionItem>;
+    export(
+      collectionId: string,
+      targetDirectory: string,
+    ): Promise<CollectionExportSnapshot>;
+    onChanged(callback: () => void): () => void;
+  };
   metadata: {
     /** 确保路径已建立索引（等价 materialize，§13.4 metadata.ensure）。 */
     ensure(path: string): Promise<MaterializeResult>;

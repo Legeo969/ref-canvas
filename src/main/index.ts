@@ -79,6 +79,7 @@ import { registerBoardIpc } from "./ipc/board-ipc";
 import { boardDocumentSchema } from "./ipc/board-schema";
 import { registerFilesystemIpc } from "./ipc/filesystem-ipc";
 import { registerLibraryIpc } from "./ipc/library-ipc";
+import { registerCollectionsIpc } from "./ipc/collections-ipc";
 import { registerLibraryManagementIpc } from "./ipc/library-management-ipc";
 import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
 import { registerResourcesIpc } from "./ipc/resources-ipc";
@@ -701,6 +702,10 @@ function registerIpc(): void {
   });
   registerLibraryManagementIpc(ipc, {
     getLibrary: () => library,
+  });
+  registerCollectionsIpc(ipc, {
+    getDatabase: () => database,
+    notifyCollectionsChanged: () => broadcastAll("collections:changed"),
   });
   registerFilesystemIpc(ipc, {
     getDirectoryBatches: () => directoryBatches,

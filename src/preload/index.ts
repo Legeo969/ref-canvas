@@ -167,6 +167,41 @@ const api: RefCanvasApi = {
       return () => ipcRenderer.off("mounts:changed", listener);
     },
   },
+  collections: {
+    list: () => ipcRenderer.invoke("collections:list"),
+    create: (input) => ipcRenderer.invoke("collections:create", input),
+    update: (id, patch) =>
+      ipcRenderer.invoke("collections:update", { id, patch }),
+    delete: (id, options) =>
+      ipcRenderer.invoke("collections:delete", { id, ...options }),
+    listItems: (collectionId) =>
+      ipcRenderer.invoke("collections:list-items", collectionId),
+    addPaths: (collectionId, paths) =>
+      ipcRenderer.invoke("collections:add-paths", { collectionId, paths }),
+    removeItems: (collectionId, itemIds) =>
+      ipcRenderer.invoke("collections:remove-items", {
+        collectionId,
+        itemIds,
+      }),
+    resolve: (collectionId) =>
+      ipcRenderer.invoke("collections:resolve", collectionId),
+    relink: (itemId, path, confirmFingerprintChange) =>
+      ipcRenderer.invoke("collections:relink", {
+        itemId,
+        path,
+        confirmFingerprintChange,
+      }),
+    export: (collectionId, targetDirectory) =>
+      ipcRenderer.invoke("collections:export", {
+        collectionId,
+        targetDirectory,
+      }),
+    onChanged: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on("collections:changed", listener);
+      return () => ipcRenderer.off("collections:changed", listener);
+    },
+  },
   metadata: {
     ensure: (path) => ipcRenderer.invoke("metadata:ensure", path),
     patch: (assetId, patch) =>
