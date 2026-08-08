@@ -16,6 +16,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Copy,
   Eye,
   FolderOpen,
@@ -62,6 +63,9 @@ const stateClasses: Record<CollectionItemState, string> = {
 
 /** 目录条目拖拽 MIME（DirectoryAssetPanel 注入）。 */
 const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
+
+/** 集合行拖拽 MIME：携带被拖集合 id（用于嵌套/重排）。 */
+const COLLECTION_DRAG_MIME = "application/x-refcanvas-collection-id";
 
 interface CollectionNodeProps {
   collection: ReferenceCollection;
@@ -180,6 +184,21 @@ function CollectionNode({
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setDraggingOver(false);
+    const draggedCollectionId = event.dataTransfer.getData(COLLECTION_DRAG_MIME);
+    if (draggedCollectionId && draggedCollectionId !== collection.id) {
+      // 集合行拖放：嵌套为子集合（防环由仓储 COLLECTION_CYCLE 保证）。
+      void window.refCanvas.collections
+        .update(draggedCollectionId, { parentId: collection.id })
+        .then(() => {
+          setExpanded(true);
+          onRefreshTree();
+        })
+        .catch(() => {
+          // 环或缺失目标：只刷新树，不打断其它拖放。
+          onRefreshTree();
+        });
+      return;
+    }
     const payload = event.dataTransfer.getData(DIRECTORY_ENTRY_MIME);
     if (payload) {
       try {
@@ -195,6 +214,27 @@ function CollectionNode({
     const files = Array.from(event.dataTransfer.files);
     if (files.length) {
       void addPaths(window.refCanvas.library.pathsForFiles(files));
+    }
+  };
+
+  /** 与相邻兄弟集合交换 sortOrder 实现上移/下移。 */
+  const reorderSibling = async (direction: -1 | 1) => {
+    setMenuOpen(false);
+    const siblings = store.collectionTree[collection.parentId ?? ""] ?? [];
+    const index = siblings.findIndex((candidate) => candidate.id === collection.id);
+    const neighbor = siblings[index + direction];
+    if (index < 0 || !neighbor) return;
+    try {
+      await window.refCanvas.collections.update(collection.id, {
+        sortOrder: neighbor.sortOrder,
+      });
+      await window.refCanvas.collections.update(neighbor.id, {
+        sortOrder: collection.sortOrder,
+      });
+      onRefreshTree();
+    } catch {
+      // 排序冲突被拒时保持原顺序。
+      onRefreshTree();
     }
   };
 
@@ -219,8 +259,13 @@ function CollectionNode({
   return (
     <div className="collection-node">
       <div
-        className={`collection-row ${active ? "active" : ""}`}
+        className={`collection-row ${active ? "active" : ""} ${draggingOver ? "drop-target" : ""}`}
         style={{ paddingLeft: 6 + depth * 14 }}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(COLLECTION_DRAG_MIME, collection.id);
+          event.dataTransfer.effectAllowed = "move";
+        }}
         onDragOver={(event) => {
           event.preventDefault();
           setDraggingOver(true);
@@ -271,6 +316,16 @@ function CollectionNode({
               <Pencil size={15} />
               重命名
             </button>
+            <span className="context-menu-divider" />
+            <button role="menuitem" onClick={() => void reorderSibling(-1)}>
+              <ChevronUp size={15} />
+              上移
+            </button>
+            <button role="menuitem" onClick={() => void reorderSibling(1)}>
+              <ChevronDown size={15} />
+              下移
+            </button>
+            <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => { setMenuOpen(false); void onExport(collection.id); }}>
               <ArrowDownToLine size={15} />
               导出…

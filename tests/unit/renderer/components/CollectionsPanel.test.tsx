@@ -10,12 +10,17 @@ import { DialogProvider } from "../../../../src/renderer/components/DialogProvid
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-function sampleCollection(id: string, name: string, parentId: string | null = null) {
+function sampleCollection(
+  id: string,
+  name: string,
+  parentId: string | null = null,
+  sortOrder = 0,
+) {
   return {
     id,
     parentId,
     name,
-    sortOrder: 0,
+    sortOrder,
     createdAt: "2026-08-08T00:00:00.000Z",
     updatedAt: "2026-08-08T00:00:00.000Z",
   };
@@ -366,5 +371,102 @@ describe("CollectionsPanel", () => {
       section?.dispatchEvent(drop);
     });
     expect(api.addPaths).toHaveBeenCalledWith("c-1", ["D:\\refs\\shot_001.exr"]);
+  });
+
+  it("nests a collection by dragging it onto another row", async () => {
+    const collections = [
+      sampleCollection("c-1", "灵感"),
+      sampleCollection("c-2", "素材"),
+    ];
+    const { refCanvas, collections: api } = baseRefCanvas();
+    api.update.mockResolvedValueOnce(sampleCollection("c-2", "素材", "c-1"));
+    const refreshCollections = vi.fn(async () => undefined);
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      collections,
+      collectionTree: { "": collections },
+      collectionItems: {},
+      activeCollectionId: null,
+      refreshCollections,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    const rows = host.querySelectorAll<HTMLElement>(".collection-row");
+    expect(rows).toHaveLength(2);
+    const payloadByType = new Map<string, string>();
+    const dataTransfer = {
+      getData: (type: string) => payloadByType.get(type) ?? "",
+      setData: (type: string, value: string) => {
+        payloadByType.set(type, value);
+      },
+      files: [],
+    } as unknown as DataTransfer;
+    dataTransfer.setData("application/x-refcanvas-collection-id", "c-2");
+    await act(async () => {
+      const drop = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(drop, "dataTransfer", { value: dataTransfer });
+      rows[0]?.dispatchEvent(drop);
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    });
+    expect(api.update).toHaveBeenCalledWith("c-2", { parentId: "c-1" });
+  });
+
+  it("reorders a collection through the row menu", async () => {
+    const collections = [
+      sampleCollection("c-1", "灵感", null, 0),
+      sampleCollection("c-2", "素材", null, 1),
+    ];
+    const { refCanvas, collections: api } = baseRefCanvas();
+    api.update.mockResolvedValueOnce(sampleCollection("c-2", "素材", null, 0));
+    api.update.mockResolvedValueOnce(sampleCollection("c-1", "灵感", null, 1));
+    const refreshCollections = vi.fn(async () => undefined);
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      collections,
+      collectionTree: { "": collections },
+      collectionItems: {},
+      activeCollectionId: null,
+      refreshCollections,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    // 打开第一个集合（灵感）的行菜单并点“下移”。
+    await act(async () => {
+      host
+        .querySelectorAll(".collection-row")[0]
+        ?.querySelector(".collection-row-actions .mini-icon-button")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      const moveDown = Array.from(host.querySelectorAll(".collection-menu button")).find(
+        (button) => button.textContent?.includes("下移"),
+      );
+      moveDown?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    });
+    expect(api.update).toHaveBeenNthCalledWith(1, "c-1", { sortOrder: 1 });
+    expect(api.update).toHaveBeenNthCalledWith(2, "c-2", { sortOrder: 0 });
   });
 });
