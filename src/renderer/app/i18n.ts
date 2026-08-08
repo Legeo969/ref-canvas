@@ -444,7 +444,6 @@ export function translate(key: MessageKey): string {
   if (value !== undefined && value !== "") return value;
   // 缺失 key：回退英文；开发期报告缺 key。
   if (import.meta.env?.DEV) {
-    // eslint-disable-next-line no-console
     console.warn(`[i18n] missing key "${key}" in "${currentLanguage}"`);
   }
   return CATALOGS.en[key] ?? key;
