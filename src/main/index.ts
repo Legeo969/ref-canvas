@@ -86,8 +86,11 @@ import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
 import { registerResourcesIpc } from "./ipc/resources-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
 import { registerAiIpc } from "./ipc/ai-ipc";
+import { registerTaskCenterIpc } from "./ipc/task-center-ipc";
 import { AiJobService } from "./services/ai/ai-job-service";
 import { MockAiProvider } from "./services/ai/mock-ai-provider";
+import { TaskCenterService } from "./services/task-center-service";
+import { ZipArchiveService } from "./services/zip-archive-service";
 import { trayIconPaths } from "./platform/tray-icon";
 import {
   hardenWindowNavigation,
@@ -136,6 +139,8 @@ let mountService: MountService;
 let scriptsService: ScriptsService;
 let boardReferences: BoardReferenceService;
 let aiJobService: AiJobService;
+let taskCenter: TaskCenterService;
+let zipArchiveService: ZipArchiveService;
 let captureWasFullScreen = false;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -672,6 +677,27 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   );
   // 重启恢复：对非终态 job 尝试 Provider.recover，不支持则标记 failed。
   void aiJobService.recoverInterrupted();
+  // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/AI 任务。
+  zipArchiveService = new ZipArchiveService();
+  taskCenter = new TaskCenterService({
+    listImports: () => library.listImportJobs(),
+    listBatches: () => directoryBatches.list(),
+    listAiJobs: () => aiJobService.list(100),
+    cancelImport: async (id) => library.cancelImport(id),
+    cancelBatch: async (id) => directoryBatches.cancel(id),
+    cancelAi: async (id) => {
+      await aiJobService.cancel(id);
+      return true;
+    },
+  });
+  library.onImportProgress((snapshot) => {
+    broadcastAll("library:import-progress", snapshot);
+    taskCenter?.notify("import");
+  });
+  directoryBatches.onProgress((snapshot) => {
+    broadcastAll("filesystem:batch-progress", snapshot);
+    taskCenter?.notify("batch");
+  });
   // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
   mountService.onMountStateChanged(({ mountId, state }) => {
     broadcastAll("mounts:changed", { type: "state", mountId, state });
@@ -681,9 +707,6 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   });
   await library.recoverPendingOperations();
   library.resumePendingMetadata();
-  library.onImportProgress((snapshot) => {
-    broadcastAll("library:import-progress", snapshot);
-  });
   library.onLibraryChanged((event) => {
     broadcastAll("library:changed", event);
   });
@@ -743,6 +766,9 @@ function registerIpc(): void {
     isMockAllowed: () => mockAiAllowed(),
     notifyAiChanged: (snapshot) => broadcastAll("ai:changed", snapshot),
   });
+  registerTaskCenterIpc(ipc, {
+    getTaskCenter: () => taskCenter,
+  });
   registerFilesystemIpc(ipc, {
     getDirectoryBatches: () => directoryBatches,
     getDirectoryService: () => directoryService,
@@ -752,6 +778,7 @@ function registerIpc(): void {
     previewTokens,
     trashDirectoryPath,
     windowForSender,
+    getArchiveService: () => zipArchiveService,
   });
   registerBackupIpc(ipc, {
     getBackups: () => backups,

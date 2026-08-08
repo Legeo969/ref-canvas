@@ -973,6 +973,10 @@ export class LibraryService {
     return this.importCoordinator.snapshot(id);
   }
 
+  listImportJobs(): ImportJobSnapshot[] {
+    return this.importCoordinator.list();
+  }
+
   cancelImport(id: string): boolean {
     return this.importCoordinator.cancel(id);
   }

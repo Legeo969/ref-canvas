@@ -1289,6 +1289,48 @@ export interface CollectionExportSnapshot {
   errorMessage: string | null;
 }
 
+// --- 统一任务中心（FND-007 §8.3） ---
+
+export type TaskKind =
+  | "import"
+  | "batch"
+  | "convert"
+  | "export"
+  | "archive"
+  | "ai";
+
+export type TaskState = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+/** 统一任务中心快照：聚合导入/批处理/转换/导出/归档/AI 任务。 */
+export interface TaskSnapshot {
+  id: string;
+  kind: TaskKind;
+  state: TaskState;
+  /** 当前阶段描述（human readable）。 */
+  stage: string;
+  /** 0..1；未知时为 null。 */
+  progress: number | null;
+  /** 输出路径（文件/目录）。 */
+  output: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** ZIP 归档任务快照（FND-007 §8.2）。 */
+export interface ArchiveSnapshot {
+  id: string;
+  state: "running" | "completed" | "cancelled" | "failed";
+  archivePath: string | null;
+  entries: number;
+  skipped: Array<{ path: string; reason: string }>;
+  failed: Array<{ path: string; reason: string }>;
+  bytesWritten: number;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 // --- AI Design Supervisor（found-clone.md §9） ---
 
 export type AiProviderKind = "remote-rest" | "comfyui" | "mock";
@@ -1583,6 +1625,13 @@ export interface RefCanvasApi {
     list(): Promise<ProviderManifestInfo[]>;
     health(providerId: string): Promise<ProviderHealthInfo>;
   };
+  /** 统一任务中心（FND-007 §8.3）：聚合导入/批处理/转换/导出/归档/AI。 */
+  tasks: {
+    list(limit?: number): Promise<TaskSnapshot[]>;
+    get(id: string): Promise<TaskSnapshot | null>;
+    cancel(id: string): Promise<TaskSnapshot | null>;
+    onChanged(callback: (snapshot: TaskSnapshot) => void): () => void;
+  };
   /** AI Design Supervisor（FND-008 §9；Mock 仅开发/测试构建可见）。 */
   ai: {
     listProviders(): Promise<AiProviderSummary[]>;
@@ -1705,6 +1754,14 @@ export interface RefCanvasApi {
     onBatchProgress(
       callback: (snapshot: DirectoryBatchSnapshot) => void,
     ): () => void;
+    /** FND-007 §8.2：流式 ZIP 归档（可取消、冲突编号、临时文件原子移动）。 */
+    archive(request: {
+      sources: string[];
+      targetDirectory: string;
+      baseName: string;
+      jobId: string;
+    }): Promise<ArchiveSnapshot>;
+    cancelArchive(jobId: string): Promise<boolean>;
     /** 拖出未入库路径到系统。 */
     dragOut(paths: string[]): void;
   };

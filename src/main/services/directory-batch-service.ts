@@ -48,6 +48,13 @@ export class DirectoryBatchService {
     return snapshot ? { ...snapshot, failed: [...snapshot.failed] } : null;
   }
 
+  /** 全部批处理快照（新到旧）。 */
+  list(): DirectoryBatchSnapshot[] {
+    return [...this.jobs.values()]
+      .map((snapshot) => ({ ...snapshot, failed: [...snapshot.failed] }))
+      .reverse();
+  }
+
   cancel(id: string): boolean {
     const snapshot = this.jobs.get(id);
     if (!snapshot || snapshot.state !== "running") return false;

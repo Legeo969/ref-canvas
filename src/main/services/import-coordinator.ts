@@ -64,6 +64,15 @@ export class ImportCoordinator {
     return job ? structuredClone(job.snapshot) : null;
   }
 
+  /** 全部任务快照（新到旧）。 */
+  list(): ImportJobSnapshot[] {
+    const snapshots = [...this.jobs.values()].map((job) => structuredClone(job.snapshot));
+    snapshots.sort((a, b) =>
+      (b.completedAt ?? b.createdAt).localeCompare(a.completedAt ?? a.createdAt),
+    );
+    return snapshots;
+  }
+
   cancel(id: string): boolean {
     const job = this.jobs.get(id);
     if (!job || ["completed", "cancelled", "failed"].includes(job.snapshot.state)) {

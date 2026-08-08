@@ -226,6 +226,19 @@ const api: RefCanvasApi = {
       return () => ipcRenderer.off("ai:changed", listener);
     },
   },
+  tasks: {
+    list: (limit) => ipcRenderer.invoke("tasks:list", { limit }),
+    get: (id) => ipcRenderer.invoke("tasks:get", id),
+    cancel: (id) => ipcRenderer.invoke("tasks:cancel", id),
+    onChanged: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: Parameters<typeof callback>[0],
+      ) => callback(snapshot);
+      ipcRenderer.on("tasks:changed", listener);
+      return () => ipcRenderer.off("tasks:changed", listener);
+    },
+  },
   metadata: {
     ensure: (path) => ipcRenderer.invoke("metadata:ensure", path),
     patch: (assetId, patch) =>
@@ -338,6 +351,9 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("filesystem:export-paths", selection),
     getBatch: (id) => ipcRenderer.invoke("filesystem:get-batch", id),
     cancelBatch: (id) => ipcRenderer.invoke("filesystem:cancel-batch", id),
+    archive: (request) => ipcRenderer.invoke("filesystem:archive", request),
+    cancelArchive: (jobId) =>
+      ipcRenderer.invoke("filesystem:cancel-archive", jobId),
     onBatchProgress: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,

@@ -7,6 +7,7 @@ import type { DirectoryBatchService } from "../services/directory-batch-service"
 import type { FileOperationsService } from "../services/file-operations-service";
 import type { FilesystemService } from "../services/filesystem-service";
 import type { LibraryService } from "../services/library-service";
+import type { ZipArchiveService } from "../services/zip-archive-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
@@ -52,6 +53,8 @@ interface FilesystemIpcDependencies {
   previewTokens: PreviewTokenRegistry;
   trashDirectoryPath(filename: string): Promise<void>;
   windowForSender(event: IpcMainInvokeEvent): Electron.BrowserWindow;
+  /** FND-007：流式 ZIP 归档服务（可取消）。 */
+  getArchiveService(): ZipArchiveService;
 }
 
 export function registerFilesystemIpc(
@@ -297,6 +300,31 @@ export function registerFilesystemIpc(
   );
   ipc.handle("filesystem:cancel-batch", (id) =>
     batches().cancel(z.string().uuid().parse(id)),
+  );
+  // FND-007 §8.2：流式 ZIP 归档（可取消、冲突编号、临时文件原子移动）。
+  ipc.handle("filesystem:archive", async (input) => {
+    const parsed = z
+      .object({
+        sources: directoryPathsSchema,
+        targetDirectory: pathSchema,
+        baseName: z.string().trim().min(1).max(128),
+        jobId: z.string().min(1).max(128),
+      })
+      .parse(input);
+    const sources = parsed.sources
+      .map((filename) => path.resolve(filename))
+      .filter(isAllowedPath);
+    if (sources.length === 0) throw new Error("ARCHIVE_NO_ALLOWED_SOURCE");
+    return dependencies.getArchiveService().archive(sources, {
+      jobId: parsed.jobId,
+      targetDirectory: path.resolve(parsed.targetDirectory),
+      baseName: parsed.baseName,
+    });
+  });
+  ipc.handle("filesystem:cancel-archive", (jobId) =>
+    dependencies
+      .getArchiveService()
+      .cancel(z.string().min(1).max(128).parse(jobId)),
   );
   ipc.on("system:start-native-drag-paths", (event, filenames) => {
     const resolved = directoryPathsSchema

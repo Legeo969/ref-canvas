@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   SquareArrowOutUpRight,
+  ListTodo,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
@@ -30,6 +31,7 @@ import { BoardWindow } from "../components/BoardWindow";
 import { BrowserTabBar } from "../components/BrowserTabBar";
 import { CaptureOverlay } from "../components/CaptureOverlay";
 import { PreviewWindow } from "../components/PreviewWindow";
+import { TaskCenter } from "../components/TaskCenter";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
 import { DirectoryDetailsPanel } from "../components/DirectoryDetailsPanel";
 import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
@@ -78,6 +80,7 @@ export function App() {
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "found">("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [panelLayout, setPanelLayout] = useState(() =>
@@ -407,6 +410,7 @@ export function App() {
       {aiPanelOpen && (
         <AiDesignSupervisorPanel onClose={() => setAiPanelOpen(false)} />
       )}
+      {taskCenterOpen && <TaskCenter onClose={() => setTaskCenterOpen(false)} />}
       {notice && <div className="app-toast">{notice}</div>}
       <header className="titlebar">
         <div className="titlebar-left">
@@ -689,6 +693,17 @@ export function App() {
         </span>
         <span className="status-hint">
           方向键浏览 · Space 预览 · F 收藏 · 0–5 评分 · 素材 Alt+拖到外部
+        </span>
+        <span className="statusbar-actions">
+          <button
+            className={`statusbar-button ${taskCenterOpen ? "active" : ""}`}
+            onClick={() => setTaskCenterOpen((value) => !value)}
+            aria-label="任务中心"
+            title="任务中心"
+          >
+            <ListTodo size={15} />
+            任务
+          </button>
         </span>
         <ActionsPanel />
       </footer>
