@@ -44,8 +44,7 @@ function boardDocumentWith(assetId: string): BoardDocumentV3 {
 }
 
 /** 建立含一个素材 + 一个 Board 引用的环境。 */
-async function scaffold(): Promise<{
-  root: string;
+async function scaffold(): Promise<{  root: string;
   database: RefCanvasDatabase;
   service: LibraryService;
   assetId: string;
@@ -138,8 +137,9 @@ describe("BoardReferenceService（阶段 6：Board V4 引用解析）", () => {
   it("多候选：ambiguous + candidates（不自动选择）", async () => {
     const { root, database, service, assetId, boardId, file } = await scaffold();
     try {
-      // 原文件先删除（触发 fingerprint 搜索）。
-      await rm(file, { force: true });
+      // 原文件先删除（触发 fingerprint 搜索）。Windows 并行 worker 下文件句柄
+      // 释放有延迟，rm 带短重试（EBUSY 安全）。
+      await rmWithRetry(file);
       const content = await stat(file).catch(() => null);
       const fingerprint = database.getAsset(assetId)!.fingerprint;
       const rootPath = path.resolve(root);
@@ -173,3 +173,16 @@ describe("BoardReferenceService（阶段 6：Board V4 引用解析）", () => {
     }
   });
 });
+
+/** Windows 并行 worker 下句柄释放有延迟：rm 带短重试（EBUSY 安全）。 */
+async function rmWithRetry(filename: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rm(filename, { force: true });
+      return;
+    } catch (error) {
+      if (attempt === 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 30 * (attempt + 1)));
+    }
+  }
+}
