@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RefCanvasApi } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
+import { useAppStore } from "../../../../src/renderer/app/store";
 import { AiDesignSupervisorPanel } from "../../../../src/renderer/components/AiDesignSupervisor";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -76,7 +79,22 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
       for (const root of roots.splice(0)) root.unmount();
     });
     vi.restoreAllMocks();
+    useAppStore.setState({
+      selectedAsset: null,
+      selectedDirectoryEntry: null,
+    });
     document.body.replaceChildren();
+  });
+
+  it("keeps the workspace interactive while the AI side panel is open", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/renderer/styles/ai.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.ai-panel-backdrop\s*\{[^}]*pointer-events:\s*none;/s,
+    );
+    expect(css).toMatch(/\.ai-panel\s*\{[^}]*pointer-events:\s*auto;/s);
   });
 
   it("shows the form, loads providers and renders job history", async () => {
@@ -151,6 +169,73 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
       outputCount: 2,
       outputDirectory: "D:\\out",
     });
+  });
+
+  it("adds the selected workspace material as AI input", async () => {
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      workspaceMode: "directory",
+      selectedDirectoryEntry: {
+        path: "D:\\refs\\selected.png",
+        name: "selected.png",
+        isDirectory: false,
+        extension: "png",
+      },
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<AiDesignSupervisorPanel onClose={() => undefined} />);
+      await Promise.resolve();
+    });
+
+    const panel = host.querySelector(".ai-panel");
+    expect(panel?.getAttribute("role")).toBe("complementary");
+    expect(panel?.hasAttribute("aria-modal")).toBe(false);
+    const addSelected = Array.from(host.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("添加当前素材"),
+    );
+    expect(addSelected).toBeTruthy();
+    expect(addSelected?.hasAttribute("disabled")).toBe(false);
+
+    await act(async () => {
+      addSelected?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(host.textContent).toContain("源图");
+  });
+
+  it("accepts RefCanvas material-card drags, not only operating-system files", async () => {
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<AiDesignSupervisorPanel onClose={() => undefined} />);
+      await Promise.resolve();
+    });
+
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, "dataTransfer", {
+      value: {
+        files: [],
+        getData: (type: string) =>
+          type === "application/x-refcanvas-directory-entry"
+            ? JSON.stringify({
+                path: "D:\\refs\\dragged.png",
+                isDirectory: false,
+              })
+            : "",
+      },
+    });
+    await act(async () => {
+      host.querySelector(".ai-drop-zone")?.dispatchEvent(drop);
+    });
+    expect(host.textContent).toContain("源图");
   });
 
   it("shows field errors for missing prompt and output directory", async () => {

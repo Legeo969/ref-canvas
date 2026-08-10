@@ -66,8 +66,28 @@ export type MessageKey =
   | "titlebar.clipboard"
   | "titlebar.region"
   | "titlebar.settings"
+  | "titlebar.professionalSettings"
   | "titlebar.ai"
   | "titlebar.tasks"
+  | "titlebar.workspace"
+  | "titlebar.exportJson"
+  | "titlebar.exportPng"
+  | "titlebar.openBoardWindow"
+  | "titlebar.collectProject"
+  | "titlebar.collectedProject"
+  | "titlebar.pin"
+  | "titlebar.unpin"
+  | "titlebar.focusBoard"
+  | "titlebar.presentBoard"
+  | "capture.instructions"
+  | "capture.saving"
+  | "capture.cancel"
+  | "capture.save"
+  | "capture.error"
+  | "app.operationFailed"
+  | "app.loadingWorkspace"
+  | "boards.unavailable"
+  | "presentation.exit"
   | "sidebar.quickAccess"
   | "sidebar.drives"
   | "sidebar.collections"
@@ -78,13 +98,16 @@ export type MessageKey =
   | "boards.createConfirm"
   | "boards.nameLabel"
   | "collections.empty"
+  | "collections.description"
   | "collections.create"
   | "collections.addFiles"
+  | "collections.createFromFiles"
   | "collections.newChild"
   | "collections.rename"
   | "collections.delete"
   | "collections.export"
   | "collections.resolve"
+  | "collections.resolving"
   | "collections.exporting"
   | "collections.exported"
   | "collections.openInNewTab"
@@ -100,6 +123,28 @@ export type MessageKey =
   | "collections.fingerprintChangedDesc"
   | "collections.exportSummary"
   | "collections.cancelExport"
+  | "collections.save"
+  | "collections.createConfirm"
+  | "collections.acknowledge"
+  | "collections.nameLabel"
+  | "collections.childNameLabel"
+  | "collections.deleteNamed"
+  | "collections.scopeChildrenItems"
+  | "collections.scopeItems"
+  | "collections.containsScope"
+  | "collections.addFilesNamed"
+  | "collections.collapse"
+  | "collections.expand"
+  | "collections.menu"
+  | "collections.moveUp"
+  | "collections.moveDown"
+  | "collections.relink"
+  | "collections.removeItem"
+  | "collections.pickFiles"
+  | "collections.addFailed"
+  | "collections.addFailedDesc"
+  | "collections.exportNamed"
+  | "collections.dropActive"
   | "preview.open"
   | "preview.reveal"
   | "preview.floating"
@@ -225,11 +270,15 @@ export type MessageKey =
   | "ai.state.cancelled"
   | "ai.input"
   | "ai.pickInput"
+  | "ai.addSelected"
+  | "ai.selectMaterialFirst"
+  | "ai.folderUnsupported"
   | "ai.pickSource"
   | "ai.pickReference"
   | "ai.pickOutput"
   | "ai.fileFilterImages"
   | "ai.fileFilterAll"
+  | "ai.fileFilterVideos"
   | "ai.referenceIndex"
   | "ai.dropEmpty"
   | "ai.unavailable"
@@ -270,10 +319,31 @@ export type MessageKey =
   | "settings.language"
   | "settings.languageHint"
   | "settings.general"
+  | "settings.board"
+  | "settings.options"
+  | "settings.ai"
+  | "settings.maintenance"
+  | "settings.about"
+  | "settings.uninstall"
+  | "settings.uninstallHint"
+  | "settings.uninstallConfirmTitle"
+  | "settings.uninstallConfirmDescription"
+  | "settings.uninstallConfirmButton"
+  | "settings.uninstallFailed"
+  | "settings.groups"
+  | "settings.close"
+  | "settings.globalShortcuts"
+  | "settings.globalShortcutsHint"
+  | "settings.backgroundResidency"
+  | "settings.backgroundResidencyHint"
+  | "settings.layout"
   | "settings.restoreLayout"
   | "status.diskReady"
   | "status.boardReady"
   | "status.importing"
+  | "status.hint.directory"
+  | "status.hint.boardPureRef"
+  | "status.hint.boardStandard"
   | "directory.searchPlaceholder"
   | "directory.newTab"
   | "directory.empty"
@@ -291,6 +361,29 @@ export type MessageKey =
   | "directory.loadingDrives"
   | "directory.noDrives"
   | "directory.loading"
+  | "directory.local"
+  | "directory.itemCount"
+  | "directory.back"
+  | "directory.forward"
+  | "directory.refresh"
+  | "directory.newFolder"
+  | "directory.folderName"
+  | "directory.create"
+  | "directory.previewSettings"
+  | "directory.searchCurrent"
+  | "directory.cancelSearch"
+  | "directory.includeSubdirectories"
+  | "directory.up"
+  | "directory.subdirectories"
+  | "directory.currentOnly"
+  | "directory.includeDepth"
+  | "directory.includeAllDepths"
+  | "directory.mergeSequences"
+  | "directory.formatFilter"
+  | "directory.all"
+  | "directory.extensionCount"
+  | "directory.flattenWarning"
+  | "directory.emptyHint"
   | "browser.tab.new"
   | "browser.tab.close"
   | "browser.tabList"
@@ -325,8 +418,28 @@ const en: Catalog = {
   "titlebar.clipboard": "Clipboard",
   "titlebar.region": "Region",
   "titlebar.settings": "Settings",
+  "titlebar.professionalSettings": "Open professional preview settings",
   "titlebar.ai": "AI Design",
   "titlebar.tasks": "Tasks",
+  "titlebar.workspace": "Workspace",
+  "titlebar.exportJson": "Export JSON",
+  "titlebar.exportPng": "Export PNG",
+  "titlebar.openBoardWindow": "Open board in a new window",
+  "titlebar.collectProject": "Package board and source files",
+  "titlebar.collectedProject": "Board project packaged to {path}",
+  "titlebar.pin": "Keep window on top",
+  "titlebar.unpin": "Stop keeping window on top",
+  "titlebar.focusBoard": "Focus board",
+  "titlebar.presentBoard": "Present board fullscreen",
+  "capture.instructions": "Drag to select an area · Enter to save · Esc to cancel",
+  "capture.saving": "Saving screenshot…",
+  "capture.cancel": "Cancel screenshot",
+  "capture.save": "Save screenshot",
+  "capture.error": "Could not save the screenshot. Try selecting the area again.",
+  "app.operationFailed": "The operation could not be completed. Please try again.",
+  "app.loadingWorkspace": "Opening disk workspace…",
+  "boards.unavailable": "Could not open the board",
+  "presentation.exit": "Exit presentation",
   "sidebar.quickAccess": "Quick Access",
   "sidebar.drives": "Drives",
   "sidebar.collections": "Collections",
@@ -337,13 +450,16 @@ const en: Catalog = {
   "boards.createConfirm": "Create",
   "boards.nameLabel": "Board name",
   "collections.empty": "No collections yet.",
+  "collections.description": "Organize references to files on disk without copying the source files.",
   "collections.create": "New Collection",
   "collections.addFiles": "Add Files…",
+  "collections.createFromFiles": "New Collection from Files…",
   "collections.newChild": "New Child Collection",
   "collections.rename": "Rename",
   "collections.delete": "Delete Collection",
   "collections.export": "Export…",
   "collections.resolve": "Re-resolve",
+  "collections.resolving": "Resolving…",
   "collections.exporting": "Exporting…",
   "collections.exported": "Export Complete",
   "collections.openInNewTab": "Open in New Tab",
@@ -354,11 +470,33 @@ const en: Catalog = {
   "collections.state.missing": "Missing",
   "collections.state.ambiguous": "Ambiguous",
   "collections.itemCount": "{count} items",
-  "collections.emptyHint": "Drop files or folders here, or click + beside the collection.",
+  "collections.emptyHint": "Drop files here, or click + beside the collection.",
   "collections.fingerprintChanged": "Fingerprint mismatch",
   "collections.fingerprintChangedDesc": "The selected file's content differs from what the collection recorded. Update the reference anyway?",
   "collections.exportSummary": "{copied} copied · {skipped} skipped · {failed} failed",
   "collections.cancelExport": "Cancel Export",
+  "collections.save": "Save",
+  "collections.createConfirm": "Create",
+  "collections.acknowledge": "OK",
+  "collections.nameLabel": "Collection name",
+  "collections.childNameLabel": "Child collection name",
+  "collections.deleteNamed": "Delete “{name}”? {detail}",
+  "collections.scopeChildrenItems": "{children} child collections and {items} items",
+  "collections.scopeItems": "{items} items",
+  "collections.containsScope": "“{name}” contains {scope}. {detail}",
+  "collections.addFilesNamed": "Add files to {name}",
+  "collections.collapse": "Collapse collection",
+  "collections.expand": "Expand collection",
+  "collections.menu": "Collection actions",
+  "collections.moveUp": "Move up",
+  "collections.moveDown": "Move down",
+  "collections.relink": "Relink…",
+  "collections.removeItem": "Remove from collection",
+  "collections.pickFiles": "Choose files to add to the collection",
+  "collections.addFailed": "Nothing was added",
+  "collections.addFailedDesc": "The selected paths contain no files that can be added. Folders themselves are not added.",
+  "collections.exportNamed": "Export “{name}” to…",
+  "collections.dropActive": "Drop to add to the current collection",
   "preview.open": "Open",
   "preview.reveal": "Show in File Explorer",
   "preview.floating": "Floating Preview",
@@ -484,13 +622,17 @@ const en: Catalog = {
   "ai.state.cancelled": "Cancelled",
   "ai.input": "Input",
   "ai.pickInput": "Choose input image",
+  "ai.addSelected": "Add selected material",
+  "ai.selectMaterialFirst": "Select an image in the workspace first",
+  "ai.folderUnsupported": "Folders cannot be used as AI image input. Open the folder and select or drag an image.",
   "ai.pickSource": "Choose source image",
   "ai.pickReference": "Choose reference image",
   "ai.pickOutput": "Choose output directory",
   "ai.fileFilterImages": "Images",
   "ai.fileFilterAll": "All files",
+  "ai.fileFilterVideos": "Video",
   "ai.referenceIndex": "Reference {index}",
-  "ai.dropEmpty": "Drop images here or pick from the right",
+  "ai.dropEmpty": "Drag an image from the workspace, use the selection, or browse",
   "ai.unavailable": "(unavailable)",
   "ai.refresh": "Refresh task list",
   "ai.outputCountResult": "{count} outputs",
@@ -529,10 +671,31 @@ const en: Catalog = {
   "settings.language": "Language",
   "settings.languageHint": "Switch instantly; missing strings fall back to English",
   "settings.general": "General",
+  "settings.board": "Board",
+  "settings.options": "Options",
+  "settings.ai": "AI",
+  "settings.maintenance": "Data Maintenance",
+  "settings.about": "About",
+  "settings.uninstall": "Uninstall RefCanvas",
+  "settings.uninstallHint": "Available in the installed Windows version",
+  "settings.uninstallConfirmTitle": "Uninstall RefCanvas?",
+  "settings.uninstallConfirmDescription": "RefCanvas will close and open the Windows uninstaller. Your source media files will not be deleted.",
+  "settings.uninstallConfirmButton": "Start uninstall",
+  "settings.uninstallFailed": "Could not start the uninstaller. You can still uninstall RefCanvas from Windows Installed apps.",
+  "settings.groups": "Settings sections",
+  "settings.close": "Close settings",
+  "settings.globalShortcuts": "Enable global shortcuts",
+  "settings.globalShortcutsHint": "Ctrl+Shift+C captures the clipboard; Ctrl+Shift+R starts a region screenshot",
+  "settings.backgroundResidency": "Keep running in background",
+  "settings.backgroundResidencyHint": "Keep the app available in the system tray after closing the window",
+  "settings.layout": "Interface Layout",
   "settings.restoreLayout": "Restore Default Layout",
   "status.diskReady": "Disk browsing ready",
   "status.boardReady": "Boards ready",
   "status.importing": "Updating file index…",
+  "status.hint.directory": "Arrow keys browse · Space preview · F favorite · 0–5 rate · Alt+drag media out",
+  "status.hint.boardPureRef": "←/→ focus · ↑/↓ layer · Space frame · Alt/middle-button pan · Ctrl+left-button rotate",
+  "status.hint.boardStandard": "Arrow keys move selection · Shift+arrows 10px · Space frame · F fit selection · middle-button pan",
   "directory.searchPlaceholder": "Search filenames or #tags (including subfolders)",
   "directory.newTab": "Open in New Tab",
   "directory.empty": "The folder is empty",
@@ -550,6 +713,29 @@ const en: Catalog = {
   "directory.loadingDrives": "Reading drives…",
   "directory.noDrives": "No accessible drives detected.",
   "directory.loading": "Loading…",
+  "directory.local": "Local Folder",
+  "directory.itemCount": "{shown} / {total} items",
+  "directory.back": "Back",
+  "directory.forward": "Forward",
+  "directory.refresh": "Refresh current folder",
+  "directory.newFolder": "New Folder",
+  "directory.folderName": "Folder name",
+  "directory.create": "Create",
+  "directory.previewSettings": "Professional preview settings",
+  "directory.searchCurrent": "Search current folder",
+  "directory.cancelSearch": "Cancel search",
+  "directory.includeSubdirectories": "Includes subfolders",
+  "directory.up": "Up",
+  "directory.subdirectories": "Subfolders",
+  "directory.currentOnly": "Current folder only",
+  "directory.includeDepth": "Include {depth} level(s)",
+  "directory.includeAllDepths": "All levels (8)",
+  "directory.mergeSequences": "Group sequences",
+  "directory.formatFilter": "Format filter",
+  "directory.all": "All",
+  "directory.extensionCount": "{count} extensions",
+  "directory.flattenWarning": "This folder contains {count} expanded items and may scroll slowly. Reduce the subfolder depth to improve performance.",
+  "directory.emptyHint": "Browsing does not copy files; links are indexed only when needed.",
   "browser.tab.new": "New tab",
   "browser.tab.close": "Close tab",
   "browser.tabList": "Browse tabs",
@@ -582,8 +768,28 @@ const zhCN: Catalog = {
   "titlebar.clipboard": "剪贴板",
   "titlebar.region": "区域",
   "titlebar.settings": "设置",
+  "titlebar.professionalSettings": "打开专业预览设置",
   "titlebar.ai": "AI 设计",
   "titlebar.tasks": "任务",
+  "titlebar.workspace": "工作区",
+  "titlebar.exportJson": "导出 JSON",
+  "titlebar.exportPng": "导出 PNG",
+  "titlebar.openBoardWindow": "在新窗口打开白板",
+  "titlebar.collectProject": "打包参考板及源文件",
+  "titlebar.collectedProject": "参考板项目已打包到 {path}",
+  "titlebar.pin": "窗口置顶",
+  "titlebar.unpin": "取消窗口置顶",
+  "titlebar.focusBoard": "专注白板",
+  "titlebar.presentBoard": "全屏展示白板",
+  "capture.instructions": "拖动框选区域 · Enter 保存 · Esc 取消",
+  "capture.saving": "正在保存截图…",
+  "capture.cancel": "取消截图",
+  "capture.save": "保存截图",
+  "capture.error": "截图保存失败，请重新框选后再试。",
+  "app.operationFailed": "操作未完成，请重试。",
+  "app.loadingWorkspace": "正在打开磁盘工作区…",
+  "boards.unavailable": "无法打开白板",
+  "presentation.exit": "退出展示",
   "sidebar.quickAccess": "快速访问",
   "sidebar.drives": "磁盘",
   "sidebar.collections": "引用集合",
@@ -594,13 +800,16 @@ const zhCN: Catalog = {
   "boards.createConfirm": "创建",
   "boards.nameLabel": "白板名称",
   "collections.empty": "还没有集合。",
+  "collections.description": "整理磁盘文件的引用，不复制或移动源文件。",
   "collections.create": "新建集合",
   "collections.addFiles": "添加文件…",
+  "collections.createFromFiles": "用文件新建集合…",
   "collections.newChild": "新建子集合",
   "collections.rename": "重命名",
   "collections.delete": "删除集合",
   "collections.export": "导出…",
   "collections.resolve": "重新解析",
+  "collections.resolving": "解析中…",
   "collections.exporting": "导出中…",
   "collections.exported": "导出完成",
   "collections.openInNewTab": "在新标签打开",
@@ -611,11 +820,33 @@ const zhCN: Catalog = {
   "collections.state.missing": "缺失",
   "collections.state.ambiguous": "歧义",
   "collections.itemCount": "{count} 项",
-  "collections.emptyHint": "拖入文件或文件夹，或点击集合旁的 +。",
+  "collections.emptyHint": "拖入文件，或点击集合旁的 +。",
   "collections.fingerprintChanged": "指纹不一致",
   "collections.fingerprintChangedDesc": "所选文件内容与集合中记录的不一致。仍要更新引用吗？",
   "collections.exportSummary": "已复制 {copied} · 已跳过 {skipped} · 失败 {failed}",
   "collections.cancelExport": "取消导出",
+  "collections.save": "保存",
+  "collections.createConfirm": "创建",
+  "collections.acknowledge": "知道了",
+  "collections.nameLabel": "集合名称",
+  "collections.childNameLabel": "子集合名称",
+  "collections.deleteNamed": "确定删除“{name}”吗？{detail}",
+  "collections.scopeChildrenItems": "{children} 个子集合、{items} 个条目",
+  "collections.scopeItems": "{items} 个条目",
+  "collections.containsScope": "“{name}”包含 {scope}。{detail}",
+  "collections.addFilesNamed": "添加文件到 {name}",
+  "collections.collapse": "折叠集合",
+  "collections.expand": "展开集合",
+  "collections.menu": "集合操作",
+  "collections.moveUp": "上移",
+  "collections.moveDown": "下移",
+  "collections.relink": "重定位…",
+  "collections.removeItem": "从集合移除",
+  "collections.pickFiles": "选择要加入集合的文件",
+  "collections.addFailed": "未能添加",
+  "collections.addFailedDesc": "所选路径没有可加入集合的文件（文件夹不会被加入）。",
+  "collections.exportNamed": "导出“{name}”到…",
+  "collections.dropActive": "释放以加入当前集合",
   "preview.open": "打开",
   "preview.reveal": "在资源管理器中显示",
   "preview.floating": "浮动预览",
@@ -741,13 +972,17 @@ const zhCN: Catalog = {
   "ai.state.cancelled": "已取消",
   "ai.input": "输入",
   "ai.pickInput": "选择输入图片",
+  "ai.addSelected": "添加当前素材",
+  "ai.selectMaterialFirst": "请先在中间素材区选择图片",
+  "ai.folderUnsupported": "文件夹不能作为 AI 图片输入，请进入文件夹后选择或拖入图片。",
   "ai.pickSource": "选择源图",
   "ai.pickReference": "选择参考图",
   "ai.pickOutput": "选择输出目录",
   "ai.fileFilterImages": "图像",
   "ai.fileFilterAll": "所有文件",
+  "ai.fileFilterVideos": "视频",
   "ai.referenceIndex": "参考 {index}",
-  "ai.dropEmpty": "拖放图片到此处，或点击右侧选择",
+  "ai.dropEmpty": "从中间拖入图片、添加当前素材，或浏览文件",
   "ai.unavailable": "（不可用）",
   "ai.refresh": "刷新任务列表",
   "ai.outputCountResult": "{count} 个输出",
@@ -786,10 +1021,31 @@ const zhCN: Catalog = {
   "settings.language": "界面语言",
   "settings.languageHint": "七种语言即时切换，缺失文案回退英文",
   "settings.general": "通用",
+  "settings.board": "白板",
+  "settings.options": "选项",
+  "settings.ai": "AI",
+  "settings.maintenance": "数据维护",
+  "settings.about": "关于",
+  "settings.uninstall": "卸载 RefCanvas",
+  "settings.uninstallHint": "仅 Windows 安装版可用",
+  "settings.uninstallConfirmTitle": "确定卸载 RefCanvas？",
+  "settings.uninstallConfirmDescription": "RefCanvas 将关闭并启动 Windows 卸载程序，不会删除磁盘中的源素材文件。",
+  "settings.uninstallConfirmButton": "开始卸载",
+  "settings.uninstallFailed": "无法启动卸载程序，请改用 Windows“已安装的应用”卸载 RefCanvas。",
+  "settings.groups": "设置分组",
+  "settings.close": "关闭设置",
+  "settings.globalShortcuts": "启用全局快捷键",
+  "settings.globalShortcutsHint": "Ctrl+Shift+C 捕获剪贴板，Ctrl+Shift+R 区域截图",
+  "settings.backgroundResidency": "后台驻留",
+  "settings.backgroundResidencyHint": "关闭窗口后保留主进程，可从托盘重新打开",
+  "settings.layout": "界面布局",
   "settings.restoreLayout": "恢复默认布局",
   "status.diskReady": "磁盘浏览已就绪",
   "status.boardReady": "参考板已就绪",
   "status.importing": "正在更新文件索引…",
+  "status.hint.directory": "方向键浏览 · Space 预览 · F 收藏 · 0–5 评分 · 素材 Alt+拖到外部",
+  "status.hint.boardPureRef": "←/→ 聚焦切换 · ↑/↓ 调整层级 · Space 聚焦 · Alt/中键平移 · Ctrl+左旋转",
+  "status.hint.boardStandard": "方向键移动选中 · Shift+方向键 10px · Space 聚焦 · F 适应选区 · 中键拖动画布",
   "directory.searchPlaceholder": "搜索文件名或 #标签（含子目录）",
   "directory.newTab": "在新标签打开",
   "directory.empty": "目录为空",
@@ -807,6 +1063,29 @@ const zhCN: Catalog = {
   "directory.loadingDrives": "正在读取磁盘…",
   "directory.noDrives": "没有检测到可访问的磁盘。",
   "directory.loading": "加载中…",
+  "directory.local": "本地目录",
+  "directory.itemCount": "{shown} / {total} 项",
+  "directory.back": "后退",
+  "directory.forward": "前进",
+  "directory.refresh": "刷新当前目录",
+  "directory.newFolder": "新建文件夹",
+  "directory.folderName": "文件夹名称",
+  "directory.create": "创建",
+  "directory.previewSettings": "专业预览设置",
+  "directory.searchCurrent": "搜索当前目录",
+  "directory.cancelSearch": "取消搜索",
+  "directory.includeSubdirectories": "含子目录",
+  "directory.up": "上一级",
+  "directory.subdirectories": "子目录",
+  "directory.currentOnly": "仅当前层",
+  "directory.includeDepth": "包含 {depth} 层",
+  "directory.includeAllDepths": "全部层级（8 层）",
+  "directory.mergeSequences": "合并序列",
+  "directory.formatFilter": "格式筛选",
+  "directory.all": "全部",
+  "directory.extensionCount": "{count} 个扩展名",
+  "directory.flattenWarning": "该目录展开后有 {count} 项，滚动可能变慢。可减少展开深度。",
+  "directory.emptyHint": "浏览不会建立副本，使用时再按需建立链接索引。",
   "browser.tab.new": "新建标签",
   "browser.tab.close": "关闭标签",
   "browser.tabList": "浏览标签",
@@ -841,6 +1120,25 @@ const zhTW: Catalog = {
   "titlebar.settings": "設定",
   "titlebar.ai": "AI 設計",
   "titlebar.tasks": "任務",
+  "titlebar.workspace": "工作區",
+  "titlebar.exportJson": "匯出 JSON",
+  "titlebar.exportPng": "匯出 PNG",
+  "titlebar.openBoardWindow": "在新視窗開啟白板",
+  "titlebar.collectProject": "封裝參考板及來源檔案",
+  "titlebar.collectedProject": "參考板專案已封裝到 {path}",
+  "titlebar.pin": "視窗置頂",
+  "titlebar.unpin": "取消視窗置頂",
+  "titlebar.focusBoard": "專注白板",
+  "titlebar.presentBoard": "全螢幕展示白板",
+  "capture.instructions": "拖曳框選區域 · Enter 儲存 · Esc 取消",
+  "capture.saving": "正在儲存截圖…",
+  "capture.cancel": "取消截圖",
+  "capture.save": "儲存截圖",
+  "capture.error": "截圖儲存失敗，請重新框選後再試。",
+  "app.operationFailed": "操作未完成，請重試。",
+  "app.loadingWorkspace": "正在開啟磁碟工作區…",
+  "boards.unavailable": "無法開啟白板",
+  "presentation.exit": "退出展示",
   "sidebar.quickAccess": "快速存取",
   "sidebar.drives": "磁碟",
   "sidebar.collections": "引用集合",
@@ -932,6 +1230,24 @@ const zhTW: Catalog = {
   "settings.language": "介面語言",
   "settings.languageHint": "七種語言即時切換，缺失文案回退英文",
   "settings.general": "通用",
+  "settings.board": "白板",
+  "settings.options": "選項",
+  "settings.ai": "AI",
+  "settings.maintenance": "資料維護",
+  "settings.about": "關於",
+  "settings.uninstall": "解除安裝 RefCanvas",
+  "settings.uninstallHint": "僅 Windows 安裝版可用",
+  "settings.uninstallConfirmTitle": "確定解除安裝 RefCanvas？",
+  "settings.uninstallConfirmDescription": "RefCanvas 將關閉並啟動 Windows 解除安裝程式，不會刪除磁碟中的來源素材。",
+  "settings.uninstallConfirmButton": "開始解除安裝",
+  "settings.uninstallFailed": "無法啟動解除安裝程式，請改用 Windows「已安裝的應用程式」。",
+  "settings.groups": "設定分組",
+  "settings.close": "關閉設定",
+  "settings.globalShortcuts": "啟用全域快捷鍵",
+  "settings.globalShortcutsHint": "Ctrl+Shift+C 擷取剪貼簿，Ctrl+Shift+R 區域截圖",
+  "settings.backgroundResidency": "背景常駐",
+  "settings.backgroundResidencyHint": "關閉視窗後保留主程序，可從系統匣重新開啟",
+  "settings.layout": "介面版面",
   "settings.restoreLayout": "恢復預設版面",
   "status.diskReady": "磁碟瀏覽已就緒",
   "status.boardReady": "參考板已就緒",

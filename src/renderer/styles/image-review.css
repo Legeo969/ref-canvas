@@ -44,18 +44,27 @@
 
 .image-review-toolbar {
   display: flex;
+  min-height: 52px;
   align-items: center;
-  gap: 2px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 6px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(9, 12, 11, 0.52);
   flex-wrap: wrap;
 }
 
 .image-review-toolbar .mini-icon-button {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   border-radius: 7px;
   color: #8a948f;
+  transition-property: background-color, color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.image-review-toolbar .mini-icon-button:active {
+  scale: 0.96;
 }
 
 .image-review-toolbar .mini-icon-button.active {
@@ -132,6 +141,93 @@
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   cursor: pointer;
+}
+
+.preview-color-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.preview-color-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  background: rgba(17, 21, 20, 0.82);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2);
+}
+
+.preview-color-swatch {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: white;
+  transition-property: background-color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.preview-color-swatch-chip {
+  width: 25px;
+  height: 18px;
+  border-radius: 4px;
+  outline: 1px solid rgba(255, 255, 255, 0.22);
+  outline-offset: -1px;
+  transition-property: box-shadow, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.preview-color-swatch:hover .preview-color-swatch-chip {
+  scale: 1.08;
+  box-shadow: 0 0 0 2px rgba(140, 222, 197, 0.38);
+}
+
+.preview-color-swatch:active {
+  scale: 0.96;
+}
+
+.preview-color-bar.compact .preview-color-swatch-chip {
+  width: 20px;
+  height: 15px;
+}
+
+.preview-color-bar.live {
+  margin-left: auto;
+}
+
+.preview-color-bar.live .preview-color-swatches {
+  min-height: 28px;
+  padding: 4px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.055);
+}
+
+.preview-color-bar.live .preview-color-swatch-chip {
+  width: 30px;
+  height: 20px;
+}
+
+.preview-color-copied {
+  position: absolute;
+  color: white;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}
+
+.preview-color-error {
+  color: #e7a19d;
+  font-size: 11px;
 }
 
 .image-review-layers {

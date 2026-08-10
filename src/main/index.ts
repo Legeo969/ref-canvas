@@ -73,6 +73,10 @@ import {
   removeWindowsIntegration,
   updateSquirrelShortcut,
 } from "./platform/windows-integration";
+import {
+  getSquirrelLifecycleEvent,
+  isSquirrelFirstRun,
+} from "./platform/windows-installer";
 import { SecureIpcRegistrar } from "./platform/secure-ipc";
 import { registerActionIpc } from "./ipc/action-ipc";
 import { registerBackupIpc } from "./ipc/backup-ipc";
@@ -99,6 +103,7 @@ import {
 } from "./services/ai/http-transports";
 import { AiSecretStore } from "./services/ai/ai-secret-store";
 import {
+  inspectBinding,
   parseWorkflow,
   type ComfyWorkflowBinding,
 } from "./services/ai/comfyui-workflow";
@@ -167,6 +172,41 @@ let tray: Electron.Tray | null = null;
 let quitting = false;
 let shutdownComplete = false;
 let shutdownPromise: Promise<void> | null = null;
+
+async function buildAiProviders(): Promise<Map<AiProviderKind, AiProvider>> {
+  const providers = new Map<AiProviderKind, AiProvider>();
+  if (mockAiAllowed()) providers.set("mock", new MockAiProvider());
+  const settings = readAiSettings(database);
+  if (settings.comfyuiWorkflowPath && settings.comfyuiBinding) {
+    try {
+      const workflowText = await readFile(settings.comfyuiWorkflowPath, "utf8");
+      const workflow = parseWorkflow(workflowText);
+      const binding = settings.comfyuiBinding as ComfyWorkflowBinding;
+      if (workflow && inspectBinding(workflow, binding).valid) {
+        providers.set(
+          "comfyui",
+          new ComfyUiProvider({
+            address: settings.comfyuiAddress,
+            workflow,
+            binding,
+            transport: new HttpComfyTransport(settings.comfyuiAddress),
+          }),
+        );
+      }
+    } catch {
+      // workflow 文件缺失/损坏：不注册，health 呈现不可用。
+    }
+  }
+  if (settings.remoteBaseUrl) {
+    const remoteProvider = new RemoteRestProvider({
+      baseUrl: settings.remoteBaseUrl,
+      transport: new HttpRemoteTransport(),
+    });
+    remoteProvider.setTokenProvider(() => aiSecretStore.read());
+    providers.set("remote-rest", remoteProvider);
+  }
+  return providers;
+}
 /** FPS 采集模式：给渲染层加载 URL 追加 ?fps=1，暴露测试钩子。 */
 const fpsCheckMode = process.argv.includes("--fps-check");
 /** 会话级 refbrowse 预览 token 注册表（URL 永不含绝对路径）。 */
@@ -178,9 +218,8 @@ let thumbnailWorker: ThumbnailWorkerClient | null = null;
 let providerRegistry: ProviderRegistry | null = null;
 let providerSupervisor: WorkerSupervisor | null = null;
 const overlayExitAccelerator = "CommandOrControl+Alt+Shift+R";
-const squirrelEvent = process.argv.find((value) =>
-  value.startsWith("--squirrel-"),
-);
+const squirrelEvent = getSquirrelLifecycleEvent(process.argv);
+const squirrelFirstRun = isSquirrelFirstRun(process.argv);
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
@@ -685,37 +724,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   aiSecretStore = new AiSecretStore({
     filePath: path.join(app.getPath("userData"), "ai-secret.bin"),
   });
-  const aiProviders = new Map<AiProviderKind, AiProvider>();
-  if (mockAiAllowed()) aiProviders.set("mock", new MockAiProvider());
-  const aiSettings = readAiSettings(database);
-  if (aiSettings.comfyuiWorkflowPath && aiSettings.comfyuiBinding) {
-    try {
-      const workflowText = await readFile(aiSettings.comfyuiWorkflowPath, "utf8");
-      const workflow = parseWorkflow(workflowText);
-      if (workflow) {
-        aiProviders.set(
-          "comfyui",
-          new ComfyUiProvider({
-            address: aiSettings.comfyuiAddress,
-            workflow,
-            binding: aiSettings.comfyuiBinding as ComfyWorkflowBinding,
-            transport: new HttpComfyTransport(aiSettings.comfyuiAddress),
-          }),
-        );
-      }
-    } catch {
-      // workflow 文件缺失/损坏：不注册，health 呈现不可用。
-    }
-  }
-  if (aiSettings.remoteBaseUrl) {
-    const remoteProvider = new RemoteRestProvider({
-      baseUrl: aiSettings.remoteBaseUrl,
-      transport: new HttpRemoteTransport(),
-    });
-    remoteProvider.setTokenProvider(() => aiSecretStore.read());
-    aiProviders.set("remote-rest", remoteProvider);
-  }
-  aiJobService = new AiJobService(database.aiJobs(), aiProviders);
+  aiJobService = new AiJobService(database.aiJobs(), await buildAiProviders());
   // 重启恢复：对非终态 job 尝试 Provider.recover，不支持则标记 failed。
   void aiJobService.recoverInterrupted();
   // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/AI 任务。
@@ -806,6 +815,9 @@ function registerIpc(): void {
     getAiJobService: () => aiJobService,
     isMockAllowed: () => mockAiAllowed(),
     getSecretStore: () => aiSecretStore,
+    reloadProviders: async () => {
+      aiJobService.replaceProviders(await buildAiProviders());
+    },
     notifyAiChanged: (snapshot) => broadcastAll("ai:changed", snapshot),
   });
   registerTaskCenterIpc(ipc, {
@@ -947,7 +959,25 @@ function createRecoveryWindow(): void {
     webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
   });
   hardenWindowNavigation(mainWindow.webContents);
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    const window = mainWindow;
+    window?.show();
+    if (!squirrelFirstRun || !window) return;
+    const isChinese = app.getLocale().toLowerCase().startsWith("zh");
+    void dialog.showMessageBox(window, {
+      type: "info",
+      title: isChinese ? "RefCanvas 安装完成" : "RefCanvas installed",
+      message: isChinese
+        ? `RefCanvas ${app.getVersion()} 已安装完成`
+        : `RefCanvas ${app.getVersion()} was installed successfully`,
+      detail: isChinese
+        ? "现在可以开始使用。以后可在“设置 → 关于”或 Windows“已安装的应用”中卸载。"
+        : "You can start using it now. Uninstall later from Settings → About or Windows Installed apps.",
+      buttons: [isChinese ? "开始使用" : "Get started"],
+      defaultId: 0,
+      noLink: true,
+    });
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
     app.quit();

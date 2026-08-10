@@ -9,6 +9,7 @@
  *   上传 headers（allowlist 复制，拒绝 Authorization/Cookie/Host 等）。
  */
 import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { URL } from "node:url";
 
 export interface UrlValidationResult {
@@ -43,7 +44,12 @@ function ipv4ToNumber(parts: number[]): number {
 
 function isPrivateIpv4(address: string): boolean {
   const parts = address.split(".").map(Number);
-  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return false;
+  if (
+    parts.length !== 4 ||
+    parts.some(
+      (part) => !Number.isInteger(part) || part < 0 || part > 255,
+    )
+  ) return false;
   const value = ipv4ToNumber(parts);
   return PRIVATE_V4_PATTERNS.some(([prefix, bits]) => {
     const mask = bits === 32 ? 0xffffffff : ((1 << bits) - 1) << (32 - bits);
@@ -53,16 +59,24 @@ function isPrivateIpv4(address: string): boolean {
 
 function isPrivateIpv6(address: string): boolean {
   const lower = address.toLowerCase();
-  if (lower === "::1" || lower === "::") return true; // loopback / unspecified
-  if (lower.startsWith("fe80") || lower.startsWith("fec0")) return true; // link-local / site-local
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // ULA
-  if (lower.startsWith("fec") || lower.startsWith("ff")) return true; // multicast
+  if (lower === "::1" || lower === "::") return true;
+  // IPv4-mapped IPv6 仍按其 IPv4 语义判定；其余 mapped 地址保守拒绝。
+  if (lower.startsWith("::ffff:")) {
+    const dotted = lower.slice("::ffff:".length);
+    return isIP(dotted) !== 4 || isPrivateIpv4(dotted);
+  }
+  const first = Number.parseInt(lower.split(":", 1)[0] || "0", 16);
+  // 只接受全球单播 2000::/3，并拒绝文档地址 2001:db8::/32。
+  if (first < 0x2000 || first > 0x3fff) return true;
+  if (lower.startsWith("2001:db8:")) return true;
   return false;
 }
 
 function isPrivateAddress(address: string): boolean {
-  if (address.includes(":")) return isPrivateIpv6(address);
-  return isPrivateIpv4(address);
+  const family = isIP(address);
+  if (family === 6) return isPrivateIpv6(address);
+  if (family === 4) return isPrivateIpv4(address);
+  return true;
 }
 
 function parseIp(address: string): string | null {
@@ -107,7 +121,10 @@ export async function validatePublicHttpsUrl(
   // 字面 IP 直接判段。
   if (/^[0-9.]+$/.test(hostname) || hostname.includes(":")) {
     const ip = parseIp(hostname);
-    if (ip && isPrivateAddress(ip)) {
+    if (!ip || isIP(ip) === 0) {
+      return { ok: false, reason: "IP 地址无效" };
+    }
+    if (isPrivateAddress(ip)) {
       return { ok: false, reason: "Job API 不允许回环/私网地址" };
     }
     return { ok: true, reason: null };
@@ -118,7 +135,7 @@ export async function validatePublicHttpsUrl(
     if (addresses.length === 0) return { ok: false, reason: "DNS 解析为空" };
     for (const address of addresses) {
       const ip = parseIp(address);
-      if (!ip || isPrivateAddress(ip)) {
+      if (!ip || isIP(ip) === 0 || isPrivateAddress(ip)) {
         return { ok: false, reason: `DNS 解析到私网地址 ${address}` };
       }
     }
@@ -146,24 +163,23 @@ export async function validateRedirectTarget(
 export function filterUploadHeaders(
   prepareHeaders: Record<string, string>,
 ): Record<string, string> {
-  const blocked = new Set([
-    "authorization",
-    "cookie",
-    "host",
-    "connection",
-    "proxy-authorization",
-    "proxy-connection",
-    "te",
-    "trailer",
-    "transfer-encoding",
-    "upgrade",
-    "content-length",
-    "content-type", // 由客户端按 body 类型设置
+  const allowedExact = new Set([
+    "cache-control",
+    "content-disposition",
+    "content-md5",
+    "content-type",
+    "if-match",
+    "if-none-match",
   ]);
   const result: Record<string, string> = {};
   for (const [name, value] of Object.entries(prepareHeaders)) {
     const lower = name.toLowerCase();
-    if (blocked.has(lower)) continue;
+    const allowed =
+      allowedExact.has(lower) ||
+      lower.startsWith("x-amz-") ||
+      lower.startsWith("x-goog-") ||
+      lower.startsWith("x-oss-");
+    if (!allowed) continue;
     if (!/^[a-zA-Z0-9-]+$/.test(name)) continue;
     if (typeof value !== "string" || value.length > 4096) continue;
     result[name] = value;

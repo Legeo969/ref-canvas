@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
+import sharp from "sharp";
 import { z } from "zod";
 import path from "node:path";
 import type { UserMetadataPatch } from "../../shared/contracts";
@@ -26,7 +27,9 @@ import { exportSequenceToMp4 } from "../services/media/mp4-export";
 import {
   exportSequenceToGif,
   exportVideoToGif,
+  exportVideosToGif,
 } from "../services/media/gif-export";
+import { exportVideoFrames } from "../services/media/video-frame-export";
 import {
   downscaleImage,
   planDownscale,
@@ -35,6 +38,7 @@ import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
 import type { FoundSettings } from "../../shared/contracts";
 import { mergeFoundSettings } from "./found-settings";
 import { idSchema, pathSchema } from "./schemas";
+import { extractDominantPalette } from "../../shared/color-palette";
 
 interface ResourcesIpcDependencies {
   getDatabase(): RefCanvasDatabase;
@@ -307,6 +311,47 @@ export function registerResourcesIpc(
       };
     });
   });
+  ipc.handle("media:palette", async (filename, options) => {
+    const resolved = path.resolve(pathSchema.parse(filename));
+    const parsed = z
+      .object({
+        timeMs: z.number().min(0).max(86_400_000).default(0),
+        limit: z.number().int().min(1).max(12).default(6),
+      })
+      .parse(options ?? {});
+    const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
+    const kind = assetKindForExtension(extension);
+    let samplePath = resolved;
+    let removeSample = false;
+    if (kind === "video") {
+      const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+      if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      const signature = createHash("sha256")
+        .update(`${path.normalize(resolved)}:${Math.round(parsed.timeMs)}:${randomUUID()}:palette`)
+        .digest("hex")
+        .slice(0, 20);
+      samplePath = path.join(cacheDirectory, `palette-${signature}.png`);
+      removeSample = true;
+      await extractVideoFrame(resolved, parsed.timeMs, samplePath, {
+        width: 320,
+        height: 320,
+      });
+    }
+    if (kind !== "image" && kind !== "video") {
+      throw new Error("PALETTE_UNSUPPORTED_MEDIA");
+    }
+    try {
+      const { data } = await sharp(samplePath, { animated: false, failOn: "none" })
+        .rotate()
+        .resize({ width: 128, height: 128, fit: "inside", withoutEnlargement: true })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return extractDominantPalette(data, parsed.limit);
+    } finally {
+      if (removeSample) await rm(samplePath, { force: true }).catch(() => undefined);
+    }
+  });
   ipc.handle("media:preview", (filename) => {
     const resolved = path.resolve(pathSchema.parse(filename));
     const token = dependencies.previewTokens.tokenFor(resolved);
@@ -380,23 +425,113 @@ export function registerResourcesIpc(
   });
   ipc.handle("media:exportGif", async (request) => {
     const parsed = z.object({
-      inputPath: pathSchema,
+      inputPath: pathSchema.optional(),
+      clips: z.array(z.object({
+        inputPath: pathSchema,
+        startMs: z.number().min(0).max(86_400_000).optional(),
+        endMs: z.number().min(0).max(86_400_000).optional(),
+      })).min(1).max(50).optional(),
       outputDirectory: pathSchema,
       baseName: z.string().min(1).max(128),
       fps: z.number().int().min(1).max(60).optional(),
       maxWidth: z.number().int().min(64).max(3840).optional(),
+      colors: z.number().int().min(16).max(256).optional(),
+      dither: z.enum(["none", "bayer", "floyd_steinberg", "sierra2_4a"]).optional(),
       jobId: z.string().min(1).max(128).optional(),
+    }).refine((value) => Boolean(value.inputPath || value.clips?.length), {
+      message: "GIF_EXPORT_EMPTY",
     }).parse(request);
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
       const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const outputPath = path.join(parsed.outputDirectory, `${safeBase}.gif`);
-      const result = await exportVideoToGif({
-        inputPath: path.resolve(parsed.inputPath),
+      const outputPath = await availableOutputPath(parsed.outputDirectory, safeBase, "gif");
+      const clips = parsed.clips?.map((clip) => ({
+        ...clip,
+        inputPath: path.resolve(clip.inputPath),
+      }));
+      const common = {
         fps: parsed.fps ?? 12,
         maxWidth: parsed.maxWidth ?? 960,
+        colors: parsed.colors ?? 256,
+        dither: parsed.dither ?? "sierra2_4a" as const,
         outputPath,
-      }, signal);
+      };
+      const result = clips
+        ? await exportVideosToGif({ ...common, clips }, signal)
+        : await exportVideoToGif({
+            ...common,
+            inputPath: path.resolve(parsed.inputPath!),
+          }, signal);
       return { ...result, outputPath, frameCount: null, jobId };
+    });
+  });
+  ipc.handle("media:exportFrames", async (request) => {
+    const parsed = z.object({
+      inputPath: pathSchema,
+      outputDirectory: pathSchema,
+      baseName: z.string().min(1).max(128),
+      format: z.enum(["png", "jpeg"]),
+      fps: z.number().min(0.01).max(240).nullable().optional(),
+      startMs: z.number().min(0).max(86_400_000).optional(),
+      endMs: z.number().min(0).max(86_400_000).optional(),
+      quality: z.number().int().min(1).max(100).optional(),
+      jobId: z.string().min(1).max(128).optional(),
+    }).parse(request);
+    return runMediaJob(parsed.jobId, async (signal, jobId) => ({
+      ...(await exportVideoFrames({
+        ...parsed,
+        inputPath: path.resolve(parsed.inputPath),
+        outputDirectory: path.resolve(parsed.outputDirectory),
+      }, signal)),
+      jobId,
+    }));
+  });
+  ipc.handle("media:exportDisplayChannel", async (request) => {
+    const parsed = z.object({
+      inputPath: pathSchema,
+      outputDirectory: pathSchema,
+      baseName: z.string().min(1).max(128),
+      channel: z.string().trim().regex(/^[a-z0-9_.-]{1,256}$/i).optional(),
+      jobId: z.string().min(1).max(128).optional(),
+    }).parse(request);
+    return runMediaJob(parsed.jobId, async (signal, jobId) => {
+      const inputPath = path.resolve(parsed.inputPath);
+      const extension = path.extname(inputPath).replace(/^\./, "").toLowerCase();
+      if (extension !== "exr" && extension !== "hdr") {
+        throw new Error("DISPLAY_CHANNEL_FORMAT_UNSUPPORTED");
+      }
+      const kind = assetKindForExtension(extension);
+      const { result: probe } = await invokeProbe(
+        dependencies.getProviderRegistry(),
+        { path: inputPath, kind, extension, size: 0 },
+      );
+      signal.throwIfAborted();
+      const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+      const safeChannel = parsed.channel?.replace(/[^a-z0-9_.-]/gi, "_") ?? "composite";
+      const outputPath = await availableOutputPath(
+        path.resolve(parsed.outputDirectory),
+        `${safeBase}-${safeChannel}`,
+        "png",
+      );
+      const { result } = await invokeThumbnail(
+        dependencies.getProviderRegistry(),
+        {
+          path: inputPath,
+          kind,
+          extension,
+          width: Math.max(16, probe.width ?? 1920),
+          height: Math.max(16, probe.height ?? 1080),
+          outputPath,
+          channel: parsed.channel,
+        },
+      );
+      signal.throwIfAborted();
+      return {
+        outputPath: result.path,
+        width: result.width,
+        height: result.height,
+        channel: parsed.channel ?? null,
+        jobId,
+      };
     });
   });
 
@@ -475,7 +610,7 @@ export function registerResourcesIpc(
         settings.mp4Presets.find((item) => item.enabled) ??
         settings.mp4Presets[0];
       const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const outputPath = path.join(parsed.outputDirectory, `${safeBase}.mp4`);
+      const outputPath = await availableOutputPath(parsed.outputDirectory, safeBase, "mp4");
       const result = await exportSequenceToMp4({
         files: parsed.files.map((file) => path.resolve(file)),
         fps: parsed.fps,
@@ -506,7 +641,7 @@ export function registerResourcesIpc(
     }).parse(request);
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
       const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const outputPath = path.join(parsed.outputDirectory, `${safeBase}.gif`);
+      const outputPath = await availableOutputPath(parsed.outputDirectory, safeBase, "gif");
       const result = await exportSequenceToGif({
         files: parsed.files.map((file) => path.resolve(file)),
         fps: parsed.fps,
@@ -654,6 +789,21 @@ export function registerResourcesIpc(
 function thumbnailIdForPath(filename: string): string {
   // 稳定可复现的文件名（不含路径信息，防止缓存文件名泄露绝对路径）。
   return createHash("sha256").update(path.normalize(filename)).digest("hex").slice(0, 20);
+}
+
+async function availableOutputPath(
+  directory: string,
+  baseName: string,
+  extension: string,
+): Promise<string> {
+  for (let suffix = 0; suffix < 10_000; suffix += 1) {
+    const candidate = path.join(
+      directory,
+      `${baseName}${suffix === 0 ? "" : `-${suffix + 1}`}.${extension}`,
+    );
+    if (!(await stat(candidate).catch(() => null))) return candidate;
+  }
+  throw new Error("EXPORT_OUTPUT_UNAVAILABLE");
 }
 
 function mimeTypeForPath(filename: string): string {

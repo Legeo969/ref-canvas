@@ -8,6 +8,7 @@
  * - 任务进度通过 `ai:changed` 广播（job snapshot，无敏感路径）。
  */
 import { z } from "zod";
+import path from "node:path";
 import type {
   AiJobSnapshot,
   AiProviderKind,
@@ -24,9 +25,29 @@ import {
 } from "./schemas";
 import {
   assertComfyAddressAllowed,
+  inspectBinding,
   inspectWorkflow,
   parseWorkflow,
+  type ComfyWorkflowBinding,
 } from "../services/ai/comfyui-workflow";
+
+const comfyInputRefSchema = z.object({
+  nodeId: z.string().min(1).max(256),
+  inputName: z.string().min(1).max(256),
+});
+
+const comfyBindingSchema = z.object({
+  source: comfyInputRefSchema,
+  referenceSlots: z.array(comfyInputRefSchema).max(6),
+  prompt: comfyInputRefSchema,
+  batchSize: comfyInputRefSchema,
+  majorChange: comfyInputRefSchema.extend({
+    minorValue: z.number().finite(),
+    majorValue: z.number().finite(),
+  }).optional(),
+  seed: comfyInputRefSchema.optional(),
+  outputNodeIds: z.array(z.string().min(1).max(256)).min(1).max(64),
+});
 
 const aiSettingsPatchSchema = z.object({
   comfyuiAddress: z
@@ -35,7 +56,7 @@ const aiSettingsPatchSchema = z.object({
     .max(2048)
     .optional(),
   comfyuiWorkflowPath: z.string().min(1).max(32_768).nullable().optional(),
-  comfyuiBinding: z.unknown().nullable().optional(),
+  comfyuiBinding: comfyBindingSchema.nullable().optional(),
   remoteBaseUrl: z
     .string()
     .trim()
@@ -84,6 +105,8 @@ export interface AiIpcDependencies {
   isMockAllowed(): boolean;
   /** Bearer token 加密存储（Renderer 只读 configured 状态）。 */
   getSecretStore(): import("../services/ai/ai-secret-store").AiSecretStore;
+  /** 设置落盘后重建 Provider，使修改无需重启应用。 */
+  reloadProviders?(): Promise<void>;
   /** 变更广播（index.ts 注入 broadcastAll）。 */
   notifyAiChanged(snapshot: AiJobSnapshot | null): void;
 }
@@ -191,7 +214,7 @@ export function registerAiIpc(
 
   ipc.handle("ai:get-settings", () => readAiSettings(dependencies.getDatabase()));
 
-  ipc.handle("ai:set-settings", (input) => {
+  ipc.handle("ai:set-settings", async (input) => {
     const parsed = aiSettingsPatchSchema.parse(input ?? {});
     const patch: Partial<AiSettings> = { ...parsed };
     if (patch.remoteBaseUrl === null || patch.remoteBaseUrl === "") {
@@ -204,7 +227,27 @@ export function registerAiIpc(
     if (typeof patch.comfyuiAddress === "string" && patch.comfyuiAddress.trim()) {
       patch.comfyuiAddress = assertComfyAddressAllowed(patch.comfyuiAddress);
     }
-    return writeAiSettings(dependencies.getDatabase(), patch);
+    if (patch.comfyuiBinding) {
+      const current = readAiSettings(dependencies.getDatabase());
+      if (!current.comfyuiWorkflowPath) {
+        throw new Error("COMFYUI_WORKFLOW_NOT_IMPORTED");
+      }
+      const { readFile } = await import("node:fs/promises");
+      const workflow = parseWorkflow(
+        await readFile(current.comfyuiWorkflowPath, "utf8"),
+      );
+      if (!workflow) throw new Error("COMFYUI_WORKFLOW_INVALID_JSON");
+      const validation = inspectBinding(
+        workflow,
+        patch.comfyuiBinding as ComfyWorkflowBinding,
+      );
+      if (!validation.valid) {
+        throw new Error(`COMFYUI_BINDING_INVALID:${validation.errors.join(";")}`);
+      }
+    }
+    const settings = writeAiSettings(dependencies.getDatabase(), patch);
+    await dependencies.reloadProviders?.();
+    return settings;
   });
 
   /** Provider 健康检查（面板状态）。 */
@@ -225,19 +268,28 @@ export function registerAiIpc(
   ipc.handle("ai:save-secret", async (input) => {
     const parsed = saveSecretSchema.parse(input ?? {});
     await dependencies.getSecretStore().save(parsed.token);
+    await dependencies.reloadProviders?.();
     return dependencies.getSecretStore().status();
   });
 
   /** 清除 Bearer token。 */
   ipc.handle("ai:clear-secret", async () => {
     await dependencies.getSecretStore().clear();
+    await dependencies.reloadProviders?.();
     return dependencies.getSecretStore().status();
   });
 
   /** 导入 API-format workflow：解析、结构检查并保存路径，返回绑定元数据。 */
   ipc.handle("ai:import-comfyui-workflow", async (input) => {
     const parsed = importWorkflowSchema.parse(input ?? {});
-    const { readFile } = await import("node:fs/promises");
+    if (path.extname(parsed.path).toLowerCase() !== ".json") {
+      throw new Error("COMFYUI_WORKFLOW_EXTENSION_INVALID");
+    }
+    const { readFile, stat } = await import("node:fs/promises");
+    const info = await stat(parsed.path).catch(() => null);
+    if (!info?.isFile() || info.size > 10 * 1024 * 1024) {
+      throw new Error("COMFYUI_WORKFLOW_FILE_INVALID");
+    }
     const raw = await readFile(parsed.path, "utf8");
     const workflow = parseWorkflow(raw);
     if (!workflow) {
@@ -258,9 +310,16 @@ export function registerAiIpc(
       nodes,
       workflowPath: parsed.path,
     };
+    const currentSettings = readAiSettings(dependencies.getDatabase());
     writeAiSettings(dependencies.getDatabase(), {
       comfyuiWorkflowPath: parsed.path,
+      // 路径变化时旧绑定必然不可信；读取同一已导入文件的元数据时保留绑定。
+      comfyuiBinding:
+        currentSettings.comfyuiWorkflowPath === parsed.path
+          ? currentSettings.comfyuiBinding
+          : null,
     });
+    await dependencies.reloadProviders?.();
     return result;
   });
 }

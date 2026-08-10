@@ -35,6 +35,8 @@ function batch(overrides: Partial<DirectoryBatchSnapshot> = {}): DirectoryBatchS
     total: 4,
     processed: 2,
     failed: [],
+    createdAt: "2026-08-08T10:30:00.000Z",
+    updatedAt: "2026-08-08T10:30:01.000Z",
     ...overrides,
   };
 }
@@ -126,5 +128,25 @@ describe("TaskCenterService (FND-007 §8.3)", () => {
     service.onChanged(listener);
     service.notify("import");
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ kind: "import" }));
+  });
+
+  it("keeps batch timestamps stable across reads and treats failed jobs as terminal", async () => {
+    const failedBatch = batch({ state: "failed", total: 0, processed: 0 });
+    const sources = {
+      listImports: vi.fn(() => []),
+      listBatches: vi.fn(() => [failedBatch]),
+      listAiJobs: vi.fn(() => []),
+      cancelImport: vi.fn(async () => true),
+      cancelBatch: vi.fn(async () => true),
+      cancelAi: vi.fn(async () => true),
+    };
+    const service = new TaskCenterService(sources);
+    const first = service.list()[0];
+    const second = service.list()[0];
+    expect(second.updatedAt).toBe(first.updatedAt);
+    expect(second.createdAt).toBe(failedBatch.createdAt);
+    expect(second.progress).toBe(1);
+    await service.cancel(failedBatch.id);
+    expect(sources.cancelBatch).not.toHaveBeenCalled();
   });
 });

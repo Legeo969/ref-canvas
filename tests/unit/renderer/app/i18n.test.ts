@@ -48,6 +48,8 @@ describe("i18n runtime (FND-011)", () => {
   it("returns translated values for representative keys", () => {
     setLanguage("en");
     expect(translate("workspace.disk")).toBe("Disk");
+    expect(translate("settings.title")).toBe("Settings");
+    expect(translate("capture.save")).toBe("Save screenshot");
     expect(translate("tasks.empty")).toBe("No tasks yet.");
     setLanguage("zh-CN");
     expect(translate("workspace.disk")).toBe("磁盘");

@@ -105,6 +105,11 @@ function renameLegacyTable(db: Database.Database, table: LegacyTableKey): void {
  * 已由更早构建执行过破坏性 v16 的数据库（无归档表）不受影响，本步骤幂等。
  */
 export function archiveLegacyCollections(db: Database.Database): void {
+  // 已经具备 v17 物理表、但 user_version 被降级/损坏时，绝不能把当前
+  // collections 误当成 v15 旧表归档或删除。让后续 v17 步骤原地校验即可。
+  if (tableExists(db, "collection_items")) {
+    return;
+  }
   for (const table of LEGACY_TABLE_KEYS) {
     if (!tableExists(db, table)) continue;
     const archiveName = archiveNameFor(table);
@@ -154,11 +159,42 @@ function importFromArchive(
   legacyRefs: boolean,
   legacyAssets: boolean,
 ): RestoredCounts {
+  const expectedCollections = legacyCollections
+    ? (db.prepare("SELECT COUNT(*) AS count FROM _legacy_collections_v16").get() as {
+        count: number;
+      }).count
+    : 0;
+  const expectedRefs = legacyRefs
+    ? (db.prepare("SELECT COUNT(*) AS count FROM _legacy_collection_refs_v16").get() as {
+        count: number;
+      }).count
+    : 0;
+  const expectedAssets = legacyAssets
+    ? (db.prepare("SELECT COUNT(*) AS count FROM _legacy_collection_assets_v16").get() as {
+        count: number;
+      }).count
+    : 0;
+  const expectedRefPaths = legacyRefs
+    ? (db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM _legacy_collection_refs_v16 r
+        JOIN mount_roots m ON m.id = r.mount_id
+        WHERE r.relative_path IS NOT NULL AND r.relative_path <> ''
+      `).get() as { count: number }).count
+    : 0;
+  const expectedAssetPaths = legacyAssets
+    ? (db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM _legacy_collection_assets_v16 ca
+        JOIN assets a ON a.id = ca.asset_id
+        WHERE a.path IS NOT NULL AND a.path <> ''
+      `).get() as { count: number }).count
+    : 0;
   const now = new Date().toISOString();
   if (legacyCollections) {
     // 旧 collections 恒定含 id/title/parent_id/sort_order/created_at。
     db.exec(`
-      INSERT OR IGNORE INTO collections
+      INSERT INTO collections
         (id, parent_id, name, sort_order, created_at, updated_at)
       SELECT id, parent_id, title, sort_order, created_at, created_at
       FROM _legacy_collections_v16
@@ -190,7 +226,7 @@ function importFromArchive(
       state: string | null;
     }>;
     const insert = db.prepare(`
-      INSERT OR IGNORE INTO collection_items
+      INSERT INTO collection_items
         (id, collection_id, identity_id, mount_id, relative_path,
          last_resolved_path, path_key, fingerprint, state, sort_order,
          created_at, updated_at)
@@ -225,7 +261,7 @@ function importFromArchive(
   if (legacyAssets) {
     // collection_assets 只有 (collection_id, asset_id)：经 assets 表回填路径。
     db.prepare(`
-      INSERT OR IGNORE INTO collection_items
+      INSERT INTO collection_items
         (id, collection_id, identity_id, mount_id, relative_path,
          last_resolved_path, path_key, fingerprint, state, sort_order,
          created_at, updated_at)
@@ -237,7 +273,11 @@ function importFromArchive(
     `).run(now, now);
   }
 
-  return currentCounts(db);
+  return {
+    collections: expectedCollections,
+    items: expectedRefs + expectedAssets,
+    nonEmptyPaths: expectedRefPaths + expectedAssetPaths,
+  };
 }
 
 /** 从迁移备份目录中最新 migrate-v15-to-v16 快照导入（值全部绑定参数）。 */
@@ -254,6 +294,9 @@ function importFromSnapshot(
       return { collections: 0, items: 0, nonEmptyPaths: 0 };
     }
     const now = new Date().toISOString();
+    let expectedCollections = 0;
+    let expectedItems = 0;
+    let expectedNonEmptyPaths = 0;
     if (legacyCollections) {
       const columns = new Set(
         (
@@ -270,8 +313,9 @@ function importFromSnapshot(
       const rows = snapshot.prepare("SELECT * FROM collections").all() as Array<
         Record<string, unknown>
       >;
+      expectedCollections = rows.length;
       const insert = db.prepare(`
-        INSERT OR IGNORE INTO collections
+        INSERT INTO collections
           (id, parent_id, name, sort_order, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)
       `);
@@ -301,8 +345,9 @@ function importFromSnapshot(
       const refRows = snapshot.prepare("SELECT * FROM collection_refs").all() as Array<
         Record<string, unknown>
       >;
+      expectedItems += refRows.length;
       const insert = db.prepare(`
-        INSERT OR IGNORE INTO collection_items
+        INSERT INTO collection_items
           (id, collection_id, identity_id, mount_id, relative_path,
            last_resolved_path, path_key, fingerprint, state, sort_order,
            created_at, updated_at)
@@ -320,6 +365,7 @@ function importFromSnapshot(
           mountRow && typeof relativePath === "string" && relativePath
             ? path.join(mountRow.path, relativePath)
             : "";
+        if (lastResolvedPath !== "") expectedNonEmptyPaths += 1;
         const pathKey =
           lastResolvedPath !== ""
             ? lastResolvedPath.toLocaleLowerCase("en-US")
@@ -343,8 +389,9 @@ function importFromSnapshot(
       const assetRows = snapshot
         .prepare("SELECT * FROM collection_assets")
         .all() as Array<Record<string, unknown>>;
+      expectedItems += assetRows.length;
       const insert = db.prepare(`
-        INSERT OR IGNORE INTO collection_items
+        INSERT INTO collection_items
           (id, collection_id, identity_id, mount_id, relative_path,
            last_resolved_path, path_key, fingerprint, state, sort_order,
            created_at, updated_at)
@@ -358,6 +405,7 @@ function importFromSnapshot(
           .get(row.asset_id) as
           | { path: string; path_key: string; fingerprint: string }
           | undefined;
+        if (asset?.path) expectedNonEmptyPaths += 1;
         insert.run(
           randomUUID(),
           row.collection_id,
@@ -372,7 +420,11 @@ function importFromSnapshot(
         );
       }
     }
-    return currentCounts(db);
+    return {
+      collections: expectedCollections,
+      items: expectedItems,
+      nonEmptyPaths: expectedNonEmptyPaths,
+    };
   } finally {
     snapshot.close();
   }
@@ -400,19 +452,19 @@ function findMigrationSnapshot(
 /**
  * v17 建表（静态 SQL 字面量，经 prepared statement 执行）。
  *
- * - `collections`：自引用 parent_id，删除父集合默认拒绝（应用层执行）。
- * - `collection_items`：仅对 collection_id 做级联删除，不依赖 assets.id
+ * - `collections`：自引用 parent_id，删除父集合默认拒绝。
+ * - `collection_items`：对 collection_id 做级联删除，不依赖 assets.id
  *   存活；同一集合同一规范化 path_key 只保留一项。
  * - `ai_jobs`：任务快照持久化；明文密钥、完整上传响应与二进制不入库。
  *
- * 外键约束（parent 存在性、collection 级联删除、identity/mount 引用）由
- * CollectionsRepository 在应用层事务内强制，避免迁移 DDL 对历史表结构顺序
- * 的耦合；集合/条目语义与规格 §6.1 一致。
+ * identity/mount 允许为空且不设外键，以便引用在索引记录退休后仍可离线保留；
+ * 集合层级和条目所属关系由 SQLite 外键保证。
  */
 export function createV17Tables(db: Database.Database): void {
   db.prepare(
     "CREATE TABLE IF NOT EXISTS collections (" +
-      "id TEXT PRIMARY KEY, parent_id TEXT, name TEXT NOT NULL, " +
+      "id TEXT PRIMARY KEY, parent_id TEXT REFERENCES collections(id) " +
+      "ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED, name TEXT NOT NULL, " +
       "sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, " +
       "updated_at TEXT NOT NULL)",
   ).run();
@@ -422,9 +474,11 @@ export function createV17Tables(db: Database.Database): void {
   ).run();
   db.prepare(
     "CREATE TABLE IF NOT EXISTS collection_items (" +
-      "id TEXT PRIMARY KEY, collection_id TEXT NOT NULL, identity_id TEXT, " +
+      "id TEXT PRIMARY KEY, collection_id TEXT NOT NULL REFERENCES collections(id) " +
+      "ON DELETE CASCADE, identity_id TEXT, " +
       "mount_id TEXT, relative_path TEXT, last_resolved_path TEXT NOT NULL, " +
-      "path_key TEXT NOT NULL, fingerprint TEXT, state TEXT NOT NULL DEFAULT 'resolved', " +
+      "path_key TEXT NOT NULL, fingerprint TEXT, state TEXT NOT NULL DEFAULT 'resolved' " +
+      "CHECK(state IN ('resolved', 'offline', 'missing', 'ambiguous')), " +
       "sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, " +
       "updated_at TEXT NOT NULL, UNIQUE(collection_id, path_key))",
   ).run();

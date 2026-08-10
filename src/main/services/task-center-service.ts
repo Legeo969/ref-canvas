@@ -60,7 +60,7 @@ export class TaskCenterService {
   async cancel(id: string): Promise<TaskSnapshot | null> {
     const task = this.get(id);
     if (!task) return null;
-    if (task.state === "completed" || task.state === "cancelled") return task;
+    if (["completed", "cancelled", "failed"].includes(task.state)) return task;
     let cancelled = false;
     if (task.kind === "import") {
       cancelled = await this.sources.cancelImport(id);
@@ -88,7 +88,7 @@ function importToTask(job: ImportJobSnapshot): TaskSnapshot {
     errorMessage:
       job.failed.length > 0 ? `${job.failed.length} 个文件导入失败` : null,
     createdAt: job.createdAt,
-    updatedAt: job.completedAt ?? job.createdAt,
+    updatedAt: finished ? (job.completedAt ?? job.createdAt) : job.createdAt,
   };
 }
 
@@ -107,13 +107,18 @@ function batchToTask(batch: DirectoryBatchSnapshot): TaskSnapshot {
     kind: "batch",
     state: batch.state,
     stage: batch.state === "running" ? "processing" : batch.state,
-    progress: batch.total > 0 ? batch.processed / batch.total : null,
+    progress:
+      batch.state !== "running"
+        ? 1
+        : batch.total > 0
+          ? Math.min(1, batch.processed / batch.total)
+          : null,
     output: null,
     errorCode: batch.failed.length > 0 ? "BATCH_PARTIAL_FAILURE" : null,
     errorMessage:
       batch.failed.length > 0 ? `${batch.failed.length} 项失败` : null,
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: batch.createdAt,
+    updatedAt: batch.updatedAt,
   };
 }
 

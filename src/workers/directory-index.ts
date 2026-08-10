@@ -7,6 +7,7 @@ import type {
   DirectoryPage,
   DirectorySearchSnapshot,
 } from "../shared/contracts";
+import { isProtectedSystemDirectory } from "../shared/system-directory-filter";
 
 interface WorkerRequest {
   id: string;
@@ -285,7 +286,7 @@ async function runSearch(
           if (cancelledSearches.has(searchId)) break;
           const entry = entryFromName(directory, dirent.name, dirent.isDirectory());
           if (entry.isDirectory) {
-            pending.push(entry.path);
+            if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
           } else if (
             (!query || entry.name.toLocaleLowerCase("en-US").includes(query)) &&
             (!allowedExtensions || allowedExtensions.has(entry.extension))
@@ -397,10 +398,13 @@ function readPage(
     ? ` AND (is_directory = 1 OR extension IN (${extensions.map(() => "?").join(",")}))`
     : "";
   const extensionArgs = extensions?.length ? extensions : [];
+  const systemDirectoryFilter = ` AND NOT (
+    is_directory = 1 AND lower(name) IN ('$recycle.bin', 'system volume information')
+  )`;
   const rows = db.prepare(`
     SELECT entry_path, name, is_directory, extension, size, mtime_ms, sequence_json
     FROM directory_entries
-    WHERE directory_path = ? AND ${visibleSequence}${extensionFilter}
+    WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}
     ORDER BY ${order === "name"
       ? "is_directory DESC, name COLLATE NOCASE, entry_path"
       : "discovery_ordinal"}
@@ -418,7 +422,7 @@ function readPage(
     db.prepare(`
       SELECT COUNT(*) AS count
       FROM directory_entries
-      WHERE directory_path = ? AND ${visibleSequence}${extensionFilter}
+      WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}
     `).get(directoryPath, ...extensionArgs) as { count: number }
   ).count;
   const entries: DirectoryEntry[] = rows.map((row) => ({
@@ -522,6 +526,7 @@ async function scanDirectory(directoryPath: string, state: ScanState, mtimeMs: n
   try {
     for await (const dirent of handle) {
       if (state.cancelled) break;
+      if (isProtectedSystemDirectory(dirent.name, dirent.isDirectory())) continue;
       const entry: DirectoryEntry = {
         path: path.join(directoryPath, dirent.name),
         name: dirent.name,

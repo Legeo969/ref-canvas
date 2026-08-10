@@ -174,6 +174,29 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
     }
   });
 
+  it("v17 数据库的 user_version 被降级后重跑迁移不会删除当前集合", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-v17-repair-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "app.db");
+    const original = new RefCanvasDatabase(filename);
+    const collection = original.collections().create({ name: "保留我" });
+    original.collections().addPaths(collection.id, [path.join(directory, "missing.png")]);
+    original.close();
+
+    const damaged = new Sqlite(filename);
+    damaged.pragma("user_version = 15");
+    damaged.close();
+
+    const repaired = new RefCanvasDatabase(filename);
+    try {
+      expect(repaired.getSchemaVersion()).toBe(17);
+      expect(repaired.collections().get(collection.id)?.name).toBe("保留我");
+      expect(repaired.collections().listItems(collection.id)).toHaveLength(1);
+    } finally {
+      repaired.close();
+    }
+  });
+
   it("旧构建破坏性 v16（无归档）+ 迁移前快照：从快照恢复", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-v16snap-"));
     temporaryDirectories.push(directory);

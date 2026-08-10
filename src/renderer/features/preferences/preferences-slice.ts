@@ -18,7 +18,7 @@ export function createPreferencesSliceState(): PreferencesSliceState {
       panelLayout: {
         sidebarWidth: 260,
         assetWidth: 350,
-        detailsWidth: 360,
+        detailsWidth: 760,
         collapsed: [],
       },
     },

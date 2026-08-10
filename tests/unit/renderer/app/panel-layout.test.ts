@@ -38,6 +38,12 @@ describe("normalizePanelLayout", () => {
     });
     expect(layout.collapsed).toEqual(["details"]);
   });
+
+  it("migrates the legacy 360px inspector to the preview workbench width", () => {
+    expect(normalizePanelLayout({ detailsWidth: 360 }).detailsWidth).toBe(
+      PANEL_DEFAULTS.detailsWidth,
+    );
+  });
 });
 
 describe("clampPanelWidth", () => {
@@ -70,7 +76,7 @@ describe("expandedWidths", () => {
     expect(expandedWidths(layout)).toEqual({
       sidebar: 260,
       asset: 0,
-      details: 360,
+      details: PANEL_DEFAULTS.detailsWidth,
     });
   });
 });
@@ -88,7 +94,7 @@ describe("withCollapsed", () => {
 });
 
 describe("panelLayoutForWindow", () => {
-  const wide = 1600;
+  const wide = 1800;
   const defaultSum =
     PANEL_DEFAULTS.sidebarWidth +
     PANEL_DEFAULTS.assetWidth +

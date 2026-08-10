@@ -1,10 +1,13 @@
-import { Download, FolderOpen, Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { Film, Images, Palette, Pause, Play, Repeat2, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import type { PaletteColor } from "../../shared/color-palette";
 import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
-import type { ExportGifResult } from "../../shared/contracts";
+import { GifExportStudio } from "./GifExportStudio";
+import { PreviewColorBar } from "./PreviewColorBar";
+import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
 
 /**
  * 视频预览（阶段 3 §9.3）：原生播放 + 精确逐帧。
@@ -24,23 +27,22 @@ function formatTimecode(seconds: number): string {
     : `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
-function parentDirectory(filename: string): string {
-  return filename.replace(/[\\/][^\\/]*$/, "") || filename;
-}
-
-function baseName(filename: string): string {
-  return filename.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, "") || "video";
-}
-
 export function VideoPreview({
   asset,
   persistNotes = true,
+  onOpenTool,
+  onTimeChange,
+  playbackFps,
 }: {
   asset: Pick<AssetRecord, "id" | "path" | "previewUrl">;
   persistNotes?: boolean;
+  onOpenTool?: (tool: "gif" | "frames" | "color" | "fps", timeSeconds: number, color?: PaletteColor) => void;
+  onTimeChange?: (timeSeconds: number) => void;
+  playbackFps?: number | null;
 }) {
   const foundSettings = useFoundSettings();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const frameImageRef = useRef<HTMLImageElement>(null);
   // 阶段 5：autoplay 偏好（默认播放）；首次挂载按设置决定是否自动播放。
   const [playing, setPlaying] = useState(foundSettings.autoplayVideo);
   const autoPlayedRef = useRef(false);
@@ -50,10 +52,35 @@ export function VideoPreview({
   const [frameRate, setFrameRate] = useState<number | null>(null);
   const [stepping, setStepping] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [gifState, setGifState] = useState<"idle" | "running" | "done">("idle");
-  const [gifResult, setGifResult] = useState<ExportGifResult | null>(null);
-  const [gifError, setGifError] = useState<string | null>(null);
+  const [gifStudioOpen, setGifStudioOpen] = useState(false);
+  const [framesDialogOpen, setFramesDialogOpen] = useState(false);
+  const [looping, setLooping] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [paletteTimeMs, setPaletteTimeMs] = useState(0);
   const lastFrameTimeRef = useRef(0);
+  const paletteTimerRef = useRef<number | null>(null);
+  const pendingPaletteTimeRef = useRef(0);
+  const lastPaletteUpdateRef = useRef(0);
+  const effectiveFrameRate = playbackFps ?? frameRate;
+
+  const schedulePalette = (seconds: number, immediate = false) => {
+    pendingPaletteTimeRef.current = Math.max(0, seconds * 1000);
+    const elapsed = performance.now() - lastPaletteUpdateRef.current;
+    const delay = immediate ? 0 : Math.max(0, 800 - elapsed);
+    if (paletteTimerRef.current !== null) {
+      if (!immediate) return;
+      window.clearTimeout(paletteTimerRef.current);
+    }
+    paletteTimerRef.current = window.setTimeout(() => {
+      paletteTimerRef.current = null;
+      lastPaletteUpdateRef.current = performance.now();
+      setPaletteTimeMs(Math.round(pendingPaletteTimeRef.current));
+    }, delay);
+  };
+
+  useEffect(() => () => {
+    if (paletteTimerRef.current !== null) window.clearTimeout(paletteTimerRef.current);
+  }, []);
 
   // 挂载后按偏好触发播放（浏览器 autoplay 策略下静音不可行时忽略）。
   useEffect(() => {
@@ -85,9 +112,9 @@ export function VideoPreview({
   // 单帧步进：暂停视频，用 ffmpeg 精确提取目标时间帧。
   const step = (deltaFrames: number) => {
     const video = videoRef.current;
-    if (!video || !frameRate || stepping) return;
+    if (!video || !effectiveFrameRate || stepping) return;
     const current = lastFrameTimeRef.current;
-    const deltaSeconds = deltaFrames / frameRate;
+    const deltaSeconds = deltaFrames / effectiveFrameRate;
     const next = Math.min(
       Math.max(0, current + deltaSeconds),
       Number.isFinite(video.duration) ? video.duration : current,
@@ -104,33 +131,11 @@ export function VideoPreview({
       .then((result) => {
         setFrameSource(result.source);
         setTimecode(next);
+        onTimeChange?.(next);
+        if (onOpenTool) schedulePalette(next, true);
       })
       .catch(() => setFailed(true))
       .finally(() => setStepping(false));
-  };
-
-  const exportGif = async () => {
-    setGifError(null);
-    const outputDirectory = await window.refCanvas.system.pickDirectory({
-      title: translate("sequence.pickGifDir"),
-      defaultPath: parentDirectory(asset.path),
-    });
-    if (!outputDirectory) return;
-    setGifState("running");
-    try {
-      const result = await window.refCanvas.media.exportGif({
-        inputPath: asset.path,
-        outputDirectory,
-        baseName: baseName(asset.path),
-        fps: 12,
-        maxWidth: 960,
-      });
-      setGifResult(result);
-      setGifState("done");
-    } catch (error) {
-      setGifError(error instanceof Error ? error.message : translate("sequence.exportFailed"));
-      setGifState("idle");
-    }
   };
 
   const content = (
@@ -138,7 +143,9 @@ export function VideoPreview({
         <video
           ref={videoRef}
           src={asset.previewUrl}
-          controls
+          controls={!onOpenTool}
+          loop={looping}
+          muted={muted}
           preload="metadata"
           onPlay={() => {
             setPlaying(true);
@@ -148,17 +155,24 @@ export function VideoPreview({
           onTimeUpdate={(event) => {
             lastFrameTimeRef.current = event.currentTarget.currentTime;
             setTimecode(event.currentTarget.currentTime);
+            onTimeChange?.(event.currentTarget.currentTime);
+            if (onOpenTool) schedulePalette(event.currentTarget.currentTime);
           }}
           onLoadedMetadata={(event) => {
             setDuration(event.currentTarget.duration);
             lastFrameTimeRef.current = event.currentTarget.currentTime;
             setTimecode(event.currentTarget.currentTime);
+            if (onOpenTool) schedulePalette(event.currentTarget.currentTime, true);
+          }}
+          onSeeked={(event) => {
+            if (onOpenTool) schedulePalette(event.currentTarget.currentTime, true);
           }}
         >
           <track kind="captions" />
         </video>
         {frameSource && !playing && (
           <img
+            ref={frameImageRef}
             className="video-frame-step"
             src={frameSource}
             alt={translate("video.frameAlt").replace("{timecode}", formatTimecode(timecode))}
@@ -168,10 +182,33 @@ export function VideoPreview({
         {failed && (
           <span className="video-frame-error">{translate("video.frameError")}</span>
         )}
+        {onOpenTool && (
+          <input
+            className="video-workbench-seek"
+            aria-label="视频时间线"
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={effectiveFrameRate ? 1 / effectiveFrameRate : 0.01}
+            value={Math.min(timecode, duration || 0)}
+            onChange={(event) => {
+              const video = videoRef.current;
+              if (!video) return;
+              const next = Number(event.target.value);
+              video.currentTime = next;
+              lastFrameTimeRef.current = next;
+              setTimecode(next);
+              setFrameSource(null);
+              onTimeChange?.(next);
+              schedulePalette(next);
+            }}
+            onPointerUp={() => schedulePalette(videoRef.current?.currentTime ?? timecode, true)}
+          />
+        )}
         <div className="video-step-controls">
           <button
             aria-label={translate("sequence.previousFrame")}
-            disabled={stepping || frameRate === null}
+            disabled={stepping || effectiveFrameRate === null}
             onClick={() => step(-1)}
           >
             <SkipBack size={15} />
@@ -193,7 +230,7 @@ export function VideoPreview({
           </button>
           <button
             aria-label={translate("sequence.nextFrame")}
-            disabled={stepping || frameRate === null}
+            disabled={stepping || effectiveFrameRate === null}
             onClick={() => step(1)}
           >
             <SkipForward size={15} />
@@ -202,31 +239,75 @@ export function VideoPreview({
             {formatTimecode(timecode)}
             {duration > 0 ? ` / ${formatTimecode(duration)}` : ""}
           </span>
+          {onOpenTool && (
+            <button
+              className="video-fps-button"
+              aria-label="打开 FPS 预设"
+              title="选择逐帧与时间线 FPS"
+              onClick={() => onOpenTool("fps", timecode)}
+            >
+              {playbackFps == null ? "自动 " : ""}
+              {(effectiveFrameRate ?? 0).toFixed(effectiveFrameRate && effectiveFrameRate % 1 ? 2 : 0)} FPS
+            </button>
+          )}
+          {onOpenTool && <button className={looping ? "active" : ""} aria-label="循环播放" title="循环播放" onClick={() => setLooping((value) => !value)}><Repeat2 size={15} /></button>}
+          {onOpenTool && <button aria-label={muted ? "取消静音" : "静音"} title={muted ? "取消静音" : "静音"} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>}
           <button
             type="button"
             className="video-gif-button"
-            disabled={gifState === "running"}
-            onClick={() => void exportGif()}
-            title={translate("sequence.exportGifTitle")}
+            onClick={() => onOpenTool ? onOpenTool("gif", timecode) : setGifStudioOpen(true)}
+            title="打开 GIF 导出工作台"
           >
-            <Download size={14} />
-            {gifState === "running" ? translate("video.exporting") : "GIF"}
+            <Film size={14} />
+            GIF
           </button>
+          <button
+            type="button"
+            className="video-gif-button"
+            onClick={() => onOpenTool ? onOpenTool("frames", timecode) : setFramesDialogOpen(true)}
+            title="导出 PNG/JPG 序列帧"
+          >
+            <Images size={14} />
+            序列帧
+          </button>
+          {onOpenTool ? (
+            <>
+              <button type="button" className="video-gif-button" onClick={() => onOpenTool("color", timecode)} title="打开色彩工具"><Palette size={14} />色彩</button>
+              <PreviewColorBar
+                compact
+                live
+                autoRefresh
+                assetPath={asset.path}
+                timeMs={paletteTimeMs}
+                revision={paletteTimeMs}
+                source={() => frameSource && !playing ? frameImageRef.current : videoRef.current}
+                onSelect={(color) => onOpenTool("color", timecode, color)}
+              />
+            </>
+          ) : (
+            <PreviewColorBar
+              compact
+              assetPath={asset.path}
+              timeMs={timecode * 1000}
+              source={() => frameSource && !playing ? frameImageRef.current : videoRef.current}
+              revision={`${frameSource ?? "video"}:${timecode}:${playing}`}
+            />
+          )}
         </div>
-        {gifState === "done" && gifResult && (
-          <div className="video-gif-result">
-            <span title={gifResult.outputPath}>{translate("video.exportedGif")}</span>
-            <button
-              type="button"
-              aria-label={translate("sequence.revealGif")}
-              title={gifResult.outputPath}
-              onClick={() => void window.refCanvas.filesystem.reveal(gifResult.outputPath)}
-            >
-              <FolderOpen size={14} />
-            </button>
-          </div>
+        {!onOpenTool && gifStudioOpen && (
+          <GifExportStudio
+            initialPaths={[asset.path]}
+            onClose={() => setGifStudioOpen(false)}
+          />
         )}
-        {gifError && <span className="video-gif-error">{gifError}</span>}
+        {!onOpenTool && framesDialogOpen && (
+          <VideoFramesExportDialog
+            inputPath={asset.path}
+            durationSeconds={duration}
+            sourceFps={frameRate}
+            onClose={() => setFramesDialogOpen(false)}
+          />
+        )}
     </div>
   );
   return persistNotes ? (

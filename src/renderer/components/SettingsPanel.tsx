@@ -32,7 +32,8 @@ import type {
   RegisteredScript,
 } from "../../shared/contracts";
 import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
-import { APP_LANGUAGES } from "../app/i18n";
+import { APP_LANGUAGES, translate } from "../app/i18n";
+import type { MessageKey } from "../app/i18n";
 import type { AppLanguage } from "../../shared/contracts";
 import { PANEL_DEFAULTS } from "../app/panel-layout";
 import { useAppStore } from "../app/store";
@@ -57,13 +58,13 @@ interface SettingsPanelProps {
   initialTab?: SettingsTab;
 }
 
-const TABS: Array<{ id: SettingsTab; label: string; icon: typeof Info }> = [
-  { id: "general", label: "通用", icon: SlidersHorizontal },
-  { id: "board", label: "白板", icon: MonitorCog },
-  { id: "found", label: "选项", icon: ScanLine },
-  { id: "ai", label: "AI", icon: Sparkles },
-  { id: "maintenance", label: "数据维护", icon: Gauge },
-  { id: "about", label: "关于", icon: Info },
+const TABS: Array<{ id: SettingsTab; labelKey: MessageKey; icon: typeof Info }> = [
+  { id: "general", labelKey: "settings.general", icon: SlidersHorizontal },
+  { id: "board", labelKey: "settings.board", icon: MonitorCog },
+  { id: "found", labelKey: "settings.options", icon: ScanLine },
+  { id: "ai", labelKey: "settings.ai", icon: Sparkles },
+  { id: "maintenance", labelKey: "settings.maintenance", icon: Gauge },
+  { id: "about", labelKey: "settings.about", icon: Info },
 ];
 
 export function SettingsPanel({
@@ -78,6 +79,7 @@ export function SettingsPanel({
     null,
   );
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+  const [uninstallError, setUninstallError] = useState("");
   const [colorStatus, setColorStatus] = useState<ColorStatus | null>(null);
   const [scripts, setScripts] = useState<RegisteredScript[]>([]);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
@@ -220,29 +222,45 @@ export function SettingsPanel({
     return lines.join("\n");
   }, [appInfo]);
 
+  const requestUninstall = async () => {
+    setUninstallError("");
+    const confirmed = await dialog.requestConfirm({
+      title: translate("settings.uninstallConfirmTitle"),
+      description: translate("settings.uninstallConfirmDescription"),
+      confirmLabel: translate("settings.uninstallConfirmButton"),
+      danger: true,
+    });
+    if (!confirmed) return;
+    try {
+      await window.refCanvas.system.requestUninstall();
+    } catch {
+      setUninstallError(translate("settings.uninstallFailed"));
+    }
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section
         className="modal-panel settings-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="设置"
+        aria-label={translate("settings.title")}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
           <div>
             <Settings2 size={18} />
             <div>
-              <h2>设置</h2>
-              <p>通用、索引与白板偏好保存在本机设置中，源文件始终留在磁盘。</p>
+              <h2>{translate("settings.title")}</h2>
+              <p>{translate("settings.subtitle")}</p>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <button className="icon-button" onClick={onClose} aria-label={translate("settings.close")}>
             <X size={17} />
           </button>
         </header>
         <div className="settings-body">
-          <nav className="settings-tabs" aria-label="设置分组">
+          <nav className="settings-tabs" aria-label={translate("settings.groups")}>
             {TABS.map((item) => {
               const Icon = item.icon;
               return (
@@ -252,7 +270,7 @@ export function SettingsPanel({
                   onClick={() => setTab(item.id)}
                 >
                   <Icon size={15} />
-                  {item.label}
+                  {translate(item.labelKey)}
                 </button>
               );
             })}
@@ -260,11 +278,11 @@ export function SettingsPanel({
           <div className="settings-content">
             {tab === "general" && (
               <div className="settings-group">
-                <h3>通用</h3>
+                <h3>{translate("settings.general")}</h3>
                 <label className="settings-row">
                   <span>
-                    界面语言
-                    <small>七种语言即时切换，缺失文案回退英文</small>
+                    {translate("settings.language")}
+                    <small>{translate("settings.languageHint")}</small>
                   </span>
                   <select
                     value={appPreferences?.language ?? "en"}
@@ -292,8 +310,8 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    启用全局快捷键
-                    <small>Ctrl+Shift+C 捕获剪贴板，Ctrl+Shift+R 区域截图</small>
+                    {translate("settings.globalShortcuts")}
+                    <small>{translate("settings.globalShortcutsHint")}</small>
                   </span>
                 </label>
                 <label className="settings-toggle">
@@ -307,13 +325,11 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    后台驻留
-                    <small>
-                      关闭窗口后保留主进程，可从托盘重新打开
-                    </small>
+                    {translate("settings.backgroundResidency")}
+                    <small>{translate("settings.backgroundResidencyHint")}</small>
                   </span>
                 </label>
-                <h3>界面布局</h3>
+                <h3>{translate("settings.layout")}</h3>
                 <button
                   className="secondary-button"
                   onClick={() =>
@@ -323,19 +339,19 @@ export function SettingsPanel({
                   }
                 >
                   <PanelLeftClose size={15} />
-                  恢复默认布局
+                  {translate("settings.restoreLayout")}
                 </button>
               </div>
             )}
 
             {tab === "board" && (
               <div className="settings-group">
-                <h3>白板</h3>
+                <h3>{translate("settings.board")}</h3>
                 <label className="settings-row">
                   <span>
                     控制方式
                     <small>
-                      PureRef 预设：Alt/中键平移、Ctrl 旋转、C 裁切等
+                      PureRef 2.1 默认映射：Alt/中键平移、Z 缩放、Ctrl 旋转、C/V 裁切
                     </small>
                   </span>
                   <select
@@ -352,7 +368,7 @@ export function SettingsPanel({
                       })
                     }
                   >
-                    <option value="pureref">PureRef 2.1 直接操作</option>
+                    <option value="pureref">PureRef 2.1 默认控制</option>
                     <option value="standard">标准参考板</option>
                   </select>
                 </label>
@@ -438,7 +454,7 @@ export function SettingsPanel({
 
             {tab === "found" && (
               <div className="settings-group">
-                <h3>高级浏览</h3>
+                <h3>{translate("settings.options")}</h3>
                 <label className="settings-row">
                   <span>
                     显示隐藏文件
@@ -1149,7 +1165,7 @@ export function SettingsPanel({
 
             {tab === "maintenance" && (
               <div className="settings-group">
-                <h3>数据维护</h3>
+                <h3>{translate("settings.maintenance")}</h3>
                 <div className="maintenance-action-list">
                   <button
                     className="maintenance-action"
@@ -1281,7 +1297,7 @@ export function SettingsPanel({
 
             {tab === "about" && (
               <div className="settings-group about-group">
-                <h3>关于</h3>
+                <h3>{translate("settings.about")}</h3>
                 <div className="about-mark">
                   <span className="brand-mark">R</span>
                   <div>
@@ -1336,7 +1352,25 @@ export function SettingsPanel({
                     <FolderOpen size={15} />
                     打开数据目录
                   </button>
+                  <button
+                    className="secondary-button danger"
+                    disabled={!appInfo?.uninstallAvailable}
+                    title={
+                      appInfo?.uninstallAvailable
+                        ? undefined
+                        : translate("settings.uninstallHint")
+                    }
+                    onClick={() => void requestUninstall()}
+                  >
+                    <Trash2 size={15} />
+                    {translate("settings.uninstall")}
+                  </button>
                 </div>
+                {uninstallError && (
+                  <p className="about-uninstall-error" role="alert">
+                    {uninstallError}
+                  </p>
+                )}
               </div>
             )}
           </div>

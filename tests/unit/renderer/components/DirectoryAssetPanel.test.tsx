@@ -78,11 +78,11 @@ describe("DirectoryAssetPanel", () => {
     listDirectory.mockClear();
 
     const select = host.querySelector<HTMLSelectElement>(
-      '[aria-label="包含子目录层级"]',
+      '[data-testid="directory-flatten-depth"]',
     );
     expect(select).toBeTruthy();
     expect(select?.options).toHaveLength(9);
-    expect(select?.options[8]?.textContent).toContain("全部层级");
+    expect(select?.options[8]?.value).toBe("8");
     await act(async () => {
       if (!select) return;
       select.value = "8";
@@ -179,10 +179,12 @@ describe("DirectoryAssetPanel", () => {
   });
 
   it("exposes a directory entry drag payload for sidebar folder drops", async () => {
+    const dragOut = vi.fn();
     Object.assign(window, {
       refCanvas: {
         filesystem: {
           onSearchProgress: () => () => undefined,
+          dragOut,
         },
       } as unknown as RefCanvasApi,
     });
@@ -235,6 +237,18 @@ describe("DirectoryAssetPanel", () => {
       dataTransfer.getData("application/x-refcanvas-directory-entry"),
     ).toBe(JSON.stringify({ path: "D:\\refs\\shot.txt", isDirectory: false }));
     expect(dataTransfer.effectAllowed).toBe("copy");
+    expect(dragOut).not.toHaveBeenCalled();
+
+    await act(async () => {
+      card?.dispatchEvent(
+        new window.MouseEvent("dragstart", {
+          bubbles: true,
+          cancelable: true,
+          altKey: true,
+        }),
+      );
+    });
+    expect(dragOut).toHaveBeenCalledWith(["D:\\refs\\shot.txt"]);
   });
 
   it("selects a file card on click and toggles with ctrl", async () => {
@@ -455,6 +469,113 @@ describe("DirectoryAssetPanel", () => {
       );
     });
     expect(document.querySelector(".directory-preview")).toBeNull();
+  });
+
+  it("handles global browse, favorite and rating shortcuts without panel focus", async () => {
+    let favorite = false;
+    let rating = 0;
+    const materialize = vi.fn(async (path: string) => ({
+      asset: {
+        id: path.endsWith("b.png")
+          ? "22222222-2222-4222-8222-222222222222"
+          : "11111111-1111-4111-8111-111111111111",
+        path,
+        favorite,
+        rating,
+      },
+      created: false,
+    }));
+    const update = vi.fn(async (id: string, patch: { favorite?: boolean; rating?: number }) => {
+      favorite = patch.favorite ?? favorite;
+      rating = patch.rating ?? rating;
+      return { id, favorite, rating };
+    });
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          materialize,
+        },
+        library: { update },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      selectedDirectoryEntry: null,
+      directoryEntries: [
+        {
+          path: "D:\\refs\\a.png",
+          name: "a.png",
+          isDirectory: false,
+          extension: "png",
+          size: 8,
+        },
+        {
+          path: "D:\\refs\\b.png",
+          name: "b.png",
+          isDirectory: false,
+          extension: "png",
+          size: 8,
+        },
+      ],
+      directoryTotal: 2,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+    });
+
+    const press = async (key: string) => {
+      await act(async () => {
+        document.body.dispatchEvent(
+          new window.KeyboardEvent("keydown", { key, bubbles: true }),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+
+    await press("ArrowRight");
+    expect(useAppStore.getState().selectedDirectoryEntry?.name).toBe("a.png");
+    await press("ArrowRight");
+    expect(useAppStore.getState().selectedDirectoryEntry?.name).toBe("b.png");
+
+    await press("f");
+    expect(materialize).toHaveBeenLastCalledWith("D:\\refs\\b.png");
+    expect(update).toHaveBeenLastCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+      { favorite: true },
+    );
+    expect(host.querySelector(".directory-metadata-badges svg")).toBeTruthy();
+    expect(host.querySelector(".directory-shortcut-notice")?.textContent).toContain(
+      "已收藏 b.png",
+    );
+
+    await press("4");
+    expect(update).toHaveBeenLastCalledWith(
+      "22222222-2222-4222-8222-222222222222",
+      { rating: 4 },
+    );
+    expect(host.querySelector(".directory-rating-badge")?.textContent).toBe("4");
+
+    const search = host.querySelector<HTMLInputElement>(
+      '[aria-label="搜索当前目录"]',
+    );
+    search?.focus();
+    await act(async () => {
+      search?.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "5", bubbles: true }),
+      );
+    });
+    expect(update).toHaveBeenCalledTimes(2);
   });
 
   it("opens quick preview on double click while context-menu Open uses Windows", async () => {

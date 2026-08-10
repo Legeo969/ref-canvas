@@ -256,10 +256,15 @@ const api: RefCanvasApi = {
     preview: (path) => ipcRenderer.invoke("media:preview", path),
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
+    palette: (path, options) =>
+      ipcRenderer.invoke("media:palette", path, options),
     downscale: (request) => ipcRenderer.invoke("media:downscale", request),
     convert: (path, targetFormat, jobId) =>
       ipcRenderer.invoke("media:convert", path, targetFormat, jobId),
     exportGif: (request) => ipcRenderer.invoke("media:exportGif", request),
+    exportFrames: (request) => ipcRenderer.invoke("media:exportFrames", request),
+    exportDisplayChannel: (request) =>
+      ipcRenderer.invoke("media:exportDisplayChannel", request),
     cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),
     waveform: (path, options) =>
       ipcRenderer.invoke("media:waveform", path, options),
@@ -436,6 +441,7 @@ const api: RefCanvasApi = {
     openPreviewWindow: (path) =>
       ipcRenderer.invoke("system:open-preview-window", path),
     openDataFolder: () => ipcRenderer.invoke("system:open-data-folder"),
+    requestUninstall: () => ipcRenderer.invoke("system:request-uninstall"),
     pickDirectory: (options) =>
       ipcRenderer.invoke("system:pick-directory", options),
     pickFile: (options) => ipcRenderer.invoke("system:pick-file", options),

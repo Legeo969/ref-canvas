@@ -31,6 +31,10 @@ import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { thumbnailCacheFilename } from "../platform/thumbnail-cache";
 import { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
+import {
+  isWindowsUninstallAvailable,
+  launchWindowsUninstaller,
+} from "../platform/windows-installer";
 import { nativeDragIdsSchema } from "./schemas";
 
 export interface SystemIpcState {
@@ -194,6 +198,18 @@ export function registerSystemIpc(
   ipc.handle("system:open-data-folder", async () => {
     await shell.openPath(app.getPath("userData"));
   });
+  ipc.handleWithEvent("system:request-uninstall", async (event) => {
+    if (dependencies.windowForSender(event) !== mainWindow()) {
+      throw new Error("MAIN_WINDOW_ONLY");
+    }
+    if (!isWindowsUninstallAvailable(process.platform, app.isPackaged)) {
+      throw new Error("UNINSTALL_UNAVAILABLE");
+    }
+    await launchWindowsUninstaller();
+    const quitTimer = setTimeout(() => app.quit(), 750);
+    quitTimer.unref();
+    return true;
+  });
   ipc.handleWithEvent("system:pick-directory", async (event, options) => {
     const parsed = z
       .object({
@@ -344,33 +360,41 @@ export function registerSystemIpc(
   ipc.handle("system:prepare-region-capture", async () => {
     const window = mainWindow();
     if (!window) return null;
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    // The overlay is rendered by the main window, so capture the display that
+    // actually owns that window. Using the cursor display breaks global-shortcut
+    // capture when the pointer is on a different monitor.
+    const display = screen.getDisplayMatching(window.getBounds());
     state.captureWasFullScreen = window.isFullScreen();
     window.hide();
-    await new Promise((resolve) => setTimeout(resolve, 180));
-    const sources = await desktopCapturer.getSources({
-      types: ["screen"],
-      thumbnailSize: {
-        width: Math.round(display.size.width * display.scaleFactor),
-        height: Math.round(display.size.height * display.scaleFactor),
-      },
-    });
-    const source =
-      sources.find((item) => item.display_id === String(display.id)) ??
-      sources[0];
-    if (!source) {
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      const sources = await desktopCapturer.getSources({
+        types: ["screen"],
+        thumbnailSize: {
+          width: Math.round(display.size.width * display.scaleFactor),
+          height: Math.round(display.size.height * display.scaleFactor),
+        },
+      });
+      const source =
+        sources.find((item) => item.display_id === String(display.id)) ??
+        sources[0];
+      if (!source || source.thumbnail.isEmpty()) {
+        dependencies.restoreCaptureWindow();
+        return null;
+      }
+      window.setFullScreen(true);
+      window.show();
+      window.focus();
+      const size = source.thumbnail.getSize();
+      return {
+        dataUrl: source.thumbnail.toDataURL(),
+        width: size.width,
+        height: size.height,
+      };
+    } catch (error) {
       dependencies.restoreCaptureWindow();
-      return null;
+      throw error;
     }
-    window.setFullScreen(true);
-    window.show();
-    window.focus();
-    const size = source.thumbnail.getSize();
-    return {
-      dataUrl: source.thumbnail.toDataURL(),
-      width: size.width,
-      height: size.height,
-    };
   });
   ipc.handle("system:save-region-capture", async (dataUrl) => {
     try {
@@ -525,6 +549,10 @@ export function registerSystemIpc(
       installChannel: app.isPackaged ? "signed" : "unsigned",
       platform: process.platform,
       userDataPath: app.getPath("userData"),
+      uninstallAvailable: isWindowsUninstallAvailable(
+        process.platform,
+        app.isPackaged,
+      ),
     };
   });
   ipc.handle("system:get-migration-failure", () => {

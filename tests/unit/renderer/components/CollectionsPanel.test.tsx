@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -103,15 +105,34 @@ describe("CollectionsPanel", () => {
     document.body.replaceChildren();
   });
 
+  it("keeps collection menus above the outside-click layer", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/renderer/styles/collections.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/\.collection-menu\s*\{[^}]*z-index:\s*120;/s);
+    expect(css).toMatch(
+      /\.collection-menu-head\s*\{[^}]*position:\s*relative;/s,
+    );
+  });
+
   it("shows an empty hint and creates a collection via the plus menu", async () => {
     const { refCanvas, collections } = baseRefCanvas();
+    let finishCreate: ((value: ReturnType<typeof sampleCollection>) => void) | null = null;
+    collections.create.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishCreate = resolve;
+        }),
+    );
+    const refreshCollections = vi.fn(async () => undefined);
     Object.assign(window, { refCanvas });
     useAppStore.setState({
       collections: [],
       collectionTree: {},
       collectionItems: {},
       activeCollectionId: null,
-      refreshCollections: vi.fn(async () => undefined),
+      refreshCollections,
     });
 
     const host = document.createElement("div");
@@ -126,12 +147,20 @@ describe("CollectionsPanel", () => {
       );
     });
     expect(host.textContent).toContain("还没有集合");
+    expect(host.textContent).toContain("不复制或移动源文件");
 
     await act(async () => {
       host.querySelector('[aria-label="新建集合"]')?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
     });
+    const menu = host.querySelector(".collection-menu");
+    const dismiss = host.querySelector(".context-menu-dismiss");
+    expect(menu?.getAttribute("role")).toBe("menu");
+    expect(
+      dismiss?.compareDocumentPosition(menu as Node) ?? 0,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(host.textContent).toContain("用文件新建集合");
     await act(async () => {
       host.querySelector('.collection-menu button[role="menuitem"]')?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
@@ -148,8 +177,16 @@ describe("CollectionsPanel", () => {
     });
     await act(async () => {
       host.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
+      await Promise.resolve();
     });
     expect(collections.create).toHaveBeenCalledWith({ name: "镜头参考" });
+    expect(refreshCollections).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishCreate?.(sampleCollection("new-1", "镜头参考"));
+      await Promise.resolve();
+    });
+    expect(refreshCollections).toHaveBeenCalledTimes(1);
   });
 
   it("renders the collection tree and opens a collection to show item states", async () => {
@@ -203,8 +240,8 @@ describe("CollectionsPanel", () => {
     });
     expect(openCollection).toHaveBeenCalledWith("c-1");
 
-    // 打开后再次渲染 CollectionDetailsPanel 校验条目状态徽章。
-    useAppStore.setState({ activeCollectionId: "c-1" });
+    // 打开后再次渲染 CollectionDetailsPanel 校验条目状态徽章；
+    // openCollection 已在上面的 act 中同步写入 activeCollectionId。
     const { CollectionDetailsPanel } = await import(
       "../../../../src/renderer/components/CollectionsPanel"
     );

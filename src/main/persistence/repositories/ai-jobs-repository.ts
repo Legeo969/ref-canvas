@@ -139,10 +139,14 @@ export class AiJobsRepository {
   ): AiJobRecord {
     const current = this.get(id);
     if (!current) throw new Error("AI_JOB_NOT_FOUND");
-    if (current.state === next) return current;
+    const sameState = current.state === next;
     const allowed = ALLOWED_TRANSITIONS[current.state] ?? [];
-    if (!allowed.includes(next)) {
+    if (!sameState && !allowed.includes(next)) {
       throw new Error("AI_JOB_INVALID_TRANSITION");
+    }
+    // 终态重复通知保持完全幂等；运行中同状态通知仍需持久化进度/阶段。
+    if (sameState && ["completed", "cancelled", "failed"].includes(current.state)) {
+      return current;
     }
     const now = new Date().toISOString();
     this.db
@@ -162,6 +166,17 @@ export class AiJobsRepository {
         now,
         id,
       );
+    return this.get(id)!;
+  }
+
+  /** Provider 获得外部 id 后立即持久化，不依赖状态迁移。 */
+  setExternalId(id: string, externalId: string): AiJobRecord {
+    const current = this.get(id);
+    if (!current) throw new Error("AI_JOB_NOT_FOUND");
+    if (current.externalId === externalId) return current;
+    this.db
+      .prepare("UPDATE ai_jobs SET external_id = ?, updated_at = ? WHERE id = ?")
+      .run(externalId, new Date().toISOString(), id);
     return this.get(id)!;
   }
 

@@ -13,14 +13,21 @@ import {
   PinOff,
   PackageOpen,
   Settings,
+  ScanLine,
   Sparkles,
   SquareArrowOutUpRight,
   ListTodo,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
-import type { BoardSummary } from "../../shared/contracts";
+import type { BoardSettings, BoardSummary } from "../../shared/contracts";
 import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
+import {
+  presentationModeForWorkspace,
+  presentationTargetForF11,
+} from "./presentation-mode";
+import { workspaceStatusHint } from "./workspace-status";
 import { parseBoardWindowParams } from "./board-window";
 import { parsePreviewWindowParams } from "./preview-window";
 import { useFoundSettings } from "./found-settings";
@@ -46,7 +53,31 @@ import { SettingsPanel } from "../components/SettingsPanel";
 import { Sidebar } from "../components/Sidebar";
 import { useAppStore } from "./store";
 
+/**
+ * Window router. Keep auxiliary windows outside WorkspaceApp so they never
+ * inherit the main workspace's loading gate or initialization effects.
+ */
 export function App() {
+  useAppLanguage();
+  const boardWindowParams = parseBoardWindowParams(window.location.search);
+  if (boardWindowParams) {
+    return <BoardWindow boardId={boardWindowParams.boardId} />;
+  }
+
+  const previewWindowParams = parsePreviewWindowParams(window.location.search);
+  if (previewWindowParams) {
+    return (
+      <PreviewWindow
+        path={previewWindowParams.previewPath}
+        onClose={() => window.close()}
+      />
+    );
+  }
+
+  return <WorkspaceApp />;
+}
+
+function WorkspaceApp() {
   const store = useAppStore(
     useShallow(({
       selectedAsset: _selectedAsset,
@@ -59,8 +90,21 @@ export function App() {
   );
   const dialog = useDialog();
   const uiScale = useFoundSettings().uiScale;
-  // FND-011：应用语言（七语言即时切换，英文回退）。
-  useAppLanguage();
+  const [boardInteractionPreset, setBoardInteractionPreset] = useState<
+    BoardSettings["interactionPreset"]
+  >("pureref");
+  useEffect(() => {
+    const apply = (settings: BoardSettings) =>
+      setBoardInteractionPreset(settings.interactionPreset);
+    const onSettingsChanged = (event: Event) =>
+      apply((event as CustomEvent<BoardSettings>).detail);
+    void window.refCanvas.system
+      .getPreferences()
+      .then((preferences) => apply(preferences.boardSettings));
+    window.addEventListener("refcanvas:board-settings", onSettingsChanged);
+    return () =>
+      window.removeEventListener("refcanvas:board-settings", onSettingsChanged);
+  }, []);
   // 迁移失败恢复模式（?recovery=1）：只展示恢复信息，不进入主工作区。
   const [recoveryMode] = useState(() =>
     new URLSearchParams(window.location.search).get("recovery") === "1",
@@ -68,17 +112,11 @@ export function App() {
   const [migrationFailure, setMigrationFailure] = useState<Awaited<
     ReturnType<typeof window.refCanvas.system.getMigrationFailure>
   > | null>(null);
-  // 独立白板窗口（?board=<id>&mode=window）：只渲染目标白板。
-  const [boardWindowParams] = useState(() =>
-    parseBoardWindowParams(window.location.search),
-  );
-  // 浮动预览窗口（?preview=<path>&mode=window）：只渲染单资产预览会话。
-  const [previewWindowParams] = useState(() =>
-    parsePreviewWindowParams(window.location.search),
-  );
   const [captureSource, setCaptureSource] = useState<Awaited<
     ReturnType<typeof window.refCanvas.system.prepareRegionCapture>
   >>(null);
+  const capturePreparingRef = useRef(false);
+  const [capturePreparing, setCapturePreparing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
@@ -93,6 +131,26 @@ export function App() {
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [pinPending, setPinPending] = useState(false);
 
+  const prepareRegionCapture = useCallback(async () => {
+    if (capturePreparingRef.current) return;
+    capturePreparingRef.current = true;
+    setCapturePreparing(true);
+    try {
+      const source = await window.refCanvas.system.prepareRegionCapture();
+      if (source) setCaptureSource(source);
+    } catch (reason) {
+      setNotice(
+        reason instanceof Error && reason.message
+          ? reason.message
+          : translate("capture.error"),
+      );
+      window.setTimeout(() => setNotice(null), 4200);
+    } finally {
+      capturePreparingRef.current = false;
+      setCapturePreparing(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (recoveryMode) {
       void window.refCanvas.system.getMigrationFailure().then(setMigrationFailure);
@@ -100,17 +158,22 @@ export function App() {
   }, [recoveryMode]);
 
   useEffect(() => {
-    if (boardWindowParams) return;
     if (recoveryMode) return; // 恢复模式不初始化主工作区。
-    void store.initialize();
-  }, [boardWindowParams, recoveryMode]);
+    void store.initialize().catch((reason) => {
+      useAppStore.setState({ loading: false });
+      setNotice(
+        reason instanceof Error && reason.message
+          ? reason.message
+          : "工作区初始化失败，请重试。",
+      );
+    });
+  }, [recoveryMode]);
 
   useEffect(() => {
-    if (boardWindowParams) return;
     void window.refCanvas.filesystem.setObservedDirectory(
       store.workspaceMode === "directory" ? store.directoryPath : null,
     );
-  }, [boardWindowParams, store.directoryPath, store.workspaceMode]);
+  }, [store.directoryPath, store.workspaceMode]);
 
   useEffect(() => {
     if (!store.preferences) return;
@@ -142,19 +205,24 @@ export function App() {
     window.addEventListener("refcanvas:duplicates", openDuplicates);
     window.addEventListener("refcanvas:open-settings", openSettings);
     const unsubscribe = window.refCanvas.system.onRegionCaptureRequest(() => {
-      void window.refCanvas.system.prepareRegionCapture().then(setCaptureSource);
+      void prepareRegionCapture();
     });
     return () => {
       window.removeEventListener("refcanvas:duplicates", openDuplicates);
       window.removeEventListener("refcanvas:open-settings", openSettings);
       unsubscribe();
     };
-  }, []);
+  }, [prepareRegionCapture]);
 
   useEffect(() => {
-    return window.refCanvas.system.onPresentationModeChanged(
-      setPresentationModeState,
-    );
+    return window.refCanvas.system.onPresentationModeChanged((enabled) => {
+      if (enabled && useAppStore.getState().workspaceMode !== "board") {
+        setPresentationModeState(false);
+        void window.refCanvas.system.setPresentationMode(false);
+        return;
+      }
+      setPresentationModeState(enabled);
+    });
   }, []);
 
   useEffect(() => {
@@ -183,13 +251,23 @@ export function App() {
     setPresentationModeState(actual);
   }, []);
 
+  const boardPresentationMode = presentationModeForWorkspace(
+    presentationMode,
+    store.workspaceMode,
+  );
+
+  useEffect(() => {
+    if (store.workspaceMode === "board" || !presentationMode) return;
+    void setPresentationMode(false);
+  }, [presentationMode, setPresentationMode, store.workspaceMode]);
+
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("refcanvas:presentation-mode", {
-        detail: presentationMode,
+        detail: boardPresentationMode,
       }),
     );
-  }, [presentationMode]);
+  }, [boardPresentationMode]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -198,12 +276,16 @@ export function App() {
         target?.matches("input, textarea, select") ||
         target?.isContentEditable ||
         Boolean(target?.closest('[role="dialog"]'));
-      if (event.key === "F11" && store.workspaceMode === "board") {
+      if (event.key === "F11") {
         event.preventDefault();
-        void setPresentationMode(!presentationMode);
+        const target = presentationTargetForF11(
+          boardPresentationMode,
+          store.workspaceMode,
+        );
+        if (target !== null) void setPresentationMode(target);
         return;
       }
-      if (event.key === "Escape" && presentationMode) {
+      if (event.key === "Escape" && boardPresentationMode) {
         event.preventDefault();
         void setPresentationMode(false);
         return;
@@ -217,7 +299,7 @@ export function App() {
         !event.ctrlKey &&
         !event.altKey &&
         !isEditing &&
-        !presentationMode &&
+        !boardPresentationMode &&
         store.workspaceMode === "board"
       ) {
         event.preventDefault();
@@ -227,7 +309,7 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
-    presentationMode,
+    boardPresentationMode,
     setPresentationMode,
     store.workspaceMode,
     store.toggleFocusMode,
@@ -239,7 +321,7 @@ export function App() {
       const message =
         event.reason instanceof Error
           ? event.reason.message
-          : "操作未完成，请重试";
+          : translate("app.operationFailed");
       setNotice(message);
       window.setTimeout(() => setNotice(null), 4200);
     };
@@ -301,7 +383,7 @@ export function App() {
     return (
       <div className="loading-screen">
         <span className="brand-mark">R</span>
-        <span>正在打开磁盘工作区…</span>
+        <span>{translate("app.loadingWorkspace")}</span>
       </div>
     );
   }
@@ -361,42 +443,29 @@ export function App() {
     await store.openDirectory(directory);
   };
 
-  // 独立白板窗口：只渲染目标白板（跳过主窗口 store 初始化与工作台）。
-  if (boardWindowParams) {
-    return <BoardWindow boardId={boardWindowParams.boardId} />;
-  }
-
-  // 浮动预览窗口：只渲染单资产预览会话。
-  if (previewWindowParams) {
-    return (
-      <PreviewWindow
-        path={previewWindowParams.previewPath}
-        onClose={() => window.close()}
-      />
-    );
-  }
-
   return (
     <main
       className={`app-shell ${store.focusMode ? "focus-mode" : ""} ${
-        presentationMode ? "presentation-mode" : ""
+        boardPresentationMode ? "presentation-mode" : ""
       }`}
       style={{ zoom: uiScale }}
     >
-      {captureSource && (
-        <CaptureOverlay
-          source={captureSource}
-          onComplete={async (dataUrl) => {
-            await window.refCanvas.system.saveRegionCapture(dataUrl);
-            setCaptureSource(null);
-            await store.reloadAssets();
-          }}
-          onCancel={() => {
-            setCaptureSource(null);
-            void window.refCanvas.system.cancelRegionCapture();
-          }}
-        />
-      )}
+      {captureSource &&
+        createPortal(
+          <CaptureOverlay
+            source={captureSource}
+            onComplete={async (dataUrl) => {
+              await window.refCanvas.system.saveRegionCapture(dataUrl);
+              setCaptureSource(null);
+              await store.reloadAssets();
+            }}
+            onCancel={() => {
+              setCaptureSource(null);
+              void window.refCanvas.system.cancelRegionCapture();
+            }}
+          />,
+          document.body,
+        )}
       {duplicatesOpen && (
         <DuplicatesPanel
           groups={store.duplicates}
@@ -410,7 +479,7 @@ export function App() {
           onClose={() => setMaintenanceOpen(false)}
         />
       )}
-      {aiPanelOpen && (
+      {aiPanelOpen && store.workspaceMode === "board" && (
         <AiDesignSupervisorPanel onClose={() => setAiPanelOpen(false)} />
       )}
       {taskCenterOpen && <TaskCenter onClose={() => setTaskCenterOpen(false)} />}
@@ -421,7 +490,7 @@ export function App() {
             <span className="brand-mark">R</span>
             <span>RefCanvas</span>
           </div>
-          <div className="workspace-mode-switch" role="tablist" aria-label="工作区">
+          <div className="workspace-mode-switch" role="tablist" aria-label={translate("titlebar.workspace")}>
             <button
               role="tab"
               aria-selected={store.workspaceMode === "directory"}
@@ -432,13 +501,13 @@ export function App() {
                   return;
                 }
                 const directory = await window.refCanvas.system.pickDirectory({
-                  title: "打开磁盘文件夹",
+                  title: translate("titlebar.openFolder"),
                 });
                 if (directory) await openPickedDirectory(directory);
               }}
             >
               <HardDrive size={14} />
-              磁盘
+              {translate("workspace.disk")}
             </button>
             <button
               role="tab"
@@ -453,7 +522,7 @@ export function App() {
               }}
             >
               <PanelsTopLeft size={14} />
-              参考板
+              {translate("workspace.board")}
             </button>
           </div>
         </div>
@@ -462,13 +531,13 @@ export function App() {
             className="titlebar-button"
             onClick={async () => {
               const directory = await window.refCanvas.system.pickDirectory({
-                title: "打开磁盘文件夹",
+                title: translate("titlebar.openFolder"),
               });
               if (directory) await openPickedDirectory(directory);
             }}
           >
             <FolderOpen size={15} />
-            打开文件夹
+            {translate("titlebar.openFolder")}
           </button>
           <button
             className="titlebar-button"
@@ -478,18 +547,15 @@ export function App() {
             }}
           >
             <Clipboard size={15} />
-            剪贴板
+            {translate("titlebar.clipboard")}
           </button>
           <button
             className="titlebar-button"
-            onClick={async () => {
-              setCaptureSource(
-                await window.refCanvas.system.prepareRegionCapture(),
-              );
-            }}
+            onClick={() => void prepareRegionCapture()}
+            disabled={capturePreparing}
           >
             <Camera size={15} />
-            区域
+            {translate("titlebar.region")}
           </button>
           {store.workspaceMode === "board" && (
             <>
@@ -501,7 +567,7 @@ export function App() {
                     void window.refCanvas.boards.exportJson(store.activeBoard.id);
                   }
                 }}
-                aria-label="导出 JSON"
+                aria-label={translate("titlebar.exportJson")}
               >
                 <FileJson size={16} />
               </button>
@@ -510,7 +576,7 @@ export function App() {
                 onClick={() =>
                   window.dispatchEvent(new Event("refcanvas:export-png"))
                 }
-                aria-label="导出 PNG"
+                aria-label={translate("titlebar.exportPng")}
               >
                 <ImageDown size={16} />
               </button>
@@ -521,8 +587,8 @@ export function App() {
                     void window.refCanvas.boards.openWindow(store.activeBoard.id);
                   }
                 }}
-                aria-label="在新窗口打开白板"
-                title="在新窗口打开白板"
+                aria-label={translate("titlebar.openBoardWindow")}
+                title={translate("titlebar.openBoardWindow")}
               >
                 <SquareArrowOutUpRight size={16} />
               </button>
@@ -534,11 +600,11 @@ export function App() {
                     store.activeBoard.id,
                   );
                   if (!destination) return;
-                  setNotice(`参考板项目已打包到 ${destination}`);
+                  setNotice(translate("titlebar.collectedProject").replace("{path}", destination));
                   window.setTimeout(() => setNotice(null), 4200);
                 }}
-                aria-label="打包参考板及源文件"
-                title="打包参考板及源文件"
+                aria-label={translate("titlebar.collectProject")}
+                title={translate("titlebar.collectProject")}
               >
                 <PackageOpen size={16} />
               </button>
@@ -548,7 +614,7 @@ export function App() {
           <button
             className={`icon-button pin-toggle${alwaysOnTop ? " active" : ""}`}
             onClick={() => void toggleAlwaysOnTop()}
-            aria-label={alwaysOnTop ? "取消窗口置顶" : "窗口置顶"}
+            aria-label={translate(alwaysOnTop ? "titlebar.unpin" : "titlebar.pin")}
             aria-pressed={alwaysOnTop}
             disabled={pinPending}
           >
@@ -562,7 +628,7 @@ export function App() {
               <button
                 className="icon-button"
                 onClick={store.toggleFocusMode}
-                aria-label="专注白板"
+                aria-label={translate("titlebar.focusBoard")}
                 data-shortcut="Tab"
               >
                 {store.focusMode ? (
@@ -574,7 +640,7 @@ export function App() {
               <button
                 className="icon-button"
                 onClick={() => void setPresentationMode(true)}
-                aria-label="全屏展示白板"
+                aria-label={translate("titlebar.presentBoard")}
                 data-shortcut="F11"
               >
                 <MonitorPlay size={16} />
@@ -583,8 +649,15 @@ export function App() {
           )}
           <button
             className={`icon-button${aiPanelOpen ? " active" : ""}`}
-            onClick={() => setAiPanelOpen((value) => !value)}
-            aria-label="AI 设计"
+            onClick={() => {
+              if (store.workspaceMode === "directory") {
+                setAiPanelOpen(false);
+                window.dispatchEvent(new Event("refcanvas:open-ai-workbench"));
+              } else {
+                setAiPanelOpen((value) => !value);
+              }
+            }}
+            aria-label={translate("titlebar.ai")}
             aria-pressed={aiPanelOpen}
             title="AI Design Supervisor"
           >
@@ -593,10 +666,20 @@ export function App() {
           <button
             className="icon-button"
             onClick={() => {
+              setSettingsTab("found");
+              setMaintenanceOpen(true);
+            }}
+            aria-label={translate("titlebar.professionalSettings")}
+          >
+            <ScanLine size={16} />
+          </button>
+          <button
+            className="icon-button"
+            onClick={() => {
               setSettingsTab("general");
               setMaintenanceOpen(true);
             }}
-            aria-label="设置"
+            aria-label={translate("titlebar.settings")}
           >
             <Settings size={16} />
           </button>
@@ -634,7 +717,7 @@ export function App() {
             />
           ) : (
             <section className="board-panel board-unavailable">
-              无法打开白板
+              {translate("boards.unavailable")}
             </section>
           )
         ) : store.activeCollectionId ? (
@@ -674,14 +757,14 @@ export function App() {
         )}
       </div>
 
-      {presentationMode && (
+      {boardPresentationMode && (
         <button
           className="presentation-exit"
           onClick={() => void setPresentationMode(false)}
-          aria-label="退出全屏展示"
+          aria-label={translate("presentation.exit")}
           data-shortcut="F11 / Esc"
         >
-          退出展示
+          {translate("presentation.exit")}
           <kbd>F11 / Esc</kbd>
         </button>
       )}
@@ -694,18 +777,21 @@ export function App() {
               ? translate("status.diskReady")
             : translate("status.boardReady")}
         </span>
-        <span className="status-hint">
-          方向键浏览 · Space 预览 · F 收藏 · 0–5 评分 · 素材 Alt+拖到外部
+        <span
+          className="status-hint"
+          title={workspaceStatusHint(store.workspaceMode, boardInteractionPreset)}
+        >
+          {workspaceStatusHint(store.workspaceMode, boardInteractionPreset)}
         </span>
         <span className="statusbar-actions">
           <button
             className={`statusbar-button ${taskCenterOpen ? "active" : ""}`}
             onClick={() => setTaskCenterOpen((value) => !value)}
-            aria-label="任务中心"
-            title="任务中心"
+            aria-label={translate("tasks.title")}
+            title={translate("tasks.title")}
           >
             <ListTodo size={15} />
-            任务
+            {translate("titlebar.tasks")}
           </button>
         </span>
         <ActionsPanel />

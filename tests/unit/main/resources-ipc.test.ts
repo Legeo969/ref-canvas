@@ -1,8 +1,20 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import sharp from "sharp";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerResourcesIpc } from "../../../src/main/ipc/resources-ipc";
 import type { SecureIpcRegistrar } from "../../../src/main/platform/secure-ipc";
 
 describe("resources IPC mount events", () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { recursive: true, force: true })
+    ));
+  });
+
   it("broadcasts successful mount additions and removals", async () => {
     const mountId = "11111111-1111-4111-8111-111111111111";
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -65,5 +77,46 @@ describe("resources IPC mount events", () => {
       type: "removed",
       mountId,
     });
+  });
+
+  it("extracts an image palette in the main process", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-palette-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "split.png");
+    const pixels = Buffer.alloc(4 * 4 * 4);
+    for (let index = 0; index < 16; index += 1) {
+      const offset = index * 4;
+      pixels[offset] = index < 12 ? 240 : 20;
+      pixels[offset + 1] = index < 12 ? 30 : 60;
+      pixels[offset + 2] = index < 12 ? 40 : 220;
+      pixels[offset + 3] = 255;
+    }
+    await sharp(pixels, { raw: { width: 4, height: 4, channels: 4 } })
+      .png()
+      .toFile(filename);
+
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, handler),
+    } as unknown as SecureIpcRegistrar;
+    const dependencies = {
+      getDatabase: () => ({}),
+      getLibrary: () => ({}),
+      getMountService: () => ({}),
+      getProviderRegistry: () => ({}),
+      getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => directory,
+      getScriptsService: () => ({}),
+      previewTokens: {},
+      notifyMountsChanged: vi.fn(),
+    } as unknown as Parameters<typeof registerResourcesIpc>[1];
+    registerResourcesIpc(ipc, dependencies);
+
+    const palette = await handlers.get("media:palette")?.(filename, { limit: 2 });
+    expect(palette).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
+    ]));
+    expect((palette as Array<unknown>).length).toBe(2);
   });
 });

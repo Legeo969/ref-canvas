@@ -24,8 +24,9 @@ describe("UI shell regressions", () => {
       /\.focus-mode \.details-panel,\s*\.focus-mode \.panel-divider\s*{\s*display: none;/,
     );
     expect(css).toMatch(
-      /\.presentation-mode \.details-panel,\s*\.presentation-mode \.panel-divider,/,
+      /\.presentation-mode \.board-workspace \.details-panel,\s*\.presentation-mode \.board-workspace \.panel-divider,/,
     );
+    expect(css).not.toMatch(/\.presentation-mode \.asset-panel/);
   });
 
   it("uses mutually exclusive disk, collection, and board workspace grids", async () => {

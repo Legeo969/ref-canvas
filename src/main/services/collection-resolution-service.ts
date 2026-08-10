@@ -63,6 +63,7 @@ export class CollectionResolutionService {
             item,
             realPath,
             identity.fingerprint,
+            identity.mountId,
           );
           if (resolved) return resolved;
         }
@@ -80,7 +81,7 @@ export class CollectionResolutionService {
         if (candidateStat?.isFile()) {
           const fingerprint = await quickFingerprint(candidatePath, candidateStat.size);
           if (!item.fingerprint || fingerprint === item.fingerprint) {
-            return this.applyResolved(item, candidatePath, fingerprint, item.relativePath);
+            return this.applyResolved(item, candidatePath, fingerprint);
           }
         }
       }
@@ -94,24 +95,36 @@ export class CollectionResolutionService {
           ? await quickFingerprint(item.lastResolvedPath, current.size)
           : null;
         if (!item.fingerprint || fingerprint === item.fingerprint) {
-          return this.applyResolved(item, item.lastResolvedPath, item.fingerprint, null);
+          return this.applyResolved(item, item.lastResolvedPath, item.fingerprint);
         }
       }
     }
 
     // 步骤 4：同一挂载的已索引文件中按指纹查找。
     if (item.fingerprint) {
-      const matches: string[] = [];
+      const matches: Array<{
+        id: string;
+        mountId: string | null;
+        path: string;
+      }> = [];
       for (const match of this.database.findIdentityByFingerprintAnySize(
         item.fingerprint,
       )) {
+        if (item.mountId && match.mountId !== item.mountId) continue;
         const realPath = this.realPathFromIdentity(match.pathKey, match.rootPath);
         if (!realPath) continue;
         const matchStat = await stat(realPath).catch(() => null);
-        if (matchStat?.isFile()) matches.push(realPath);
+        if (matchStat?.isFile()) {
+          matches.push({ id: match.id, mountId: match.mountId, path: realPath });
+        }
       }
       if (matches.length === 1) {
-        return this.applyResolved(item, matches[0], item.fingerprint, null);
+        const match = matches[0];
+        return this.applyResolved(item, match.path, item.fingerprint, {
+          identityId: match.id,
+          mountId: match.mountId,
+          relativePath: this.relativePathForMount(match.path, match.mountId),
+        });
       }
       if (matches.length > 1) {
         if (item.state !== "ambiguous") {
@@ -140,26 +153,45 @@ export class CollectionResolutionService {
     item: ReferenceCollectionItem,
     candidatePath: string,
     candidateFingerprint: string,
+    mountId: string | null,
   ): Promise<ResolutionResult | null> {
     const current = await stat(candidatePath).catch(() => null);
     if (!current?.isFile()) return null;
     const fingerprint = await quickFingerprint(candidatePath, current.size);
     if (fingerprint !== candidateFingerprint) return null;
-    return this.applyResolved(item, candidatePath, candidateFingerprint, null);
+    return this.applyResolved(item, candidatePath, candidateFingerprint, {
+      mountId,
+      relativePath: this.relativePathForMount(candidatePath, mountId),
+    });
   }
 
   private async applyResolved(
     item: ReferenceCollectionItem,
     resolvedPath: string,
     fingerprint: string | null,
-    relativePath: string | null,
+    identity?: {
+      identityId?: string | null;
+      mountId?: string | null;
+      relativePath?: string | null;
+    },
   ): Promise<ResolutionResult> {
     const pathKey = path.normalize(resolvedPath).toLocaleLowerCase("en-US");
+    const identityId =
+      identity && "identityId" in identity ? identity.identityId! : item.identityId;
+    const mountId =
+      identity && "mountId" in identity ? identity.mountId! : item.mountId;
+    const relativePath =
+      identity && "relativePath" in identity
+        ? identity.relativePath!
+        : item.relativePath;
     if (
       item.state === "resolved" &&
       item.lastResolvedPath === resolvedPath &&
       item.pathKey === pathKey &&
-      item.fingerprint === fingerprint
+      item.fingerprint === fingerprint &&
+      item.identityId === identityId &&
+      item.mountId === mountId &&
+      item.relativePath === relativePath
     ) {
       return { item, relinked: false };
     }
@@ -167,9 +199,27 @@ export class CollectionResolutionService {
       lastResolvedPath: resolvedPath,
       pathKey,
       fingerprint,
+      identityId,
+      mountId,
       relativePath,
       state: "resolved",
     });
     return { item: this.collections.getItem(item.id)!, relinked: true };
+  }
+
+  private relativePathForMount(
+    filename: string,
+    mountId: string | null,
+  ): string | null {
+    if (!mountId) return null;
+    const mount = this.database
+      .listMountRoots()
+      .find((candidate) => candidate.id === mountId);
+    if (!mount) return null;
+    const relative = path.relative(mount.path, filename);
+    if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`)) {
+      return null;
+    }
+    return relative;
   }
 }

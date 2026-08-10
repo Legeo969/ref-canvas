@@ -13,6 +13,7 @@ import type {
 import type { RefCanvasDatabase } from "../persistence/database";
 import { detectFileSequences } from "../../shared/file-sequence";
 import type { DirectoryIndexClient } from "../platform/directory-index-client";
+import { isProtectedSystemDirectory } from "../../shared/system-directory-filter";
 
 const QUICK_ACCESS_KEY = "quickAccessEntries";
 const MAX_QUICK_ACCESS = 64;
@@ -28,7 +29,7 @@ export interface ListDirectoryOptions {
   showHidden?: boolean;
   /** 把连续图片帧折叠成一个序列条目；默认开启。 */
   collapseSequences?: boolean;
-  /** 只过滤文件扩展名；目录始终保留用于导航。 */
+  /** 只过滤文件扩展名；普通目录视图保留目录，flatten 视图只返回素材。 */
   extensions?: string[];
 }
 
@@ -217,7 +218,7 @@ export class FilesystemService {
     const collapseSequences = options.collapseSequences ?? true;
     const flattenDepth = Math.max(0, Math.min(8, options.flattenDepth ?? 0));
     if (flattenDepth > 0) {
-      // §10.1：flatten 用递归 readdir 展开（深度受限），返回树序条目。
+      // §10.1：flatten 用递归 readdir 汇总素材（深度受限），目录只参与遍历。
       const flattened = await this.listFlattened(
         resolved,
         flattenDepth,
@@ -235,7 +236,7 @@ export class FilesystemService {
         entries: filtered.slice(start, start + pageSize),
         total: filtered.length,
         nextCursor:
-          start + pageSize < entries.length ? String(start + pageSize) : null,
+          start + pageSize < filtered.length ? String(start + pageSize) : null,
       };
     }
     if (this.indexClient) {
@@ -248,20 +249,24 @@ export class FilesystemService {
         collapseSequences,
         options.extensions,
       );
-      if (showHidden) return page;
-      // 索引未过滤隐藏文件；这里过滤（隐藏文件罕见，跨页边界可能轻微错位）。
+      // Windows 保护目录永不进入素材浏览；隐藏文件仍由用户设置控制。
       return {
         ...page,
-        entries: page.entries.filter((entry) => !entry.name.startsWith(".")),
+        entries: page.entries.filter((entry) =>
+          !isProtectedSystemDirectory(entry.name, entry.isDirectory) &&
+          (showHidden || !entry.name.startsWith(".")),
+        ),
       };
     }
     let cached = this.directoryCache.get(resolved);
     if (!cached) {
       const dirents = await readdir(resolved, { withFileTypes: true });
       const entries = sortDirectory(
-        dirents.map((dirent) =>
-          entryFromDirent(resolved, dirent.name, dirent.isDirectory()),
-        ),
+        dirents
+          .filter((dirent) => !isProtectedSystemDirectory(dirent.name, dirent.isDirectory()))
+          .map((dirent) =>
+            entryFromDirent(resolved, dirent.name, dirent.isDirectory()),
+          ),
       );
       const sequences = detectFileSequences(entries);
       for (const entry of entries) {
@@ -288,8 +293,8 @@ export class FilesystemService {
   }
 
   /**
-   * §10.1 Folder flattening：递归展开子目录（DFS 树序，目录优先）。
-   * 隐藏文件按 showHidden 过滤；条目带 depth 供 UI 分组显示。
+   * §10.1 Folder flattening：递归展开子目录并汇总素材。
+   * 目录只用于继续遍历，不进入结果；素材带 depth 供 UI 标识来源层级。
    */
   private async listFlattened(
     directory: string,
@@ -308,7 +313,10 @@ export class FilesystemService {
       return [];
     }
     const sorted = dirents
-      .filter((entry) => showHidden || !entry.name.startsWith("."))
+      .filter((entry) =>
+        !isProtectedSystemDirectory(entry.name, entry.isDirectory) &&
+        (showHidden || !entry.name.startsWith(".")),
+      )
       .sort((left, right) => {
         if (left.isDirectory !== right.isDirectory) {
           return left.isDirectory ? -1 : 1;
@@ -318,17 +326,19 @@ export class FilesystemService {
     const result: DirectoryEntry[] = [];
     const subdirectories: Array<{ name: string; isDirectory: boolean }> = [];
     for (const entry of sorted) {
-      const next: DirectoryEntry = {
+      if (entry.isDirectory) {
+        if (depth < maxDepth) {
+          subdirectories.push(entry);
+        }
+        continue;
+      }
+      result.push({
         path: path.join(directory, entry.name),
         name: entry.name,
-        isDirectory: entry.isDirectory,
-        extension: extensionFor(entry.name, entry.isDirectory),
+        isDirectory: false,
+        extension: extensionFor(entry.name, false),
         depth,
-      };
-      result.push(next);
-      if (entry.isDirectory && depth < maxDepth) {
-        subdirectories.push(entry);
-      }
+      });
     }
     for (const entry of subdirectories) {
       const nested = await this.listFlattened(
@@ -727,7 +737,7 @@ export class FilesystemService {
                   dirent.isDirectory(),
                 );
                 if (entry.isDirectory) {
-                  pending.push(entry.path);
+                  if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
                 } else if (matchName(entry.name) &&
                   (!allowedExtensions || allowedExtensions.has(entry.extension))) {
                   matches.push(entry);

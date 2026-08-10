@@ -120,12 +120,12 @@ function CollectionNode({
     setMenuOpen(false);
     const values = await dialog.requestForm({
       title: translate("collections.rename"),
-      confirmLabel: "保存",
+      confirmLabel: translate("collections.save"),
       fields: [
-        { name: "name", label: "集合名称", required: true, maxLength: 256, initialValue: collection.name },
+        { name: "name", label: translate("collections.nameLabel"), required: true, maxLength: 256, initialValue: collection.name },
       ],
       onSubmit: ({ name }) =>
-        void window.refCanvas.collections.update(collection.id, { name }),
+        window.refCanvas.collections.update(collection.id, { name }).then(() => undefined),
     });
     if (values) onRefreshTree();
   };
@@ -137,7 +137,9 @@ function CollectionNode({
     if (childCount === 0 && itemCount === 0) {
       const confirmed = await dialog.requestConfirm({
         title: translate("collections.delete"),
-        description: `确定删除“${collection.name}”吗？${translate("collections.deleteConfirm")}`,
+        description: translate("collections.deleteNamed")
+          .replace("{name}", collection.name)
+          .replace("{detail}", translate("collections.deleteConfirm")),
         confirmLabel: translate("collections.delete"),
         danger: true,
       });
@@ -156,11 +158,19 @@ function CollectionNode({
 
   const removeRecursive = async () => {
     const scope = children.length
-      ? `${children.length} 个子集合、${items?.length ?? 0} 个条目`
-      : `${items?.length ?? 0} 个条目`;
+      ? translate("collections.scopeChildrenItems")
+          .replace("{children}", String(children.length))
+          .replace("{items}", String(items?.length ?? 0))
+      : translate("collections.scopeItems").replace(
+          "{items}",
+          String(items?.length ?? 0),
+        );
     const confirmed = await dialog.requestConfirm({
       title: translate("collections.recursiveDelete"),
-      description: `“${collection.name}”包含 ${scope}。${translate("collections.recursiveDelete")}`,
+      description: translate("collections.containsScope")
+        .replace("{name}", collection.name)
+        .replace("{scope}", scope)
+        .replace("{detail}", translate("collections.recursiveDelete")),
       confirmLabel: translate("collections.delete"),
       danger: true,
     });
@@ -178,10 +188,10 @@ function CollectionNode({
     setMenuOpen(false);
     const values = await dialog.requestForm({
       title: translate("collections.newChild"),
-      confirmLabel: "创建",
-      fields: [{ name: "name", label: "子集合名称", required: true, maxLength: 256 }],
+      confirmLabel: translate("collections.createConfirm"),
+      fields: [{ name: "name", label: translate("collections.childNameLabel"), required: true, maxLength: 256 }],
       onSubmit: ({ name }) =>
-        void window.refCanvas.collections.create({ parentId: collection.id, name }),
+        window.refCanvas.collections.create({ parentId: collection.id, name }).then(() => undefined),
     });
     if (values) {
       setExpanded(true);
@@ -252,8 +262,8 @@ function CollectionNode({
     ) : (
       <button
         className="mini-icon-button collection-node-add"
-        aria-label={`添加文件到 ${collection.name}`}
-        title="添加文件"
+        aria-label={translate("collections.addFilesNamed").replace("{name}", collection.name)}
+        title={translate("collections.addFiles")}
         disabled={pending}
         onClick={(event) => {
           event.stopPropagation();
@@ -283,7 +293,7 @@ function CollectionNode({
       >
         <button
           className="dir-tree-chevron"
-          aria-label={expanded ? "折叠集合" : "展开集合"}
+          aria-label={translate(expanded ? "collections.collapse" : "collections.expand")}
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -296,13 +306,13 @@ function CollectionNode({
           <span className="collection-row-name" title={collection.name}>
             {collection.name}
           </span>
-          {badge}
         </button>
+        {badge}
         <div className="collection-row-actions">
           <button
             className="mini-icon-button"
-            aria-label="集合菜单"
-            title="集合操作"
+            aria-label={translate("collections.menu")}
+            title={translate("collections.menu")}
             onClick={() => setMenuOpen((value) => !value)}
           >
             <MoreHorizontal size={14} />
@@ -311,7 +321,8 @@ function CollectionNode({
       </div>
       {menuOpen && (
         <>
-          <div className="collection-menu">
+          <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
+          <div className="collection-menu" role="menu">
             <button role="menuitem" onClick={() => { void onAddFiles(collection.id); setMenuOpen(false); }}>
               <Plus size={15} />
               {translate("collections.addFiles")}
@@ -327,11 +338,11 @@ function CollectionNode({
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => void reorderSibling(-1)}>
               <ChevronUp size={15} />
-              上移
+              {translate("collections.moveUp")}
             </button>
             <button role="menuitem" onClick={() => void reorderSibling(1)}>
               <ChevronDown size={15} />
-              下移
+              {translate("collections.moveDown")}
             </button>
             <span className="context-menu-divider" />
             <button role="menuitem" onClick={() => { setMenuOpen(false); void onExport(collection.id); }}>
@@ -348,7 +359,6 @@ function CollectionNode({
               {translate("collections.delete")}
             </button>
           </div>
-          <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
         </>
       )}
       <div className={`collection-children ${draggingOver ? "drop-target" : ""}`}>
@@ -437,7 +447,7 @@ function CollectionItemCard({
       <span className="collection-item-actions">
         <button
           className="mini-icon-button"
-          title={translate("preview.reveal")}
+          title={translate("collections.relink")}
           aria-label={`${translate("collections.resolve")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
@@ -448,8 +458,8 @@ function CollectionItemCard({
         </button>
         <button
           className="mini-icon-button"
-          title={translate("preview.reveal")}
-          aria-label={`${translate("preview.reveal")} ${displayName}`}
+          title={translate("preview.copyPath")}
+          aria-label={`${translate("preview.copyPath")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
             void window.refCanvas.system.writeClipboard(item.lastResolvedPath);
@@ -459,8 +469,8 @@ function CollectionItemCard({
         </button>
         <button
           className="mini-icon-button danger-hover"
-          title={translate("tasks.cancel")}
-          aria-label={`${translate("tasks.cancel")} ${displayName}`}
+          title={translate("collections.removeItem")}
+          aria-label={`${translate("collections.removeItem")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
             onRemove(item);
@@ -588,7 +598,7 @@ export function CollectionDetailsPanel() {
         <div className="collection-detail-actions">
           <button className="secondary-button" onClick={() => void resolve()} disabled={resolving}>
             <RefreshCw size={14} className={resolving ? "spin" : ""} />
-            {resolving ? translate("collections.exporting") : translate("collections.resolve")}
+            {resolving ? translate("collections.resolving") : translate("collections.resolve")}
           </button>
           {runningExportId ? (
             <button className="secondary-button" onClick={() => void cancelRunningExport()}>
@@ -673,7 +683,7 @@ export function CollectionDetailsPanel() {
               }}
             >
               <Link2 size={16} />
-              重定位…
+              {translate("collections.relink")}
             </button>
             <button
               role="menuitem"
@@ -687,7 +697,7 @@ export function CollectionDetailsPanel() {
               disabled={itemMenu.item.state !== "resolved"}
             >
               <Eye size={16} />
-              打开
+              {translate("preview.open")}
             </button>
             <button
               role="menuitem"
@@ -697,7 +707,7 @@ export function CollectionDetailsPanel() {
               }}
             >
               <Copy size={16} />
-              复制路径
+              {translate("preview.copyPath")}
             </button>
             <span className="context-menu-divider" />
             <button
@@ -709,7 +719,7 @@ export function CollectionDetailsPanel() {
               }}
             >
               <Trash2 size={16} />
-              从集合移除
+              {translate("collections.removeItem")}
             </button>
           </div>
           <div className="context-menu-dismiss" onClick={() => setItemMenu(null)} />
@@ -731,9 +741,10 @@ export function CollectionsPanel() {
     setMenuOpen(false);
     const values = await dialog.requestForm({
       title: translate("collections.create"),
-      confirmLabel: "创建",
-      fields: [{ name: "name", label: "集合名称", required: true, maxLength: 256 }],
-      onSubmit: ({ name }) => void window.refCanvas.collections.create({ name }),
+      confirmLabel: translate("collections.createConfirm"),
+      fields: [{ name: "name", label: translate("collections.nameLabel"), required: true, maxLength: 256 }],
+      onSubmit: ({ name }) =>
+        window.refCanvas.collections.create({ name }).then(() => undefined),
     });
     if (values) void store.refreshCollections();
   };
@@ -744,16 +755,16 @@ export function CollectionsPanel() {
       title: translate("collections.create"),
       multiSelections: true,
       filters: [
-        { name: "所有文件", extensions: ["*"] },
-        { name: "图像", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
-        { name: "视频", extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
+        { name: translate("ai.fileFilterAll"), extensions: ["*"] },
+        { name: translate("ai.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
+        { name: translate("ai.fileFilterVideos"), extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
       ],
     });
     if (!picked.length) return;
     const values = await dialog.requestForm({
       title: translate("collections.create"),
-      confirmLabel: "创建",
-      fields: [{ name: "name", label: "集合名称", required: true, maxLength: 256 }],
+      confirmLabel: translate("collections.createConfirm"),
+      fields: [{ name: "name", label: translate("collections.nameLabel"), required: true, maxLength: 256 }],
     });
     if (!values) return;
     const collection = await window.refCanvas.collections.create({
@@ -766,19 +777,19 @@ export function CollectionsPanel() {
       void dialog.requestConfirm({
         title: translate("collections.empty"),
         description: translate("collections.emptyHint"),
-        confirmLabel: "知道了",
+        confirmLabel: translate("collections.acknowledge"),
       });
     }
   };
 
   const addFiles = async (id: string) => {
     const picked = await window.refCanvas.system.pickFile({
-      title: "选择要加入集合的文件",
+      title: translate("collections.pickFiles"),
       multiSelections: true,
       filters: [
-        { name: "所有文件", extensions: ["*"] },
-        { name: "图像", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
-        { name: "视频", extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
+        { name: translate("ai.fileFilterAll"), extensions: ["*"] },
+        { name: translate("ai.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
+        { name: translate("ai.fileFilterVideos"), extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
       ],
     });
     if (!picked.length) return;
@@ -786,9 +797,9 @@ export function CollectionsPanel() {
     await store.refreshCollections();
     if (added.length === 0 && picked.length > 0) {
       void dialog.requestConfirm({
-        title: "未能添加",
-        description: "所选路径没有可加入集合的文件（文件夹不会被加入）。",
-        confirmLabel: "知道了",
+        title: translate("collections.addFailed"),
+        description: translate("collections.addFailedDesc"),
+        confirmLabel: translate("collections.acknowledge"),
       });
     }
   };
@@ -797,7 +808,7 @@ export function CollectionsPanel() {
     const collection = store.collections.find((candidate) => candidate.id === id);
     if (!collection) return;
     const targetDirectory = await window.refCanvas.system.pickDirectory({
-      title: `导出“${collection.name}”到…`,
+      title: translate("collections.exportNamed").replace("{name}", collection.name),
     });
     if (!targetDirectory) return;
     await window.refCanvas.collections.export(id, targetDirectory, {
@@ -873,9 +884,12 @@ export function CollectionsPanel() {
       <div className="section-label row-label">
         <span>{translate("sidebar.collections")}</span>
         <button
+          type="button"
           className="mini-icon-button"
           aria-label={translate("collections.create")}
           title={translate("collections.create")}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
           onClick={() => setMenuOpen((value) => !value)}
         >
           <Plus size={14} />
@@ -883,22 +897,29 @@ export function CollectionsPanel() {
       </div>
       {menuOpen && (
         <>
-          <div className="collection-menu collection-menu-head">
-            <button role="menuitem" onClick={() => void createCollection()}>
+          <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
+          <div className="collection-menu collection-menu-head" role="menu">
+            <button type="button" role="menuitem" onClick={() => void createCollection()}>
               <FolderPlus size={15} />
               {translate("collections.create")}
             </button>
             <span className="context-menu-divider" />
-            <button role="menuitem" onClick={() => void createCollectionWithFiles()}>
+            <button type="button" role="menuitem" onClick={() => void createCollectionWithFiles()}>
               <Upload size={15} />
-              {translate("collections.addFiles")}
+              {translate("collections.createFromFiles")}
             </button>
           </div>
-          <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
         </>
       )}
       {roots.length === 0 ? (
-        <p className="directory-empty">{translate("collections.empty")}</p>
+        <div className="collections-empty">
+          <p>{translate("collections.empty")}</p>
+          <span>{translate("collections.description")}</span>
+          <button type="button" onClick={() => void createCollection()}>
+            <FolderPlus size={14} />
+            {translate("collections.create")}
+          </button>
+        </div>
       ) : (
         <div className="collection-tree">
           {roots.map((collection) => (
@@ -915,7 +936,7 @@ export function CollectionsPanel() {
         </div>
       )}
       <div className={`collection-drop-hint ${draggingOver ? "visible" : ""}`}>
-        释放以加入当前集合
+        {translate("collections.dropActive")}
       </div>
     </div>
   );

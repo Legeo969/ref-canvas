@@ -5,6 +5,8 @@ import {
   useFoundSettings,
 } from "../app/found-settings";
 import { translate } from "../app/i18n";
+import { Download, FolderOpen } from "lucide-react";
+import { PreviewColorBar } from "./PreviewColorBar";
 
 type ToneMappingName = "aces" | "reinhard" | "neutral";
 type DisplayComponent = "R" | "G" | "B" | "A";
@@ -39,6 +41,7 @@ export function HdrPreview({
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const planeRef = useRef<THREE.Mesh | null>(null);
   const textureRef = useRef<THREE.Texture | null>(null);
+  const fallbackRef = useRef<HTMLImageElement | null>(null);
   const [exposure, setExposure] = useState(1);
   const [toneMapping, setToneMapping] = useState<ToneMappingName>("aces");
   const [status, setStatus] = useState<"loading" | "ready" | "failed">(
@@ -50,6 +53,9 @@ export function HdrPreview({
   const [component, setComponent] = useState<"composite" | DisplayComponent>(
     "composite",
   );
+  const [exporting, setExporting] = useState(false);
+  const [exportedPath, setExportedPath] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const selectedLayerName = layer === AUTO_LAYER
     ? defaultLayer
     : layer === MAIN_LAYER
@@ -66,6 +72,30 @@ export function HdrPreview({
   const displaySource = selectedChannel === null
     ? source
     : `${source}${source.includes("?") ? "&" : "?"}channel=${encodeURIComponent(selectedChannel)}`;
+
+  const exportChannel = async () => {
+    if (!path || exporting) return;
+    const directory = await window.refCanvas.system.pickDirectory({
+      title: "导出当前 EXR/HDR 通道",
+      defaultPath: path.replace(/[\\/][^\\/]*$/, ""),
+    });
+    if (!directory) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const result = await window.refCanvas.media.exportDisplayChannel({
+        inputPath: path,
+        outputDirectory: directory,
+        baseName: path.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, "") || "channel",
+        channel: selectedChannel ?? undefined,
+      });
+      setExportedPath(result.outputPath);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "通道导出失败");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     setLayers([]);
@@ -213,6 +243,7 @@ export function HdrPreview({
         style={{ background: alphaBackgroundStyle(foundSettings) }}
       >
         <img
+          ref={fallbackRef}
           className="hdr-preview-fallback"
           src={displaySource}
           alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
@@ -231,6 +262,11 @@ export function HdrPreview({
         )}
       </div>
       <div className="hdr-preview-controls">
+        <PreviewColorBar
+          compact
+          source={() => fallbackRef.current}
+          revision={displaySource}
+        />
         {layers.length > 0 && (
           <div className="hdr-channel-control" role="group" aria-label={translate("hdr.channelsGroup")}>
             <label className="hdr-layer-select">
@@ -302,6 +338,35 @@ export function HdrPreview({
           />
           <output>{exposure.toFixed(1)}</output>
         </label>
+        {path && (
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={exporting}
+            onClick={() => void exportChannel()}
+            title="将当前层/通道以显示转换后的全分辨率 PNG 导出"
+          >
+            <Download size={14} />
+            {exporting ? "正在导出…" : "导出当前通道"}
+          </button>
+        )}
+        {exportedPath && (
+          <button
+            type="button"
+            className="mini-icon-button"
+            title={exportedPath}
+            aria-label="在资源管理器中显示导出的通道"
+            draggable
+            onDragStart={(event) => {
+              event.preventDefault();
+              window.refCanvas.filesystem.dragOut([exportedPath]);
+            }}
+            onClick={() => void window.refCanvas.filesystem.reveal(exportedPath)}
+          >
+            <FolderOpen size={14} />
+          </button>
+        )}
+        {exportError && <span className="preview-color-error">{exportError}</span>}
       </div>
     </div>
   );

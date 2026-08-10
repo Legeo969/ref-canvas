@@ -46,6 +46,8 @@ export interface AiProvider {
       stage: string;
       progress: number | null;
       outputs?: string[];
+      /** 外部任务创建后立即上报，供取消与重启恢复使用。 */
+      externalId?: string;
       errorCode?: string | null;
       errorMessage?: string | null;
     }) => void,

@@ -418,6 +418,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       sort: navigation.sort,
       direction: navigation.direction,
     });
+    // Core workspace state is ready. Do not keep the whole renderer behind the
+    // loading screen while a large library or drive root performs its first
+    // page scan; those panels already expose their own loading states.
+    set({ loading: false });
+    await window.refCanvas.system.markRendererInteractive().catch(() => undefined);
     if (navigation.visualColor) {
       void window.refCanvas.library.startSimilarityIndex();
     }
@@ -460,8 +465,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         directoryPath: null,
       });
     }
-    set({ loading: false });
-    await window.refCanvas.system.markRendererInteractive();
   },
 
   currentSearch: (cursor) => {

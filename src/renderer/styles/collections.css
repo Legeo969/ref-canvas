@@ -21,7 +21,7 @@
   position: relative;
   display: grid;
   min-height: 34px;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
   align-items: center;
   padding-right: 6px;
   border-radius: 7px;
@@ -46,7 +46,7 @@
 .collection-row-main {
   display: grid;
   min-width: 0;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: 2px;
   padding: 0;
@@ -81,12 +81,18 @@
 }
 
 .collection-row-actions {
-  display: none;
+  display: grid;
+  visibility: hidden;
+  opacity: 0;
+  transition-property: opacity;
+  transition-duration: 120ms;
 }
 
 .collection-row:hover .collection-row-actions,
-.collection-row.active .collection-row-actions {
-  display: grid;
+.collection-row.active .collection-row-actions,
+.collection-row:focus-within .collection-row-actions {
+  visibility: visible;
+  opacity: 1;
 }
 
 .collection-children {
@@ -119,7 +125,9 @@
 
 .collection-menu {
   position: absolute;
-  z-index: 60;
+  /* Must stay above .context-menu-dismiss (z-index: 110), otherwise the
+     visible menu is covered by the transparent outside-click layer. */
+  z-index: 120;
   min-width: 190px;
   margin: 2px 0 0 22px;
   padding: 5px;
@@ -131,7 +139,7 @@
 }
 
 .collection-menu-head {
-  position: static;
+  position: relative;
   margin: 0 8px 6px;
 }
 
@@ -159,6 +167,60 @@
 .collection-menu button[role="menuitem"]:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.collections-empty {
+  display: grid;
+  gap: 5px;
+  margin: 1px 8px 0;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.collections-empty p {
+  margin: 0;
+  color: #9ca6a1;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.collections-empty span {
+  color: #6f7974;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.collections-empty button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 3px;
+  border: 1px solid rgba(79, 195, 159, 0.18);
+  border-radius: 7px;
+  background: rgba(58, 178, 143, 0.1);
+  color: #8cdec5;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition-property: background-color, border-color, color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.collections-empty button:hover,
+.collections-empty button:focus-visible {
+  border-color: rgba(79, 195, 159, 0.32);
+  background: rgba(58, 178, 143, 0.16);
+  color: #b1f0dc;
+  outline: none;
+}
+
+.collections-empty button:active {
+  scale: 0.98;
 }
 
 /* --- 集合条目网格 --- */
@@ -272,6 +334,15 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.collection-item-card .asset-preview::after {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.38);
+  content: "";
+  pointer-events: none;
 }
 
 .collection-item-card .asset-title {

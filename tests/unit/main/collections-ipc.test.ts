@@ -83,7 +83,7 @@ describe("collections IPC (FND-003)", () => {
   });
 
   it("adds and resolves items with schema validation before touching storage", async () => {
-    const { database, directory, invoke } = await setup();
+    const { database, directory, invoke, notifyCollectionsChanged } = await setup();
     try {
       const source = path.join(directory, "a.png");
       await writeFile(source, Buffer.alloc(64, 7));
@@ -96,12 +96,14 @@ describe("collections IPC (FND-003)", () => {
       })) as Array<{ id: string; state: string }>;
       expect(items).toHaveLength(1);
       expect(items[0].state).toBe("resolved");
+      expect(notifyCollectionsChanged).toHaveBeenCalledTimes(2);
 
       const resolved = (await invoke("collections:resolve", collection.id)) as Array<{
         item: { state: string };
         relinked: boolean;
       }>;
       expect(resolved[0].item.state).toBe("resolved");
+      expect(notifyCollectionsChanged).toHaveBeenCalledTimes(3);
 
       // 无效输入在调用仓储前被 Zod 拒绝。
       await expect(
@@ -117,7 +119,7 @@ describe("collections IPC (FND-003)", () => {
   });
 
   it("relink requires fingerprint confirmation through IPC", async () => {
-    const { database, directory, invoke } = await setup();
+    const { database, directory, invoke, notifyCollectionsChanged } = await setup();
     try {
       const source = path.join(directory, "a.png");
       await writeFile(source, Buffer.alloc(64, 7));
@@ -137,12 +139,14 @@ describe("collections IPC (FND-003)", () => {
           confirmFingerprintChange: false,
         }),
       ).rejects.toThrow("RELINE_FINGERPRINT_CHANGED");
+      expect(notifyCollectionsChanged).toHaveBeenCalledTimes(2);
       const relinked = (await invoke("collections:relink", {
         itemId: items[0].id,
         path: different,
         confirmFingerprintChange: true,
       })) as { lastResolvedPath: string };
       expect(relinked.lastResolvedPath).toBe(different);
+      expect(notifyCollectionsChanged).toHaveBeenCalledTimes(3);
     } finally {
       database.close();
     }

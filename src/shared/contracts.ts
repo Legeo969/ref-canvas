@@ -78,6 +78,12 @@ export interface AssetRecord {
   thumbnailUrl: string;
 }
 
+export interface MediaPaletteColor {
+  rgb: [number, number, number];
+  hex: string;
+  count: number;
+}
+
 export interface AssetAnnotation {
   id: string;
   assetId: string;
@@ -289,6 +295,8 @@ export interface AppInfo {
   installChannel: "signed" | "unsigned";
   platform: string;
   userDataPath: string;
+  /** Squirrel 安装版可从应用内启动系统卸载流程。 */
+  uninstallAvailable: boolean;
 }
 
 /**
@@ -550,6 +558,10 @@ export interface DirectoryEntry {
   sequence?: import("./file-sequence").FileSequenceInfo;
   /** 本地索引中的用户标签；磁盘模式下按需回填。 */
   tags?: string[];
+  /** 已按需建立索引时的收藏状态；未索引时未定义。 */
+  favorite?: boolean;
+  /** 已按需建立索引时的 0–5 评分；未索引时未定义。 */
+  rating?: number;
 }
 
 export interface DirectoryPage {
@@ -602,6 +614,8 @@ export interface DirectoryBatchSnapshot {
   total: number;
   processed: number;
   failed: Array<{ path: string; reason: string }>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** 文件名冲突时的处理策略（计划 §8.2）。 */
@@ -1131,11 +1145,21 @@ export interface ExportGifRequest {
 }
 
 export interface ExportVideoGifRequest {
-  inputPath: string;
+  /** Backward-compatible single input. Prefer clips for the GIF studio. */
+  inputPath?: string;
+  /** Ordered video ranges concatenated into one GIF. */
+  clips?: Array<{
+    inputPath: string;
+    startMs?: number;
+    endMs?: number;
+  }>;
   outputDirectory: string;
   baseName: string;
   fps?: number;
   maxWidth?: number;
+  /** Palette size. Lower values trade fidelity for a smaller file. */
+  colors?: number;
+  dither?: "none" | "bayer" | "floyd_steinberg" | "sierra2_4a";
   jobId?: string;
 }
 
@@ -1145,6 +1169,44 @@ export interface ExportGifResult {
   frameCount: number | null;
   width: number;
   height: number;
+  sizeBytes?: number;
+  jobId?: string;
+}
+
+export interface ExportVideoFramesRequest {
+  inputPath: string;
+  outputDirectory: string;
+  baseName: string;
+  format: "png" | "jpeg";
+  /** Omit/null to preserve the source frame cadence. */
+  fps?: number | null;
+  startMs?: number;
+  endMs?: number;
+  /** JPEG quality from 1 to 100. Ignored for PNG. */
+  quality?: number;
+  jobId?: string;
+}
+
+export interface ExportVideoFramesResult {
+  outputDirectory: string;
+  frameCount: number;
+  format: "png" | "jpeg";
+  jobId?: string;
+}
+
+export interface ExportDisplayChannelRequest {
+  inputPath: string;
+  outputDirectory: string;
+  baseName: string;
+  channel?: string;
+  jobId?: string;
+}
+
+export interface ExportDisplayChannelResult {
+  outputPath: string;
+  width: number;
+  height: number;
+  channel: string | null;
   jobId?: string;
 }
 
@@ -1589,6 +1651,11 @@ export interface RefCanvasApi {
       path: string,
       options?: { timeMs?: number; width?: number; height?: number },
     ): Promise<MediaFrameResult>;
+    /** 从本地图片或视频时间点提取主色，不依赖 renderer 画布权限。 */
+    palette(
+      path: string,
+      options?: { timeMs?: number; limit?: number },
+    ): Promise<MediaPaletteColor[]>;
     /** 格式转换（provider convert；不支持时明确失败）。 */
     convert(
       path: string,
@@ -1597,6 +1664,12 @@ export interface RefCanvasApi {
     ): Promise<MediaConvertResult>;
     /** 视频转循环 GIF。 */
     exportGif(request: ExportVideoGifRequest): Promise<ExportGifResult>;
+    /** 视频片段导出 PNG/JPEG 序列帧。 */
+    exportFrames(request: ExportVideoFramesRequest): Promise<ExportVideoFramesResult>;
+    /** 将 EXR/HDR 当前显示层或通道导出为显示转换后的 PNG。 */
+    exportDisplayChannel(
+      request: ExportDisplayChannelRequest,
+    ): Promise<ExportDisplayChannelResult>;
     /** 取消进行中的转换任务。 */
     cancel(jobId: string): Promise<boolean>;
     /**
@@ -1862,6 +1935,8 @@ export interface RefCanvasApi {
     /** FND-004：打开浮动预览窗口（独立窗口渲染统一预览会话）。 */
     openPreviewWindow(path: string): Promise<void>;
     openDataFolder(): Promise<void>;
+    /** 请求启动 Windows Squirrel 卸载器；调用前 Renderer 必须二次确认。 */
+    requestUninstall(): Promise<boolean>;
     pickDirectory(options: {
       title: string;
       defaultPath?: string;

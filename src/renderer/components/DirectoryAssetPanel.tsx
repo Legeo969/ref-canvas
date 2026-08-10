@@ -5,6 +5,7 @@ import {
   Check,
   Copy,
   Eye,
+  Film,
   FolderOpen,
   FolderPlus,
   PanelsTopLeft,
@@ -20,7 +21,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   DirectoryBatchAction,
   DirectoryBatchSnapshot,
@@ -31,6 +32,10 @@ import type {
   SequenceGroupInfo,
 } from "../../shared/contracts";
 import { applySelectionClick } from "../app/directory-selection";
+import {
+  assetGridNavigationTarget,
+  type AssetGridNavigationKey,
+} from "../app/asset-grid-navigation";
 import { formatBytes } from "../app/format-bytes";
 import {
   getDirectoryClipboard,
@@ -44,6 +49,7 @@ import {
   useFoundSettings,
 } from "../app/found-settings";
 import { useAppStore } from "../app/store";
+import { translate } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
 import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
 import { HighlightedText } from "./HighlightedText";
@@ -74,6 +80,17 @@ function normalizeQuickAccessPath(value: string): string {
   return value.replace(/[\\/]+/g, "\\").replace(/\\$/, "").toLowerCase();
 }
 
+/** Stable origin-folder color used by recursive/flattened browsing. */
+export function directoryGroupColor(filename: string): string {
+  const directory = dirnameOf(filename).toLowerCase();
+  let hash = 2166136261;
+  for (let index = 0; index < directory.length; index += 1) {
+    hash ^= directory.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `hsl(${Math.abs(hash) % 360} 58% 58%)`;
+}
+
 interface DirectoryCardProps {
   entry: DirectoryEntry;
   tags?: string[];
@@ -82,6 +99,7 @@ interface DirectoryCardProps {
   onEnter(): void;
   onSelect(event: React.MouseEvent): void;
   onPreview(): void;
+  onDragOut(): void;
   /** 阶段 5：文件夹打开方式（single = 单击进入，double = 双击进入）。 */
   folderClickMode: "single" | "double";
   /** 阶段 5：flatten 视图下显示相对路径（子目录条目）。 */
@@ -98,13 +116,13 @@ function DirectoryCard({
   onEnter,
   onSelect,
   onPreview,
+  onDragOut,
   priority,
   folderClickMode,
   displayName,
 }: DirectoryCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-
   useEffect(() => {
     setThumbnailUrl(null);
     setFailed(false);
@@ -139,6 +157,11 @@ function DirectoryCard({
       }}
       draggable
       onDragStart={(event) => {
+        if (event.altKey && !entry.isDirectory) {
+          event.preventDefault();
+          onDragOut();
+          return;
+        }
         // 文件/文件夹均可拖入侧栏：文件建立索引引用，文件夹进入目录浏览。
         event.dataTransfer.setData(
           DIRECTORY_ENTRY_MIME,
@@ -168,6 +191,20 @@ function DirectoryCard({
         {selected && !entry.isDirectory && (
           <span className="selection-badge">
             <Check size={13} />
+          </span>
+        )}
+        {!entry.isDirectory && (entry.favorite || (entry.rating ?? 0) > 0) && (
+          <span className="directory-metadata-badges" aria-label="素材元数据">
+            {entry.favorite && (
+              <span title="已收藏">
+                <Star size={12} fill="currentColor" />
+              </span>
+            )}
+            {(entry.rating ?? 0) > 0 && (
+              <span className="directory-rating-badge" title={`${entry.rating} 星`}>
+                {entry.rating}
+              </span>
+            )}
           </span>
         )}
         {tags && tags.length > 0 && (
@@ -252,6 +289,7 @@ export function DirectoryAssetPanel() {
     x: number;
     y: number;
   } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [viewport, setViewport] = useState({ width: 340, height: 600, top: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -274,6 +312,8 @@ export function DirectoryAssetPanel() {
   const [directoryScanComplete, setDirectoryScanComplete] = useState(false);
   const [batchJob, setBatchJob] = useState<DirectoryBatchSnapshot | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
+  const [shortcutNotice, setShortcutNotice] = useState<string | null>(null);
+  const shortcutNoticeTimerRef = useRef<number | null>(null);
   // 即时预览的当前条目路径（null = 未打开）。
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   // 图片序列：目录级检测结果（按首帧路径索引）与预览对话框。
@@ -310,6 +350,67 @@ export function DirectoryAssetPanel() {
       store.selectDirectoryEntry({ ...selected, tags: [...tags] });
     }
   };
+
+  const updateEntryMetadata = (
+    path: string,
+    metadata: { favorite: boolean; rating: number },
+  ) => {
+    const patchPages = (pages: Map<number, DirectoryEntry[]>) => {
+      const next = new Map(pages);
+      for (const [offset, page] of next) {
+        next.set(
+          offset,
+          page.map((entry) =>
+            entry.path === path ? { ...entry, ...metadata } : entry,
+          ),
+        );
+      }
+      return next;
+    };
+    setDirectoryPages(patchPages);
+    setSearchPages(patchPages);
+    const selected = store.selectedDirectoryEntry;
+    if (selected?.path === path) {
+      store.selectDirectoryEntry({ ...selected, ...metadata });
+    }
+  };
+
+  const showShortcutNotice = (message: string) => {
+    setShortcutNotice(message);
+    if (shortcutNoticeTimerRef.current !== null) {
+      window.clearTimeout(shortcutNoticeTimerRef.current);
+    }
+    shortcutNoticeTimerRef.current = window.setTimeout(() => {
+      shortcutNoticeTimerRef.current = null;
+      setShortcutNotice(null);
+    }, 1600);
+  };
+
+  useEffect(
+    () => () => {
+      if (shortcutNoticeTimerRef.current !== null) {
+        window.clearTimeout(shortcutNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const path = previewPath ?? selectionAnchor;
+    if (!path || !window.refCanvas.library?.getByPath) return;
+    let cancelled = false;
+    void window.refCanvas.library.getByPath(path).then((asset) => {
+      if (!cancelled && asset) {
+        updateEntryMetadata(path, {
+          favorite: asset.favorite,
+          rating: asset.rating,
+        });
+      }
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [previewPath, selectionAnchor]);
 
   // 目录切换时重新检测序列（全目录一次，含缺帧与 FPS 推断）。
   useEffect(() => {
@@ -362,6 +463,17 @@ export function DirectoryAssetPanel() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    const gutter = 8;
+    const x = Math.max(gutter, Math.min(contextMenu.x, window.innerWidth - rect.width - gutter));
+    const y = Math.max(gutter, Math.min(contextMenu.y, window.innerHeight - rect.height - gutter));
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      setContextMenu((current) => current ? { ...current, x, y } : current);
+    }
   }, [contextMenu]);
 
   // 目录内容与搜索结果分别维护；搜索结果优先展示。
@@ -635,6 +747,12 @@ export function DirectoryAssetPanel() {
         (searchId ? searchTotal : directoryFileTotal) - excludedPaths.size,
       )
     : selectedPaths.size;
+  const selectedVideoPaths = useMemo(
+    () => files
+      .filter((entry) => selectedPaths.has(entry.path) && /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(entry.extension))
+      .map((entry) => entry.path),
+    [files, selectedPaths],
+  );
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -1005,6 +1123,78 @@ export function DirectoryAssetPanel() {
       .map((entry) => entry.path)
       .filter((path) => selectedPaths.has(path));
 
+  const focusedFile = () => {
+    const focusedPath = previewPath ?? selectionAnchor ?? store.selectedDirectoryEntry?.path;
+    return files.find((entry) => entry.path === focusedPath) ?? files[0] ?? null;
+  };
+
+  const selectFileFromKeyboard = (entry: DirectoryEntry) => {
+    setAllMatchingSelected(false);
+    setExcludedPaths(new Set());
+    setSelectedPaths(new Set([entry.path]));
+    setSelectionAnchor(entry.path);
+    store.selectDirectoryEntry(entry);
+
+    const absoluteIndex = visibleEntries.findIndex(
+      (candidate) => candidate.path === entry.path,
+    );
+    const node = viewportRef.current;
+    if (absoluteIndex < 0 || !node) return;
+    const row = Math.floor(absoluteIndex / columns);
+    const top = row * rowHeight;
+    if (top < node.scrollTop) node.scrollTop = top;
+    else if (top + rowHeight > node.scrollTop + node.clientHeight) {
+      node.scrollTop = Math.max(0, top + rowHeight - node.clientHeight);
+    }
+  };
+
+  const updateFocusedMetadata = async (
+    action: "favorite" | "rating",
+    rating?: number,
+  ) => {
+    const entry = focusedFile();
+    if (!entry) {
+      showShortcutNotice("当前没有可操作的素材");
+      return;
+    }
+    try {
+      const { asset } = await window.refCanvas.filesystem.materialize(entry.path);
+      const patch =
+        action === "favorite"
+          ? { favorite: !asset.favorite }
+          : { rating: Math.max(0, Math.min(5, rating ?? 0)) };
+      const updated = await window.refCanvas.library.update(asset.id, patch);
+      updateEntryMetadata(entry.path, {
+        favorite: updated.favorite,
+        rating: updated.rating,
+      });
+      showShortcutNotice(
+        action === "favorite"
+          ? updated.favorite
+            ? `已收藏 ${entry.name}`
+            : `已取消收藏 ${entry.name}`
+          : updated.rating
+            ? `${entry.name} 已设为 ${updated.rating} 星`
+            : `已清除 ${entry.name} 的评分`,
+      );
+    } catch (error) {
+      showShortcutNotice(
+        `操作失败：${error instanceof Error ? error.message : "无法更新素材"}`,
+      );
+    }
+  };
+
+  const dragOutEntry = (entry: DirectoryEntry) => {
+    const paths = allMatchingSelected
+      ? files
+          .filter((item) => !excludedPaths.has(item.path))
+          .map((item) => item.path)
+      : selectedPaths.has(entry.path)
+        ? selectedFilePaths()
+        : [entry.path];
+    window.refCanvas.filesystem.dragOut(paths.length ? paths : [entry.path]);
+  };
+
   const clearSelection = () => {
     setSelectedPaths(new Set());
     setAllMatchingSelected(false);
@@ -1232,71 +1422,148 @@ export function DirectoryAssetPanel() {
     }
   };
 
+  const shortcutHandlerRef = useRef<(event: KeyboardEvent) => void>(
+    () => undefined,
+  );
+  shortcutHandlerRef.current = (event) => {
+    const target =
+      event.target instanceof HTMLElement ? event.target : null;
+    const isEditing =
+      target?.matches("input, textarea, select") || target?.isContentEditable;
+    if (isEditing) return;
+    if (
+      target?.closest("button") &&
+      !target.closest(".directory-card") &&
+      !previewEntry
+    ) {
+      return;
+    }
+
+    if (previewEntry) {
+      if (event.key === "Escape" || event.key === " ") {
+        event.preventDefault();
+        closePreview();
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        navigatePreview(-1);
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        navigatePreview(1);
+        return;
+      }
+    }
+
+    if (contextMenu && event.key !== "Escape") return;
+    if (event.key === "Escape") {
+      if (selectedCount) clearSelection();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      if (
+        (!searchId && directoryScanComplete && directoryRevision) ||
+        (searchId && searchComplete && searchRevision)
+      ) {
+        setAllMatchingSelected(true);
+        setExcludedPaths(new Set());
+        setSelectedPaths(new Set());
+      } else {
+        setSelectedPaths(new Set(files.map((entry) => entry.path)));
+        setSelectionAnchor(files[0]?.path ?? null);
+      }
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    if (
+      [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Home",
+        "End",
+        "PageUp",
+        "PageDown",
+      ].includes(event.key)
+    ) {
+      const navigation = assetGridNavigationTarget({
+        key: event.key as AssetGridNavigationKey,
+        currentIndex: files.findIndex(
+          (entry) =>
+            entry.path ===
+            (selectionAnchor ?? store.selectedDirectoryEntry?.path),
+        ),
+        itemCount: files.length,
+        columns,
+        visibleRows: Math.max(1, Math.floor(viewport.height / rowHeight)),
+        canLoadMore:
+          files.length < (searchId ? searchTotal : directoryFileTotal),
+      });
+      if (!navigation) return;
+      event.preventDefault();
+      const next = files[navigation.index];
+      if (next) selectFileFromKeyboard(next);
+      if (navigation.requestMore && viewportRef.current) {
+        viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+      }
+      return;
+    }
+    if (event.key === " " && files.length) {
+      event.preventDefault();
+      if (!event.repeat) {
+        const entry = focusedFile();
+        if (entry) openPreview(entry);
+      }
+      return;
+    }
+    if (event.key.toLowerCase() === "f" && !event.repeat) {
+      event.preventDefault();
+      void updateFocusedMetadata("favorite");
+      return;
+    }
+    if (/^[0-5]$/.test(event.key) && !event.repeat) {
+      event.preventDefault();
+      void updateFocusedMetadata("rating", Number(event.key));
+    }
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) =>
+      shortcutHandlerRef.current(event);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <section
       className="asset-panel"
       tabIndex={0}
-      onKeyDown={(event) => {
-        const target = event.target as HTMLElement;
-        if (target.closest("input, textarea, select")) return;
-        if (previewEntry) {
-          if (event.key === "Escape" || event.key === " ") {
-            event.preventDefault();
-            closePreview();
-            return;
-          }
-          if (event.key === "ArrowLeft") {
-            event.preventDefault();
-            navigatePreview(-1);
-            return;
-          }
-          if (event.key === "ArrowRight") {
-            event.preventDefault();
-            navigatePreview(1);
-            return;
-          }
-        }
-        if (event.key === "Escape") {
-          if (selectedCount) clearSelection();
-          return;
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
-          event.preventDefault();
-          if (
-            (!searchId && directoryScanComplete && directoryRevision) ||
-            (searchId && searchComplete && searchRevision)
-          ) {
-            setAllMatchingSelected(true);
-            setExcludedPaths(new Set());
-            setSelectedPaths(new Set());
-          } else {
-            setSelectedPaths(new Set(files.map((entry) => entry.path)));
-            setSelectionAnchor(files[0]?.path ?? null);
-          }
-          return;
-        }
-        if (event.key === " " && files.length) {
-          event.preventDefault();
-          // 空格打开最近选中文件的即时预览。
-          const anchor = selectionAnchor ?? files[0].path;
-          const target = files.find((entry) => entry.path === anchor) ?? files[0];
-          openPreview(target);
-        }
-      }}
     >
+      {shortcutNotice && (
+        <div className="directory-shortcut-notice" role="status">
+          {shortcutNotice}
+        </div>
+      )}
       <header className="panel-header asset-header">
         <div>
           <h2 title={store.directoryPath ?? ""}>
-            {store.directoryPath ? store.directoryPath.split(/[\\/]/).pop() : "本地目录"}
+            {store.directoryPath ? store.directoryPath.split(/[\\/]/).pop() : translate("directory.local")}
           </h2>
           <span className="panel-count">
-            {entries.length} / {totalEntries} 项
+            {translate("directory.itemCount")
+              .replace("{shown}", String(entries.length))
+              .replace("{total}", String(totalEntries))}
           </span>
         </div>
         <div className="dir-header-actions">
           <button
             className="icon-button"
-            aria-label="后退"
+            aria-label={translate("directory.back")}
             disabled={!canGoBack}
             onClick={() => void store.goBackDirectory()}
           >
@@ -1304,7 +1571,7 @@ export function DirectoryAssetPanel() {
           </button>
           <button
             className="icon-button"
-            aria-label="前进"
+            aria-label={translate("directory.forward")}
             disabled={!canGoForward}
             onClick={() => void store.goForwardDirectory()}
           >
@@ -1312,24 +1579,24 @@ export function DirectoryAssetPanel() {
           </button>
           <button
             className="icon-button"
-            aria-label="刷新当前目录"
+            aria-label={translate("directory.refresh")}
             onClick={() => void store.reloadDirectory()}
           >
             <RefreshCw size={17} />
           </button>
           <button
             className="icon-button"
-            aria-label="新建文件夹"
+            aria-label={translate("directory.newFolder")}
             disabled={!store.directoryPath}
             onClick={() => {
               void dialog
                 .requestForm({
-                  title: "新建文件夹",
-                  confirmLabel: "创建",
+                  title: translate("directory.newFolder"),
+                  confirmLabel: translate("directory.create"),
                   fields: [
                     {
                       name: "name",
-                      label: "文件夹名称",
+                      label: translate("directory.folderName"),
                       required: true,
                       maxLength: 120,
                     },
@@ -1354,8 +1621,8 @@ export function DirectoryAssetPanel() {
           </button>
           <button
             className="icon-button"
-            aria-label="打开专业预览设置"
-            title="专业预览设置"
+            aria-label={translate("directory.previewSettings")}
+            title={translate("directory.previewSettings")}
             onClick={() =>
               window.dispatchEvent(
                 new CustomEvent("refcanvas:open-settings", {
@@ -1374,19 +1641,19 @@ export function DirectoryAssetPanel() {
         <input
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="搜索文件名或 #标签（含子目录）"
-          aria-label="搜索当前目录"
+          placeholder={translate("directory.searchPlaceholder")}
+          aria-label={translate("directory.searchCurrent")}
         />
         {searching ? (
           <button
             className="search-cancel"
-            aria-label="取消搜索"
+            aria-label={translate("directory.cancelSearch")}
             onClick={cancelSearch}
           >
             <X size={14} />
           </button>
         ) : (
-          <kbd>含子目录</kbd>
+          <kbd>{translate("directory.includeSubdirectories")}</kbd>
         )}
       </div>
       {searchSnapshot && !searching && (
@@ -1441,6 +1708,21 @@ export function DirectoryAssetPanel() {
           >
             <Copy size={14} />
           </button>
+          {selectedVideoPaths.length > 0 && (
+            <button
+              onClick={() => {
+                const primary = files.find((item) => item.path === selectedVideoPaths[0]);
+                if (primary) store.selectDirectoryEntry(primary);
+                window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
+                  detail: { path: selectedVideoPaths[0], paths: selectedVideoPaths, tool: "gif" },
+                })), 0);
+              }}
+              title={`用 ${selectedVideoPaths.length} 个视频片段生成 GIF`}
+              aria-label="打开多视频 GIF 工作台"
+            >
+              <Film size={14} />
+            </button>
+          )}
           <button onClick={() => void batchCopyTo()} title="复制到…">
             <Copy size={14} />
           </button>
@@ -1503,12 +1785,12 @@ export function DirectoryAssetPanel() {
       <div className="dir-path-bar">
         <button
           className="secondary-button"
-          aria-label="上一级目录"
+          aria-label={translate("directory.up")}
           disabled={!store.directoryPath}
           onClick={() => void store.goUpDirectory()}
         >
           <ArrowUp size={14} />
-          上一级
+          {translate("directory.up")}
         </button>
         <div className="dir-crumbs">
           {crumbs.map((crumb, index) => (
@@ -1525,21 +1807,20 @@ export function DirectoryAssetPanel() {
           ))}
         </div>
         <label className="dir-flatten-control">
-          <span>子目录</span>
+          <span>{translate("directory.subdirectories")}</span>
           <select
+            data-testid="directory-flatten-depth"
             value={currentFlattenDepth}
             onChange={(event) => void setFlattenDepth(Number(event.target.value))}
-            aria-label="包含子目录层级"
+            aria-label={translate("directory.subdirectories")}
           >
-            <option value={0}>仅当前层</option>
-            <option value={1}>包含 1 层</option>
-            <option value={2}>包含 2 层</option>
-            <option value={3}>包含 3 层</option>
-            <option value={4}>包含 4 层</option>
-            <option value={5}>包含 5 层</option>
-            <option value={6}>包含 6 层</option>
-            <option value={7}>包含 7 层</option>
-            <option value={8}>全部层级（8 层）</option>
+            <option value={0}>{translate("directory.currentOnly")}</option>
+            {[1, 2, 3, 4, 5, 6, 7].map((depth) => (
+              <option key={depth} value={depth}>
+                {translate("directory.includeDepth").replace("{depth}", String(depth))}
+              </option>
+            ))}
+            <option value={8}>{translate("directory.includeAllDepths")}</option>
           </select>
         </label>
         <label className="dir-sequence-toggle">
@@ -1550,17 +1831,17 @@ export function DirectoryAssetPanel() {
               void setSequenceCollapsing(event.target.checked)
             }
           />
-          <span>合并序列</span>
+          <span>{translate("directory.mergeSequences")}</span>
         </label>
       </div>
-      <div className="dir-format-filter" role="group" aria-label="格式筛选">
+      <div className="dir-format-filter" role="group" aria-label={translate("directory.formatFilter")}>
         <button
           type="button"
           className={formatFilter === "all" ? "active" : ""}
           aria-pressed={formatFilter === "all"}
           onClick={() => setFormatFilter("all")}
         >
-          全部
+          {translate("directory.all")}
         </button>
         {foundSettings.formatGroups.map((group) => (
           <button
@@ -1568,7 +1849,7 @@ export function DirectoryAssetPanel() {
             key={group.id}
             className={formatFilter === group.id ? "active" : ""}
             aria-pressed={formatFilter === group.id}
-            title={`${group.extensions.length} 个扩展名`}
+            title={translate("directory.extensionCount").replace("{count}", String(group.extensions.length))}
             onClick={() => setFormatFilter(group.id)}
           >
             {group.label}
@@ -1578,7 +1859,7 @@ export function DirectoryAssetPanel() {
           type="button"
           className={formatFilter === "other" ? "active" : ""}
           aria-pressed={formatFilter === "other"}
-          title={`${foundSettings.formatWhitelist.length} 个扩展名`}
+          title={translate("directory.extensionCount").replace("{count}", String(foundSettings.formatWhitelist.length))}
           onClick={() => setFormatFilter("other")}
         >
           OTHER
@@ -1587,7 +1868,7 @@ export function DirectoryAssetPanel() {
 
       {currentFlattenDepth > 0 && totalEntries > 5000 && (
         <div className="dir-flatten-warning">
-          该目录展开后内容较多（{totalEntries} 项），滚动可能变慢。可减少展开深度。
+          {translate("directory.flattenWarning").replace("{count}", String(totalEntries))}
         </div>
       )}
 
@@ -1640,13 +1921,17 @@ export function DirectoryAssetPanel() {
                       left: column * (cardWidth + gap),
                       top: row * rowHeight,
                       width: cardWidth,
+                      ...(currentFlattenDepth > 0 && (entry.depth ?? 0) > 0
+                        ? { "--directory-group-color": directoryGroupColor(entry.path) }
+                        : {}),
                     }}
+                    data-flatten-group={currentFlattenDepth > 0 && (entry.depth ?? 0) > 0}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       setContextMenu({
                         entry,
-                        x: Math.max(8, Math.min(event.clientX, window.innerWidth - 236)),
-                        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 312)),
+                        x: event.clientX,
+                        y: event.clientY,
                       });
                     }}
                   >
@@ -1672,13 +1957,17 @@ export function DirectoryAssetPanel() {
                     left: column * (cardWidth + gap),
                     top: row * rowHeight,
                     width: cardWidth,
+                    ...(currentFlattenDepth > 0 && (entry.depth ?? 0) > 0
+                      ? { "--directory-group-color": directoryGroupColor(entry.path) }
+                      : {}),
                   }}
+                  data-flatten-group={currentFlattenDepth > 0 && (entry.depth ?? 0) > 0}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     setContextMenu({
                       entry,
-                      x: Math.max(8, Math.min(event.clientX, window.innerWidth - 236)),
-                      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 312)),
+                      x: event.clientX,
+                      y: event.clientY,
                     });
                   }}
                 >
@@ -1694,6 +1983,7 @@ export function DirectoryAssetPanel() {
                     onEnter={() => void store.openDirectory(entry.path)}
                     onSelect={(event) => selectEntry(entry, event)}
                     onPreview={() => openPreview(entry)}
+                    onDragOut={() => dragOutEntry(entry)}
                     folderClickMode={foundSettings.folderClickMode}
                     displayName={
                       currentFlattenDepth > 0 && (entry.depth ?? 0) > 0
@@ -1710,25 +2000,27 @@ export function DirectoryAssetPanel() {
               );
             })}
           </div>
-          {loadingMore && <div className="load-more">正在加载…</div>}
+          {loadingMore && <div className="load-more">{translate("directory.loading")}</div>}
         </div>
       ) : (
         <div className="empty-state">
           <span className="empty-icon">
             <FolderOpen size={25} />
           </span>
-          <h3>{query ? "没有匹配的文件" : "目录为空"}</h3>
+          <h3>{translate(query ? "directory.searchEmpty" : "directory.empty")}</h3>
           <p>
             {query
-              ? "尝试更换关键词；子目录结果会流式追加。"
-              : "浏览不会建立副本，使用时再按需建立链接索引。"}
+              ? translate("directory.searchEmptyHint")
+              : translate("directory.emptyHint")}
           </p>
         </div>
       )}
 
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="asset-context-menu"
+          role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -1865,6 +2157,38 @@ export function DirectoryAssetPanel() {
                 <Shrink size={16} />
                 Downscale…
               </button>
+              {/^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(contextMenu.entry.extension) && (
+                <>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      const entry = contextMenu.entry;
+                      setContextMenu(null);
+                      store.selectDirectoryEntry(entry);
+                      window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
+                        detail: { path: entry.path, tool: "gif" },
+                      })), 0);
+                    }}
+                  >
+                    <Film size={16} />
+                    GIF 工作台…
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      const entry = contextMenu.entry;
+                      setContextMenu(null);
+                      store.selectDirectoryEntry(entry);
+                      window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
+                        detail: { path: entry.path, tool: "frames" },
+                      })), 0);
+                    }}
+                  >
+                    <Film size={16} />
+                    导出 PNG/JPG 序列帧…
+                  </button>
+                </>
+              )}
               {registeredScripts.length > 0 && (
                 <>
                   <span className="context-menu-divider" />

@@ -15,6 +15,7 @@ function assetFixture(extension = "png") {
   return {
     id: "asset-1",
     title: "a.png",
+    path: "D:\\refs\\a.png",
     previewUrl: "refbrowse://preview/token-1",
     thumbnailUrl: "refbrowse://thumbnail/token-1",
     extension,
@@ -104,5 +105,31 @@ describe("ImageReviewPreview (FND-005)", () => {
       root.render(<ImageReviewPreview asset={asset} />);
     });
     expect(host.querySelector("[aria-label='图层']")).toBeNull();
+  });
+
+  it("opens the shared workbench color drawer from an extracted image color", async () => {
+    const onOpenColor = vi.fn();
+    const color = { rgb: [12, 34, 56] as [number, number, number], hex: "#0c2238", count: 10 };
+    Object.assign(window, {
+      refCanvas: {
+        media: { palette: vi.fn(async () => [color]) },
+        filesystem: { previewToken: vi.fn() },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+        },
+      },
+    });
+    const { host, root, asset } = render();
+    await act(async () => {
+      root.render(<ImageReviewPreview asset={asset} onOpenColor={onOpenColor} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="查看颜色 #0c2238"]')?.click();
+    });
+    expect(onOpenColor).toHaveBeenCalledWith(color);
   });
 });

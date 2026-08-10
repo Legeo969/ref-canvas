@@ -157,12 +157,12 @@ export function assertComfyAddressAllowed(address: string): string {
   if (protocol !== "http:" && protocol !== "https:") {
     throw new Error("COMFYUI_INVALID_ADDRESS");
   }
+  const normalizedHost = hostname.replace(/^\[|\]$/g, "").toLowerCase();
   const allowed =
-    hostname === "localhost" ||
-    hostname === "::1" ||
-    hostname === "[::1]" ||
-    hostname === "127.0.0.1" ||
-    /^127\.(0|1)\.(0|1)\.\d{1,3}$/.test(hostname);
+    normalizedHost === "localhost" ||
+    normalizedHost === "::1" ||
+    /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(normalizedHost) &&
+      normalizedHost.split(".").every((part) => Number(part) <= 255);
   if (!allowed) throw new Error("COMFYUI_ADDRESS_NOT_LOCAL");
   return url.toString().replace(/\/$/, "");
 }

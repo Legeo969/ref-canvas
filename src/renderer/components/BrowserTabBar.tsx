@@ -49,6 +49,7 @@ export function BrowserTabBar() {
           key={tab.id}
           role="tab"
           aria-selected={tab.id === activeId}
+          tabIndex={tab.id === activeId ? 0 : -1}
           className={`browser-tab ${tab.id === activeId ? "active" : ""}`}
           draggable
           onDragStart={(event) => {
@@ -58,6 +59,15 @@ export function BrowserTabBar() {
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => onDrop(event, tab.id)}
           onClick={() => void store.switchBrowserTab(tab.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              void store.switchBrowserTab(tab.id);
+            }
+          }}
+          onAuxClick={(event) => {
+            if (event.button === 1) void store.closeBrowserTab(tab.id);
+          }}
         >
           <TabTitle tab={tab} />
           <button

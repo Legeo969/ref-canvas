@@ -323,7 +323,7 @@ button[aria-label] {
 
 .browser-tabbar {
   display: flex;
-  min-height: 36px;
+  min-height: 46px;
   align-items: flex-end;
   gap: 4px;
   padding: 5px 8px 0;
@@ -336,7 +336,7 @@ button[aria-label] {
   display: inline-flex;
   max-width: 200px;
   min-width: 0;
-  height: 28px;
+  height: 40px;
   align-items: center;
   gap: 6px;
   padding: 0 6px 0 10px;
@@ -378,8 +378,8 @@ button[aria-label] {
 
 .browser-tab-close {
   display: grid;
-  width: 18px;
-  height: 18px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border: 0;
   border-radius: 5px;
@@ -396,8 +396,8 @@ button[aria-label] {
 
 .browser-tab-new {
   display: grid;
-  width: 26px;
-  height: 26px;
+  width: 40px;
+  height: 40px;
   place-items: center;
   border: 0;
   border-radius: 7px;

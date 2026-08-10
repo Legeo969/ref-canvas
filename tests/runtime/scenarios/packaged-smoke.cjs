@@ -9,17 +9,39 @@ async function runPackagedSmoke(client, browseRoot) {
     `window.refCanvas && typeof window.refCanvas.filesystem?.listDirectory === "function"`,
     "RENDERER_API",
   );
-  await waitFor(
-    client,
-    `document.querySelector(".app-shell .workspace.directory-workspace") !== null`,
-    "RENDERER_UI",
-    10_000,
-  );
+  try {
+    await waitFor(
+      client,
+      `document.querySelector(".app-shell .workspace.directory-workspace") !== null`,
+      "RENDERER_UI",
+      10_000,
+    );
+  } catch (error) {
+    const diagnostic = await evaluate(
+      client,
+      `({
+        text: document.body?.innerText?.slice(0, 800) ?? "",
+        html: document.body?.innerHTML?.slice(0, 1200) ?? "",
+        scripts: Array.from(document.scripts).map((item) => item.src),
+        resources: performance.getEntriesByType("resource").map((item) => ({ name: item.name, duration: item.duration, size: item.transferSize })).slice(-12),
+      })`,
+    ).catch(() => ({ text: "", html: "" }));
+    const events = client.events
+      .filter((event) => event.method === "Runtime.exceptionThrown" || event.method === "Log.entryAdded" || event.method === "Runtime.consoleAPICalled")
+      .slice(-12);
+    throw new Error(`${error.message}:${JSON.stringify({ diagnostic, events })}`);
+  }
   await evaluate(
     client,
     `(async () => {
       const browseRoot = ${JSON.stringify(browseRoot)};
       await window.refCanvas.mounts.add(browseRoot);
+      // 固定烟测语言，避免默认语言调整让 DOM 文案断言产生假失败。
+      const preferences = await window.refCanvas.system.getPreferences();
+      await window.refCanvas.system.setPreferences({
+        ...preferences,
+        language: "zh-CN",
+      });
       const raw = await window.refCanvas.system.getNavigationState();
       let current = {};
       try {
@@ -85,9 +107,23 @@ async function runPackagedSmoke(client, browseRoot) {
       const directoryCard = await waitForSelector(".directory-card");
       directoryCard?.click();
       const inspector = await waitForSelector(".directory-details-panel");
+      await waitForSelector(".directory-details-panel .directory-inspector-title");
       const inspectorTitle =
         inspector?.querySelector(".directory-inspector-title")
           ?.textContent?.trim() ?? null;
+      const libraryPreferences = await window.refCanvas.library.getPreferences();
+      await window.refCanvas.library.setPreferences({
+        panelLayout: {
+          ...libraryPreferences.panelLayout,
+          detailsWidth: 1000,
+        },
+      });
+      const aiTab = Array.from(
+        document.querySelectorAll('.directory-details-panel [role="tab"]'),
+      ).find((item) => item.textContent?.includes("AI 设计监督"));
+      aiTab?.click();
+      const embeddedAi = await waitForSelector(".directory-details-panel .ai-panel.embedded");
+      const detachedAi = document.querySelector(".ai-panel-backdrop:not(.embedded)");
       const professionalSettingsVisible = Boolean(
         document.querySelector('[aria-label="打开专业预览设置"]'),
       );
@@ -106,6 +142,8 @@ async function runPackagedSmoke(client, browseRoot) {
         defaultWorkspaceMode,
         boardVisibleByDefault,
         inspectorTitle,
+        embeddedAiVisible: Boolean(embeddedAi),
+        detachedAiVisible: Boolean(detachedAi),
         boardWorkspaceVisible: Boolean(
           boardWorkspace?.querySelector(".board-panel"),
         ),
@@ -154,6 +192,9 @@ async function runPackagedSmoke(client, browseRoot) {
   }
   if (result.inspectorTitle !== "runtime-smoke.txt") {
     throw new Error(`DIRECTORY_INSPECTOR_MISMATCH:${result.inspectorTitle}`);
+  }
+  if (!result.embeddedAiVisible || result.detachedAiVisible) {
+    throw new Error(`AI_WORKBENCH_MISMATCH:${JSON.stringify({ embedded: result.embeddedAiVisible, detached: result.detachedAiVisible })}`);
   }
   if (!result.boardWorkspaceVisible) {
     throw new Error("BOARD_WORKSPACE_NOT_VISIBLE");

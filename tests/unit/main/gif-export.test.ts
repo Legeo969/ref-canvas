@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   exportSequenceToGif,
   exportVideoToGif,
+  exportVideosToGif,
 } from "../../../src/main/services/media/gif-export";
 import { packagedFfmpegPath } from "../../../src/main/services/media/ffmpeg-tools";
 import { readFfprobeFullMetadata } from "../../../src/main/services/media/ffprobe-full";
@@ -79,6 +80,38 @@ describe("GIF export", () => {
     expect(probe.video?.codecName).toBe("gif");
     expect(result.width).toBe(240);
     expect(result.height).toBe(135);
+  });
+
+  it("concatenates trimmed ranges from multiple videos", async () => {
+    const directory = await withTemp();
+    const first = path.join(directory, "first.mp4");
+    const second = path.join(directory, "second.mp4");
+    await execFileAsync(packagedFfmpegPath(), [
+      "-y", "-f", "lavfi", "-i", "color=red:s=320x180:r=24:d=0.6",
+      "-pix_fmt", "yuv420p", first,
+    ], { windowsHide: true });
+    await execFileAsync(packagedFfmpegPath(), [
+      "-y", "-f", "lavfi", "-i", "color=blue:s=180x320:r=24:d=0.6",
+      "-pix_fmt", "yuv420p", second,
+    ], { windowsHide: true });
+    const outputPath = path.join(directory, "joined.gif");
+
+    const result = await exportVideosToGif({
+      clips: [
+        { inputPath: first, startMs: 100, endMs: 500 },
+        { inputPath: second, startMs: 0, endMs: 400 },
+      ],
+      fps: 10,
+      maxWidth: 240,
+      colors: 64,
+      dither: "none",
+      outputPath,
+    });
+
+    expect(result.width).toBe(240);
+    expect(result.height).toBe(136);
+    expect(result.durationSeconds).toBeGreaterThan(0.6);
+    expect(result.sizeBytes).toBeGreaterThan(0);
   });
 
   it("uses the Beauty layer when exporting a multi-layer EXR sequence", async () => {

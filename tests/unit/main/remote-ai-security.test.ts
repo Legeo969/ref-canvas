@@ -96,6 +96,7 @@ describe("remote-ai-security (FND-010 §9.6)", () => {
       Host: "bucket.s3.amazonaws.com",
       "Proxy-Connection": "keep-alive",
       "Content-Type": "image/png",
+      "X-Not-Signed": "drop-me",
     });
     expect(filtered["x-amz-credential"]).toBe("abc");
     expect(filtered["content-md5"]).toBe("x");
@@ -103,7 +104,17 @@ describe("remote-ai-security (FND-010 §9.6)", () => {
     expect(filtered["Cookie"]).toBeUndefined();
     expect(filtered["Host"]).toBeUndefined();
     expect(filtered["Proxy-Connection"]).toBeUndefined();
-    expect(filtered["Content-Type"]).toBeUndefined();
+    expect(filtered["Content-Type"]).toBe("image/png");
+    expect(filtered["X-Not-Signed"]).toBeUndefined();
+  });
+
+  it("rejects IPv4-mapped loopback IPv6 and malformed numeric hosts", async () => {
+    expect(
+      (await validatePublicHttpsUrl("https://[::ffff:127.0.0.1]/v1")).ok,
+    ).toBe(false);
+    expect(
+      (await validatePublicHttpsUrl("https://999.999.999.999/v1")).ok,
+    ).toBe(false);
   });
 
   it("poll backoff: 1,2,4,8 then 10s; Retry-After takes max", () => {

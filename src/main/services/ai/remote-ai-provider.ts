@@ -17,6 +17,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import type {
   AiDesignRequest,
   AiProviderHealth,
@@ -88,6 +89,33 @@ export interface RemotePreparedUpload {
   expiresAt: string;
 }
 
+const preparedUploadSchema = z.object({
+  clientFileId: z.string().min(1).max(64),
+  uploadId: z.string().min(1).max(1024),
+  method: z.literal("PUT"),
+  url: z.string().url().max(16_384),
+  headers: z.record(z.string(), z.string().max(4096)).default({}),
+  expiresAt: z.string().max(256).default(""),
+});
+
+const preparedUploadsSchema = z.object({
+  uploads: z.array(preparedUploadSchema).max(7),
+});
+
+const INPUT_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  bmp: "image/bmp",
+  heic: "image/heic",
+  heif: "image/heif",
+  avif: "image/avif",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+};
+
 export class RemoteRestProvider implements AiProvider {
   readonly kind: AiProviderKind = "remote-rest";
   private readonly baseUrl: string;
@@ -116,6 +144,16 @@ export class RemoteRestProvider implements AiProvider {
     );
     if (!validation.ok) {
       return { kind: "remote-rest", ok: false, detail: validation.reason ?? "URL 无效", latencyMs: Date.now() - started };
+    }
+    try {
+      await this.token();
+    } catch {
+      return {
+        kind: "remote-rest",
+        ok: false,
+        detail: "Bearer token 未配置或不可读取",
+        latencyMs: Date.now() - started,
+      };
     }
     return {
       kind: "remote-rest",
@@ -176,19 +214,25 @@ export class RemoteRestProvider implements AiProvider {
       },
       timeoutMs: this.timeoutMs,
     });
-    if (createResponse.status === 409) {
-      // 幂等冲突：同 clientRequestId 已存在 → 读取既有任务。
-      const existing = await this.getJobByRequestId(clientRequestId);
-      return { externalId: existing.id, recovery: { remoteJobId: existing.id } };
-    }
-    if (createResponse.status !== 201 && createResponse.status !== 200) {
+    if (![200, 201, 409].includes(createResponse.status)) {
       throw new Error(`REMOTE_CREATE_JOB_REJECTED:${createResponse.status}`);
     }
     const created = createResponse.body as { id?: string };
-    if (!created?.id) throw new Error("REMOTE_JOB_ID_MISSING");
+    if (!created?.id) {
+      throw new Error(
+        createResponse.status === 409
+          ? "REMOTE_IDEMPOTENCY_CONFLICT_WITHOUT_JOB"
+          : "REMOTE_JOB_ID_MISSING",
+      );
+    }
 
     // 4) 轮询状态。
-    onProgress({ state: "generating", stage: "generating", progress: 0.35 });
+    onProgress({
+      state: "generating",
+      stage: "generating",
+      progress: 0.35,
+      externalId: created.id,
+    });
     const outputs = await this.pollUntilComplete(
       created.id,
       token,
@@ -203,6 +247,7 @@ export class RemoteRestProvider implements AiProvider {
 
   async cancel(_jobId: string, externalId: string | null): Promise<AiProviderCancelResult> {
     if (!externalId) return { cancelled: false, reason: "无外部任务 id" };
+    await this.assertBaseUrlAllowed();
     const response = await this.transport.request({
       method: "POST",
       url: `${this.baseUrl}/v1/design-jobs/${encodeURIComponent(externalId)}/cancel`,
@@ -245,7 +290,10 @@ export class RemoteRestProvider implements AiProvider {
         clientFileId: file.clientFileId,
         name: file.name,
         size: buffer.length,
-        mime: "image/png",
+        mime:
+          INPUT_MIME_BY_EXTENSION[
+            path.extname(file.path).replace(/^\./, "").toLowerCase()
+          ] ?? "application/octet-stream",
         sha256: createHash("sha256").update(buffer).digest("hex"),
       });
     }
@@ -257,16 +305,18 @@ export class RemoteRestProvider implements AiProvider {
       timeoutMs: this.timeoutMs,
     });
     if (response.status !== 200) throw new Error(`REMOTE_PREPARE_REJECTED:${response.status}`);
-    const body = response.body as { uploads?: Array<Record<string, unknown>> };
-    const uploads = body?.uploads ?? [];
-    return uploads.map((entry) => ({
-      clientFileId: String(entry.clientFileId),
-      uploadId: String(entry.uploadId),
-      method: (entry.method ?? "PUT") as "PUT",
-      url: String(entry.url),
-      headers: (entry.headers as Record<string, string>) ?? {},
-      expiresAt: String(entry.expiresAt ?? ""),
-    }));
+    const parsed = preparedUploadsSchema.safeParse(response.body);
+    if (!parsed.success) throw new Error("REMOTE_PREPARE_RESPONSE_INVALID");
+    const expectedIds = new Set(files.map((file) => file.clientFileId));
+    const actualIds = new Set(parsed.data.uploads.map((entry) => entry.clientFileId));
+    if (
+      actualIds.size !== parsed.data.uploads.length ||
+      actualIds.size !== expectedIds.size ||
+      [...expectedIds].some((id) => !actualIds.has(id))
+    ) {
+      throw new Error("REMOTE_PREPARE_RESPONSE_MISMATCH");
+    }
+    return parsed.data.uploads;
   }
 
   private async uploadToPresigned(
@@ -288,19 +338,6 @@ export class RemoteRestProvider implements AiProvider {
     if (response.status !== 200 && response.status !== 201) {
       throw new Error(`REMOTE_UPLOAD_REJECTED:${response.status}`);
     }
-  }
-
-  private async getJobByRequestId(clientRequestId: string): Promise<{ id: string }> {
-    const response = await this.transport.request({
-      method: "POST",
-      url: `${this.baseUrl}/v1/design-jobs`,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await this.token()}` },
-      body: { clientRequestId, sourceUploadId: "", referenceUploadIds: [], prompt: "", majorChange: false, outputCount: 1 },
-      timeoutMs: this.timeoutMs,
-    });
-    const body = response.body as { id?: string };
-    if (!body?.id) throw new Error("REMOTE_JOB_ID_MISSING");
-    return { id: body.id };
   }
 
   private async pollUntilComplete(

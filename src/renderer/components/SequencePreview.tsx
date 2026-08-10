@@ -3,10 +3,12 @@ import {
   Expand,
   Film,
   FolderOpen,
+  Gauge,
   Pause,
   Play,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +19,7 @@ import type {
 } from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
+import { PreviewColorBar } from "./PreviewColorBar";
 
 /**
  * 图片序列预览（阶段 3 §9.4）：播放、逐帧、FPS 调节、帧范围/缺帧显示。
@@ -77,6 +80,7 @@ export function SequencePreviewDialog({
       ? foundSettings.defaultSequenceFps
       : (sequence.fps || 24),
   );
+  const [optionsDrawer, setOptionsDrawer] = useState<"fps" | "mp4" | null>(null);
   const [failed, setFailed] = useState(false);
   const tokens = useFrameTokens(frames);
   const fpsPresets = foundSettings.sequenceFpsPresets.length
@@ -106,6 +110,7 @@ export function SequencePreviewDialog({
   const fpsRef = useRef(fps);
   const timerRef = useRef<number | null>(null);
   const displayedSourceRef = useRef<string | null>(null);
+  const displayedImageRef = useRef<HTMLImageElement | null>(null);
   const [displayedSource, setDisplayedSource] = useState<string | null>(null);
 
   useEffect(() => {
@@ -335,6 +340,7 @@ export function SequencePreviewDialog({
         <div className="quick-preview-stage sequence-preview-stage">
           {displayedSource && !failed ? (
             <img
+              ref={displayedImageRef}
               src={displayedSource}
               alt={translate("sequence.frameAlt")
                 .replace("{name}", sequence.baseName)
@@ -375,21 +381,15 @@ export function SequencePreviewDialog({
             >
               <SkipForward size={15} />
             </button>
-            <select
-              className="fps-select"
-              value={fps}
+            <button
+              className={`sequence-option-trigger ${optionsDrawer === "fps" ? "active" : ""}`}
               aria-label={translate("sequence.fps")}
-              onChange={(event) => {
-                const value = Number(event.target.value);
-                setFps(Number.isFinite(value) ? value : fpsPresets[0]);
-              }}
+              aria-expanded={optionsDrawer === "fps"}
+              onClick={() => setOptionsDrawer((current) => current === "fps" ? null : "fps")}
             >
-              {fpsPresets.map((candidate) => (
-                <option key={candidate} value={candidate}>
-                  {candidate} FPS
-                </option>
-              ))}
-            </select>
+              <Gauge size={14} />
+              {fps} FPS
+            </button>
             <input
               className="sequence-timeline"
               type="range"
@@ -404,19 +404,22 @@ export function SequencePreviewDialog({
             </span>
           </div>
           <div className="sequence-export-row">
+            <PreviewColorBar
+              compact
+              source={() => displayedImageRef.current}
+              revision={displayedSource ?? frameIndex}
+            />
             <div className="sequence-export-summary">
               <span>{translate("sequence.exportPreset")}</span>
-              <select
-                value={exportPresetId}
+              <button
+                className={`sequence-preset-trigger ${optionsDrawer === "mp4" ? "active" : ""}`}
                 aria-label={translate("sequence.exportPreset")}
-                onChange={(event) => setExportPresetId(event.target.value)}
+                aria-expanded={optionsDrawer === "mp4"}
+                onClick={() => setOptionsDrawer((current) => current === "mp4" ? null : "mp4")}
               >
-                {availableMp4Presets.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label} · {preset.codec === "h265" ? "H.265" : "H.264"} · {preset.resolution === "original" ? translate("sequence.resolutionOriginal") : preset.resolution === "half" ? "1/2" : "1/4"}
-                  </option>
-                ))}
-              </select>
+                <SlidersHorizontal size={14} />
+                {availableMp4Presets.find((preset) => preset.id === exportPresetId)?.label ?? "MP4"}
+              </button>
             </div>
             <button
               className="secondary-button sequence-export-button"
@@ -437,6 +440,32 @@ export function SequencePreviewDialog({
               {gifState === "running" ? translate("sequence.exporting") : translate("sequence.exportGif")}
             </button>
           </div>
+          {optionsDrawer === "fps" && (
+            <div className="sequence-options-drawer" aria-label="FPS 预设抽屉">
+              <div className="sequence-drawer-title"><Gauge size={15} /><strong>播放 FPS</strong><span>来自设置中的图片序列预设</span></div>
+              <div className="sequence-drawer-grid">
+                {fpsPresets.map((candidate) => (
+                  <button key={candidate} className={candidate === fps ? "active" : ""} onClick={() => setFps(candidate)}>
+                    <span>{candidate === foundSettings.defaultSequenceFps ? "默认" : "预设"}</span>
+                    <strong>{candidate} FPS</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {optionsDrawer === "mp4" && (
+            <div className="sequence-options-drawer" aria-label="MP4 转换预设抽屉">
+              <div className="sequence-drawer-title"><SlidersHorizontal size={15} /><strong>MP4 转换预设</strong><span>仅显示设置中已启用的预设</span></div>
+              <div className="sequence-drawer-grid mp4">
+                {availableMp4Presets.map((preset) => (
+                  <button key={preset.id} className={preset.id === exportPresetId ? "active" : ""} onClick={() => setExportPresetId(preset.id)}>
+                    <span>{preset.label}</span>
+                    <strong>{preset.codec === "h265" ? "H.265" : "H.264"} · {preset.quality === "best" ? "最佳" : preset.quality === "high" ? "高" : "中"} · {preset.resolution === "original" ? "原始" : preset.resolution === "half" ? "1/2" : "1/4"}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </footer>
 
         {missing.length > 0 && (

@@ -312,6 +312,11 @@ describe("listDirectory flatten + hidden（阶段 5 §10.1）", () => {
       expect(inner?.depth).toBe(1);
       const top = page.entries.find((entry) => entry.name === "top.png");
       expect(top?.depth).toBe(0);
+      expect(page.entries.every((entry) => !entry.isDirectory)).toBe(true);
+      expect(page.entries.map((entry) => entry.name).sort()).toEqual([
+        "inner.png",
+        "top.png",
+      ]);
     } finally {
       directory.close();
       database.close();
@@ -330,6 +335,8 @@ describe("listDirectory flatten + hidden（阶段 5 §10.1）", () => {
       const leaf = page.entries.find((entry) => entry.name === "leaf.png");
       expect(leaf).toBeTruthy();
       expect(leaf?.depth).toBe(2);
+      expect(page.entries).toHaveLength(1);
+      expect(page.entries[0]?.isDirectory).toBe(false);
     } finally {
       directory.close();
       database.close();
@@ -355,6 +362,24 @@ describe("listDirectory flatten + hidden（阶段 5 §10.1）", () => {
     }
   });
 
+  it("始终隐藏 Windows 保护目录", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-system-"));
+    temporaryDirectories.push(root);
+    await Promise.all([
+      mkdir(path.join(root, "$RECYCLE.BIN")),
+      mkdir(path.join(root, "System Volume Information")),
+      mkdir(path.join(root, "素材")),
+    ]);
+    const { database, directory } = createService();
+    try {
+      const page = await directory.listDirectory(root, { showHidden: true });
+      expect(page.entries.map((entry) => entry.name)).toEqual(["素材"]);
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
   it("flatten 模式同样过滤隐藏文件", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
     temporaryDirectories.push(root);
@@ -368,6 +393,32 @@ describe("listDirectory flatten + hidden（阶段 5 §10.1）", () => {
         showHidden: false,
       });
       expect(page.entries.map((entry) => entry.name)).not.toContain(".hidden.png");
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("flatten 模式按过滤后的素材数量计算分页游标", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(root);
+    const sub = path.join(root, "sub");
+    await mkdir(sub);
+    await Promise.all([
+      writeFile(path.join(root, "image.png"), Buffer.alloc(4)),
+      writeFile(path.join(root, "notes.txt"), Buffer.alloc(4)),
+      writeFile(path.join(sub, "more.txt"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    try {
+      const page = await directory.listDirectory(root, {
+        flattenDepth: 1,
+        extensions: ["png"],
+        pageSize: 1,
+      });
+      expect(page.entries.map((entry) => entry.name)).toEqual(["image.png"]);
+      expect(page.total).toBe(1);
+      expect(page.nextCursor).toBeNull();
     } finally {
       directory.close();
       database.close();

@@ -51,10 +51,13 @@ function stubTransport(options: {
   promptReject?: boolean;
   historyError?: boolean;
   delayedHistory?: boolean;
+  neverHistory?: boolean;
+  queueRunning?: boolean;
   pngBuffer: Buffer;
 }) {
   let historyQueries = 0;
   const calls: string[] = [];
+  const promptBodies: unknown[] = [];
   const promptId = "prompt-1";
   const transport: ComfyTransport = {
     async fetchJson(pathname: string, init?: { method?: string; body?: unknown }): Promise<ComfyHttpResponse> {
@@ -63,11 +66,15 @@ function stubTransport(options: {
         return { status: 200, headers: {}, body: { system: {} } };
       }
       if (pathname === "/prompt") {
+        promptBodies.push(init?.body);
         if (options.promptReject) return { status: 400, headers: {}, body: null };
         return { status: 200, headers: {}, body: { prompt_id: promptId } };
       }
       if (pathname.startsWith("/history/")) {
         historyQueries += 1;
+        if (options.neverHistory) {
+          return { status: 200, headers: {}, body: {} };
+        }
         if (options.delayedHistory && historyQueries < 2) {
           return { status: 200, headers: {}, body: {} };
         }
@@ -91,6 +98,20 @@ function stubTransport(options: {
           },
         };
       }
+      if (pathname === "/queue") {
+        if (init?.method === "POST") return { status: 200, headers: {}, body: {} };
+        return {
+          status: 200,
+          headers: {},
+          body: {
+            queue_running: options.queueRunning ? [[0, promptId]] : [],
+            queue_pending: options.queueRunning ? [] : [[1, promptId]],
+          },
+        };
+      }
+      if (pathname === "/interrupt") {
+        return { status: 200, headers: {}, body: {} };
+      }
       return { status: 404, headers: {}, body: null };
     },
     async uploadImage(filename: string, _fileBuffer: Buffer) {
@@ -105,7 +126,7 @@ function stubTransport(options: {
       // no-op
     },
   };
-  return { transport, calls, getHistoryQueries: () => historyQueries };
+  return { transport, calls, promptBodies, getHistoryQueries: () => historyQueries };
 }
 
 async function makePng(): Promise<Buffer> {
@@ -177,6 +198,26 @@ describe("comfyui provider (FND-009)", () => {
     // 输出已写入用户目录并可解码。
     const output = path.join(outputDirectory, "out_00001_.png");
     await expect(stat(output)).resolves.toBeDefined();
+  });
+
+  it("uses an isolated workflow copy and binds the requested output count", async () => {
+    const png = await makePng();
+    const { transport, promptBodies } = stubTransport({ pngBuffer: png });
+    const { provider, request } = await scaffold(transport);
+    await provider.start(
+      {
+        jobId: "job-batch",
+        request: { ...request, outputCount: 3 },
+        clientRequestId: "req-batch",
+      },
+      { isCancelled: () => false },
+      () => undefined,
+    );
+    const submitted = promptBodies[0] as {
+      prompt: ComfyWorkflowDocument;
+    };
+    const sampler = submitted.prompt.nodes?.find((node) => String(node.id) === "3");
+    expect(sampler?.inputs?.batch_size).toBe(3);
   });
 
   it("rejects prompt with field-level failure before creating outputs", async () => {
@@ -264,6 +305,35 @@ describe("comfyui provider (FND-009)", () => {
     ).rejects.toThrow("AI_JOB_CANCELLED");
   });
 
+  it("cancels only its owned running prompt through ComfyUI interrupt", async () => {
+    const png = await makePng();
+    const { transport, calls } = stubTransport({
+      pngBuffer: png,
+      neverHistory: true,
+      queueRunning: true,
+    });
+    const { provider, request } = await scaffold(transport, { pollIntervalMs: 5 });
+    let cancelled = false;
+    let resolveSubmitted!: () => void;
+    const submitted = new Promise<void>((resolve) => { resolveSubmitted = resolve; });
+    const running = provider.start(
+      { jobId: "job-owned", request, clientRequestId: "req-owned" },
+      { isCancelled: () => cancelled },
+      (snapshot) => {
+        if (snapshot.externalId) resolveSubmitted();
+      },
+    );
+    await submitted;
+    const result = await provider.cancel("job-owned", "prompt-1");
+    expect(result.cancelled).toBe(true);
+    cancelled = true;
+    await expect(running).rejects.toThrow("AI_JOB_CANCELLED");
+    expect(calls).toContain("GET /queue");
+    expect(calls).toContain("POST /interrupt");
+    const foreign = await provider.cancel("other-job", "prompt-1");
+    expect(foreign.cancelled).toBe(false);
+  });
+
   it("rejects LAN address at construction", async () => {
     const png = await makePng();
     const { transport } = stubTransport({ pngBuffer: png });
@@ -276,5 +346,19 @@ describe("comfyui provider (FND-009)", () => {
           transport,
         }),
     ).toThrow("COMFYUI_ADDRESS_NOT_LOCAL");
+  });
+
+  it("accepts any valid 127/8 loopback address", async () => {
+    const png = await makePng();
+    const { transport } = stubTransport({ pngBuffer: png });
+    expect(
+      () =>
+        new ComfyUiProvider({
+          address: "http://127.2.3.4:8188",
+          workflow: parseWorkflow(WORKFLOW_JSON)! as ComfyWorkflowDocument,
+          binding: binding(),
+          transport,
+        }),
+    ).not.toThrow();
   });
 });

@@ -30,6 +30,7 @@ export class DirectoryBatchService {
     selection: DirectorySelectionScope,
     action: DirectoryBatchAction,
   ): DirectoryBatchSnapshot {
+    const now = new Date().toISOString();
     const snapshot: DirectoryBatchSnapshot = {
       id: randomUUID(),
       state: "running",
@@ -37,6 +38,8 @@ export class DirectoryBatchService {
       total: selection.mode === "explicit" ? selection.paths.length : 0,
       processed: 0,
       failed: [],
+      createdAt: now,
+      updatedAt: now,
     };
     this.jobs.set(snapshot.id, snapshot);
     void this.run(snapshot, selection);
@@ -70,6 +73,7 @@ export class DirectoryBatchService {
   }
 
   private emit(snapshot: DirectoryBatchSnapshot): void {
+    snapshot.updatedAt = new Date().toISOString();
     this.events.emit("progress", this.get(snapshot.id));
   }
 

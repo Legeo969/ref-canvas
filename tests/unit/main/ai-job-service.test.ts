@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -152,6 +152,29 @@ describe("ai job service (FND-008 §9.2/§9.3)", () => {
     }
   });
 
+  it("probes output writability and removes the temporary probe", async () => {
+    const { service, request, outputDirectory, db } = await scaffold();
+    try {
+      await service.validateRequest(request());
+      expect((await readdir(outputDirectory)).filter((name) => name.startsWith(".refcanvas-write-probe-"))).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("persists repeated progress updates within the same running state", async () => {
+    const { service, request, db } = await scaffold({ stageDelayMs: 150 });
+    try {
+      const job = await service.start("mock", request());
+      await waitFor(() => service.get(job.id)?.progress === 0.8);
+      expect(service.get(job.id)?.state).toBe("generating");
+      await waitFor(() => service.get(job.id)?.state === "completed");
+      expect(db.aiJobs().get(job.id)?.externalId).toBe(`mock-${job.id}`);
+    } finally {
+      db.close();
+    }
+  });
+
   it("cancels a running job and repeated cancel is idempotent", async () => {
     const { service, request, db } = await scaffold({
       stageDelayMs: 400,
@@ -162,13 +185,10 @@ describe("ai job service (FND-008 §9.2/§9.3)", () => {
         const current = service.get(job.id);
         return current?.state === "generating" || current?.state === "uploading";
       });
-      await service.cancel(job.id);
-      await waitFor(async () => {
-        const current = service.get(job.id);
-        return current?.state === "cancelled" || current?.state === "failed";
-      });
+      const cancelled = await service.cancel(job.id);
+      expect(cancelled.state).toBe("cancelled");
       const snapshot = service.get(job.id)!;
-      expect(["cancelled", "failed"]).toContain(snapshot.state);
+      expect(snapshot.state).toBe("cancelled");
       const again = await service.cancel(job.id);
       expect(again.id).toBe(job.id);
     } finally {

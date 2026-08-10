@@ -206,4 +206,57 @@ describe("SequencePreviewDialog", () => {
       baseName: "shot",
     }));
   });
+
+  it("selects FPS and enabled MP4 presets from drawers", async () => {
+    vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      autoplaySequence: false,
+      defaultSequenceFps: 25,
+      sequenceFpsPresets: [24, 25, 30],
+      mp4Presets: [
+        { ...FOUND_SETTINGS_DEFAULTS.mp4Presets[0], enabled: true },
+        { ...FOUND_SETTINGS_DEFAULTS.mp4Presets[1], enabled: true, label: "轻量转换" },
+      ],
+    };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "token") },
+        system: {
+          getPreferences: vi.fn(async () => ({ foundSettings })),
+          pickDirectory: vi.fn(async () => null),
+        },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={sequence} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="帧率"]')?.click();
+    });
+    expect(host.querySelector('[aria-label="FPS 预设抽屉"]')).toBeTruthy();
+    await act(async () => {
+      [...host.querySelectorAll<HTMLButtonElement>('.sequence-drawer-grid button')]
+        .find((button) => button.textContent?.includes("30 FPS"))?.click();
+    });
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="帧率"]')?.textContent).toContain("30 FPS");
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="导出预设"]')?.click();
+    });
+    expect(host.querySelector('[aria-label="MP4 转换预设抽屉"]')).toBeTruthy();
+    await act(async () => {
+      [...host.querySelectorAll<HTMLButtonElement>('.sequence-drawer-grid button')]
+        .find((button) => button.textContent?.includes("轻量转换"))?.click();
+    });
+    expect(host.querySelector<HTMLButtonElement>('button[aria-label="导出预设"]')?.textContent).toContain("轻量转换");
+  });
 });

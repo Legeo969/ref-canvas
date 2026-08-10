@@ -277,6 +277,9 @@
   position: fixed;
   z-index: 120;
   width: 220px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   border-radius: 10px;
   background: rgba(31, 36, 37, 0.98);

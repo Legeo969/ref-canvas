@@ -287,7 +287,7 @@ export function registerLibraryIpc(
             .object({
               sidebarWidth: z.number().min(180).max(480),
               assetWidth: z.number().min(280).max(720),
-              detailsWidth: z.number().min(320).max(600),
+              detailsWidth: z.number().min(320).max(1200),
               collapsed: z.array(
                 z.enum(["sidebar", "asset", "details"]),
               ).max(3),

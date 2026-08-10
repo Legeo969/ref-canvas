@@ -98,14 +98,19 @@ import {
   constrainedAxis,
   cropGestureRect,
   cropPanDelta,
+  cropZoomForHorizontalDrag,
+  flipAxisForDrag,
   isMiddleButtonPointer,
   isPanPointerEvent,
+  MiddlePanSession,
   opacityDelta,
   normalizeSignedAngle,
-  rotationForGesture,
-  restoreRotationGesture,
+  pointerAngleDelta,
+  recoveredPrimaryMouseUp,
   snapRotationAngle,
-  scaleForGesture,
+  scaleForHorizontalDrag,
+  stationarySnapCandidates,
+  type PrimaryPointerSnapshot,
   zoomFactorForDrag,
 } from "../app/board-gestures";
 import {
@@ -224,6 +229,22 @@ type CanvasObjectWithData = FabricObject & {
   };
 };
 
+interface PureRefGestureSnapshot {
+  angle: number;
+  scaleX: number;
+  scaleY: number;
+  opacity: number;
+  flipX: boolean;
+  flipY: boolean;
+  left: number;
+  top: number;
+  cropX?: number;
+  cropY?: number;
+  width: number;
+  height: number;
+  viewport?: TMat2D;
+}
+
 function ensureObjectIdentity(
   object: CanvasObjectWithData,
   options: { fresh?: boolean; name?: string } = {},
@@ -334,8 +355,11 @@ export function BoardCanvas({
     useRef<BoardSettings["interactionPreset"]>("pureref");
   const snapEnabledRef = useRef(true);
   const bringToFrontOnSelectRef = useRef(false);
-  /** PureRef 手势当前按住的功能键（z/c/v，不含修饰键组合）。 */
+  /** PureRef 连续功能键（Z/C/V/S/D，不含修饰键组合）。 */
   const heldKeysRef = useRef<Set<string>>(new Set());
+  const finishContinuousGestureRef = useRef<((key: string) => void) | null>(
+    null,
+  );
   /** 当前正在进行的自定义指针手势（用于手势级撤销抑制与 HUD）。 */
   const gestureRef = useRef<{
     kind:
@@ -345,17 +369,24 @@ export function BoardCanvas({
       | "zoom"
       | "crop"
       | "cropPan"
+      | "cropZoom"
+      | "flip"
       | null;
     startX: number;
     startY: number;
     lastX: number;
     lastY: number;
     target: CanvasObjectWithData | null;
+    selection: CanvasObjectWithData | null;
     baseOpacity: number;
+    snapshot?: PureRefGestureSnapshot;
+    changed: boolean;
     transform?: {
       center: { x: number; y: number };
       startPoint: { x: number; y: number };
+      lastPoint: { x: number; y: number };
       baseAngle: number;
+      accumulatedAngle: number;
       baseScaleX: number;
       baseScaleY: number;
     };
@@ -367,7 +398,9 @@ export function BoardCanvas({
     lastX: 0,
     lastY: 0,
     target: null,
+    selection: null,
     baseOpacity: 1,
+    changed: false,
     suppressSave: false,
   });
   /** C+左裁切手势的临时覆盖矩形。 */
@@ -413,6 +446,94 @@ export function BoardCanvas({
     visible: boolean;
   } | null>(null);
   const snapFadeTimerRef = useRef<number | null>(null);
+
+  const snapshotPureRefTarget = (
+    target: CanvasObjectWithData | null,
+    viewport?: TMat2D,
+  ): PureRefGestureSnapshot | undefined => {
+    if (!target && !viewport) return undefined;
+    const image = target instanceof FabricImage ? target : null;
+    return {
+      angle: target?.angle ?? 0,
+      scaleX: target?.scaleX ?? 1,
+      scaleY: target?.scaleY ?? 1,
+      opacity: target?.opacity ?? 1,
+      flipX: target?.flipX ?? false,
+      flipY: target?.flipY ?? false,
+      left: target?.left ?? 0,
+      top: target?.top ?? 0,
+      width: target?.width ?? 0,
+      height: target?.height ?? 0,
+      cropX: image?.cropX ?? 0,
+      cropY: image?.cropY ?? 0,
+      viewport,
+    };
+  };
+
+  const restoreCanvasInteraction = (canvas: FabricCanvas) => {
+    const interaction = boardToolInteractionState(
+      toolRef.current,
+      canvasModeRef.current.locked,
+    );
+    canvas.selection = interaction.selection;
+    canvas.defaultCursor =
+      toolRef.current === "select"
+        ? "default"
+        : toolRef.current === "eraser"
+          ? "not-allowed"
+          : "crosshair";
+    canvas.setCursor(canvas.defaultCursor);
+  };
+
+  /** Esc：恢复本次 PureRef 连续手势的完整起始状态，不写入 undo。 */
+  const cancelPureRefGesture = (): boolean => {
+    const gesture = gestureRef.current;
+    if (!gesture.kind) return false;
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    const snapshot = gesture.snapshot;
+    if (gesture.target && snapshot) {
+      gesture.target.set({
+        angle: snapshot.angle,
+        scaleX: snapshot.scaleX,
+        scaleY: snapshot.scaleY,
+        opacity: snapshot.opacity,
+        flipX: snapshot.flipX,
+        flipY: snapshot.flipY,
+        left: snapshot.left,
+        top: snapshot.top,
+        width: snapshot.width,
+        height: snapshot.height,
+      });
+      if (gesture.target instanceof FabricImage) {
+        gesture.target.set({
+          cropX: snapshot.cropX ?? 0,
+          cropY: snapshot.cropY ?? 0,
+        });
+      }
+      gesture.target.setCoords();
+    }
+    if (snapshot?.viewport) {
+      canvas.setViewportTransform([...snapshot.viewport] as TMat2D);
+      setZoom(Math.round(canvas.getZoom() * 100));
+    }
+    if (cropRectRef.current) {
+      canvas.remove(cropRectRef.current);
+      cropRectRef.current = null;
+    }
+    if (gesture.selection) canvas.setActiveObject(gesture.selection);
+    else canvas.discardActiveObject();
+    gesture.kind = null;
+    gesture.changed = false;
+    gesture.suppressSave = false;
+    gesture.target = null;
+    gesture.selection = null;
+    moveStartRef.current = null;
+    restoreCanvasInteraction(canvas);
+    canvas.requestRenderAll();
+    setHudMessage(null);
+    return true;
+  };
 
   const closeLayerMenu = () => {
     setLayerMenuId(null);
@@ -985,13 +1106,12 @@ export function BoardCanvas({
         .get(selection.missingAssetId)
         .then((loaded) => onSelectAssetRef.current(loaded));
     };
-    canvas.on("selection:created", (event) => {
+    canvas.on("selection:created", () => {
       const selection = canvas.getActiveObject();
       if (selection) applyBoardControls(selection);
-      const raw = event.selected?.[0];
       const target =
-        raw && !(raw instanceof ActiveSelection)
-          ? (raw as CanvasObjectWithData)
+        selection && !(selection instanceof ActiveSelection)
+          ? (selection as CanvasObjectWithData)
           : undefined;
       // 选中置顶偏好：点击图片对象时移到图层最前（不产生独立 undo 记录，
       // 归入下一次手势或直接持久化）。
@@ -1005,10 +1125,13 @@ export function BoardCanvas({
       selectTargetAsset(target);
       setLayerVersion((value) => value + 1);
     });
-    canvas.on("selection:updated", (event) => {
+    canvas.on("selection:updated", () => {
       const selection = canvas.getActiveObject();
       if (selection) applyBoardControls(selection);
-      const target = event.selected?.[0] as CanvasObjectWithData | undefined;
+      const target =
+        selection && !(selection instanceof ActiveSelection)
+          ? (selection as CanvasObjectWithData)
+          : undefined;
       selectTargetAsset(target);
       setLayerVersion((value) => value + 1);
     });
@@ -1033,9 +1156,15 @@ export function BoardCanvas({
       const threshold = 6 / canvas.getZoom();
       if (snapGestureTarget !== target) {
         snapGestureTarget = target;
-        snapCandidates = (canvas.getObjects() as CanvasObjectWithData[]).filter(
-          (object) => object !== target && object.visible,
-        );
+        const movingMembers =
+          target instanceof ActiveSelection
+            ? (target.getObjects() as CanvasObjectWithData[])
+            : [];
+        snapCandidates = stationarySnapCandidates(
+          canvas.getObjects() as CanvasObjectWithData[],
+          target,
+          movingMembers,
+        ).filter((object) => object.visible);
       }
       let snapped: { x?: number; y?: number; other?: CanvasObjectWithData } = {};
       if (appearanceRef.current.gridVisible) {
@@ -1170,13 +1299,63 @@ export function BoardCanvas({
     });
 
     let panning = false;
-    let panButton: "middle" | "alt-left" | null = null;
+    const nativeMiddlePan = new MiddlePanSession();
+    let panButton: "middle" | "alt-left" | "locked-left" | null = null;
+    let selectionBeforePointer: CanvasObjectWithData | null = null;
     let lastX = 0;
     let lastY = 0;
     let drawingStart: { x: number; y: number } | null = null;
     let drawingObject: BoardDrawingObject | null = null;
     let hudFrame: number | null = null;
     let pendingHud = "";
+    let primaryPointerDown = false;
+    let primaryPointerRecoveryQueued = false;
+    let disposed = false;
+    let lastPrimaryPointer: PrimaryPointerSnapshot = {
+      clientX: 0,
+      clientY: 0,
+      screenX: 0,
+      screenY: 0,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    };
+    const rememberPrimaryPointer = (event: MouseEvent | PointerEvent) => {
+      lastPrimaryPointer = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+      };
+    };
+    const restoreSelectionBeforeGesture = () => {
+      if (selectionBeforePointer) canvas.setActiveObject(selectionBeforePointer);
+      else canvas.discardActiveObject();
+    };
+    const selectPureRefTarget = (
+      active: CanvasObjectWithData | null,
+      pointed: CanvasObjectWithData | undefined,
+    ): CanvasObjectWithData | null => {
+      const previous = selectionBeforePointer;
+      const selection = active ?? previous;
+      if (!pointed) return selection;
+      const selectionMembers =
+        selection instanceof ActiveSelection
+          ? (selection.getObjects() as CanvasObjectWithData[])
+          : [];
+      if (selection instanceof ActiveSelection && selectionMembers.includes(pointed)) {
+        canvas.setActiveObject(selection);
+        return selection;
+      }
+      canvas.setActiveObject(pointed);
+      applyBoardControls(pointed);
+      return pointed;
+    };
     const showHud = (message: string) => {
       pendingHud = message;
       if (hudFrame === null) {
@@ -1198,6 +1377,7 @@ export function BoardCanvas({
     };
     const finishPanning = () => {
       if (!panning) return false;
+      nativeMiddlePan.cancel();
       panning = false;
       panButton = null;
       canvas.selection =
@@ -1207,29 +1387,143 @@ export function BoardCanvas({
       scheduleProxyRefresh();
       return true;
     };
-    const preventMiddleButtonDefault = (event: MouseEvent) => {
+    const consumeNativeMiddleEvent = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    const startNativeMiddlePan = (event: MouseEvent) => {
+      if (!nativeMiddlePan.start(event)) return;
+      consumeNativeMiddleEvent(event);
+      selectionBeforePointer = canvas.getActiveObject() as
+        | CanvasObjectWithData
+        | null;
+      setFocusPlaying(false);
+      panning = true;
+      panButton = "middle";
+      lastX = event.clientX;
+      lastY = event.clientY;
+      canvas.selection = false;
+      canvas.defaultCursor = "grabbing";
+      canvas.setCursor("grabbing");
+      dismissHint();
+    };
+    const moveNativeMiddlePan = (event: MouseEvent) => {
+      const update = nativeMiddlePan.move(event);
+      if (!update) return;
+      consumeNativeMiddleEvent(event);
+      if (update.finished) {
+        finishPanning();
+        return;
+      }
+      canvas.relativePan(new Point(update.dx, update.dy));
+      lastX = event.clientX;
+      lastY = event.clientY;
+    };
+    const finishNativeMiddlePan = (event: MouseEvent) => {
+      if (!nativeMiddlePan.end(event)) return;
+      consumeNativeMiddleEvent(event);
+      finishPanning();
+    };
+    const preventMiddleAuxClick = (event: MouseEvent) => {
       if (isMiddleButtonPointer(event)) event.preventDefault();
     };
-    const handleWindowBlur = () => void finishPanning();
-    canvas.upperCanvasEl.addEventListener(
-      "mousedown",
-      preventMiddleButtonDefault,
-    );
+    const recoverPrimaryPointer = () => {
+      if (!primaryPointerDown || disposed) return false;
+      primaryPointerDown = false;
+      canvas.upperCanvasEl.ownerDocument.dispatchEvent(
+        new MouseEvent("mouseup", recoveredPrimaryMouseUp(lastPrimaryPointer)),
+      );
+      return true;
+    };
+    const queuePrimaryPointerRecovery = () => {
+      if (primaryPointerRecoveryQueued) return;
+      primaryPointerRecoveryQueued = true;
+      window.queueMicrotask(() => {
+        primaryPointerRecoveryQueued = false;
+        recoverPrimaryPointer();
+      });
+    };
+    finishContinuousGestureRef.current = (key) => {
+      if (key === "alt" && panning && panButton === "alt-left") {
+        finishPanning();
+        return;
+      }
+      const kind = gestureRef.current.kind;
+      const shouldFinish =
+        (key === "z" && kind === "zoom") ||
+        (key === "c" && kind === "crop") ||
+        (key === "v" && (kind === "cropPan" || kind === "cropZoom")) ||
+        (key === "control" &&
+          (kind === "rotate" || kind === "scale" || kind === "opacity")) ||
+        (key === "alt" &&
+          (kind === "scale" || kind === "opacity" || kind === "flip")) ||
+        (key === "shift" &&
+          (kind === "opacity" || kind === "flip" || kind === "cropZoom"));
+      if (shouldFinish) recoverPrimaryPointer();
+    };
+    const handleWindowBlur = () => {
+      if (!recoverPrimaryPointer()) finishPanning();
+    };
+    const handleVisibilityChange = () => {
+      if (canvas.upperCanvasEl.ownerDocument.visibilityState === "hidden") {
+        if (!recoverPrimaryPointer()) finishPanning();
+      }
+    };
+    const handlePointerCancel = (event: PointerEvent) => {
+      rememberPrimaryPointer(event);
+      if (!recoverPrimaryPointer()) finishPanning();
+    };
+    canvas.upperCanvasEl.addEventListener("mousedown", startNativeMiddlePan, true);
     canvas.upperCanvasEl.addEventListener(
       "auxclick",
-      preventMiddleButtonDefault,
+      preventMiddleAuxClick,
     );
+    canvas.upperCanvasEl.ownerDocument.addEventListener(
+      "mousemove",
+      moveNativeMiddlePan,
+      true,
+    );
+    canvas.upperCanvasEl.ownerDocument.addEventListener(
+      "mouseup",
+      finishNativeMiddlePan,
+      true,
+    );
+    canvas.upperCanvasEl.addEventListener("pointercancel", handlePointerCancel);
     window.addEventListener("blur", handleWindowBlur);
+    canvas.upperCanvasEl.ownerDocument.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+    canvas.on("mouse:down:before", () => {
+      selectionBeforePointer = canvas.getActiveObject() as
+        | CanvasObjectWithData
+        | null;
+    });
     canvas.on("mouse:down", (event) => {
       const pointerEvent = event.e as MouseEvent;
+      if (pointerEvent.button === 0) {
+        primaryPointerDown = true;
+        rememberPrimaryPointer(pointerEvent);
+      }
       const pureRef = interactionPresetRef.current === "pureref";
-      if (isPanPointerEvent(pointerEvent, pureRef)) {
+      const lockedLeftPan =
+        pureRef &&
+        canvasModeRef.current.locked &&
+        !pointerEvent.ctrlKey &&
+        !pointerEvent.altKey &&
+        !pointerEvent.shiftKey &&
+        (pointerEvent.button === 0 || (pointerEvent.buttons & 1) !== 0);
+      if (isPanPointerEvent(pointerEvent, pureRef) || lockedLeftPan) {
         pointerEvent.preventDefault();
+        canvas.endCurrentTransform(pointerEvent);
+        restoreSelectionBeforeGesture();
         setFocusPlaying(false);
         panning = true;
         panButton = isMiddleButtonPointer(pointerEvent)
           ? "middle"
-          : "alt-left";
+          : lockedLeftPan
+            ? "locked-left"
+            : "alt-left";
         lastX = pointerEvent.clientX;
         lastY = pointerEvent.clientY;
         canvas.selection = false;
@@ -1254,6 +1548,108 @@ export function BoardCanvas({
         | null;
       const pointedObject = event.target as CanvasObjectWithData | undefined;
 
+      // S/D+左：PureRef 的即时颜色码与图片源坐标检查，不改变选择。
+      if (pureRef && (heldKeys.has("s") || heldKeys.has("d"))) {
+        canvas.endCurrentTransform(pointerEvent);
+        restoreSelectionBeforeGesture();
+        if (heldKeys.has("s")) {
+          try {
+            const element = canvasElementRef.current;
+            const bounds = element?.getBoundingClientRect();
+            const context = element?.getContext("2d", {
+              willReadFrequently: true,
+            });
+            if (!element || !bounds || !context) throw new Error("NO_CANVAS");
+            const pixelX = Math.max(
+              0,
+              Math.min(
+                element.width - 1,
+                Math.floor(
+                  ((pointerEvent.clientX - bounds.left) /
+                    Math.max(bounds.width, 1)) *
+                    element.width,
+                ),
+              ),
+            );
+            const pixelY = Math.max(
+              0,
+              Math.min(
+                element.height - 1,
+                Math.floor(
+                  ((pointerEvent.clientY - bounds.top) /
+                    Math.max(bounds.height, 1)) *
+                    element.height,
+                ),
+              ),
+            );
+            const [red, green, blue] = context.getImageData(
+              pixelX,
+              pixelY,
+              1,
+              1,
+            ).data;
+            const hex = `#${[red, green, blue]
+              .map((value) => value.toString(16).padStart(2, "0"))
+              .join("")
+              .toUpperCase()}`;
+            void navigator.clipboard.writeText(hex).catch(() => undefined);
+            showHud(`${hex} · 已复制`);
+          } catch {
+            showHud("无法读取该像素");
+          }
+        } else {
+          const image = pointedObject instanceof FabricImage ? pointedObject : null;
+          if (image) {
+            const local = util.transformPoint(
+              scenePoint,
+              util.invertTransform(image.calcTransformMatrix()),
+            );
+            const sourceX = (image.cropX ?? 0) + local.x + image.width / 2;
+            const sourceY = (image.cropY ?? 0) + local.y + image.height / 2;
+            showHud(
+              `图片坐标 X ${sourceX.toFixed(1)} · Y ${sourceY.toFixed(1)}`,
+            );
+          } else {
+            showHud(
+              `画布坐标 X ${scenePoint.x.toFixed(1)} · Y ${scenePoint.y.toFixed(1)}`,
+            );
+          }
+        }
+        return;
+      }
+
+      // Alt+Shift+左：按拖动主方向手动翻转选中对象。
+      if (
+        pureRef &&
+        pointerEvent.altKey &&
+        pointerEvent.shiftKey &&
+        !pointerEvent.ctrlKey
+      ) {
+        const flipTarget = selectPureRefTarget(activeObject, pointedObject);
+        if (!flipTarget) return;
+        canvas.endCurrentTransform(pointerEvent);
+        setFocusPlaying(false);
+        gestureRef.current = {
+          kind: "flip",
+          startX: pointerEvent.clientX,
+          startY: pointerEvent.clientY,
+          lastX: pointerEvent.clientX,
+          lastY: pointerEvent.clientY,
+          target: flipTarget,
+          selection: flipTarget,
+          baseOpacity: flipTarget.opacity ?? 1,
+          snapshot: snapshotPureRefTarget(flipTarget),
+          changed: false,
+          suppressSave: true,
+        };
+        canvas.selection = false;
+        canvas.defaultCursor = "move";
+        canvas.setCursor("move");
+        canvas.requestRenderAll();
+        showHud("左右拖动水平翻转 · 上下拖动垂直翻转");
+        return;
+      }
+
       // Ctrl+Alt+Shift+左：调整选中对象透明度（不产生逐帧历史）。
       if (
         pureRef &&
@@ -1261,7 +1657,9 @@ export function BoardCanvas({
         pointerEvent.altKey &&
         pointerEvent.shiftKey
       ) {
-        if (!activeObject) return;
+        const opacityTarget = selectPureRefTarget(activeObject, pointedObject);
+        if (!opacityTarget) return;
+        canvas.endCurrentTransform(pointerEvent);
         setFocusPlaying(false);
         gestureRef.current = {
           kind: "opacity",
@@ -1269,26 +1667,31 @@ export function BoardCanvas({
           startY: pointerEvent.clientY,
           lastX: pointerEvent.clientX,
           lastY: pointerEvent.clientY,
-          target: activeObject,
-          baseOpacity: activeObject.opacity ?? 1,
+          target: opacityTarget,
+          selection: opacityTarget,
+          baseOpacity: opacityTarget.opacity ?? 1,
+          snapshot: snapshotPureRefTarget(opacityTarget),
+          changed: false,
           suppressSave: true,
         };
         canvas.selection = false;
-        canvas.defaultCursor = "ns-resize";
-        canvas.discardActiveObject();
+        canvas.defaultCursor = "ew-resize";
+        canvas.setCursor("ew-resize");
         canvas.requestRenderAll();
-        showHud(`透明度 ${Math.round(activeObject.opacity * 100)}%`);
+        showHud(`透明度 ${Math.round((opacityTarget.opacity ?? 1) * 100)}%`);
         return;
       }
 
-      // Ctrl+Alt+左：围绕对象中心缩放。
+      // Ctrl+Alt+左：PureRef 2.1 为左右拖动等比缩放。
       if (
         pureRef &&
         pointerEvent.ctrlKey &&
         pointerEvent.altKey &&
         !pointerEvent.shiftKey
       ) {
-        if (!activeObject) return;
+        const scaleTarget = selectPureRefTarget(activeObject, pointedObject);
+        if (!scaleTarget) return;
+        canvas.endCurrentTransform(pointerEvent);
         setFocusPlaying(false);
         gestureRef.current = {
           kind: "scale",
@@ -1296,22 +1699,27 @@ export function BoardCanvas({
           startY: pointerEvent.clientY,
           lastX: pointerEvent.clientX,
           lastY: pointerEvent.clientY,
-          target: activeObject,
+          target: scaleTarget,
+          selection: scaleTarget,
           baseOpacity: 1,
+          snapshot: snapshotPureRefTarget(scaleTarget),
+          changed: false,
           transform: {
-            center: activeObject.getCenterPoint(),
+            center: scaleTarget.getCenterPoint(),
             startPoint: scenePoint,
-            baseAngle: activeObject.angle ?? 0,
-            baseScaleX: activeObject.scaleX ?? 1,
-            baseScaleY: activeObject.scaleY ?? 1,
+            lastPoint: scenePoint,
+            baseAngle: scaleTarget.angle ?? 0,
+            accumulatedAngle: 0,
+            baseScaleX: scaleTarget.scaleX ?? 1,
+            baseScaleY: scaleTarget.scaleY ?? 1,
           },
           suppressSave: true,
         };
         canvas.selection = false;
-        canvas.defaultCursor = "nwse-resize";
-        canvas.discardActiveObject();
+        canvas.defaultCursor = "ew-resize";
+        canvas.setCursor("ew-resize");
         canvas.requestRenderAll();
-        showHud("缩放选中对象");
+        showHud("左右拖动缩放选中对象");
         return;
       }
 
@@ -1321,16 +1729,9 @@ export function BoardCanvas({
         pointerEvent.ctrlKey &&
         !pointerEvent.altKey
       ) {
-        const activeObjects = canvas.getActiveObjects() as CanvasObjectWithData[];
-        let rotateTarget = activeObject;
-        if (pointedObject) {
-          if (!(activeObject instanceof ActiveSelection && activeObjects.includes(pointedObject))) {
-            canvas.setActiveObject(pointedObject);
-            applyBoardControls(pointedObject);
-            rotateTarget = pointedObject;
-          }
-        }
+        const rotateTarget = selectPureRefTarget(activeObject, pointedObject);
         if (!rotateTarget) return;
+        canvas.endCurrentTransform(pointerEvent);
         setFocusPlaying(false);
         gestureRef.current = {
           kind: "rotate",
@@ -1339,11 +1740,16 @@ export function BoardCanvas({
           lastX: pointerEvent.clientX,
           lastY: pointerEvent.clientY,
           target: rotateTarget,
+          selection: rotateTarget,
           baseOpacity: 1,
+          snapshot: snapshotPureRefTarget(rotateTarget),
+          changed: false,
           transform: {
             center: rotateTarget.getCenterPoint(),
             startPoint: scenePoint,
+            lastPoint: scenePoint,
             baseAngle: rotateTarget.angle ?? 0,
+            accumulatedAngle: 0,
             baseScaleX: rotateTarget.scaleX ?? 1,
             baseScaleY: rotateTarget.scaleY ?? 1,
           },
@@ -1351,6 +1757,7 @@ export function BoardCanvas({
         };
         canvas.selection = false;
         canvas.defaultCursor = "grabbing";
+        canvas.setCursor("grabbing");
         canvas.requestRenderAll();
         showHud(`旋转 ${Math.round(normalizeSignedAngle(rotateTarget.angle ?? 0))}°`);
         return;
@@ -1359,9 +1766,11 @@ export function BoardCanvas({
       // C+左：非破坏性裁切（先画裁切矩形，松开后应用）。
       if (
         pureRef &&
-        heldKeys.has("c") &&
-        activeObject instanceof FabricImage
+        heldKeys.has("c")
       ) {
+        const cropTarget = selectPureRefTarget(activeObject, pointedObject);
+        if (!(cropTarget instanceof FabricImage)) return;
+        canvas.endCurrentTransform(pointerEvent);
         setFocusPlaying(false);
         gestureRef.current = {
           kind: "crop",
@@ -1369,12 +1778,14 @@ export function BoardCanvas({
           startY: pointerEvent.clientY,
           lastX: pointerEvent.clientX,
           lastY: pointerEvent.clientY,
-          target: activeObject,
+          target: cropTarget,
+          selection: cropTarget,
           baseOpacity: 1,
+          snapshot: snapshotPureRefTarget(cropTarget),
+          changed: false,
           suppressSave: true,
         };
         canvas.selection = false;
-        canvas.discardActiveObject();
         const rect = new Rect({
           left: scenePoint.x,
           top: scenePoint.y,
@@ -1391,24 +1802,62 @@ export function BoardCanvas({
         cropRectRef.current = rect;
         canvas.add(rect);
         canvas.defaultCursor = "crosshair";
+        canvas.setCursor("crosshair");
         canvas.requestRenderAll();
         showHud("拖动选择裁切区域");
         return;
       }
 
-      // V+左：在已裁切图片内部移动裁切区域。
+      // Shift+V+左：在裁切框内左右拖动缩放源图，显示框保持不变。
       if (
         pureRef &&
         heldKeys.has("v") &&
-        activeObject instanceof FabricImage
+        pointerEvent.shiftKey
       ) {
-        const original = activeObject.getOriginalSize();
+        const cropZoomTarget = selectPureRefTarget(activeObject, pointedObject);
+        if (!(cropZoomTarget instanceof FabricImage)) return;
+        const original = cropZoomTarget.getOriginalSize();
         const isCropped =
-          (activeObject.width ?? original.width) < original.width ||
-          (activeObject.height ?? original.height) < original.height ||
-          (activeObject.cropX ?? 0) > 0 ||
-          (activeObject.cropY ?? 0) > 0;
+          (cropZoomTarget.width ?? original.width) < original.width ||
+          (cropZoomTarget.height ?? original.height) < original.height ||
+          (cropZoomTarget.cropX ?? 0) > 0 ||
+          (cropZoomTarget.cropY ?? 0) > 0;
         if (!isCropped) return;
+        canvas.endCurrentTransform(pointerEvent);
+        setFocusPlaying(false);
+        gestureRef.current = {
+          kind: "cropZoom",
+          startX: pointerEvent.clientX,
+          startY: pointerEvent.clientY,
+          lastX: pointerEvent.clientX,
+          lastY: pointerEvent.clientY,
+          target: cropZoomTarget,
+          selection: cropZoomTarget,
+          baseOpacity: 1,
+          snapshot: snapshotPureRefTarget(cropZoomTarget),
+          changed: false,
+          suppressSave: true,
+        };
+        canvas.selection = false;
+        canvas.defaultCursor = "ew-resize";
+        canvas.setCursor("ew-resize");
+        canvas.requestRenderAll();
+        showHud("左右拖动缩放裁切内容");
+        return;
+      }
+
+      // V+左：在已裁切图片内部移动裁切区域。
+      if (pureRef && heldKeys.has("v")) {
+        const cropPanTarget = selectPureRefTarget(activeObject, pointedObject);
+        if (!(cropPanTarget instanceof FabricImage)) return;
+        const original = cropPanTarget.getOriginalSize();
+        const isCropped =
+          (cropPanTarget.width ?? original.width) < original.width ||
+          (cropPanTarget.height ?? original.height) < original.height ||
+          (cropPanTarget.cropX ?? 0) > 0 ||
+          (cropPanTarget.cropY ?? 0) > 0;
+        if (!isCropped) return;
+        canvas.endCurrentTransform(pointerEvent);
         setFocusPlaying(false);
         gestureRef.current = {
           kind: "cropPan",
@@ -1416,20 +1865,25 @@ export function BoardCanvas({
           startY: pointerEvent.clientY,
           lastX: pointerEvent.clientX,
           lastY: pointerEvent.clientY,
-          target: activeObject,
+          target: cropPanTarget,
+          selection: cropPanTarget,
           baseOpacity: 1,
+          snapshot: snapshotPureRefTarget(cropPanTarget),
+          changed: false,
           suppressSave: true,
         };
         canvas.selection = false;
         canvas.defaultCursor = "move";
-        canvas.discardActiveObject();
+        canvas.setCursor("move");
         canvas.requestRenderAll();
-        showHud("移动裁切区域");
+        showHud("拖动裁切内容");
         return;
       }
 
       // Z+左：连续缩放（以指针位置为中心）。
       if (pureRef && heldKeys.has("z")) {
+        canvas.endCurrentTransform(pointerEvent);
+        restoreSelectionBeforeGesture();
         setFocusPlaying(false);
         gestureRef.current = {
           kind: "zoom",
@@ -1438,12 +1892,18 @@ export function BoardCanvas({
           lastX: pointerEvent.clientX,
           lastY: pointerEvent.clientY,
           target: null,
+          selection: selectionBeforePointer,
           baseOpacity: 1,
+          snapshot: snapshotPureRefTarget(
+            null,
+            [...(canvas.viewportTransform ?? [1, 0, 0, 1, 0, 0])] as TMat2D,
+          ),
+          changed: false,
           suppressSave: true,
         };
         canvas.selection = false;
         canvas.defaultCursor = "ns-resize";
-        canvas.discardActiveObject();
+        canvas.setCursor("ns-resize");
         canvas.requestRenderAll();
         showHud("上下拖动连续缩放");
         return;
@@ -1478,11 +1938,19 @@ export function BoardCanvas({
     });
     canvas.on("mouse:move:before", (event) => {
       const pointerEvent = event.e as MouseEvent;
+      if (primaryPointerDown) {
+        rememberPrimaryPointer(pointerEvent);
+        if ((pointerEvent.buttons & 1) === 0) {
+          queuePrimaryPointerRecovery();
+        }
+      }
       if (!panning) return;
       const stillPressed =
         panButton === "middle"
           ? (pointerEvent.buttons & 4) !== 0
-          : pointerEvent.altKey && (pointerEvent.buttons & 1) !== 0;
+          : panButton === "alt-left"
+            ? pointerEvent.altKey && (pointerEvent.buttons & 1) !== 0
+            : (pointerEvent.buttons & 1) !== 0;
       if (!stillPressed) {
         finishPanning();
         return;
@@ -1505,7 +1973,7 @@ export function BoardCanvas({
         return;
       }
       const gesture = gestureRef.current;
-      if (gesture.kind && gesture.target) {
+      if (gesture.kind && gesture.kind !== "crop" && gesture.target) {
         const pointer = scenePointFromClient(
           pointerEvent.clientX,
           pointerEvent.clientY,
@@ -1513,36 +1981,42 @@ export function BoardCanvas({
         if (gesture.kind === "rotate") {
           const transform = gesture.transform;
           if (!transform) return;
+          transform.accumulatedAngle +=
+            (pointerAngleDelta(transform.center, transform.lastPoint, pointer) *
+              180) /
+            Math.PI;
+          transform.lastPoint = pointer;
           const angle = snapRotationAngle(
-            rotationForGesture(
-              transform.baseAngle,
-              transform.center,
-              transform.startPoint,
-              pointer,
-            ),
+            transform.baseAngle + transform.accumulatedAngle,
             pointerEvent.shiftKey,
           );
           gesture.target.rotate(angle);
           gesture.target.setCoords();
+          gesture.changed = Math.abs(transform.accumulatedAngle) > 0.05;
           scheduleRender();
           showHud(`旋转 ${Math.round(normalizeSignedAngle(angle))}°`);
         } else if (gesture.kind === "scale") {
           const transform = gesture.transform;
           if (!transform) return;
-          gesture.target.set(
-            scaleForGesture(
-              transform.baseScaleX,
-              transform.baseScaleY,
-              transform.center,
-              transform.startPoint,
-              pointer,
-            ),
+          const scale = scaleForHorizontalDrag(
+            transform.baseScaleX,
+            transform.baseScaleY,
+            pointerEvent.clientX - gesture.startX,
           );
+          gesture.target.set(scale);
           gesture.target.setCoords();
+          gesture.changed = Math.abs(pointerEvent.clientX - gesture.startX) > 0.5;
           scheduleRender();
+          showHud(
+            `缩放 ${Math.round((scale.scaleX / transform.baseScaleX) * 100)}%`,
+          );
         } else if (gesture.kind === "opacity") {
-          const next = clampOpacity(gesture.baseOpacity + opacityDelta(pointerEvent.clientY - gesture.startY));
+          const next = clampOpacity(
+            gesture.baseOpacity +
+              opacityDelta(pointerEvent.clientX - gesture.startX),
+          );
           gesture.target.set("opacity", next);
+          gesture.changed = Math.abs(next - gesture.baseOpacity) > 0.001;
           scheduleRender();
           showHud(`透明度 ${Math.round(next * 100)}%`);
         } else if (gesture.kind === "cropPan") {
@@ -1571,7 +2045,47 @@ export function BoardCanvas({
             ),
           });
           image.setCoords();
+          gesture.changed =
+            gesture.changed || Math.abs(delta.cropX) + Math.abs(delta.cropY) > 0.01;
           scheduleRender();
+        } else if (gesture.kind === "cropZoom") {
+          const image = gesture.target as FabricImage;
+          const snapshot = gesture.snapshot;
+          if (!snapshot) return;
+          const next = cropZoomForHorizontalDrag(
+            {
+              cropX: snapshot.cropX ?? 0,
+              cropY: snapshot.cropY ?? 0,
+              width: snapshot.width,
+              height: snapshot.height,
+              scaleX: snapshot.scaleX,
+              scaleY: snapshot.scaleY,
+            },
+            image.getOriginalSize(),
+            pointerEvent.clientX - gesture.startX,
+          );
+          image.set(next);
+          image.setCoords();
+          gesture.changed = Math.abs(pointerEvent.clientX - gesture.startX) > 0.5;
+          scheduleRender();
+          showHud(
+            `裁切内容 ${Math.round((next.scaleX / snapshot.scaleX) * 100)}%`,
+          );
+        } else if (gesture.kind === "flip") {
+          const snapshot = gesture.snapshot;
+          if (!snapshot) return;
+          const axis = flipAxisForDrag(
+            pointerEvent.clientX - gesture.startX,
+            pointerEvent.clientY - gesture.startY,
+          );
+          gesture.target.set({
+            flipX: axis === "x" ? !snapshot.flipX : snapshot.flipX,
+            flipY: axis === "y" ? !snapshot.flipY : snapshot.flipY,
+          });
+          gesture.target.setCoords();
+          gesture.changed = axis !== null;
+          scheduleRender();
+          if (axis) showHud(axis === "x" ? "水平翻转" : "垂直翻转");
         }
         gesture.lastX = pointerEvent.clientX;
         gesture.lastY = pointerEvent.clientY;
@@ -1587,9 +2101,10 @@ export function BoardCanvas({
           ),
         );
         canvas.zoomToPoint(
-          new Point(pointerEvent.clientX, pointerEvent.clientY),
+          canvas.getViewportPoint(pointerEvent),
           nextZoom,
         );
+        gesture.changed = true;
         scheduleZoomState(Math.round(nextZoom * 100));
         scheduleProxyRefresh();
         gesture.lastY = pointerEvent.clientY;
@@ -1601,10 +2116,11 @@ export function BoardCanvas({
         const bounds = cropGestureRect(
           scenePointFromClient(gesture.startX, gesture.startY),
           point,
-          pointerEvent.shiftKey,
+          false,
         );
         cropRectRef.current.set(bounds);
         cropRectRef.current.setCoords();
+        gesture.changed = bounds.width > 4 && bounds.height > 4;
         scheduleRender();
         return;
       }
@@ -1654,7 +2170,11 @@ export function BoardCanvas({
       scheduleRender();
     });
     canvas.on("mouse:up", (event) => {
-      if (panning) (event.e as MouseEvent).preventDefault();
+      const pointerEvent = event.e as MouseEvent;
+      if (pointerEvent.button === 0 || (pointerEvent.buttons & 1) === 0) {
+        primaryPointerDown = false;
+      }
+      if (panning) pointerEvent.preventDefault();
       if (finishPanning()) return;
       if (toolRef.current === "eraser") return;
       snapGestureTarget = null;
@@ -1669,56 +2189,95 @@ export function BoardCanvas({
         // 手势结束：收尾时产生一条完整的 undo 记录（不按帧记录）。
         const finish = () => {
           const target = gesture.target;
+          const kind = gesture.kind;
+          let selection = gesture.selection;
+          const changed = gesture.changed;
           gesture.kind = null;
+          gesture.changed = false;
           gesture.suppressSave = false;
+          gesture.target = null;
+          gesture.selection = null;
           moveStartRef.current = null;
-          canvas.defaultCursor = "default";
-          if (target) {
+          if (target instanceof ActiveSelection && changed) {
+            const members = target.getObjects() as CanvasObjectWithData[];
+            if (kind === "opacity") {
+              const multiplier = target.opacity ?? 1;
+              for (const member of members) {
+                member.set(
+                  "opacity",
+                  clampOpacity((member.opacity ?? 1) * multiplier),
+                );
+              }
+              target.set("opacity", 1);
+            }
+            // ActiveSelection 本身不在文档对象数组中；先退出临时组，把
+            // 旋转/缩放/翻转矩阵落实到成员，再建立等价的新选区。
+            canvas.discardActiveObject();
+            selection = new ActiveSelection(members, { canvas });
+            applyBoardControls(selection);
+            for (const member of members) {
+              member.setCoords();
+              canvas.fire("object:modified", { target: member });
+            }
+          } else if (target && changed) {
             target.setCoords();
             canvas.fire("object:modified", { target });
           }
-          if (toolRef.current === "select") canvas.selection = true;
+          if (selection) canvas.setActiveObject(selection);
+          else canvas.discardActiveObject();
+          restoreCanvasInteraction(canvas);
           canvas.requestRenderAll();
+          scheduleProxyRefresh();
         };
         if (gesture.kind === "crop" && cropRectRef.current) {
           const rect = cropRectRef.current;
           cropRectRef.current = null;
           const target = gesture.target as FabricImage;
           if (rect.width > 4 && rect.height > 4) {
-            const original = target.getOriginalSize();
-            const scene = { x: rect.left, y: rect.top };
-            const targetScene = {
-              x: target.left ?? 0,
-              y: target.top ?? 0,
-            };
-            const cropX = Math.max(
-              0,
-              Math.min(
-                original.width,
-                Math.round((scene.x - targetScene.x) * (1 / (target.scaleX ?? 1))),
-              ),
+            const matrix = target.calcTransformMatrix();
+            const inverse = util.invertTransform(matrix);
+            const corners = [
+              new Point(rect.left, rect.top),
+              new Point(rect.left + rect.width, rect.top),
+              new Point(rect.left + rect.width, rect.top + rect.height),
+              new Point(rect.left, rect.top + rect.height),
+            ].map((point) => util.transformPoint(point, inverse));
+            const oldWidth = target.width;
+            const oldHeight = target.height;
+            const left = Math.max(
+              -oldWidth / 2,
+              Math.min(...corners.map((point) => point.x)),
             );
-            const cropY = Math.max(
-              0,
-              Math.min(
-                original.height,
-                Math.round((scene.y - targetScene.y) * (1 / (target.scaleY ?? 1))),
-              ),
+            const right = Math.min(
+              oldWidth / 2,
+              Math.max(...corners.map((point) => point.x)),
             );
-            const width = Math.max(
-              1,
-              Math.round(rect.width / (target.scaleX ?? 1)),
+            const top = Math.max(
+              -oldHeight / 2,
+              Math.min(...corners.map((point) => point.y)),
             );
-            const height = Math.max(
-              1,
-              Math.round(rect.height / (target.scaleY ?? 1)),
+            const bottom = Math.min(
+              oldHeight / 2,
+              Math.max(...corners.map((point) => point.y)),
             );
-            target.set({
-              cropX,
-              cropY,
-              width: Math.min(original.width - cropX, width),
-              height: Math.min(original.height - cropY, height),
-            });
+            const width = Math.max(0, right - left);
+            const height = Math.max(0, bottom - top);
+            if (width > 1 && height > 1) {
+              const frameOrigin = util.transformPoint(
+                new Point(left, top),
+                matrix,
+              );
+              target.set({
+                cropX: (target.cropX ?? 0) + left + oldWidth / 2,
+                cropY: (target.cropY ?? 0) + top + oldHeight / 2,
+                width,
+                height,
+              });
+              target.setPositionByOrigin(frameOrigin, "left", "top");
+              gesture.changed = true;
+            } else {
+              gesture.changed = false;
+            }
           }
           canvas.remove(rect);
           finish();
@@ -1795,16 +2354,36 @@ export function BoardCanvas({
     });
 
     return () => {
+      disposed = true;
       resizeObserver.disconnect();
       canvas.upperCanvasEl.removeEventListener(
         "mousedown",
-        preventMiddleButtonDefault,
+        startNativeMiddlePan,
+        true,
       );
       canvas.upperCanvasEl.removeEventListener(
         "auxclick",
-        preventMiddleButtonDefault,
+        preventMiddleAuxClick,
+      );
+      canvas.upperCanvasEl.ownerDocument.removeEventListener(
+        "mousemove",
+        moveNativeMiddlePan,
+        true,
+      );
+      canvas.upperCanvasEl.ownerDocument.removeEventListener(
+        "mouseup",
+        finishNativeMiddlePan,
+        true,
+      );
+      canvas.upperCanvasEl.removeEventListener(
+        "pointercancel",
+        handlePointerCancel,
       );
       window.removeEventListener("blur", handleWindowBlur);
+      canvas.upperCanvasEl.ownerDocument.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
       if (historyFrame !== null) window.cancelAnimationFrame(historyFrame);
@@ -1812,6 +2391,7 @@ export function BoardCanvas({
       if (proxyRefreshTimer !== null) window.clearTimeout(proxyRefreshTimer);
       if (hudFrame !== null) window.cancelAnimationFrame(hudFrame);
       scheduleSaveRef.current = null;
+      finishContinuousGestureRef.current = null;
       for (const animator of gifAnimatorsRef.current.values()) {
         animator.dispose();
       }
@@ -2782,15 +3362,41 @@ export function BoardCanvas({
   const onReferencesChangedRef = useRef(onReferencesChanged);
   onReferencesChangedRef.current = onReferencesChanged;
 
-  /** PureRef 功能键按住状态（z/c/v），松开自动复位。 */
+  /** PureRef 连续功能键（Z/C/V/S/D）；文本编辑时不劫持。 */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
       const key = event.key.toLowerCase();
-      if (["z", "c", "v"].includes(key)) heldKeysRef.current.add(key);
+      if (
+        interactionPresetRef.current === "pureref" &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        ["z", "c", "v", "s", "d"].includes(key)
+      ) {
+        heldKeysRef.current.add(key);
+        const canvas = canvasRef.current;
+        if (canvas && !gestureRef.current.kind) {
+          canvas.setCursor(
+            key === "z" ? "ns-resize" : key === "v" ? "move" : "crosshair",
+          );
+        }
+      }
     };
     const onKeyUp = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if (["z", "c", "v"].includes(key)) heldKeysRef.current.delete(key);
+      if (["z", "c", "v", "s", "d"].includes(key)) {
+        heldKeysRef.current.delete(key);
+      }
+      finishContinuousGestureRef.current?.(key);
+      const canvas = canvasRef.current;
+      if (canvas && !gestureRef.current.kind) restoreCanvasInteraction(canvas);
     };
     const onBlur = () => heldKeysRef.current.clear();
     window.addEventListener("keydown", onKeyDown);
@@ -2808,6 +3414,7 @@ export function BoardCanvas({
     const applySettings = (settings: BoardSettings) => {
       historyControllerRef.current.setLimit(settings.undoLimit);
       interactionPresetRef.current = settings.interactionPreset;
+      if (settings.interactionPreset !== "pureref") heldKeysRef.current.clear();
       snapEnabledRef.current = settings.snapEnabled;
       bringToFrontOnSelectRef.current = settings.bringToFrontOnSelect;
       const canvas = canvasRef.current;
@@ -3213,26 +3820,9 @@ export function BoardCanvas({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const activeGesture = gestureRef.current;
-      if (
-        event.key === "Escape" &&
-        activeGesture.kind === "rotate" &&
-        activeGesture.target &&
-        activeGesture.transform
-      ) {
+      if (event.key === "Escape" && activeGesture.kind) {
         event.preventDefault();
-        restoreRotationGesture(
-          activeGesture.target,
-          activeGesture.transform.baseAngle,
-        );
-        activeGesture.kind = null;
-        activeGesture.suppressSave = false;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          canvas.selection = toolRef.current === "select";
-          canvas.defaultCursor = "default";
-          canvas.requestRenderAll();
-        }
-        setHudMessage(null);
+        cancelPureRefGesture();
         return;
       }
       if (event.key === "Escape" && colorSampling) {
@@ -3271,6 +3861,64 @@ export function BoardCanvas({
             (id) => shortcutMatches(event, shortcutBindings[id]),
           )
         : undefined;
+      const pureRef = interactionPresetRef.current === "pureref";
+      if (!isEditing && pureRef) {
+        const key = event.key.toLowerCase();
+        if (event.ctrlKey && event.altKey && event.shiftKey && key === "c") {
+          const canvas = canvasRef.current;
+          const active = canvas?.getActiveObject();
+          if (!(active instanceof FabricImage)) return;
+          event.preventDefault();
+          setCropTarget(active);
+          return;
+        }
+        if (event.ctrlKey && event.shiftKey && !event.altKey && key === "c") {
+          event.preventDefault();
+          resetSelectionCrop();
+          return;
+        }
+        if (event.altKey && event.shiftKey && !event.ctrlKey && key === "h") {
+          event.preventDefault();
+          transformSelection("flipX");
+          return;
+        }
+        if (event.altKey && event.shiftKey && !event.ctrlKey && key === "v") {
+          event.preventDefault();
+          transformSelection("flipY");
+          return;
+        }
+        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "g") {
+          event.preventDefault();
+          setSelectionGrayscale("toggle");
+          return;
+        }
+        if (event.ctrlKey && event.altKey && !event.shiftKey && key === "g") {
+          event.preventDefault();
+          void toggleCanvasGrayscale();
+          return;
+        }
+        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "t") {
+          event.preventDefault();
+          void toggleSampling();
+          return;
+        }
+        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "l") {
+          event.preventDefault();
+          toggleLockSelection();
+          return;
+        }
+        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "s") {
+          event.preventDefault();
+          if (!focusedObjectIdRef.current) toggleObjectFocus();
+          setFocusPlaying(true);
+          return;
+        }
+        if (event.ctrlKey && event.shiftKey && !event.altKey && key === "z") {
+          event.preventDefault();
+          restoreHistory(1);
+          return;
+        }
+      }
       if (!isEditing && event.key === "Escape" && focusedObjectIdRef.current) {
         event.preventDefault();
         exitObjectFocus();
@@ -3341,6 +3989,43 @@ export function BoardCanvas({
       }
       if (
         !isEditing &&
+        pureRef &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.key === "ArrowLeft" || event.key === "ArrowRight")
+      ) {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const objects = focusObjects(canvas);
+        if (!objects.length) return;
+        event.preventDefault();
+        const active = canvas.getActiveObject() as CanvasObjectWithData | null;
+        const current = objects.indexOf(active as CanvasObjectWithData);
+        const next = nextCircularIndex(
+          current,
+          objects.length,
+          event.key === "ArrowRight" ? 1 : -1,
+        );
+        if (next >= 0) focusBoardObject(objects[next]);
+        return;
+      }
+      if (
+        !isEditing &&
+        pureRef &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        (event.key === "ArrowUp" || event.key === "ArrowDown")
+      ) {
+        const canvas = canvasRef.current;
+        if (!canvas?.getActiveObjects().length) return;
+        event.preventDefault();
+        moveSelection(event.key === "ArrowUp");
+        return;
+      }
+      if (
+        !isEditing &&
         shortcutMatches(event, shortcutBindings.delete)
       ) {
         event.preventDefault();
@@ -3350,6 +4035,7 @@ export function BoardCanvas({
       if (
         !isEditing &&
         !matchingShortcutId &&
+        !pureRef &&
         ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
       ) {
         const canvas = canvasRef.current;
@@ -6081,8 +6767,8 @@ export function BoardCanvas({
           <div className="board-first-hint" aria-label="白板操作提示">
             <strong>白板操作提示</strong>
             <span>
-              Alt/中键拖动平移 · 滚轮缩放 · Ctrl+左旋转 · Ctrl+Alt+左缩放 ·
-              双击图片聚焦 · Space 聚焦选中
+              Alt/中键平移 · Z+左/滚轮缩放 · Ctrl+左旋转（Shift 吸附） ·
+              Ctrl+Alt+左缩放 · C 裁切 · V 移动裁切 · Shift+V 裁切内缩放
             </span>
             <button
               onClick={() => {

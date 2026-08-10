@@ -124,8 +124,11 @@ export class CollectionService {
     const mountRef = mountRefs.get(resolved);
     return this.database.transaction(() =>
       this.collections.updateItem(itemId, {
-        mountId: mountRef?.mountId ?? item.mountId,
-        relativePath: mountRef?.relativePath ?? item.relativePath,
+        // 手动选择的是新的磁盘身份。若目标不在任何挂载下，必须清掉旧的
+        // identity/mount 元数据，避免下次解析又跳回旧文件。
+        identityId: null,
+        mountId: mountRef?.mountId ?? null,
+        relativePath: mountRef?.relativePath ?? null,
         lastResolvedPath: resolved,
         pathKey: path.normalize(resolved).toLocaleLowerCase("en-US"),
         fingerprint,

@@ -1,11 +1,13 @@
 import { Box, Shapes } from "lucide-react";
 import { useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import type { PaletteColor } from "../../shared/color-palette";
 import { browserImageExtensions } from "../../shared/asset-kind";
 import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
 import { AudioPreview } from "./AudioPreview";
 import { FontPreview } from "./FontPreview";
 import { GIFPreview } from "./GIFPreview";
+import { HdrPreview } from "./HdrPreview";
 import { ImageReviewPreview } from "./ImageReviewPreview";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import { ModelPreview } from "./ModelPreview";
@@ -16,6 +18,9 @@ import { VideoPreview } from "./VideoPreview";
 interface AssetPreviewProps {
   asset: AssetRecord;
   lightweight?: boolean;
+  onOpenTool?: (tool: "gif" | "frames" | "color" | "fps", timeSeconds: number, color?: PaletteColor) => void;
+  onTimeChange?: (timeSeconds: number) => void;
+  playbackFps?: number | null;
 }
 
 function SystemThumbnail({ asset }: { asset: AssetRecord }) {
@@ -37,8 +42,11 @@ function SystemThumbnail({ asset }: { asset: AssetRecord }) {
   );
 }
 
-export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) {
+export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps }: AssetPreviewProps) {
   const foundSettings = useFoundSettings();
+  const runtimeApi = (window as unknown as {
+    refCanvas?: { media?: { probe?: unknown } };
+  }).refCanvas;
   if (asset.linkState !== "online") {
     return <span className="preview-message">原文件当前不可访问</span>;
   }
@@ -86,6 +94,20 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
           </div>
         );
       }
+      if (
+        (asset.extension === "exr" || asset.extension === "hdr") &&
+        typeof runtimeApi?.media?.probe === "function"
+      ) {
+        return (
+          <MediaNotesOverlay asset={asset}>
+            <HdrPreview
+              source={`${asset.thumbnailUrl}?priority=preview`}
+              extension={asset.extension}
+              path={asset.path}
+            />
+          </MediaNotesOverlay>
+        );
+      }
       if (needsUnsupportedCheck) {
         return (
           <MediaNotesOverlay asset={asset}>
@@ -99,12 +121,17 @@ export function AssetPreview({ asset, lightweight = false }: AssetPreviewProps) 
       return browserImageExtensions.has(asset.extension.toLowerCase())
         ? (
             <div style={{ background: alphaBackgroundStyle(foundSettings) }}>
-              <ImageReviewPreview asset={asset} />
+              <ImageReviewPreview
+                asset={asset}
+                onOpenColor={onOpenTool
+                  ? (color) => onOpenTool("color", 0, color)
+                  : undefined}
+              />
             </div>
           )
         : <SystemThumbnail asset={asset} />;
     case "video":
-      return <VideoPreview asset={asset} />;
+      return <VideoPreview asset={asset} onOpenTool={onOpenTool} onTimeChange={onTimeChange} playbackFps={playbackFps} />;
     case "audio":
       return <AudioPreview asset={asset} />;
     case "pdf":

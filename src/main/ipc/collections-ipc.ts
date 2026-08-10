@@ -99,9 +99,11 @@ export function registerCollectionsIpc(
     return service().listItems(parsed);
   });
 
-  ipc.handle("collections:add-paths", (input) => {
+  ipc.handle("collections:add-paths", async (input) => {
     const parsed = addPathsSchema.parse(input);
-    return service().addPaths(parsed.collectionId, parsed.paths);
+    const items = await service().addPaths(parsed.collectionId, parsed.paths);
+    dependencies.notifyCollectionsChanged();
+    return items;
   });
 
   ipc.handle("collections:remove-items", (input) => {
@@ -111,18 +113,22 @@ export function registerCollectionsIpc(
     return undefined;
   });
 
-  ipc.handle("collections:resolve", (collectionId) => {
+  ipc.handle("collections:resolve", async (collectionId) => {
     const parsed = collectionIdSchema.parse(collectionId);
-    return service().resolveCollection(parsed);
+    const result = await service().resolveCollection(parsed);
+    dependencies.notifyCollectionsChanged();
+    return result;
   });
 
-  ipc.handle("collections:relink", (input) => {
+  ipc.handle("collections:relink", async (input) => {
     const parsed = relinkSchema.parse(input);
-    return service().relink(
+    const item = await service().relink(
       parsed.itemId,
       parsed.path,
       parsed.confirmFingerprintChange,
     );
+    dependencies.notifyCollectionsChanged();
+    return item;
   });
 
   ipc.handle("collections:export", (input) => {

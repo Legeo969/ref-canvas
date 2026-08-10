@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { PreviewColorBar } from "./PreviewColorBar";
 
 interface GifFrame {
   image: ImageBitmap;
@@ -216,6 +217,11 @@ export function GIFPreview({ asset }: { asset: AssetRecord }) {
           </button>
         </div>
       )}
+      <PreviewColorBar
+        compact
+        source={() => canvasRef.current}
+        revision={frameIndex}
+      />
     </div>
   );
 }

@@ -1279,12 +1279,23 @@ export class RefCanvasDatabase {
    */
   findIdentityByFingerprintAnySize(
     fingerprint: string,
-  ): Array<{ pathKey: string; rootPath: string }> {
+  ): Array<{
+    id: string;
+    mountId: string | null;
+    pathKey: string;
+    rootPath: string;
+  }> {
     return this.db.prepare(`
-      SELECT path_key AS pathKey, root_path AS rootPath
+      SELECT id, mount_id AS mountId, path_key AS pathKey,
+        root_path AS rootPath
       FROM file_identities
       WHERE fingerprint = ? AND root_path IS NOT NULL AND root_path <> ''
-    `).all(fingerprint) as Array<{ pathKey: string; rootPath: string }>;
+    `).all(fingerprint) as Array<{
+      id: string;
+      mountId: string | null;
+      pathKey: string;
+      rootPath: string;
+    }>;
   }
 
   listAssetIdentityStatus(): Array<{

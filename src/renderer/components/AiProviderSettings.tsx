@@ -102,22 +102,21 @@ export function AiProviderSettings() {
       setComfyAddress(nextSettings.comfyuiAddress);
       setRemoteUrl(nextSettings.remoteBaseUrl ?? "");
       if (nextSettings.comfyuiWorkflowPath) {
-        setWorkflow({
-          valid: true,
-          errors: [],
-          nodeCount: 0,
-          outputNodeIds: [],
-          imageInputNodes: [],
-          nodes: [],
-          workflowPath: nextSettings.comfyuiWorkflowPath,
-        });
+        const imported = await window.refCanvas.ai.importComfyuiWorkflow(
+          nextSettings.comfyuiWorkflowPath,
+        );
+        setWorkflow(imported);
+      } else {
+        setWorkflow(null);
       }
-      setBinding((current) => ({
-        ...current,
-        outputNodeIds:
-          (nextSettings.comfyuiBinding as { outputNodeIds?: string[] } | null)
-            ?.outputNodeIds ?? [],
-      }));
+      const stored = nextSettings.comfyuiBinding as Partial<BindingDraft> | null;
+      setBinding({
+        source: stored?.source ?? null,
+        referenceSlots: stored?.referenceSlots ?? [],
+        prompt: stored?.prompt ?? null,
+        batchSize: stored?.batchSize ?? null,
+        outputNodeIds: stored?.outputNodeIds ?? [],
+      });
     } catch {
       // 面板未就绪时保持现有状态。
     }
@@ -165,6 +164,7 @@ export function AiProviderSettings() {
         comfyuiAddress: comfyAddress.trim() || "http://127.0.0.1:8188",
       });
       setSettings(next);
+      await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -189,6 +189,7 @@ export function AiProviderSettings() {
       });
       setSettings(next);
       setRemoteHealth(null);
+      await refresh();
     } catch (caught) {
       setRemoteUrlError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -203,6 +204,7 @@ export function AiProviderSettings() {
       setSecretConfigured(status.configured);
       setTokenInput("");
       setTokenMessage(translate("aiSettings.tokenConfigured"));
+      setProviders(await window.refCanvas.ai.listProviders());
     } catch (caught) {
       setTokenMessage(caught instanceof Error ? caught.message : String(caught));
     }
@@ -214,6 +216,7 @@ export function AiProviderSettings() {
       const status = await window.refCanvas.ai.clearSecret();
       setSecretConfigured(status.configured);
       setTokenMessage(translate("aiSettings.tokenUnconfigured"));
+      setProviders(await window.refCanvas.ai.listProviders());
     } catch (caught) {
       setTokenMessage(caught instanceof Error ? caught.message : String(caught));
     }
@@ -262,6 +265,7 @@ export function AiProviderSettings() {
       });
       setSettings(next);
       setBindingMessage(translate("aiSettings.imported"));
+      await refresh();
     } catch (caught) {
       setBindingMessage(caught instanceof Error ? caught.message : String(caught));
     }

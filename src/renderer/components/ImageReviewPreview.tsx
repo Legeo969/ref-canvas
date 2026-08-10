@@ -14,7 +14,6 @@ import {
   Layers,
   Maximize2,
   Minus,
-  Palette,
   Plus,
   RefreshCw,
   RotateCw,
@@ -27,14 +26,17 @@ import {
   useState,
 } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import type { PaletteColor } from "../../shared/color-palette";
 import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
+import { PreviewColorBar } from "./PreviewColorBar";
 
 /** 分层格式（可解析时显示图层面板）。 */
 const LAYERED_FORMATS = new Set(["psd", "tif", "tiff", "svg"]);
 
 interface ImageReviewPreviewProps {
-  asset: Pick<AssetRecord, "id" | "title" | "previewUrl" | "extension" | "kind">;
+  asset: Pick<AssetRecord, "id" | "title" | "path" | "previewUrl" | "extension" | "kind">;
+  onOpenColor?: (color: PaletteColor) => void;
 }
 
 interface ColorSample {
@@ -46,62 +48,7 @@ function toHex(value: number): string {
   return value.toString(16).padStart(2, "0");
 }
 
-/** 确定性主色板提取：固定 16 档量化的颜色桶 + 按 (count, hue) 排序。 */
-function extractPalette(data: Uint8ClampedArray): ColorSample[] {
-  const buckets = new Map<string, { count: number; rgb: [number, number, number] }>();
-  for (let index = 0; index < data.length; index += 4) {
-    const r = data[index];
-    const g = data[index + 1];
-    const b = data[index + 2];
-    const a = data[index + 3];
-    if (a < 128) continue; // 透明像素不参与主色统计。
-    const qr = (r >> 4) << 4;
-    const qg = (g >> 4) << 4;
-    const qb = (b >> 4) << 4;
-    const key = `${qr},${qg},${qb}`;
-    const current = buckets.get(key);
-    if (current) {
-      current.count += 1;
-      // 桶内累计平均色（顺序稳定，不依赖输入遍历外的随机性）。
-      current.rgb = [
-        (current.rgb[0] * (current.count - 1) + r) / current.count,
-        (current.rgb[1] * (current.count - 1) + g) / current.count,
-        (current.rgb[2] * (current.count - 1) + b) / current.count,
-      ];
-    } else {
-      buckets.set(key, { count: 1, rgb: [r, g, b] });
-    }
-  }
-  return [...buckets.values()]
-    .sort((a, b) => b.count - a.count || hueOf(a.rgb) - hueOf(b.rgb))
-    .slice(0, 5)
-    .map(({ rgb }) => ({
-      rgb: [Math.round(rgb[0]), Math.round(rgb[1]), Math.round(rgb[2])] as [
-        number,
-        number,
-        number,
-      ],
-      hex: `#${toHex(Math.round(rgb[0]))}${toHex(Math.round(rgb[1]))}${toHex(
-        Math.round(rgb[2]),
-      )}`,
-    }));
-}
-
-/** 简单确定性色相（用于并列色桶的稳定次序）。 */
-function hueOf(rgb: [number, number, number]): number {
-  const [r, g, b] = rgb.map((value) => value / 255);
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  if (delta === 0) return 0;
-  let hue: number;
-  if (max === r) hue = ((g - b) / delta) % 6;
-  else if (max === g) hue = (b - r) / delta + 2;
-  else hue = (r - g) / delta + 4;
-  return ((hue * 60 + 360) % 360) / 360;
-}
-
-export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
+export function ImageReviewPreview({ asset, onOpenColor }: ImageReviewPreviewProps) {
   const foundSettings = useFoundSettings();
   const imageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -111,7 +58,6 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
   const [showChecker, setShowChecker] = useState(true);
   const [eyedropActive, setEyedropActive] = useState(false);
   const [sample, setSample] = useState<ColorSample | null>(null);
-  const [palette, setPalette] = useState<ColorSample[]>([]);
   const [copied, setCopied] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
@@ -125,7 +71,6 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
     setRotation(0);
     setEyedropActive(false);
     setSample(null);
-    setPalette([]);
     setImageFailed(false);
   }, [asset.id, asset.previewUrl]);
 
@@ -168,21 +113,7 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
     };
     setSample(next);
     setCopied(false);
-  };
-
-  /** 主色板提取：对整幅可见像素做确定性五色量化。 */
-  const extractPaletteNow = () => {
-    const image = imageRef.current;
-    const canvas = canvasRef.current;
-    if (!image || !canvas || !image.naturalWidth) return;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return;
-    canvas.width = image.naturalWidth;
-    canvas.height = image.naturalHeight;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0);
-    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    setPalette(extractPalette(data));
+    onOpenColor?.({ ...next, count: 1 });
   };
 
   const copySample = async () => {
@@ -304,14 +235,16 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
         >
           <Droplet size={14} />
         </button>
-        <button
-          className="mini-icon-button"
-          title={translate("imageReview.palette")}
-          aria-label={translate("imageReview.palette")}
-          onClick={extractPaletteNow}
-        >
-          <Palette size={14} />
-        </button>
+        <PreviewColorBar
+          compact
+          live={Boolean(onOpenColor)}
+          autoRefresh={Boolean(onOpenColor)}
+          assetPath={asset.path}
+          source={() => imageRef.current}
+          revision={asset.previewUrl}
+          label={translate("imageReview.palette")}
+          onSelect={onOpenColor}
+        />
         {isLayered && (
           <button
             className={`mini-icon-button ${layersOpen ? "active" : ""}`}
@@ -327,7 +260,7 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
         </span>
       </div>
 
-      {sample && (
+      {sample && !onOpenColor && (
         <div className="image-review-sample">
           <span className="image-review-sample-swatch" style={{ background: sample.hex }} />
           <span className="image-review-sample-hex">{sample.hex}</span>
@@ -339,20 +272,6 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
             <Copy size={13} />
             {copied ? translate("imageReview.copied") : translate("imageReview.copy")}
           </button>
-        </div>
-      )}
-
-      {palette.length > 0 && (
-        <div className="image-review-palette">
-          <span className="image-review-palette-label">{translate("imageReview.paletteLabel")}</span>
-          {palette.map((color) => (
-            <span
-              key={color.hex}
-              className="image-review-palette-swatch"
-              style={{ background: color.hex }}
-              title={`${color.hex} RGB ${color.rgb.join(" ")}`}
-            />
-          ))}
         </div>
       )}
 

@@ -37,12 +37,16 @@ import type {
 } from "../../shared/contracts";
 import { translate } from "../app/i18n";
 import type { MessageKey } from "../app/i18n";
+import { useAppStore } from "../app/store";
 
 interface AiPanelProps {
-  onClose(): void;
+  onClose?(): void;
+  variant?: "overlay" | "embedded";
+  initialSourcePath?: string | null;
 }
 
 const MAX_REFERENCES = 6;
+const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
 
 const stateKeys: Record<AiJobSnapshot["state"], MessageKey> = {
   queued: "ai.state.queued",
@@ -108,7 +112,17 @@ function InputThumb({
   );
 }
 
-export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
+export function AiDesignSupervisorPanel({
+  onClose,
+  variant = "overlay",
+  initialSourcePath = null,
+}: AiPanelProps) {
+  const embedded = variant === "embedded";
+  const workspaceMode = useAppStore((state) => state.workspaceMode);
+  const selectedAsset = useAppStore((state) => state.selectedAsset);
+  const selectedDirectoryEntry = useAppStore(
+    (state) => state.selectedDirectoryEntry,
+  );
   const [providers, setProviders] = useState<AiProviderSummary[]>([]);
   const [settings, setSettings] = useState<AiSettings | null>(null);
   const [jobs, setJobs] = useState<AiJobSnapshot[]>([]);
@@ -123,6 +137,23 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
   const [submitting, setSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const dragDepthRef = useRef(0);
+  const selectedMaterialPath =
+    initialSourcePath ?? (workspaceMode === "directory"
+      ? selectedDirectoryEntry && !selectedDirectoryEntry.isDirectory
+        ? selectedDirectoryEntry.path
+        : null
+      : selectedAsset?.path ?? null);
+
+  useEffect(() => {
+    if (!embedded || !initialSourcePath) return;
+    setSourcePath(initialSourcePath);
+    setReferencePaths((current) =>
+      current.filter(
+        (item) => item.toLocaleLowerCase() !== initialSourcePath.toLocaleLowerCase(),
+      ),
+    );
+    setFieldError("");
+  }, [embedded, initialSourcePath]);
 
   const refreshJobs = async () => {
     try {
@@ -167,6 +198,17 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (embedded || !onClose) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [embedded, onClose]);
+
   const availableProviders = useMemo(
     () =>
       providers.filter((item) =>
@@ -178,16 +220,39 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
   );
 
   const addPaths = (paths: string[]) => {
-    const cleaned = paths.filter((item) => item && item.trim());
+    const cleaned = Array.from(
+      new Map(
+        paths
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .map((item) => [item.toLocaleLowerCase(), item]),
+      ).values(),
+    );
     if (!cleaned.length) return;
     if (!sourcePath) {
       setSourcePath(cleaned[0]);
       setReferencePaths((current) =>
-        [...current, ...cleaned.slice(1)].slice(0, MAX_REFERENCES),
+        Array.from(
+          new Map(
+            [...current, ...cleaned.slice(1)].map((item) => [
+              item.toLocaleLowerCase(),
+              item,
+            ]),
+          ).values(),
+        ).slice(0, MAX_REFERENCES),
       );
     } else {
       setReferencePaths((current) =>
-        [...current, ...cleaned].slice(0, MAX_REFERENCES),
+        Array.from(
+          new Map(
+            [...current, ...cleaned]
+              .filter(
+                (item) =>
+                  item.toLocaleLowerCase() !== sourcePath.toLocaleLowerCase(),
+              )
+              .map((item) => [item.toLocaleLowerCase(), item]),
+          ).values(),
+        ).slice(0, MAX_REFERENCES),
       );
     }
     setFieldError("");
@@ -203,7 +268,25 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
     dragDepthRef.current = 0;
     setDragActive(false);
     const files = Array.from(event.dataTransfer.files);
-    if (files.length) addFiles(files);
+    if (files.length) {
+      addFiles(files);
+      return;
+    }
+    const payload = event.dataTransfer.getData(DIRECTORY_ENTRY_MIME);
+    if (!payload) return;
+    try {
+      const entry = JSON.parse(payload) as {
+        path?: string;
+        isDirectory?: boolean;
+      };
+      if (entry.isDirectory) {
+        setFieldError(translate("ai.folderUnsupported"));
+        return;
+      }
+      if (entry.path) addPaths([entry.path]);
+    } catch {
+      // Ignore malformed drag payloads from outside RefCanvas.
+    }
   };
 
   const pickInput = async () => {
@@ -301,15 +384,13 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
   };
 
   return (
-    <div className="ai-panel-backdrop" onMouseDown={onClose}>
+    <div className={`ai-panel-backdrop ${embedded ? "embedded" : ""}`}>
       <aside
-        className="ai-panel"
-        role="dialog"
-        aria-modal="true"
+        className={`ai-panel ${embedded ? "embedded" : ""}`}
+        role="complementary"
         aria-label={translate("ai.title")}
-        onMouseDown={(event) => event.stopPropagation()}
       >
-        <header>
+        {!embedded && <header>
           <div className="ai-panel-title">
             <Sparkles size={17} />
             <div>
@@ -317,10 +398,10 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
               <p>{translate("ai.subtitle")}</p>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label={translate("preview.close")}>
+          <button className="icon-button" onClick={() => onClose?.()} aria-label={translate("preview.close")}>
             <X size={17} />
           </button>
-        </header>
+        </header>}
 
         <div className="ai-panel-body">
           <section className="ai-form-section">
@@ -390,6 +471,24 @@ export function AiDesignSupervisorPanel({ onClose }: AiPanelProps) {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              className="ai-use-selection"
+              disabled={!selectedMaterialPath}
+              title={
+                selectedMaterialPath
+                  ? selectedMaterialPath
+                  : translate("ai.selectMaterialFirst")
+              }
+              onClick={() => {
+                if (selectedMaterialPath) addPaths([selectedMaterialPath]);
+              }}
+            >
+              <ImagePlus size={15} />
+              {selectedMaterialPath
+                ? translate("ai.addSelected")
+                : translate("ai.selectMaterialFirst")}
+            </button>
           </section>
 
           <section className="ai-form-section">

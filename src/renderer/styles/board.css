@@ -1588,7 +1588,13 @@
 }
 
 .status-hint {
+  min-width: 0;
+  flex: 1;
   padding-right: 4px;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .loading-screen {
@@ -1718,18 +1724,18 @@
 
 .presentation-mode > .titlebar,
 .presentation-mode > .statusbar,
-.presentation-mode .sidebar,
-.presentation-mode .asset-panel,
-.presentation-mode .details-panel,
-.presentation-mode .panel-divider,
-.presentation-mode .board-header,
-.presentation-mode .canvas-toolbar,
-.presentation-mode .zoom-control,
-.presentation-mode .layers-panel {
+.presentation-mode .board-workspace .sidebar,
+.presentation-mode .board-workspace .asset-panel,
+.presentation-mode .board-workspace .details-panel,
+.presentation-mode .board-workspace .panel-divider,
+.presentation-mode .board-workspace .board-header,
+.presentation-mode .board-workspace .canvas-toolbar,
+.presentation-mode .board-workspace .zoom-control,
+.presentation-mode .board-workspace .layers-panel {
   display: none;
 }
 
-.presentation-mode .workspace {
+.presentation-mode .workspace.board-workspace {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -1850,6 +1856,21 @@
   translate: -50% 0;
   color: #d6ddda;
   font-size: 11px;
+}
+
+.capture-error {
+  position: fixed;
+  z-index: 2;
+  right: 18px;
+  bottom: 72px;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(70, 31, 31, 0.94);
+  box-shadow: 0 0 0 1px rgba(242, 119, 119, 0.3);
+  color: #f2b2b2;
+  font-size: 11px;
+  pointer-events: auto;
 }
 
 .capture-actions {

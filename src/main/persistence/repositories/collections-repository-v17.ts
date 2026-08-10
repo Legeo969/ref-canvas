@@ -173,9 +173,14 @@ export class CollectionsRepository {
     const run = this.db.transaction(() => {
       if (options.recursive) {
         const stack = [id];
+        const descendants: string[] = [];
         while (stack.length) {
           const currentId = stack.pop()!;
+          descendants.push(currentId);
           for (const child of this.childrenOf(currentId)) stack.push(child.id);
+        }
+        // parent_id 使用 ON DELETE RESTRICT；必须先删最深层子集合。
+        for (const currentId of descendants.reverse()) {
           this.db.prepare("DELETE FROM collection_items WHERE collection_id = ?").run(currentId);
           this.db.prepare("DELETE FROM collections WHERE id = ?").run(currentId);
         }

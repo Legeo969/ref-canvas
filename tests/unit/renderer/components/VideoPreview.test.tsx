@@ -19,6 +19,7 @@ describe("VideoPreview frame stepping", () => {
       for (const root of roots.splice(0)) root.unmount();
     });
     vi.restoreAllMocks();
+    vi.useRealTimers();
     document.body.replaceChildren();
   });
 
@@ -99,7 +100,7 @@ describe("VideoPreview frame stepping", () => {
     );
   });
 
-  it("exports the video to GIF", async () => {
+  it("opens the configurable GIF studio and exports the selected range", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const exportGif = vi.fn(async () => ({
       outputPath: "D:\\refs\\clip.gif",
@@ -120,7 +121,11 @@ describe("VideoPreview frame stepping", () => {
           frame: vi.fn(),
           exportGif,
         },
-        system: { pickDirectory: vi.fn(async () => "D:\\refs") },
+        system: {
+          pickDirectory: vi.fn(async () => "D:\\refs"),
+          writeClipboard: vi.fn(async () => undefined),
+        },
+        library: { pathsForFiles: vi.fn(() => []) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -141,17 +146,67 @@ describe("VideoPreview frame stepping", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[title="导出为 GIF"]')?.click();
+      host.querySelector<HTMLButtonElement>('button[title="打开 GIF 导出工作台"]')?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(exportGif).toHaveBeenCalledWith({
-      inputPath: "D:\\refs\\clip.mp4",
+    expect(host.querySelector('[aria-label="GIF 导出工作台"]')).toBeTruthy();
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(".gif-export-actions .primary-button")?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(exportGif).toHaveBeenCalledWith(expect.objectContaining({
+      clips: [{ inputPath: "D:\\refs\\clip.mp4", startMs: 0, endMs: 1000 }],
       outputDirectory: "D:\\refs",
       baseName: "clip",
       fps: 12,
-      maxWidth: 960,
+      maxWidth: 640,
+      colors: 128,
+    }));
+  });
+
+  it("updates the workbench palette while the video time changes", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const palette = vi.fn(async () => ([
+      { rgb: [30, 40, 50] as [number, number, number], hex: "#1e2832", count: 10 },
+    ]));
+    Object.assign(window, {
+      refCanvas: {
+        media: {
+          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
+          frame: vi.fn(),
+          palette,
+        },
+        system: { writeClipboard: vi.fn(async () => undefined) },
+      } as unknown as RefCanvasApi,
     });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+          onOpenTool={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+    expect(palette).toHaveBeenCalledWith("D:\\refs\\clip.mp4", { timeMs: 0, limit: 6 });
+
+    const video = host.querySelector("video")!;
+    Object.defineProperty(video, "currentTime", { configurable: true, writable: true, value: 2 });
+    await act(async () => {
+      video.dispatchEvent(new window.Event("timeupdate", { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(800);
+    });
+    expect(palette).toHaveBeenLastCalledWith("D:\\refs\\clip.mp4", { timeMs: 2000, limit: 6 });
   });
 });

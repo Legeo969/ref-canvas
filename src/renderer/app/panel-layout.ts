@@ -10,14 +10,14 @@ export interface PanelLayout {
 export const PANEL_DEFAULTS: PanelLayout = {
   sidebarWidth: 260,
   assetWidth: 350,
-  detailsWidth: 360,
+  detailsWidth: 760,
   collapsed: [],
 };
 
 export const PANEL_LIMITS: Record<PanelId, { min: number; max: number }> = {
   sidebar: { min: 180, max: 480 },
   asset: { min: 280, max: 720 },
-  details: { min: 320, max: 600 },
+  details: { min: 480, max: 1_200 },
 };
 
 /** 白板始终至少保留的宽度。 */
@@ -89,7 +89,11 @@ export function normalizePanelLayout(value: unknown): PanelLayout {
     ),
     detailsWidth: clampPanelWidth(
       "details",
-      panelWidth(source.detailsWidth, PANEL_DEFAULTS.detailsWidth),
+      // 286/360px were the old metadata-inspector defaults. Migrate them to
+      // the actual preview-workbench width instead of preserving a tiny rail.
+      source.detailsWidth === 286 || source.detailsWidth === 360
+        ? PANEL_DEFAULTS.detailsWidth
+        : panelWidth(source.detailsWidth, PANEL_DEFAULTS.detailsWidth),
     ),
     collapsed,
   };

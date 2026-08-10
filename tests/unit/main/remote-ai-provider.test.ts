@@ -36,9 +36,11 @@ function stubTransport(options: {
   downloadMime?: string;
   downloadHashMismatch?: boolean;
   uploadReject?: boolean;
+  createConflict?: "with-id" | "without-id";
   pngBuffer: Buffer;
 }) {
   const calls: string[] = [];
+  const prepareBodies: unknown[] = [];
   let pollIndex = 0;
   const transport: RemoteTransport = {
     async request(req: {
@@ -51,6 +53,7 @@ function stubTransport(options: {
     }): Promise<RemoteHttpResponse> {
       calls.push(`${req.method} ${req.url}`);
       if (req.method === "POST" && req.url.endsWith("/v1/uploads/prepare")) {
+        prepareBodies.push(req.body);
         return {
           status: 200,
           headers: {},
@@ -66,6 +69,16 @@ function stubTransport(options: {
         return { status: 200, headers: {}, body: null };
       }
       if (req.method === "POST" && req.url.endsWith("/v1/design-jobs")) {
+        if (options.createConflict) {
+          return {
+            status: 409,
+            headers: {},
+            body:
+              options.createConflict === "with-id"
+                ? { id: "job-remote-1" }
+                : {},
+          };
+        }
         if (options.createReject) return { status: 400, headers: {}, body: null };
         return { status: 201, headers: {}, body: { id: "job-remote-1" } };
       }
@@ -109,7 +122,7 @@ function stubTransport(options: {
       };
     },
   };
-  return { transport, calls, pollCount: () => pollIndex };
+  return { transport, calls, prepareBodies, pollCount: () => pollIndex };
 }
 
 async function makePng(): Promise<Buffer> {
@@ -304,5 +317,56 @@ describe("remote rest provider (FND-010 §9.6)", () => {
         () => undefined,
       ),
     ).rejects.toThrow("REMOTE_JOB_FAILED");
+  });
+
+  it("continues an idempotency conflict when the existing job id is returned", async () => {
+    const png = await makePng();
+    const { transport } = stubTransport({ pngBuffer: png, createConflict: "with-id" });
+    const { provider, request } = await scaffold(transport);
+    const states: string[] = [];
+    const result = await provider.start(
+      { jobId: "job-conflict", request, clientRequestId: "same-request" },
+      { isCancelled: () => false },
+      (snapshot) => states.push(snapshot.state),
+    );
+    expect(result.externalId).toBe("job-remote-1");
+    expect(states).toContain("completed");
+  });
+
+  it("rejects an idempotency conflict without an existing job id", async () => {
+    const png = await makePng();
+    const { transport } = stubTransport({ pngBuffer: png, createConflict: "without-id" });
+    const { provider, request } = await scaffold(transport);
+    await expect(
+      provider.start(
+        { jobId: "job-conflict-bad", request, clientRequestId: "same-request" },
+        { isCancelled: () => false },
+        () => undefined,
+      ),
+    ).rejects.toThrow("REMOTE_IDEMPOTENCY_CONFLICT_WITHOUT_JOB");
+  });
+
+  it("rejects malformed or incomplete upload preparation responses", async () => {
+    const transport: RemoteTransport = {
+      async request(req) {
+        if (req.url.endsWith("/v1/uploads/prepare")) {
+          return {
+            status: 200,
+            headers: {},
+            body: { uploads: [{ clientFileId: "source", method: "POST" }] },
+          };
+        }
+        return { status: 404, headers: {}, body: null };
+      },
+      async download() { return null; },
+    };
+    const { provider, request } = await scaffold(transport);
+    await expect(
+      provider.start(
+        { jobId: "job-bad-prepare", request, clientRequestId: "req-bad" },
+        { isCancelled: () => false },
+        () => undefined,
+      ),
+    ).rejects.toThrow("REMOTE_PREPARE_RESPONSE_INVALID");
   });
 });

@@ -8,7 +8,7 @@
  * - retry：创建新尝试并关联原 job；不把 failed 记录改回 queued。
  * - recover：重启后对非终态 job 尝试恢复；Provider 不支持时标记 failed。
  */
-import { mkdir, stat } from "node:fs/promises";
+import { open, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import type {
   AiDesignRequest,
@@ -86,6 +86,12 @@ export class AiJobService {
     return provider;
   }
 
+  /** 设置变更后原子替换后续任务使用的 Provider；运行中任务保留原实例。 */
+  replaceProviders(next: Map<AiProviderKind, AiProvider>): void {
+    this.providers.clear();
+    for (const [kind, provider] of next) this.providers.set(kind, provider);
+  }
+
   /** 创建任务前的字段级校验（§9.2）。失败时不创建 ai_jobs 行。 */
   async validateRequest(request: AiDesignRequest): Promise<ValidatedAiRequest> {
     const errors: string[] = [];
@@ -130,9 +136,20 @@ export class AiJobService {
     if (!outputStat?.isDirectory()) {
       throw new Error("AI_VALIDATION:输出目录不存在或不可写");
     }
-    await mkdir(request.outputDirectory, { recursive: true }).catch(() => {
+    const writeProbe = path.join(
+      request.outputDirectory,
+      `.refcanvas-write-probe-${createClientRequestId()}.tmp`,
+    );
+    let probeHandle: Awaited<ReturnType<typeof open>> | null = null;
+    try {
+      probeHandle = await open(writeProbe, "wx");
+      await probeHandle.writeFile("ok");
+    } catch {
       throw new Error("AI_VALIDATION:输出目录不可写");
-    });
+    } finally {
+      await probeHandle?.close().catch(() => undefined);
+      await unlink(writeProbe).catch(() => undefined);
+    }
 
     const normalized: AiDesignRequest = {
       sourcePath: path.resolve(request.sourcePath),
@@ -172,6 +189,7 @@ export class AiJobService {
   }
 
   private handleRunError(jobId: string, error: unknown): void {
+    this.cancelTokens.delete(jobId);
     const code = error instanceof Error ? error.message : String(error);
     if (code === "AI_JOB_CANCELLED") {
       this.jobs.transition(jobId, "cancelled", { stage: "cancelled" });
@@ -187,12 +205,15 @@ export class AiJobService {
     cancelRef: { current: AiRunToken },
   ): Promise<void> {
     const clientRequestId = createClientRequestId();
-    await provider.start(
+    const result = await provider.start(
       { jobId, request, clientRequestId },
       cancelRef.current,
       (snapshot) => {
         const current = this.jobs.get(jobId);
         if (!current) return;
+        if (snapshot.externalId) {
+          this.jobs.setExternalId(jobId, snapshot.externalId);
+        }
         if (snapshot.state === "completed") {
           this.jobs.transition(jobId, "completed", {
             stage: "completed",
@@ -214,6 +235,8 @@ export class AiJobService {
         }
       },
     );
+    this.jobs.setExternalId(jobId, result.externalId);
+    this.cancelTokens.delete(jobId);
   }
 
   get(id: string): AiJobSnapshot | null {
@@ -232,8 +255,16 @@ export class AiJobService {
     const token = this.cancelTokens.get(id);
     if (token) token.cancelled = true;
     const provider = this.providerFor(job.provider);
-    await provider.cancel(job.id, job.externalId);
-    return this.jobs.get(id)!;
+    const latest = this.jobs.get(id)!;
+    const providerResult = await provider.cancel(job.id, latest.externalId);
+    const current = this.jobs.get(id)!;
+    if (["queued", "uploading", "generating", "downloading"].includes(current.state)) {
+      if (!providerResult.cancelled && !token) {
+        throw new Error(`AI_CANCEL_REJECTED:${providerResult.reason ?? ""}`);
+      }
+      return this.jobs.transition(id, "cancelled", { stage: "cancelled" });
+    }
+    return current;
   }
 
   /** retry 创建新尝试并关联原 job；旧 failed 记录保留。 */

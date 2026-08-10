@@ -241,6 +241,49 @@ describe("collection reference resolution (§6.2)", () => {
       expect(result.item.state).toBe("resolved");
       expect(result.relinked).toBe(true);
       expect(path.basename(result.item.lastResolvedPath)).toBe("a.png");
+      expect(result.item.mountId).toBe("mount-1");
+      expect(result.item.relativePath).toBe(path.join("moved", "a.png"));
+      expect(result.item.identityId).not.toBeNull();
+      // 新身份元数据已持久化，第二次解析不会因旧 relativePath 退回 missing。
+      const [again] = await service.resolveCollection(collection.id);
+      expect(again.item.state).toBe("resolved");
+      expect(again.item.lastResolvedPath).toBe(moved);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("does not auto-relink a mounted item to a fingerprint match on another mount", async () => {
+    const { db, root, collection } = await scaffold();
+    try {
+      const source = await indexedFile(db, root, "original.png", Buffer.alloc(320, 4));
+      await db.collectionService().addPaths(collection.id, [source]);
+      await rm(source, { force: true });
+
+      const otherRoot = withinRoot(root, "other-mount");
+      await mkdir(otherRoot);
+      db.upsertMountRoot({
+        id: "mount-2",
+        path: otherRoot,
+        displayName: "other",
+        state: "online",
+      });
+      const otherFile = withinRoot(otherRoot, "same.png");
+      await writeFile(otherFile, Buffer.alloc(320, 4));
+      const otherStat = await stat(otherFile);
+      db.upsertFileIdentity({
+        pathKey: path.normalize(otherFile).toLocaleLowerCase("en-US"),
+        assetId: "",
+        fingerprint: await quickFingerprint(otherFile, otherStat.size),
+        size: otherStat.size,
+        rootPath: otherRoot,
+        mountId: "mount-2",
+      });
+
+      const [result] = await db.collectionResolution().resolveCollection(collection.id);
+      expect(result.item.state).toBe("missing");
+      expect(result.item.mountId).toBe("mount-1");
+      expect(result.relinked).toBe(false);
     } finally {
       db.close();
     }
@@ -343,6 +386,37 @@ describe("collection reference resolution (§6.2)", () => {
       expect(relinked.state).toBe("resolved");
       expect(relinked.lastResolvedPath).toBe(different);
       expect(relinked.fingerprint).not.toBe(item.fingerprint);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("manual relink outside the old mount clears stale identity and mount metadata", async () => {
+    const { db, root } = await openDb();
+    try {
+      const mountedRoot = withinRoot(root, "mounted");
+      const outsideRoot = withinRoot(root, "outside");
+      await mkdir(mountedRoot);
+      await mkdir(outsideRoot);
+      db.upsertMountRoot({
+        id: "mount-old",
+        path: mountedRoot,
+        displayName: "old",
+        state: "online",
+      });
+      const collection = db.collections().create({ name: "素材" });
+      const source = withinRoot(mountedRoot, "a.png");
+      await writeFile(source, Buffer.alloc(160, 6));
+      const [item] = await db.collectionService().addPaths(collection.id, [source]);
+      db.collections().updateItem(item.id, { identityId: "stale-identity" });
+
+      const target = withinRoot(outsideRoot, "a.png");
+      await writeFile(target, Buffer.alloc(160, 6));
+      const relinked = await db.collectionService().relink(item.id, target, false);
+      expect(relinked.lastResolvedPath).toBe(target);
+      expect(relinked.identityId).toBeNull();
+      expect(relinked.mountId).toBeNull();
+      expect(relinked.relativePath).toBeNull();
     } finally {
       db.close();
     }

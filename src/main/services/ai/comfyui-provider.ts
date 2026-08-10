@@ -70,6 +70,7 @@ export class ComfyUiProvider implements AiProvider {
   private readonly address: string;
   private readonly pollIntervalMs: number;
   private readonly timeoutMs: number;
+  private readonly ownedPrompts = new Map<string, string>();
 
   constructor(private readonly options: ComfyProviderOptions) {
     this.address = assertComfyAddressAllowed(options.address ?? COMFYUI_DEFAULT_ADDRESS);
@@ -137,15 +138,25 @@ export class ComfyUiProvider implements AiProvider {
     }
     const promptId = (response.body as { prompt_id?: string })?.prompt_id;
     if (!promptId) throw new Error("COMFYUI_PROMPT_ID_MISSING");
+    this.ownedPrompts.set(jobId, promptId);
 
-    onProgress({ state: "generating", stage: "generating", progress: 0.35 });
-    const outputs = await this.waitForOutput(promptId, request.outputDirectory, token, onProgress);
-    onProgress({ state: "downloading", stage: "downloading", progress: 0.98, outputs });
-    onProgress({ state: "completed", stage: "completed", progress: 1, outputs });
-    return {
-      externalId: promptId,
-      recovery: { promptId, address: this.address },
-    };
+    try {
+      onProgress({
+        state: "generating",
+        stage: "generating",
+        progress: 0.35,
+        externalId: promptId,
+      });
+      const outputs = await this.waitForOutput(promptId, request.outputDirectory, token, onProgress);
+      onProgress({ state: "downloading", stage: "downloading", progress: 0.98, outputs });
+      onProgress({ state: "completed", stage: "completed", progress: 1, outputs });
+      return {
+        externalId: promptId,
+        recovery: { promptId, address: this.address },
+      };
+    } finally {
+      this.ownedPrompts.delete(jobId);
+    }
   }
 
   private async uploadInput(filename: string): Promise<string> {
@@ -165,8 +176,10 @@ export class ComfyUiProvider implements AiProvider {
     jobId: string,
   ): Record<string, unknown> {
     const b = this.options.binding;
+    // 每个任务使用独立副本，避免并发任务互相污染 workflow inputs。
+    const workflow = structuredClone(this.options.workflow);
     const setInput = (bound: { nodeId: string; inputName: string }, value: unknown) => {
-      const node = this.options.workflow.nodes?.find(
+      const node = workflow.nodes?.find(
         (candidate) => String(candidate.id) === String(bound.nodeId),
       );
       if (!node) throw new Error("COMFYUI_BINDING_NODE_MISSING");
@@ -178,7 +191,7 @@ export class ComfyUiProvider implements AiProvider {
       if (value) setInput(slot, value);
     });
     setInput(b.prompt, request.prompt);
-    setInput(b.batchSize, 1);
+    setInput(b.batchSize, request.outputCount);
     if (b.majorChange) {
       setInput(
         b.majorChange,
@@ -192,7 +205,7 @@ export class ComfyUiProvider implements AiProvider {
     }
     const clientId = `refcanvas-${jobId}`;
     return {
-      prompt: { ...this.options.workflow },
+      prompt: workflow,
       client_id: clientId,
     };
   }
@@ -298,10 +311,39 @@ export class ComfyUiProvider implements AiProvider {
     if (token.isCancelled()) throw new Error("AI_JOB_CANCELLED");
   }
 
-  async cancel(): Promise<AiProviderCancelResult> {
-    // 队列任务通过 /queue 取消；执行中且 owned 才 /interrupt。简化：
-    // 由协调器 token 中止，provider 幂等返回。
-    return { cancelled: true };
+  async cancel(jobId: string, externalId: string | null): Promise<AiProviderCancelResult> {
+    if (!externalId) return { cancelled: true, reason: "尚未提交到 ComfyUI" };
+    if (this.ownedPrompts.get(jobId) !== externalId) {
+      return { cancelled: false, reason: "任务不属于当前会话" };
+    }
+
+    // 先查询队列以区分 pending/running，避免无条件 /interrupt 影响其他客户端。
+    const queue = await this.transport.fetchJson("/queue").catch(() => null);
+    const body = queue?.status === 200 ? queue.body : null;
+    const running = this.queueContains(body, "queue_running", externalId);
+    const endpoint = running ? "/interrupt" : "/queue";
+    const response = await this.transport.fetchJson(endpoint, {
+      method: "POST",
+      body: running ? {} : { delete: [externalId] },
+    });
+    return {
+      cancelled: response.status >= 200 && response.status < 300,
+      reason:
+        response.status >= 200 && response.status < 300
+          ? undefined
+          : `ComfyUI 返回 ${response.status}`,
+    };
+  }
+
+  private queueContains(body: unknown, key: string, promptId: string): boolean {
+    if (!body || typeof body !== "object") return false;
+    const entries = (body as Record<string, unknown>)[key];
+    if (!Array.isArray(entries)) return false;
+    return entries.some(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.some((value) => value === promptId),
+    );
   }
 
   async close(): Promise<void> {
