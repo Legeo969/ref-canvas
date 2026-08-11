@@ -120,7 +120,10 @@ async function runPackagedSmoke(client, browseRoot) {
       });
       const aiTab = Array.from(
         document.querySelectorAll('.directory-details-panel [role="tab"]'),
-      ).find((item) => item.textContent?.includes("AI 设计监督"));
+      ).find(
+        // Found tab bar localizes the label; every catalog renders the AI tab with "AI" (e.g. "AI Design Director"/"AI 设计总监").
+        (item) => /AI/i.test(item.textContent ?? ""),
+      );
       aiTab?.click();
       const embeddedAi = await waitForSelector(".directory-details-panel .ai-panel.embedded");
       const detachedAi = document.querySelector(".ai-panel-backdrop:not(.embedded)");
