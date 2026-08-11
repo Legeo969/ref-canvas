@@ -7,6 +7,7 @@ export default defineConfig({
       external: [
         "better-sqlite3",
         "sharp",
+        "exrs",
         "@ffprobe-installer/ffprobe",
         "ffmpeg-static",
       ],

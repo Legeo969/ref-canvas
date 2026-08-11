@@ -22,6 +22,9 @@ describe("PreviewCacheIndex", () => {
       expect(index.get("ok", 2_000)).toMatchObject({ status: "success", size: 100 });
       index.recordFailure("bad", 1_000);
       expect(index.get("bad", 2_000)?.status).toBe("failed");
+      index.clearFailure("bad");
+      expect(index.get("bad", 2_001)).toBeNull();
+      index.recordFailure("bad", 1_000);
       expect(index.get("bad", 1_000 + 24 * 60 * 60 * 1_000 + 1)).toBeNull();
     } finally {
       index.close();

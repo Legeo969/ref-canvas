@@ -859,10 +859,115 @@ body.panel-resizing {
   font-size: 12px;
 }
 
+.preview-window-title-region {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .preview-window-actions {
   display: flex;
+  align-items: center;
   gap: 2px;
   -webkit-app-region: no-drag;
+}
+
+.preview-session-mode-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.preview-session-mode-actions button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #8e9a94;
+  cursor: pointer;
+  transition-property: background-color, color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.preview-session-mode-actions button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #d8dfdc;
+}
+
+.preview-session-shell .preview-session-mode-actions button.active,
+.preview-session-shell .preview-session-mode-actions button[aria-pressed="true"] {
+  background: rgba(53, 198, 160, 0.14);
+  color: #a9e4cd;
+}
+
+.preview-session-mode-actions button:active {
+  scale: 0.96;
+}
+
+.preview-session-focused {
+  position: fixed !important;
+  z-index: 2600 !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  max-width: none !important;
+  height: 100vh !important;
+  max-height: none !important;
+  border-radius: 0 !important;
+  background: #111514 !important;
+}
+
+.preview-session-focused:fullscreen {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.preview-session-shell:fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  background: #111514;
+}
+
+.preview-session-title-region,
+.preview-session-title,
+.preview-session-subtitle {
+  min-width: 0;
+}
+
+.preview-session-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-session-subtitle {
+  color: #747e79;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-window:is(.preview-session-focused, :fullscreen) .preview-window-header {
+  position: absolute;
+  z-index: 20;
+  top: 8px;
+  right: 8px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: rgba(12, 15, 14, 0.72);
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.preview-window:is(.preview-session-focused, :fullscreen) .preview-window-title,
+.preview-window:is(.preview-session-focused, :fullscreen) .preview-window-external-action {
+  display: none;
 }
 
 .preview-window-body {

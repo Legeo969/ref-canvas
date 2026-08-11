@@ -1,41 +1,21 @@
 import {
   ArrowUpRight,
-  AlignCenterHorizontal,
   AlignCenterVertical,
-  AlignEndHorizontal,
-  AlignEndVertical,
-  AlignStartHorizontal,
   AlignStartVertical,
-  ArrowDownToLine,
-  ArrowUpToLine,
   Clipboard as ClipboardIcon,
   CopyPlus,
   Crop,
   Circle as CircleIcon,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  EyeOff,
-  FlipHorizontal2,
-  FlipVertical2,
   Focus,
   FolderOpen,
-  GitBranch,
   GroupIcon,
   Grid3X3,
-  Layers,
   LayoutGrid,
   ListTodo,
   Lock,
   LockOpen,
   Maximize,
-  MessageSquareText,
   Minus,
-  MoreHorizontal,
-  MousePointer2,
-  Eraser,
   Palette,
   Paintbrush,
   Pause,
@@ -45,17 +25,14 @@ import {
   Plus,
   Redo2,
   RotateCcw,
-  RotateCw,
   ScanSearch,
   Search,
   SlidersHorizontal,
-  StickyNote,
   Square,
   Link2,
   Trash2,
   Type,
   Undo2,
-  Unlink,
   X,
 } from "lucide-react";
 import {
@@ -81,11 +58,15 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import { BoardObjectComment } from "./BoardObjectComment";
+import {
+  createBoardActiveSelection,
+  selectAllBoardObjects,
+} from "../app/board-active-selection";
 import type {
   AssetRecord,
   BoardAppearance,
@@ -115,9 +96,7 @@ import {
 } from "../app/board-gestures";
 import {
   loadBoardShortcuts,
-  shortcutMatches,
   type BoardShortcutBindings,
-  type BoardShortcutId,
 } from "../app/board-shortcuts";
 import {
   applyHierarchyTransform,
@@ -140,6 +119,10 @@ import {
 } from "../app/board-gif";
 import { BoardInspector } from "./BoardInspector";
 import {
+  BoardToolbar,
+  type BoardToolbarCommand,
+} from "./board/BoardToolbar";
+import {
   BoardCommandPalette,
   type BoardCommand,
 } from "./BoardCommandPalette";
@@ -151,13 +134,11 @@ import {
   interruptedSelectionMouseUp,
   resolveBoardContext,
 } from "../app/board-context-menu";
-import { placeTriggerMenu, type MenuPlacement } from "../app/menu-position";
 import { toolbarPanelPosition } from "../app/board-toolbar-position";
 import { applyBoardControls } from "../app/board-controls";
 import {
   boardProxySizeForPixels,
   boardProxyUrl,
-  type BoardProxySize,
 } from "../app/board-proxy";
 import { ModelPreview, type ModelView } from "./ModelPreview";
 import { AssetPreview } from "./AssetPreview";
@@ -178,11 +159,37 @@ import {
   type BoardTool,
 } from "../features/board/controllers/drawing-controller";
 import { BoardHistoryController } from "../features/board/controllers/history-controller";
+import {
+  useBoardShortcuts,
+  type BoardShortcutCommand,
+  type BoardShortcutPayload,
+} from "../features/board/use-board-shortcuts";
+import { useBoardGestureKeys } from "../features/board/use-board-gesture-keys";
+import { BoardPersistenceController } from "../features/board/board-persistence-controller";
+import { BoardImportController } from "../features/board/board-import-controller";
 import { resolveBoardSelection } from "../features/board/controllers/selection-controller";
 import {
   clientToScenePoint,
   fitViewport,
 } from "../features/board/controllers/viewport-controller";
+import { useBoardEventBindings } from "../features/board/use-board-bindings";
+import {
+  BoardRuntimeController,
+  DEFAULT_BOARD_APPEARANCE,
+} from "../features/board/board-runtime-controller";
+import {
+  BoardCanvasController,
+  type PureRefGestureSnapshot,
+} from "../features/board/board-canvas-controller";
+import { BoardFocusOverlay } from "./board/BoardFocusOverlay";
+import { BoardLayerPanel } from "./board/BoardLayerPanel";
+import {
+  applyBoardCanvasMode,
+  applyBoardSampling,
+  ensureBoardObjectIdentity as ensureObjectIdentity,
+  serializeBoardDocument,
+  type BoardCanvasObject as CanvasObjectWithData,
+} from "../features/board/board-fabric-kernel";
 
 interface BoardCanvasProps {
   board: BoardSummary;
@@ -203,85 +210,16 @@ interface BoardCanvasProps {
   onReferencesChanged?(): Promise<void>;
 }
 
-type CanvasObjectWithData = FabricObject & {
-  data?: {
-    type?: string;
-    assetId?: string;
-    sourceUrl?: string;
-    boardProxySize?: BoardProxySize;
-    objectId?: string;
-    parentId?: string;
-    name?: string;
-    baseScaleX?: number;
-    baseScaleY?: number;
-    guideAxis?: "x" | "y";
-    modelView?: { position: [number, number, number]; target: [number, number, number] };
-    comment?: string;
-    commentUpdatedAt?: string;
-    note?: {
-      text: string;
-      richText: string;
-      checklist: Array<{ text: string; checked: boolean }>;
-      link: string | null;
-      autoWidth?: boolean;
-    };
-    gif?: GifState;
-  };
-};
-
-interface PureRefGestureSnapshot {
-  angle: number;
-  scaleX: number;
-  scaleY: number;
-  opacity: number;
-  flipX: boolean;
-  flipY: boolean;
-  left: number;
-  top: number;
-  cropX?: number;
-  cropY?: number;
-  width: number;
-  height: number;
-  viewport?: TMat2D;
-}
-
-function ensureObjectIdentity(
-  object: CanvasObjectWithData,
-  options: { fresh?: boolean; name?: string } = {},
-): boolean {
-  const previous = object.data ?? {};
-  const objectId =
-    options.fresh || !previous.objectId
-      ? crypto.randomUUID()
-      : previous.objectId;
-  const name = options.name ?? previous.name ?? previous.type ?? "对象";
-  const baseScaleX = previous.baseScaleX ?? object.scaleX ?? 1;
-  const baseScaleY = previous.baseScaleY ?? object.scaleY ?? 1;
-  let changed =
-    previous.objectId !== objectId ||
-    previous.name !== name ||
-    previous.baseScaleX === undefined ||
-    previous.baseScaleY === undefined;
-  object.data = { ...previous, objectId, name, baseScaleX, baseScaleY };
-
-  if (object instanceof Group) {
-    for (const child of object.getObjects() as CanvasObjectWithData[]) {
-      if (child.data) {
-        changed =
-          ensureObjectIdentity(child, { fresh: options.fresh }) || changed;
-      }
-    }
-  }
-  return changed;
+interface BoardCropTargetSnapshot {
+  id: string;
+  title: string;
+  src: string;
+  initial: CropRect;
 }
 
 let boardClipboard: Record<string, unknown>[] = [];
 
-const defaultBoardAppearance: BoardAppearance = {
-  backgroundColor: "#202426",
-  gridVisible: true,
-  gridSize: 24,
-};
+const defaultBoardAppearance = DEFAULT_BOARD_APPEARANCE;
 
 export function BoardCanvas({
   board,
@@ -310,106 +248,53 @@ export function BoardCanvas({
     position: { x: number; y: number },
     centered?: boolean,
   ) => Promise<number>>(async () => 0);
-  const assetsRef = useRef(assets);
-  const onSelectAssetRef = useRef(onSelectAsset);
-  const onLocateAssetRef = useRef(onLocateAsset);
-  const onSaveRef = useRef(onSave);
+  const eventBindingsRef = useBoardEventBindings(useMemo(() => ({
+    assets,
+    onSelectAsset,
+    onLocateAsset,
+    onSaveDocument: onSave,
+    onReferencesChanged,
+  }), [assets, onLocateAsset, onReferencesChanged, onSave, onSelectAsset]));
+  const [runtime] = useState(() => new BoardRuntimeController(document));
+  const [controller] = useState(() => new BoardCanvasController());
+  const [importController] = useState(() => new BoardImportController());
+  const saveLocalDocument = (nextDocument: BoardDocumentV3) => {
+    const revision = controller.markLocalSave(nextDocument);
+    return eventBindingsRef.current.onSaveDocument(nextDocument).catch((error) => {
+      controller.cancelLocalSave(revision);
+      throw error;
+    });
+  };
+  const boardSnapshot = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  );
+  const boardStructure = useSyncExternalStore(
+    controller.subscribeStructure,
+    controller.getStructureSnapshot,
+    controller.getStructureSnapshot,
+  );
+  useEffect(() => () => controller.dispose(), [controller]);
   const toolRef = useRef<BoardTool>("select");
   const drawingStyleRef = useRef<BoardDrawingStyle>(defaultBoardDrawingStyle);
-  const saveTimerRef = useRef<number | null>(null);
   const scheduleSaveRef = useRef<(() => void) | null>(null);
   const loadingRef = useRef(false);
   const bulkMutationRef = useRef(false);
-  const pendingCanvasSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const historyControllerRef = useRef(new BoardHistoryController());
-  /** 笔画级撤销：最近创建的绘图笔画对象引用（栈顶为最新）。 */
-  const strokeHistoryRef = useRef<CanvasObjectWithData[]>([]);
-  const guidesRef = useRef(document.guides);
-  const appearanceRef = useRef(
-    document.appearance ?? defaultBoardAppearance,
-  );
-  const documentRef = useRef<BoardDocumentV3>(document);
-  const canvasModeRef = useRef(document.canvasMode ?? {
-    locked: false,
-    grayscale: false,
-    gridStyle: "line" as const,
-  });
-  const samplingRef = useRef<"nearest" | "bilinear">(
-    document.sampling ?? "bilinear",
-  );
-  const exportSettingsRef = useRef(document.exportSettings ?? {
-    format: "png" as const,
-    embedAssets: false,
-  });
-  const windowModeRef = useRef<"normal" | "always-on-bottom" | "transparent-overlay" | "locked">(
-    document.windowMode ?? "normal",
-  );
-  const transformSnapshotsRef = useRef(new Map<string, TMat2D>());
-  const transformDescendantsRef = useRef<{
-    parentId: string;
-    children: CanvasObjectWithData[];
-  } | null>(null);
-  const focusedObjectIdRef = useRef<string | null>(null);
-  const preFocusViewportRef = useRef<TMat2D | null>(null);
-  const interactionPresetRef =
-    useRef<BoardSettings["interactionPreset"]>("pureref");
-  const snapEnabledRef = useRef(true);
-  const bringToFrontOnSelectRef = useRef(false);
-  /** PureRef 连续功能键（Z/C/V/S/D，不含修饰键组合）。 */
-  const heldKeysRef = useRef<Set<string>>(new Set());
-  const finishContinuousGestureRef = useRef<((key: string) => void) | null>(
-    null,
-  );
-  /** 当前正在进行的自定义指针手势（用于手势级撤销抑制与 HUD）。 */
-  const gestureRef = useRef<{
-    kind:
-      | "rotate"
-      | "scale"
-      | "opacity"
-      | "zoom"
-      | "crop"
-      | "cropPan"
-      | "cropZoom"
-      | "flip"
-      | null;
-    startX: number;
-    startY: number;
-    lastX: number;
-    lastY: number;
-    target: CanvasObjectWithData | null;
-    selection: CanvasObjectWithData | null;
-    baseOpacity: number;
-    snapshot?: PureRefGestureSnapshot;
-    changed: boolean;
-    transform?: {
-      center: { x: number; y: number };
-      startPoint: { x: number; y: number };
-      lastPoint: { x: number; y: number };
-      baseAngle: number;
-      accumulatedAngle: number;
-      baseScaleX: number;
-      baseScaleY: number;
-    };
-    suppressSave: boolean;
-  }>({
-    kind: null,
-    startX: 0,
-    startY: 0,
-    lastX: 0,
-    lastY: 0,
-    target: null,
-    selection: null,
-    baseOpacity: 1,
-    changed: false,
-    suppressSave: false,
-  });
-  /** C+左裁切手势的临时覆盖矩形。 */
-  const cropRectRef = useRef<Rect | null>(null);
-  /** Shift+拖动轴向约束：记录拖动开始时的对象位置。 */
-  const moveStartRef = useRef<{
-    pointer: { x: number; y: number };
-    positions: Map<CanvasObjectWithData, { left: number; top: number }>;
-  } | null>(null);
+  const persistenceRef = useRef<BoardPersistenceController | null>(null);
+  const {
+    strokeHistory: strokeHistoryRef,
+    transformSnapshots: transformSnapshotsRef,
+    transformDescendants: transformDescendantsRef,
+    focusedObjectId: focusedObjectIdRef,
+    preFocusViewport: preFocusViewportRef,
+    heldKeys: heldKeysRef,
+    finishContinuousGesture: finishContinuousGestureRef,
+    gesture: gestureRef,
+    cropRect: cropRectRef,
+    moveStart: moveStartRef,
+  } = controller.gestureResources;
   const [hudMessage, setHudMessage] = useState<string | null>(null);
   const hudTimerRef = useRef<number | null>(null);
   const [firstUseHint, setFirstUseHint] = useState(() => {
@@ -423,7 +308,13 @@ export function BoardCanvas({
     x: number;
     y: number;
     kind: "object" | "multi" | "image" | "empty";
-    target?: CanvasObjectWithData;
+    target?: {
+      id: string;
+      isImage: boolean;
+      assetId: string | null;
+      hasGif: boolean;
+      gifPlaying: boolean;
+    };
   } | null>(null);
   const [toolbarMoreOpen, setToolbarMoreOpen] = useState(false);
   const toolbarMoreButtonRef = useRef<HTMLButtonElement>(null);
@@ -432,13 +323,6 @@ export function BoardCanvas({
     y: 66,
     maxHeight: 280,
   });
-  const [layerQuery, setLayerQuery] = useState("");
-  const [layerScrollTop, setLayerScrollTop] = useState(0);
-  const [layerMenuId, setLayerMenuId] = useState<string | null>(null);
-  // Fixed (viewport) placement for the portaled layer-row menu; null until the
-  // trigger is measured, so it stays hidden rather than flashing at 0,0.
-  const [layerMenuPlacement, setLayerMenuPlacement] =
-    useState<MenuPlacement | null>(null);
   /** 吸附指示：拖动命中吸附时显示临时参考线，松开后淡出。 */
   const [snapIndicator, setSnapIndicator] = useState<{
     axis: "x" | "y";
@@ -473,7 +357,7 @@ export function BoardCanvas({
   const restoreCanvasInteraction = (canvas: FabricCanvas) => {
     const interaction = boardToolInteractionState(
       toolRef.current,
-      canvasModeRef.current.locked,
+      runtime.canvasMode.locked,
     );
     canvas.selection = interaction.selection;
     canvas.defaultCursor =
@@ -515,7 +399,7 @@ export function BoardCanvas({
     }
     if (snapshot?.viewport) {
       canvas.setViewportTransform([...snapshot.viewport] as TMat2D);
-      setZoom(Math.round(canvas.getZoom() * 100));
+      controller.setZoom(Math.round(canvas.getZoom() * 100));
     }
     if (cropRectRef.current) {
       canvas.remove(cropRectRef.current);
@@ -534,42 +418,6 @@ export function BoardCanvas({
     setHudMessage(null);
     return true;
   };
-
-  const closeLayerMenu = () => {
-    setLayerMenuId(null);
-    // Clear so the next open re-measures and stays hidden until placed.
-    setLayerMenuPlacement(null);
-  };
-
-  // Dismiss the portaled layer-row menu on outside click / Escape, and close
-  // (rather than chase) on scroll or resize, since the anchor rect goes stale —
-  // the row list scrolls independently. Mirrors FolderActionsMenu.
-  useEffect(() => {
-    if (!layerMenuId) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const node = event.target as Node;
-      if (
-        node instanceof Element &&
-        (node.closest(".layer-row-more") || node.closest(".layer-row-menu"))
-      ) {
-        return;
-      }
-      closeLayerMenu();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeLayerMenu();
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", closeLayerMenu);
-    window.addEventListener("scroll", closeLayerMenu, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", closeLayerMenu);
-      window.removeEventListener("scroll", closeLayerMenu, true);
-    };
-  }, [layerMenuId]);
 
   useEffect(() => {
     if (!toolbarMoreOpen) return;
@@ -591,12 +439,12 @@ export function BoardCanvas({
     const observer = new ResizeObserver(reposition);
     observer.observe(button);
     if (hostRef.current) observer.observe(hostRef.current);
-    window.addEventListener("resize", reposition);
+    const removeResize = controller.onDom(window, "resize", reposition);
     reposition();
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("resize", reposition);
+      removeResize();
     };
   }, [toolbarMoreOpen]);
 
@@ -617,15 +465,8 @@ export function BoardCanvas({
   const [drawingStyle, setDrawingStyle] =
     useState<BoardDrawingStyle>(defaultBoardDrawingStyle);
   const [drawingPanelOpen, setDrawingPanelOpen] = useState(false);
-  const [layerDropTarget, setLayerDropTarget] = useState<{
-    id: string;
-    mode: "before" | "parent" | "after";
-  } | null>(null);
-  const [zoom, setZoom] = useState(100);
-  const [saved, setSaved] = useState(true);
   const [layersOpen, setLayersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [layerVersion, setLayerVersion] = useState(0);
   const [modelAsset, setModelAsset] = useState<AssetRecord | null>(null);
   const [modelView, setModelView] = useState<ModelView | null>(null);
   // 阶段 6 §11：双击进入完整 preview（视频/音频/高位深图片）。
@@ -656,7 +497,7 @@ export function BoardCanvas({
   }, [assets]);
   // GIF 动画播放器，按对象 objectId 索引；随画布生命周期创建/销毁。
   const gifAnimatorsRef = useRef(new Map<string, GifAnimator>());
-  const [cropTarget, setCropTarget] = useState<FabricImage | null>(null);
+  const [cropTarget, setCropTarget] = useState<BoardCropTargetSnapshot | null>(null);
   const [dropNotice, setDropNotice] = useState<string | null>(null);
   const [colorSampling, setColorSampling] = useState(false);
   const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
@@ -674,10 +515,28 @@ export function BoardCanvas({
   const [shortcutBindings, setShortcutBindings] =
     useState<BoardShortcutBindings>(() => loadBoardShortcuts(null));
 
+  const openCropDialog = (target: FabricImage) => {
+    const boardObject = target as CanvasObjectWithData & FabricImage;
+    ensureObjectIdentity(boardObject);
+    const id = boardObject.data?.objectId;
+    if (!id) return;
+    const original = target.getOriginalSize();
+    setCropTarget({
+      id,
+      title: boardObject.data?.name ?? "图片",
+      src: target.getSrc(),
+      initial: {
+        x: (target.cropX ?? 0) / original.width,
+        y: (target.cropY ?? 0) / original.height,
+        width: (target.width ?? original.width) / original.width,
+        height: (target.height ?? original.height) / original.height,
+      },
+    });
+  };
+
   const openCommandPalette = () => {
     setBoardContextMenu(null);
     setToolbarMoreOpen(false);
-    closeLayerMenu();
     setDrawingPanelOpen(false);
     setCommandPaletteOpen(true);
   };
@@ -695,64 +554,31 @@ export function BoardCanvas({
   const makeDocument = (
     canvas: FabricCanvas,
     canvasSnapshot?: Record<string, unknown>,
-  ): BoardDocumentV3 => {    const guides = { x: [] as number[], y: [] as number[] };
-    for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
-      if (object.data?.guideAxis === "x") guides.x.push(object.left ?? 0);
-      if (object.data?.guideAxis === "y") guides.y.push(object.top ?? 0);
-    }
-    guidesRef.current = guides;
-    return {
-      schemaVersion: 3,
-      canvas: canvasSnapshot ?? canvas.toObject(["data"]) as Record<string, unknown>,
-      viewport: {
-        transform: [...(canvas.viewportTransform ?? [1, 0, 0, 1, 0, 0])] as TMat2D,
-        zoom: canvas.getZoom(),
-      },
-      guides,
-      appearance: { ...appearanceRef.current },
-      windowMode: documentRef.current?.windowMode ?? "normal",
-      canvasMode: canvasModeRef.current,
-      sampling: samplingRef.current,
-      exportSettings: exportSettingsRef.current,
-    };
-  };
+  ): BoardDocumentV3 => serializeBoardDocument(canvas, runtime, canvasSnapshot);
 
   /** Applies whole-canvas mode (lock / grayscale / grid style) to the canvas. */
   const applyCanvasMode = (
     canvas: FabricCanvas,
     mode: { locked: boolean; grayscale: boolean; gridStyle: string },
-  ) => {
-    const interaction = boardToolInteractionState(
-      toolRef.current,
-      mode.locked,
-    );
-    canvas.selection = interaction.selection;
-    canvas.skipTargetFind = interaction.skipTargetFind;
-    canvas.isDrawingMode = interaction.drawingMode;
-    if (mode.locked) canvas.discardActiveObject();
-    for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
-      if (object.data?.guideAxis) continue;
-      object.selectable = !mode.locked;
-      object.evented = !mode.locked;
-    }
-    canvas.requestRenderAll();
-  };
+  ) => applyBoardCanvasMode(canvas, mode, toolRef.current);
 
   /** Applies image sampling mode to the render context (nearest vs bilinear). */
   const applySampling = (
     canvas: FabricCanvas,
     sampling: "nearest" | "bilinear",
-  ) => {
-    const context = canvas.getContext();
-    if (!context) return;
-    context.imageSmoothingEnabled = sampling === "bilinear";
-    context.imageSmoothingQuality = sampling === "bilinear" ? "high" : "low";
-  };
+  ) => applyBoardSampling(canvas, sampling);
 
   const hierarchyObjects = (canvas: FabricCanvas): CanvasObjectWithData[] =>
     (canvas.getObjects() as CanvasObjectWithData[]).filter(
       (object) => !object.data?.guideAxis,
     );
+
+  const objectById = (id: string): CanvasObjectWithData | undefined => {
+    const canvas = canvasRef.current;
+    return canvas
+      ? hierarchyObjects(canvas).find((object) => object.data?.objectId === id)
+      : undefined;
+  };
 
   const hierarchyItems = (canvas: FabricCanvas) =>
     hierarchyObjects(canvas).flatMap((object) =>
@@ -833,13 +659,6 @@ export function BoardCanvas({
   };
 
   useEffect(() => {
-    assetsRef.current = assets;
-    onSelectAssetRef.current = onSelectAsset;
-    onLocateAssetRef.current = onLocateAsset;
-    onSaveRef.current = onSave;
-  }, [assets, onLocateAsset, onSelectAsset, onSave]);
-
-  useEffect(() => {
     let current = true;
     void window.refCanvas.system.getBoardShortcuts().then((value) => {
       if (current) setShortcutBindings(loadBoardShortcuts(value));
@@ -852,9 +671,9 @@ export function BoardCanvas({
   useEffect(
     () =>
       window.refCanvas.system.onWindowModeReset(() => {
-        windowModeRef.current = "normal";
-        documentRef.current = {
-          ...documentRef.current,
+        runtime.windowMode = "normal";
+        runtime.document = {
+          ...runtime.document,
           windowMode: "normal",
         };
         scheduleSaveRef.current?.();
@@ -866,9 +685,9 @@ export function BoardCanvas({
   useEffect(() => {
     if (!canvasElementRef.current || !hostRef.current) return;
     const nextAppearance = document.appearance ?? defaultBoardAppearance;
-    appearanceRef.current = nextAppearance;
+    runtime.appearance = nextAppearance;
     setAppearance(nextAppearance);
-    const canvas = new FabricCanvas(canvasElementRef.current, {
+    const canvas = controller.createCanvas(canvasElementRef.current, {
       backgroundColor: "transparent",
       preserveObjectStacking: true,
       selectionColor: "rgba(58, 178, 143, 0.08)",
@@ -877,10 +696,8 @@ export function BoardCanvas({
       fireMiddleClick: true,
     });
     let renderFrame: number | null = null;
-    let historyFrame: number | null = null;
     let zoomFrame: number | null = null;
     let pendingZoom = Math.round(canvas.getZoom() * 100);
-    let proxyRefreshTimer: number | null = null;
     const scheduleRender = () => {
       if (renderFrame !== null) return;
       renderFrame = window.requestAnimationFrame(() => {
@@ -893,14 +710,14 @@ export function BoardCanvas({
       if (zoomFrame !== null) return;
       zoomFrame = window.requestAnimationFrame(() => {
         zoomFrame = null;
-        setZoom(pendingZoom);
+        controller.setZoom(pendingZoom);
       });
     };
     const refreshVisibleImageProxies = () => {
       for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
         if (!(object instanceof FabricImage) || !object.isOnScreen()) continue;
         const image = object as CanvasObjectWithData & FabricImage;
-        const asset = assetsRef.current.find(
+        const asset = eventBindingsRef.current.assets.find(
           (item) => item.id === image.data?.assetId,
         );
         // 阶段 6 §11：文件缺失时保留对象位置/尺寸/变换，视觉降级为
@@ -958,11 +775,10 @@ export function BoardCanvas({
       }
     };
     const scheduleProxyRefresh = () => {
-      if (proxyRefreshTimer !== null) window.clearTimeout(proxyRefreshTimer);
-      proxyRefreshTimer = window.setTimeout(refreshVisibleImageProxies, 180);
+      importController.scheduleProxyRefresh(refreshVisibleImageProxies);
     };
     canvasRef.current = canvas;
-    canvas.on("contextmenu", ({ e, target: foundTarget }) => {
+    controller.onCanvas(canvas, "contextmenu", ({ e, target: foundTarget }) => {
       const event = e as MouseEvent;
       event.preventDefault();
       const mouseUp = interruptedSelectionMouseUp(event);
@@ -985,6 +801,8 @@ export function BoardCanvas({
         canvas.requestRenderAll();
       }
       const targeted = context.mode === "single" ? context.target : undefined;
+      if (targeted) ensureObjectIdentity(targeted);
+      const targetId = targeted?.data?.objectId;
       const kind =
         context.mode === "multi"
           ? "multi"
@@ -1002,36 +820,38 @@ export function BoardCanvas({
       setBoardContextMenu({
         ...position,
         kind,
-        target: targeted,
+        target: targeted && targetId
+          ? {
+              id: targetId,
+              isImage: targeted instanceof FabricImage,
+              assetId: targeted.data?.assetId ?? null,
+              hasGif: Boolean(targeted.data?.gif),
+              gifPlaying: Boolean(targeted.data?.gif?.playing),
+            }
+          : undefined,
       });
     });
     let migratedIdentity = false;
 
-    const scheduleSave = () => {
-      if (loadingRef.current || bulkMutationRef.current) return;
-      if (gestureRef.current.suppressSave || historyFrame !== null) return;
-      historyFrame = window.requestAnimationFrame(() => {
-        historyFrame = null;
-        if (loadingRef.current || gestureRef.current.suppressSave) return;
-        const canvasSnapshot = canvas.toObject(["data"]) as Record<string, unknown>;
-        pendingCanvasSnapshotRef.current = canvasSnapshot;
-        const snapshot = JSON.stringify(canvasSnapshot);
-        historyControllerRef.current.push(snapshot);
-        setSaved(false);
-        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = window.setTimeout(() => {
-          const nextDocument = makeDocument(
-            canvas,
-            pendingCanvasSnapshotRef.current ?? undefined,
-          );
-          void onSaveRef.current(nextDocument).then(() => setSaved(true));
-        }, 500);
-        setLayerVersion((value) => value + 1);
-      });
-    };
+    const persistence = new BoardPersistenceController(
+      historyControllerRef.current,
+      {
+        blocked: () =>
+          loadingRef.current ||
+          bulkMutationRef.current ||
+          gestureRef.current.suppressSave,
+        capture: () => canvas.toObject(["data"]) as Record<string, unknown>,
+        save: (snapshot) =>
+          saveLocalDocument(makeDocument(canvas, snapshot)),
+        setSaved: (value) => controller.setSaved(value),
+        onSnapshot: () => controller.refreshSnapshot(),
+      },
+    );
+    persistenceRef.current = persistence;
+    const scheduleSave = () => persistence.schedule();
     scheduleSaveRef.current = scheduleSave;
 
-    canvas.on("object:added", (event) => {
+    controller.onCanvas(canvas, "object:added", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
       if (target) {
         applyBoardControls(target);
@@ -1060,12 +880,12 @@ export function BoardCanvas({
       scheduleSave();
       transformDescendantsRef.current = null;
     });
-    canvas.on("object:modified", (event) => {
+    controller.onCanvas(canvas, "object:modified", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
       if (target) propagateHierarchyTransform(canvas, target);
       scheduleSave();
     });
-    canvas.on("object:removed", (event) => {
+    controller.onCanvas(canvas, "object:removed", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
       if (target?.data?.objectId) {
         transformSnapshotsRef.current.delete(target.data.objectId);
@@ -1075,7 +895,7 @@ export function BoardCanvas({
       scheduleSave();
       transformDescendantsRef.current = null;
     });
-    canvas.on("path:created", (event) => {
+    controller.onCanvas(canvas, "path:created", (event) => {
       const path = event.path as CanvasObjectWithData;
       const style = drawingStyleRef.current;
       path.data = {
@@ -1097,16 +917,16 @@ export function BoardCanvas({
       canvas.fire("object:modified", { target: path });
     });
     const selectTargetAsset = (target: CanvasObjectWithData | undefined) => {
-      const selection = resolveBoardSelection(assetsRef.current, target);
+      const selection = resolveBoardSelection(eventBindingsRef.current.assets, target);
       if (!selection.missingAssetId) {
-        onSelectAssetRef.current(selection.asset);
+        eventBindingsRef.current.onSelectAsset(selection.asset);
         return;
       }
       void window.refCanvas.library
         .get(selection.missingAssetId)
-        .then((loaded) => onSelectAssetRef.current(loaded));
+        .then((loaded) => eventBindingsRef.current.onSelectAsset(loaded));
     };
-    canvas.on("selection:created", () => {
+    controller.onCanvas(canvas, "selection:created", () => {
       const selection = canvas.getActiveObject();
       if (selection) applyBoardControls(selection);
       const target =
@@ -1117,15 +937,15 @@ export function BoardCanvas({
       // 归入下一次手势或直接持久化）。
       if (
         target instanceof FabricImage &&
-        bringToFrontOnSelectRef.current
+        runtime.bringToFrontOnSelect
       ) {
         canvas.bringObjectToFront(target);
         canvas.requestRenderAll();
       }
       selectTargetAsset(target);
-      setLayerVersion((value) => value + 1);
+      controller.refreshSnapshot();
     });
-    canvas.on("selection:updated", () => {
+    controller.onCanvas(canvas, "selection:updated", () => {
       const selection = canvas.getActiveObject();
       if (selection) applyBoardControls(selection);
       const target =
@@ -1133,18 +953,18 @@ export function BoardCanvas({
           ? (selection as CanvasObjectWithData)
           : undefined;
       selectTargetAsset(target);
-      setLayerVersion((value) => value + 1);
+      controller.refreshSnapshot();
     });
-    canvas.on("selection:cleared", () => {
-      onSelectAssetRef.current(null);
-      setLayerVersion((value) => value + 1);
+    controller.onCanvas(canvas, "selection:cleared", () => {
+      eventBindingsRef.current.onSelectAsset(null);
+      controller.refreshSnapshot();
     });
     let snapGestureTarget: CanvasObjectWithData | null = null;
     let snapCandidates: CanvasObjectWithData[] = [];
-    canvas.on("object:moving", (event) => {
+    controller.onCanvas(canvas, "object:moving", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
       if (!target) return;
-      if (!snapEnabledRef.current) {
+      if (!runtime.snapEnabled) {
         setSnapIndicator((current) =>
           current
             ? { axis: current.axis, value: current.value, visible: false }
@@ -1167,8 +987,8 @@ export function BoardCanvas({
         ).filter((object) => object.visible);
       }
       let snapped: { x?: number; y?: number; other?: CanvasObjectWithData } = {};
-      if (appearanceRef.current.gridVisible) {
-        const grid = appearanceRef.current.gridSize;
+      if (runtime.appearance.gridVisible) {
+        const grid = runtime.appearance.gridSize;
         const snappedLeft = Math.round((target.left ?? 0) / grid) * grid;
         const snappedTop = Math.round((target.top ?? 0) / grid) * grid;
         if (Math.abs(snappedLeft - (target.left ?? 0)) <= threshold) {
@@ -1241,20 +1061,20 @@ export function BoardCanvas({
       }
       propagateHierarchyTransform(canvas, target);
     });
-    canvas.on("object:scaling", (event) => {
+    controller.onCanvas(canvas, "object:scaling", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
       if (target) propagateHierarchyTransform(canvas, target);
     });
-    canvas.on("object:rotating", (event) => {
+    controller.onCanvas(canvas, "object:rotating", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
       if (target) {
         propagateHierarchyTransform(canvas, target);
         setHudMessage(`旋转 ${Math.round(normalizeSignedAngle(target.angle ?? 0))}°`);
       }
     });
-    canvas.on("mouse:dblclick", (event) => {
+    controller.onCanvas(canvas, "mouse:dblclick", (event) => {
       const target = event.target as CanvasObjectWithData | undefined;
-      const asset = assetsRef.current.find(
+      const asset = eventBindingsRef.current.assets.find(
         (item) => item.id === target?.data?.assetId,
       );
       if (asset?.kind === "model3d") {
@@ -1284,7 +1104,7 @@ export function BoardCanvas({
       }
       if (target?.data?.assetId) focusBoardObject(target);
     });
-    canvas.on("mouse:wheel", (event) => {
+    controller.onCanvas(canvas, "mouse:wheel", (event) => {
       setFocusPlaying(false);
       const wheel = event.e as WheelEvent;
       const nextZoom = Math.min(
@@ -1381,7 +1201,7 @@ export function BoardCanvas({
       panning = false;
       panButton = null;
       canvas.selection =
-        toolRef.current === "select" && !canvasModeRef.current.locked;
+        toolRef.current === "select" && !runtime.canvasMode.locked;
       canvas.defaultCursor = toolRef.current === "select" ? "default" : "crosshair";
       canvas.setCursor(canvas.defaultCursor);
       scheduleProxyRefresh();
@@ -1473,42 +1293,46 @@ export function BoardCanvas({
       rememberPrimaryPointer(event);
       if (!recoverPrimaryPointer()) finishPanning();
     };
-    canvas.upperCanvasEl.addEventListener("mousedown", startNativeMiddlePan, true);
-    canvas.upperCanvasEl.addEventListener(
+    controller.onDom(canvas.upperCanvasEl, "mousedown", startNativeMiddlePan as EventListener, true);
+    controller.onDom(
+      canvas.upperCanvasEl,
       "auxclick",
-      preventMiddleAuxClick,
+      preventMiddleAuxClick as EventListener,
     );
-    canvas.upperCanvasEl.ownerDocument.addEventListener(
+    controller.onDom(
+      canvas.upperCanvasEl.ownerDocument,
       "mousemove",
-      moveNativeMiddlePan,
+      moveNativeMiddlePan as EventListener,
       true,
     );
-    canvas.upperCanvasEl.ownerDocument.addEventListener(
+    controller.onDom(
+      canvas.upperCanvasEl.ownerDocument,
       "mouseup",
-      finishNativeMiddlePan,
+      finishNativeMiddlePan as EventListener,
       true,
     );
-    canvas.upperCanvasEl.addEventListener("pointercancel", handlePointerCancel);
-    window.addEventListener("blur", handleWindowBlur);
-    canvas.upperCanvasEl.ownerDocument.addEventListener(
+    controller.onDom(canvas.upperCanvasEl, "pointercancel", handlePointerCancel as EventListener);
+    controller.onDom(window, "blur", handleWindowBlur);
+    controller.onDom(
+      canvas.upperCanvasEl.ownerDocument,
       "visibilitychange",
       handleVisibilityChange,
     );
-    canvas.on("mouse:down:before", () => {
+    controller.onCanvas(canvas, "mouse:down:before", () => {
       selectionBeforePointer = canvas.getActiveObject() as
         | CanvasObjectWithData
         | null;
     });
-    canvas.on("mouse:down", (event) => {
+    controller.onCanvas(canvas, "mouse:down", (event) => {
       const pointerEvent = event.e as MouseEvent;
       if (pointerEvent.button === 0) {
         primaryPointerDown = true;
         rememberPrimaryPointer(pointerEvent);
       }
-      const pureRef = interactionPresetRef.current === "pureref";
+      const pureRef = runtime.interactionPreset === "pureref";
       const lockedLeftPan =
         pureRef &&
-        canvasModeRef.current.locked &&
+        runtime.canvasMode.locked &&
         !pointerEvent.ctrlKey &&
         !pointerEvent.altKey &&
         !pointerEvent.shiftKey &&
@@ -1532,7 +1356,7 @@ export function BoardCanvas({
         dismissHint();
         return;
       }
-      if (canvasModeRef.current.locked) return;
+      if (runtime.canvasMode.locked) return;
       if (toolRef.current === "eraser") {
         const point = canvas.getScenePoint(pointerEvent);
         eraseAtPoint(point);
@@ -1936,7 +1760,7 @@ export function BoardCanvas({
         canvas.add(drawingObject);
       }
     });
-    canvas.on("mouse:move:before", (event) => {
+    controller.onCanvas(canvas, "mouse:move:before", (event) => {
       const pointerEvent = event.e as MouseEvent;
       if (primaryPointerDown) {
         rememberPrimaryPointer(pointerEvent);
@@ -1965,7 +1789,7 @@ export function BoardCanvas({
       lastX = pointerEvent.clientX;
       lastY = pointerEvent.clientY;
     });
-    canvas.on("mouse:move", (event) => {
+    controller.onCanvas(canvas, "mouse:move", (event) => {
       const pointerEvent = event.e as MouseEvent;
       if (panning) return;
       if (toolRef.current === "eraser" && pointerEvent.buttons === 1) {
@@ -2169,7 +1993,7 @@ export function BoardCanvas({
       );
       scheduleRender();
     });
-    canvas.on("mouse:up", (event) => {
+    controller.onCanvas(canvas, "mouse:up", (event) => {
       const pointerEvent = event.e as MouseEvent;
       if (pointerEvent.button === 0 || (pointerEvent.buttons & 1) === 0) {
         primaryPointerDown = false;
@@ -2213,7 +2037,7 @@ export function BoardCanvas({
             // ActiveSelection 本身不在文档对象数组中；先退出临时组，把
             // 旋转/缩放/翻转矩阵落实到成员，再建立等价的新选区。
             canvas.discardActiveObject();
-            selection = new ActiveSelection(members, { canvas });
+            selection = createBoardActiveSelection(members, canvas);
             applyBoardControls(selection);
             for (const member of members) {
               member.setCoords();
@@ -2316,7 +2140,7 @@ export function BoardCanvas({
 
     loadingRef.current = true;
     setReadyBoardId(null);
-    void canvas.loadFromJSON(document.canvas).then(() => {
+    void controller.loadCanvasJSON(canvas, document.canvas).then(() => {
       for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
         applyBoardControls(object);
         if (ensureObjectIdentity(object)) migratedIdentity = true;
@@ -2324,71 +2148,33 @@ export function BoardCanvas({
       if (sanitizeHierarchy(canvas)) migratedIdentity = true;
       rebuildTransformSnapshots(canvas);
       canvas.setViewportTransform(document.viewport.transform);
-      setZoom(Math.round(document.viewport.zoom * 100));
-      documentRef.current = document;
-      canvasModeRef.current = document.canvasMode ?? {
-        locked: false,
-        grayscale: false,
-        gridStyle: "line",
-      };
-      setCanvasLocked(canvasModeRef.current.locked);
-      samplingRef.current = document.sampling ?? "bilinear";
-      exportSettingsRef.current = document.exportSettings ?? {
-        format: "png",
-        embedAssets: false,
-      };
-      applyCanvasMode(canvas, canvasModeRef.current);
-      applySampling(canvas, samplingRef.current);
+      controller.setZoom(Math.round(document.viewport.zoom * 100));
+      runtime.syncDocument(document);
+      setCanvasLocked(runtime.canvasMode.locked);
+      applyCanvasMode(canvas, runtime.canvasMode);
+      applySampling(canvas, runtime.sampling);
       loadingRef.current = false;
       setReadyBoardId(board.id);
       historyControllerRef.current.reset(
         JSON.stringify(canvas.toObject(["data"])),
       );
-      setLayerVersion((value) => value + 1);
+      controller.refreshSnapshot();
       canvas.requestRenderAll();
       scheduleProxyRefresh();
       if (migratedIdentity) {
-        setSaved(false);
-        void onSaveRef.current(makeDocument(canvas)).then(() => setSaved(true));
+        controller.setSaved(false);
+        void saveLocalDocument(makeDocument(canvas)).then(() => controller.setSaved(true));
       }
     });
 
     return () => {
       disposed = true;
       resizeObserver.disconnect();
-      canvas.upperCanvasEl.removeEventListener(
-        "mousedown",
-        startNativeMiddlePan,
-        true,
-      );
-      canvas.upperCanvasEl.removeEventListener(
-        "auxclick",
-        preventMiddleAuxClick,
-      );
-      canvas.upperCanvasEl.ownerDocument.removeEventListener(
-        "mousemove",
-        moveNativeMiddlePan,
-        true,
-      );
-      canvas.upperCanvasEl.ownerDocument.removeEventListener(
-        "mouseup",
-        finishNativeMiddlePan,
-        true,
-      );
-      canvas.upperCanvasEl.removeEventListener(
-        "pointercancel",
-        handlePointerCancel,
-      );
-      window.removeEventListener("blur", handleWindowBlur);
-      canvas.upperCanvasEl.ownerDocument.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-      );
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      persistence.dispose();
+      persistenceRef.current = null;
       if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
-      if (historyFrame !== null) window.cancelAnimationFrame(historyFrame);
       if (zoomFrame !== null) window.cancelAnimationFrame(zoomFrame);
-      if (proxyRefreshTimer !== null) window.clearTimeout(proxyRefreshTimer);
+      importController.dispose();
       if (hudFrame !== null) window.cancelAnimationFrame(hudFrame);
       scheduleSaveRef.current = null;
       finishContinuousGestureRef.current = null;
@@ -2396,10 +2182,52 @@ export function BoardCanvas({
         animator.dispose();
       }
       gifAnimatorsRef.current.clear();
-      canvas.dispose();
+      controller.destroyCanvas(canvas);
       canvasRef.current = null;
     };
   }, [board.id]);
+
+  useEffect(() => {
+    controller.syncAssets(assets);
+  }, [assets, controller]);
+
+  useEffect(() => {
+    controller.syncCallbacks({
+      loadDocument: async (nextDocument, context) => {
+        const canvas = canvasRef.current;
+        if (!canvas || !context.isCurrent()) return;
+        loadingRef.current = true;
+        await controller.loadCanvasJSON(canvas, nextDocument.canvas);
+        if (!context.isCurrent()) {
+          loadingRef.current = false;
+          return;
+        }
+        for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
+          applyBoardControls(object);
+          ensureObjectIdentity(object);
+        }
+        canvas.setViewportTransform(nextDocument.viewport.transform);
+        runtime.syncDocument(nextDocument);
+        applyCanvasMode(canvas, runtime.canvasMode);
+        applySampling(canvas, runtime.sampling);
+        loadingRef.current = false;
+        controller.refreshSnapshot();
+        canvas.requestRenderAll();
+      },
+      saveDocument: async () => {
+        const canvas = canvasRef.current;
+        if (canvas) await saveLocalDocument(makeDocument(canvas));
+      },
+      importAssetIds: async (ids, point) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const target = point ?? sceneCenter(canvas);
+        await addDroppedAssetsRef.current(ids, target, !point);
+      },
+      refreshProxies: () => canvasRef.current?.requestRenderAll(),
+    });
+    void controller.syncDocument(board.id, document);
+  }, [board.id, controller, document]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2408,7 +2236,7 @@ export function BoardCanvas({
     drawingStyleRef.current = drawingStyle;
     const interaction = boardToolInteractionState(
       tool,
-      canvasModeRef.current.locked,
+      runtime.canvasMode.locked,
     );
     canvas.isDrawingMode = interaction.drawingMode;
     canvas.selection = interaction.selection;
@@ -2434,40 +2262,38 @@ export function BoardCanvas({
         enabled || toolRef.current === "select" ? "default" : "crosshair";
       if (enabled) {
         canvas.discardActiveObject();
-        onSelectAssetRef.current(null);
+        eventBindingsRef.current.onSelectAsset(null);
       }
       canvas.requestRenderAll();
     };
-    window.addEventListener(
+    return controller.onDom(
+      window,
       "refcanvas:presentation-mode",
       onPresentationMode,
     );
-    return () =>
-      window.removeEventListener(
-        "refcanvas:presentation-mode",
-        onPresentationMode,
-      );
-  }, []);
+  }, [controller]);
 
   const restoreHistory = (offset: -1 | 1) => {
     const canvas = canvasRef.current;
-    const entry = historyControllerRef.current.entry(offset);
-    if (!canvas || !entry) return;
+    const persistence = persistenceRef.current;
+    if (!canvas || !persistence) return;
+    const entry = persistence.historyEntry(offset);
+    if (!entry) return;
     gestureRef.current = { ...gestureRef.current, suppressSave: false };
     loadingRef.current = true;
-    void canvas.loadFromJSON(JSON.parse(entry.snapshot)).then(() => {
+    void controller.loadCanvasJSON(canvas, JSON.parse(entry.snapshot)).then(() => {
       for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
         ensureObjectIdentity(object);
       }
       sanitizeHierarchy(canvas);
       rebuildTransformSnapshots(canvas);
-      historyControllerRef.current.commit(entry.index);
+      persistence.commitHistory(entry.index);
       loadingRef.current = false;
-      setLayerVersion((value) => value + 1);
+      controller.refreshSnapshot();
       canvas.requestRenderAll();
       const nextDocument = makeDocument(canvas);
-      setSaved(false);
-      void onSaveRef.current(nextDocument).then(() => setSaved(true));
+      controller.setSaved(false);
+      void saveLocalDocument(nextDocument).then(() => controller.setSaved(true));
     });
   };
 
@@ -2654,7 +2480,7 @@ export function BoardCanvas({
         title: object.data?.name ?? object.data?.type ?? "",
         path: object.data?.assetId
           ? (() => {
-              const asset = assetsRef.current.find(
+              const asset = eventBindingsRef.current.assets.find(
                 (item) => item.id === object.data?.assetId,
               );
               return asset?.path ?? null;
@@ -2847,7 +2673,7 @@ export function BoardCanvas({
     rebuildTransformSnapshots(canvas);
     canvas.fire("object:modified", { target: child });
     canvas.requestRenderAll();
-    setLayerVersion((value) => value + 1);
+    controller.refreshSnapshot();
     return true;
   };
 
@@ -2896,7 +2722,7 @@ export function BoardCanvas({
     rebuildTransformSnapshots(canvas);
     canvas.fire("object:modified", { target: dragged });
     canvas.requestRenderAll();
-    setLayerVersion((value) => value + 1);
+    controller.refreshSnapshot();
   };
 
   const toggleLockSelection = () => {
@@ -2946,7 +2772,7 @@ export function BoardCanvas({
       util.sendObjectToPlane(object, transform);
       canvas.add(object);
     }
-    canvas.setActiveObject(new ActiveSelection(objects, { canvas }));
+    canvas.setActiveObject(createBoardActiveSelection(objects, canvas));
     canvas.requestRenderAll();
   };
 
@@ -2975,8 +2801,12 @@ export function BoardCanvas({
 
   const applyCrop = (rect: CropRect) => {
     const canvas = canvasRef.current;
-    const target = cropTarget;
-    if (!canvas || !target) return;
+    const target = canvas && cropTarget
+      ? (canvas.getObjects() as CanvasObjectWithData[]).find(
+          (object) => object.data?.objectId === cropTarget.id,
+        )
+      : undefined;
+    if (!canvas || !(target instanceof FabricImage)) return;
     const original = target.getOriginalSize();
     target.set({
       cropX: Math.round(rect.x * original.width),
@@ -3088,13 +2918,13 @@ export function BoardCanvas({
         };
         canvas.fire("object:modified", { target: object });
         canvas.requestRenderAll();
-        setLayerVersion((current) => current + 1);
+        controller.refreshSnapshot();
       },
     });
   };
 
   const updateAppearance = (next: BoardAppearance) => {
-    appearanceRef.current = next;
+    runtime.appearance = next;
     setAppearance(next);
     scheduleSaveRef.current?.();
   };
@@ -3108,7 +2938,7 @@ export function BoardCanvas({
         {
           name: "backgroundColor",
           label: "背景颜色（Hex）",
-          initialValue: appearanceRef.current.backgroundColor,
+          initialValue: runtime.appearance.backgroundColor,
           required: true,
           maxLength: 7,
           placeholder: "#202426",
@@ -3117,7 +2947,7 @@ export function BoardCanvas({
           name: "gridSize",
           label: "网格间距（8–96 px）",
           type: "number",
-          initialValue: String(appearanceRef.current.gridSize),
+          initialValue: String(runtime.appearance.gridSize),
           required: true,
           min: 8,
           max: 96,
@@ -3128,7 +2958,7 @@ export function BoardCanvas({
           throw new Error("背景颜色必须是 6 位 Hex，例如 #202426");
         }
         updateAppearance({
-          ...appearanceRef.current,
+          ...runtime.appearance,
           backgroundColor,
           gridSize: Math.round(Number(gridSize)),
         });
@@ -3148,7 +2978,7 @@ export function BoardCanvas({
     const viewport = fitViewport(boxes, canvas.width, canvas.height);
     if (!viewport) return;
     canvas.setViewportTransform(viewport.transform);
-    setZoom(Math.round(viewport.zoom * 100));
+    controller.setZoom(Math.round(viewport.zoom * 100));
     canvas.requestRenderAll();
   };
 
@@ -3157,23 +2987,23 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const next = {
-      ...canvasModeRef.current,
-      locked: !canvasModeRef.current.locked,
+      ...runtime.canvasMode,
+      locked: !runtime.canvasMode.locked,
     };
-    canvasModeRef.current = next;
+    runtime.canvasMode = next;
     setCanvasLocked(next.locked);
     applyCanvasMode(canvas, next);
-    setSaved(false);
-    void onSaveRef.current(makeDocument(canvas)).then(() => setSaved(true));
+    controller.setSaved(false);
+    void saveLocalDocument(makeDocument(canvas)).then(() => controller.setSaved(true));
   };
 
   /** 画布整体灰度：用 CSS filter 作用于 canvas 元素。 */
   const toggleCanvasGrayscale = async () => {
     const next = {
-      ...canvasModeRef.current,
-      grayscale: !canvasModeRef.current.grayscale,
+      ...runtime.canvasMode,
+      grayscale: !runtime.canvasMode.grayscale,
     };
-    canvasModeRef.current = next;
+    runtime.canvasMode = next;
     setAppearance((current) => ({ ...current }));
     scheduleSaveRef.current?.();
   };
@@ -3182,10 +3012,10 @@ export function BoardCanvas({
   const cycleGridStyle = async () => {
     const order = ["line", "dot", "none"] as const;
     const nextIndex =
-      (order.indexOf(canvasModeRef.current.gridStyle as (typeof order)[number]) + 1) %
+      (order.indexOf(runtime.canvasMode.gridStyle as (typeof order)[number]) + 1) %
       order.length;
-    canvasModeRef.current = {
-      ...canvasModeRef.current,
+    runtime.canvasMode = {
+      ...runtime.canvasMode,
       gridStyle: order[nextIndex],
     };
     setAppearance((current) => ({ ...current }));
@@ -3205,7 +3035,7 @@ export function BoardCanvas({
       center.x - canvas.width / 2,
       center.y - canvas.height / 2,
     ]);
-    setZoom(100);
+    controller.setZoom(100);
     canvas.requestRenderAll();
   };
 
@@ -3263,7 +3093,7 @@ export function BoardCanvas({
         1,
         1,
       ).data;
-      const fallback = appearanceRef.current.backgroundColor.match(
+      const fallback = runtime.appearance.backgroundColor.match(
         /^#([0-9a-f]{6})$/i,
       )?.[1];
       const hex =
@@ -3306,8 +3136,8 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const next: "nearest" | "bilinear" =
-      samplingRef.current === "nearest" ? "bilinear" : "nearest";
-    samplingRef.current = next;
+      runtime.sampling === "nearest" ? "bilinear" : "nearest";
+    runtime.sampling = next;
     applySampling(canvas, next);
     scheduleSaveRef.current?.();
   };
@@ -3356,70 +3186,41 @@ export function BoardCanvas({
     }
     // 重新加载引用状态（自动刷新对象显示）。
     await window.refCanvas.boards.resolveReferences(board.id);
-    void onReferencesChangedRef.current?.();
+    void eventBindingsRef.current.onReferencesChanged?.();
   };
 
-  const onReferencesChangedRef = useRef(onReferencesChanged);
-  onReferencesChangedRef.current = onReferencesChanged;
 
   /** PureRef 连续功能键（Z/C/V/S/D）；文本编辑时不劫持。 */
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable
-      ) {
-        return;
+  useBoardGestureKeys({
+    interactionPreset: runtime.interactionPreset,
+    onPress: (key) => {
+      heldKeysRef.current.add(key);
+      const canvas = canvasRef.current;
+      if (canvas && !gestureRef.current.kind) {
+        canvas.setCursor(key === "z" ? "ns-resize" : key === "v" ? "move" : "crosshair");
       }
-      const key = event.key.toLowerCase();
-      if (
-        interactionPresetRef.current === "pureref" &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        ["z", "c", "v", "s", "d"].includes(key)
-      ) {
-        heldKeysRef.current.add(key);
-        const canvas = canvasRef.current;
-        if (canvas && !gestureRef.current.kind) {
-          canvas.setCursor(
-            key === "z" ? "ns-resize" : key === "v" ? "move" : "crosshair",
-          );
-        }
-      }
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if (["z", "c", "v", "s", "d"].includes(key)) {
-        heldKeysRef.current.delete(key);
-      }
+    },
+    onRelease: (key) => {
+      heldKeysRef.current.delete(key);
       finishContinuousGestureRef.current?.(key);
       const canvas = canvasRef.current;
       if (canvas && !gestureRef.current.kind) restoreCanvasInteraction(canvas);
-    };
-    const onBlur = () => heldKeysRef.current.clear();
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      window.removeEventListener("blur", onBlur);
-    };
-  }, []);
+    },
+    onBlur: () => heldKeysRef.current.clear(),
+  });
 
   /** 应用级白板偏好：首次加载及设置窗口修改时立即应用。 */
   useEffect(() => {
     const applySettings = (settings: BoardSettings) => {
       historyControllerRef.current.setLimit(settings.undoLimit);
-      interactionPresetRef.current = settings.interactionPreset;
       if (settings.interactionPreset !== "pureref") heldKeysRef.current.clear();
-      snapEnabledRef.current = settings.snapEnabled;
-      bringToFrontOnSelectRef.current = settings.bringToFrontOnSelect;
       const canvas = canvasRef.current;
-      if (canvas && settings.sampling && settings.sampling !== samplingRef.current) {
-        samplingRef.current = settings.sampling;
+      const samplingChanged = Boolean(
+        settings.sampling && settings.sampling !== runtime.sampling,
+      );
+      runtime.syncSettings(settings);
+      controller.syncSettings(settings);
+      if (canvas && settings.sampling && samplingChanged) {
         applySampling(canvas, settings.sampling);
       }
     };
@@ -3429,10 +3230,8 @@ export function BoardCanvas({
     void window.refCanvas.system
       .getPreferences()
       .then((preferences) => applySettings(preferences.boardSettings));
-    window.addEventListener("refcanvas:board-settings", onSettingsChanged);
-    return () =>
-      window.removeEventListener("refcanvas:board-settings", onSettingsChanged);
-  }, []);
+    return controller.onDom(window, "refcanvas:board-settings", onSettingsChanged);
+  }, [controller]);
 
   /** FPS 采集钩子（仅 `?fps=1` 测试模式启用，正常打包不含该路径的 UI）。 */
   useEffect(() => {
@@ -3576,9 +3375,9 @@ export function BoardCanvas({
       } else if (mode === "locked") {
         toggleCanvasLock();
       }
-      windowModeRef.current = mode;
+      runtime.windowMode = mode;
       if (canvas) {
-        documentRef.current = { ...documentRef.current, windowMode: mode };
+        runtime.document = { ...runtime.document, windowMode: mode };
         scheduleSaveRef.current?.();
       }
     } catch {
@@ -3638,7 +3437,7 @@ export function BoardCanvas({
       viewport.offsetX,
       viewport.offsetY,
     ]);
-    setZoom(Math.round(viewport.zoom * 100));
+    controller.setZoom(Math.round(viewport.zoom * 100));
     canvas.requestRenderAll();
   };
 
@@ -3646,7 +3445,7 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (canvas && preFocusViewportRef.current) {
       canvas.setViewportTransform([...preFocusViewportRef.current] as TMat2D);
-      setZoom(Math.round(canvas.getZoom() * 100));
+      controller.setZoom(Math.round(canvas.getZoom() * 100));
       canvas.requestRenderAll();
     }
     focusedObjectIdRef.current = null;
@@ -3750,14 +3549,14 @@ export function BoardCanvas({
       };
       canvas.add(object);
     }
-    canvas.setActiveObject(new ActiveSelection(objects, { canvas }));
+    canvas.setActiveObject(createBoardActiveSelection(objects, canvas));
     canvas.requestRenderAll();
   };
 
   const switchBoard = async (id: string) => {
     const canvas = canvasRef.current;
     if (canvas) {
-      await onSaveRef.current(makeDocument(canvas));
+      await saveLocalDocument(makeDocument(canvas));
     }
     await onSwitchBoard(id);
   };
@@ -3765,7 +3564,7 @@ export function BoardCanvas({
   const createBoard = async () => {
     const canvas = canvasRef.current;
     if (canvas) {
-      await onSaveRef.current(makeDocument(canvas));
+      await saveLocalDocument(makeDocument(canvas));
     }
     await onCreateBoard();
   };
@@ -3792,353 +3591,128 @@ export function BoardCanvas({
     files: File[],
     position: { x: number; y: number },
   ) => {
-    const paths = window.refCanvas.library.pathsForFiles(files);
-    if (!paths.length) return;
-    const result = await window.refCanvas.library.importPaths(paths);
-    const imported = await Promise.all(
-      paths.map((filename) => window.refCanvas.library.getByPath(filename)),
+    const notice = await importController.importFiles(
+      files,
+      position,
+      {
+        pathsForFiles: (items) => window.refCanvas.library.pathsForFiles(items),
+        importPaths: (paths) => window.refCanvas.library.importPaths(paths),
+        getByPath: (path) => window.refCanvas.library.getByPath(path),
+      },
+      (ids, point) => addDroppedAssets(ids, point),
+      onLibraryChanged,
     );
-    const importedAssets = imported.filter(
-      (item): item is AssetRecord => Boolean(item),
-    );
-    if (importedAssets.length) {
-      await addDroppedAssets(
-        importedAssets.map((asset) => asset.id),
-        position,
-      );
-    }
-    await onLibraryChanged();
-    const count = result.imported + result.reused;
-    setDropNotice(
-      importedAssets.length
-        ? `已加入 ${count} 项，并将 ${importedAssets.length} 项放入白板`
-        : `没有可放入白板的受支持文件`,
-    );
+    if (!notice) return;
+    setDropNotice(notice);
     window.setTimeout(() => setDropNotice(null), 2400);
   };
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const activeGesture = gestureRef.current;
-      if (event.key === "Escape" && activeGesture.kind) {
-        event.preventDefault();
-        cancelPureRefGesture();
-        return;
-      }
-      if (event.key === "Escape" && colorSampling) {
-        event.preventDefault();
-        setColorSampling(false);
-        setDropNotice(null);
-        return;
-      }
-      if (shortcutMatches(event, shortcutBindings.commandPalette)) {
-        event.preventDefault();
+  const handleShortcutCommand = (
+    command: BoardShortcutCommand,
+    payload?: BoardShortcutPayload,
+  ) => {
+    switch (command) {
+      case "cancelGesture": cancelPureRefGesture(); break;
+      case "cancelSampling": setColorSampling(false); setDropNotice(null); break;
+      case "toggleCommandPalette":
         if (commandPaletteOpen) setCommandPaletteOpen(false);
         else openCommandPalette();
-        return;
+        break;
+      case "closeShortcutSettings": setShortcutSettingsOpen(false); break;
+      case "closeCommandPalette": setCommandPaletteOpen(false); break;
+      case "crop": {
+        const id = boardSnapshot.activeObjectId;
+        const active = id ? objectById(id) : null;
+        if (active instanceof FabricImage) openCropDialog(active);
+        break;
       }
-      if (shortcutSettingsOpen) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setShortcutSettingsOpen(false);
-        }
-        return;
-      }
-      if (commandPaletteOpen) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          setCommandPaletteOpen(false);
-        }
-        return;
-      }
-      const target = event.target as HTMLElement | null;
-      const isEditing =
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable;
-      const matchingShortcutId = !isEditing
-        ? (Object.keys(shortcutBindings) as BoardShortcutId[]).find(
-            (id) => shortcutMatches(event, shortcutBindings[id]),
-          )
-        : undefined;
-      const pureRef = interactionPresetRef.current === "pureref";
-      if (!isEditing && pureRef) {
-        const key = event.key.toLowerCase();
-        if (event.ctrlKey && event.altKey && event.shiftKey && key === "c") {
-          const canvas = canvasRef.current;
-          const active = canvas?.getActiveObject();
-          if (!(active instanceof FabricImage)) return;
-          event.preventDefault();
-          setCropTarget(active);
-          return;
-        }
-        if (event.ctrlKey && event.shiftKey && !event.altKey && key === "c") {
-          event.preventDefault();
-          resetSelectionCrop();
-          return;
-        }
-        if (event.altKey && event.shiftKey && !event.ctrlKey && key === "h") {
-          event.preventDefault();
-          transformSelection("flipX");
-          return;
-        }
-        if (event.altKey && event.shiftKey && !event.ctrlKey && key === "v") {
-          event.preventDefault();
-          transformSelection("flipY");
-          return;
-        }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "g") {
-          event.preventDefault();
-          setSelectionGrayscale("toggle");
-          return;
-        }
-        if (event.ctrlKey && event.altKey && !event.shiftKey && key === "g") {
-          event.preventDefault();
-          void toggleCanvasGrayscale();
-          return;
-        }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "t") {
-          event.preventDefault();
-          void toggleSampling();
-          return;
-        }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "l") {
-          event.preventDefault();
-          toggleLockSelection();
-          return;
-        }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "s") {
-          event.preventDefault();
-          if (!focusedObjectIdRef.current) toggleObjectFocus();
-          setFocusPlaying(true);
-          return;
-        }
-        if (event.ctrlKey && event.shiftKey && !event.altKey && key === "z") {
-          event.preventDefault();
-          restoreHistory(1);
-          return;
-        }
-      }
-      if (!isEditing && event.key === "Escape" && focusedObjectIdRef.current) {
-        event.preventDefault();
-        exitObjectFocus();
-        return;
-      }
-      // Ctrl+Space：适应全部对象。
-      if (
-        !isEditing &&
-        event.ctrlKey &&
-        !event.altKey &&
-        event.key === " "
-      ) {
-        event.preventDefault();
-        fitObjects(false);
-        return;
-      }
-      // Ctrl+0：重置为 100% 缩放（默认快捷键已由 fitAll 迁移到 Ctrl+Shift+0）。
-      if (
-        !isEditing &&
-        event.ctrlKey &&
-        !event.altKey &&
-        event.key === "0"
-      ) {
-        event.preventDefault();
-        void setZoom100();
-        return;
-      }
-      // Ctrl+A：全选画布对象。
-      if (
-        !isEditing &&
-        event.ctrlKey &&
-        !event.altKey &&
-        event.key.toLowerCase() === "a"
-      ) {
+      case "resetCrop": resetSelectionCrop(); break;
+      case "flipX": transformSelection("flipX"); break;
+      case "flipY": transformSelection("flipY"); break;
+      case "toggleSelectionGrayscale": setSelectionGrayscale("toggle"); break;
+      case "toggleCanvasGrayscale": void toggleCanvasGrayscale(); break;
+      case "toggleSampling": void toggleSampling(); break;
+      case "toggleLock": toggleLockSelection(); break;
+      case "startFocusPlayback":
+        if (!focusedObjectIdRef.current) toggleObjectFocus();
+        setFocusPlaying(true);
+        break;
+      case "exitFocus": exitObjectFocus(); break;
+      case "fitAll": fitObjects(false); break;
+      case "zoom100": void setZoom100(); break;
+      case "selectAll": {
         const canvas = canvasRef.current;
-        if (!canvas) return;
-        event.preventDefault();
-        const selectable = (canvas.getObjects() as CanvasObjectWithData[]).filter(
-          (object) => object.selectable && !object.data?.guideAxis,
-        );
-        if (selectable.length === 1) {
-          canvas.setActiveObject(selectable[0]);
-        } else if (selectable.length > 1) {
-          const selection = new ActiveSelection(selectable, { canvas });
-          canvas.setActiveObject(selection);
-        }
-        canvas.requestRenderAll();
-        return;
+        if (canvas) selectAllBoardObjects(canvas);
+        break;
       }
-      if (
-        !isEditing &&
-        shortcutMatches(event, shortcutBindings.focus)
-      ) {
-        event.preventDefault();
-        toggleObjectFocus();
-        return;
-      }
-      if (
-        !isEditing &&
-        focusedObjectIdRef.current &&
-        !matchingShortcutId &&
-        (event.key === "ArrowLeft" || event.key === "ArrowRight")
-      ) {
-        event.preventDefault();
+      case "toggleFocus": toggleObjectFocus(); break;
+      case "stepFocus":
         setFocusPlaying(false);
-        stepFocusedObject(event.key === "ArrowRight" ? 1 : -1);
-        return;
-      }
-      if (
-        !isEditing &&
-        pureRef &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.key === "ArrowLeft" || event.key === "ArrowRight")
-      ) {
+        stepFocusedObject(payload === 1 ? 1 : -1);
+        break;
+      case "stepPureRefObject": {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas) break;
         const objects = focusObjects(canvas);
-        if (!objects.length) return;
-        event.preventDefault();
+        if (!objects.length) break;
         const active = canvas.getActiveObject() as CanvasObjectWithData | null;
         const current = objects.indexOf(active as CanvasObjectWithData);
-        const next = nextCircularIndex(
-          current,
-          objects.length,
-          event.key === "ArrowRight" ? 1 : -1,
-        );
+        const next = nextCircularIndex(current, objects.length, payload === 1 ? 1 : -1);
         if (next >= 0) focusBoardObject(objects[next]);
-        return;
+        break;
       }
-      if (
-        !isEditing &&
-        pureRef &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.shiftKey &&
-        (event.key === "ArrowUp" || event.key === "ArrowDown")
-      ) {
+      case "moveLayer": moveSelection(Boolean(payload)); break;
+      case "nudge": {
         const canvas = canvasRef.current;
-        if (!canvas?.getActiveObjects().length) return;
-        event.preventDefault();
-        moveSelection(event.key === "ArrowUp");
-        return;
-      }
-      if (
-        !isEditing &&
-        shortcutMatches(event, shortcutBindings.delete)
-      ) {
-        event.preventDefault();
-        deleteSelection();
-        return;
-      }
-      if (
-        !isEditing &&
-        !matchingShortcutId &&
-        !pureRef &&
-        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
-      ) {
-        const canvas = canvasRef.current;
-        const selected = canvas?.getActiveObjects() ?? [];
-        if (!canvas || !selected.length) return;
-        event.preventDefault();
-        const distance = event.shiftKey ? 10 : 1;
-        for (const object of selected) {
+        if (!canvas || typeof payload !== "string") break;
+        const [key, rawDistance] = payload.split(":");
+        const distance = Number(rawDistance);
+        for (const object of canvas.getActiveObjects()) {
           if (object.lockMovementX && object.lockMovementY) continue;
-          if (event.key === "ArrowLeft") {
-            object.set("left", (object.left ?? 0) - distance);
-          } else if (event.key === "ArrowRight") {
-            object.set("left", (object.left ?? 0) + distance);
-          } else if (event.key === "ArrowUp") {
-            object.set("top", (object.top ?? 0) - distance);
-          } else {
-            object.set("top", (object.top ?? 0) + distance);
-          }
+          if (key === "ArrowLeft") object.set("left", (object.left ?? 0) - distance);
+          else if (key === "ArrowRight") object.set("left", (object.left ?? 0) + distance);
+          else if (key === "ArrowUp") object.set("top", (object.top ?? 0) - distance);
+          else object.set("top", (object.top ?? 0) + distance);
           object.setCoords();
           canvas.fire("object:modified", { target: object });
         }
         canvas.requestRenderAll();
-        return;
+        break;
       }
-      if (
-        !isEditing &&
-        !matchingShortcutId &&
-        !event.ctrlKey &&
-        event.key.toLowerCase() === "f"
-      ) {
-        event.preventDefault();
-        fitObjects(Boolean(canvasRef.current?.getActiveObjects().length));
-        return;
-      }
-      if (
-        !isEditing &&
-        shortcutMatches(event, shortcutBindings.comment)
-      ) {
-        event.preventDefault();
-        void editObjectComment();
-        return;
-      }
-      if (
-        !isEditing &&
-        shortcutMatches(event, shortcutBindings.parent)
-      ) {
-        event.preventDefault();
-        parentSelection();
-        return;
-      }
-      if (
-        !isEditing &&
-        shortcutMatches(event, shortcutBindings.unparent)
-      ) {
-        event.preventDefault();
-        unparentSelection();
-        return;
-      }
-      if (isEditing) return;
-      if (shortcutMatches(event, shortcutBindings.undo)) {
-        event.preventDefault();
-        restoreHistory(-1);
-      } else if (shortcutMatches(event, shortcutBindings.redo)) {
-        event.preventDefault();
-        restoreHistory(1);
-      } else if (shortcutMatches(event, shortcutBindings.duplicate)) {
-        event.preventDefault();
-        void duplicateSelection();
-      } else if (shortcutMatches(event, shortcutBindings.copy)) {
-        event.preventDefault();
-        copySelection();
-      } else if (shortcutMatches(event, shortcutBindings.paste)) {
-        event.preventDefault();
-        if (boardClipboard.length) void pasteSelection();
+      case "fitSelection": fitObjects(true); break;
+      case "delete": deleteSelection(); break;
+      case "editComment": void editObjectComment(); break;
+      case "parent": parentSelection(); break;
+      case "unparent": unparentSelection(); break;
+      case "undo": restoreHistory(-1); break;
+      case "redo": restoreHistory(1); break;
+      case "duplicate": void duplicateSelection(); break;
+      case "copy": copySelection(); break;
+      case "paste":
+        if (payload) void pasteSelection();
         else void pasteSystemClipboard();
-      } else if (shortcutMatches(event, shortcutBindings.group)) {
-        event.preventDefault();
-        groupSelection();
-      } else if (shortcutMatches(event, shortcutBindings.ungroup)) {
-        event.preventDefault();
-        ungroupSelection();
-      } else if (
-        shortcutMatches(event, shortcutBindings.resetTransform)
-      ) {
-        event.preventDefault();
-        resetSelectionTransform();
-      } else if (shortcutMatches(event, shortcutBindings.fitAll)) {
-        event.preventDefault();
-        fitObjects(false);
-      } else if (shortcutMatches(event, shortcutBindings.fitSelection)) {
-        event.preventDefault();
-        fitObjects(true);
-      } else if (shortcutMatches(event, shortcutBindings.toggleGrid)) {
-        event.preventDefault();
-        updateAppearance({
-          ...appearanceRef.current,
-          gridVisible: !appearanceRef.current.gridVisible,
-        });
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  });
+        break;
+      case "group": groupSelection(); break;
+      case "ungroup": ungroupSelection(); break;
+      case "resetTransform": resetSelectionTransform(); break;
+      case "toggleGrid": updateAppearance({ ...runtime.appearance, gridVisible: !runtime.appearance.gridVisible }); break;
+    }
+  };
+
+  useBoardShortcuts(
+    shortcutBindings,
+    {
+      gestureActive: Boolean(gestureRef.current.kind),
+      colorSampling,
+      commandPaletteOpen,
+      shortcutSettingsOpen,
+      focused: Boolean(focusedObjectId),
+      pureRef: runtime.interactionPreset === "pureref",
+      hasSelection: boardSnapshot.selectionCount > 0,
+      clipboardHasItems: boardClipboard.length > 0,
+    },
+    handleShortcutCommand,
+  );
 
   useEffect(() => {
     const exportPngFor = (objects: FabricObject[]) => {
@@ -4187,16 +3761,13 @@ export function BoardCanvas({
       const selection = canvas.getActiveObjects();
       exportPngFor(selection.length ? selection : canvas.getObjects());
     };
-    window.addEventListener("refcanvas:export-png", exportPng);
-    window.addEventListener("refcanvas:export-png-selection", exportPngSelection);
+    const removeExport = controller.onDom(window, "refcanvas:export-png", exportPng);
+    const removeSelection = controller.onDom(window, "refcanvas:export-png-selection", exportPngSelection);
     return () => {
-      window.removeEventListener("refcanvas:export-png", exportPng);
-      window.removeEventListener(
-        "refcanvas:export-png-selection",
-        exportPngSelection,
-      );
+      removeExport();
+      removeSelection();
     };
-  }, [board.id]);
+  }, [board.id, controller]);
 
   /**
    * 为 GIF 图片对象挂载帧动画：解码后把当前帧画到复用画布，挂到
@@ -4210,7 +3781,7 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     const objectId = image.data?.objectId;
     if (!canvas || !objectId) return;
-    const asset = assetsRef.current.find(
+    const asset = eventBindingsRef.current.assets.find(
       (item) => item.id === image.data?.assetId,
     );
     if (!asset || asset.kind !== "image" || asset.extension !== "gif") return;
@@ -4270,7 +3841,7 @@ export function BoardCanvas({
       canvas.fire("object:modified", { target });
       canvas.requestRenderAll();
     }
-    setLayerVersion((value) => value + 1);
+    controller.refreshSnapshot();
   };
 
   const addAsset = async (
@@ -4399,7 +3970,7 @@ export function BoardCanvas({
     const droppedAssets = (
       await Promise.all(
         ids.map(async (id) =>
-          assetsRef.current.find((asset) => asset.id === id) ??
+          eventBindingsRef.current.assets.find((asset) => asset.id === id) ??
           window.refCanvas.library.get(id),
         ),
       )
@@ -4456,7 +4027,7 @@ export function BoardCanvas({
     if (added.length === 1) {
       canvas.setActiveObject(added[0]);
     } else if (added.length > 1) {
-      const selection = new ActiveSelection(added, { canvas });
+      const selection = createBoardActiveSelection(added, canvas);
       applyBoardControls(selection);
       canvas.setActiveObject(selection);
     }
@@ -4756,20 +4327,11 @@ export function BoardCanvas({
     canvas.requestRenderAll();
   };
 
-  const selectedObjects = canvasRef.current?.getActiveObjects() ?? [];
-  const activeObject = canvasRef.current?.getActiveObject();
-  const hasSelection = selectedObjects.length > 0;
-  const hasImageSelection = selectedObjects.some(
-    (object) => object instanceof FabricImage,
-  );
-  const activeHasComment =
-    !(activeObject instanceof ActiveSelection) &&
-    Boolean((activeObject as CanvasObjectWithData | undefined)?.data?.comment);
-  const hasBoardObjects = Boolean(
-    canvasRef.current
-      ?.getObjects()
-      .some((object) => !(object as CanvasObjectWithData).data?.guideAxis),
-  );
+  const { selectionCount, capabilities } = boardSnapshot;
+  const hasSelection = capabilities.hasSelection;
+  const hasImageSelection = capabilities.hasImage;
+  const activeHasComment = capabilities.activeHasComment;
+  const hasBoardObjects = boardStructure.boardObjectCount > 0;
   const boardCommands: BoardCommand[] = [
     {
       id: "tool-select",
@@ -4911,7 +4473,7 @@ export function BoardCanvas({
       id,
       label,
       group: "排列",
-      disabled: selectedObjects.length < 2,
+      disabled: selectionCount < 2,
       keywords: ["align"],
       run: () => alignSelection(mode),
     })),
@@ -4919,7 +4481,7 @@ export function BoardCanvas({
       id: "distribute-x",
       label: "水平分布",
       group: "排列",
-      disabled: selectedObjects.length < 3,
+      disabled: selectionCount < 3,
       keywords: ["distribute horizontal"],
       run: () => distributeSelection("x"),
     },
@@ -4927,7 +4489,7 @@ export function BoardCanvas({
       id: "distribute-y",
       label: "垂直分布",
       group: "排列",
-      disabled: selectedObjects.length < 3,
+      disabled: selectionCount < 3,
       keywords: ["distribute vertical"],
       run: () => distributeSelection("y"),
     },
@@ -4935,8 +4497,8 @@ export function BoardCanvas({
       id: "arrange-compact",
       label: "紧凑排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["compact layout"],
       run: arrangeCompact,
@@ -4945,8 +4507,8 @@ export function BoardCanvas({
       id: "arrange-by-name",
       label: "按名称排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["sort by name"],
       run: () => arrangeBy("name"),
@@ -4955,8 +4517,8 @@ export function BoardCanvas({
       id: "arrange-by-added",
       label: "按添加时间排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["sort by added"],
       run: () => arrangeBy("added"),
@@ -4965,8 +4527,8 @@ export function BoardCanvas({
       id: "arrange-by-layer",
       label: "按图层顺序排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["sort by layer"],
       run: () => arrangeBy("layer"),
@@ -4975,8 +4537,8 @@ export function BoardCanvas({
       id: "arrange-by-path",
       label: "按路径排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["sort by path"],
       run: () => arrangeBy("path"),
@@ -4985,8 +4547,8 @@ export function BoardCanvas({
       id: "arrange-random",
       label: "随机排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["shuffle random"],
       run: () => arrangeBy("random"),
@@ -4995,8 +4557,8 @@ export function BoardCanvas({
       id: "arrange-stack",
       label: "堆叠排列",
       group: "排列",
-      disabled: selectedObjects.length
-        ? selectedObjects.length < 2
+      disabled: selectionCount
+        ? selectionCount < 2
         : !hasBoardObjects,
       keywords: ["stack"],
       run: () => arrangeBy("stack"),
@@ -5005,7 +4567,7 @@ export function BoardCanvas({
       id: "uniform-area",
       label: "统一面积",
       group: "排列",
-      disabled: selectedObjects.length < 2,
+      disabled: selectionCount < 2,
       keywords: ["same area"],
       run: () => uniformArea(),
     },
@@ -5013,7 +4575,7 @@ export function BoardCanvas({
       id: "uniform-scale",
       label: "统一缩放",
       group: "排列",
-      disabled: selectedObjects.length < 2,
+      disabled: selectionCount < 2,
       keywords: ["same scale"],
       run: () => uniformScale(),
     },
@@ -5035,9 +4597,7 @@ export function BoardCanvas({
       id: "edit-note",
       label: "编辑便签内容",
       group: "编辑",
-      disabled: !selectedObjects.some(
-        (object) => (object as CanvasObjectWithData).data?.note,
-      ),
+      disabled: !capabilities.hasNote,
       keywords: ["edit note"],
       run: () => void editSelectedNote(),
     },
@@ -5045,7 +4605,7 @@ export function BoardCanvas({
       id: "normalize-width",
       label: "统一宽度",
       group: "排列",
-      disabled: selectedObjects.length < 2,
+      disabled: selectionCount < 2,
       keywords: ["same width"],
       run: () => normalizeSize("width"),
     },
@@ -5053,7 +4613,7 @@ export function BoardCanvas({
       id: "normalize-height",
       label: "统一高度",
       group: "排列",
-      disabled: selectedObjects.length < 2,
+      disabled: selectionCount < 2,
       keywords: ["same height"],
       run: () => normalizeSize("height"),
     },
@@ -5079,7 +4639,7 @@ export function BoardCanvas({
       label: "组合",
       group: "对象",
       shortcut: shortcutBindings.group || undefined,
-      disabled: !(activeObject instanceof ActiveSelection),
+      disabled: !capabilities.activeIsMultiSelection,
       keywords: ["group"],
       run: groupSelection,
     },
@@ -5088,9 +4648,7 @@ export function BoardCanvas({
       label: "取消组合",
       group: "对象",
       shortcut: shortcutBindings.ungroup || undefined,
-      disabled:
-        !(activeObject instanceof Group) ||
-        activeObject instanceof ActiveSelection,
+      disabled: !capabilities.activeIsGroup,
       keywords: ["ungroup"],
       run: ungroupSelection,
     },
@@ -5099,7 +4657,7 @@ export function BoardCanvas({
       label: "建立父子关系",
       group: "对象",
       shortcut: shortcutBindings.parent || undefined,
-      disabled: selectedObjects.length < 2,
+      disabled: selectionCount < 2,
       keywords: ["parent hierarchy"],
       run: parentSelection,
     },
@@ -5108,9 +4666,7 @@ export function BoardCanvas({
       label: "解除父级",
       group: "对象",
       shortcut: shortcutBindings.unparent || undefined,
-      disabled: !selectedObjects.some(
-        (object) => (object as CanvasObjectWithData).data?.parentId,
-      ),
+      disabled: !capabilities.hasParent,
       keywords: ["unparent hierarchy"],
       run: unparentSelection,
     },
@@ -5134,10 +4690,11 @@ export function BoardCanvas({
       id: "crop",
       label: "裁切图片",
       group: "图片",
-      disabled: !(activeObject instanceof FabricImage),
+      disabled: !capabilities.activeIsImage,
       keywords: ["crop"],
       run: () => {
-        if (activeObject instanceof FabricImage) setCropTarget(activeObject);
+        const active = canvasRef.current?.getActiveObject();
+        if (active instanceof FabricImage) openCropDialog(active);
       },
     },
     {
@@ -5204,7 +4761,7 @@ export function BoardCanvas({
       label: activeHasComment ? "编辑对象评论" : "添加对象评论",
       group: "对象",
       shortcut: shortcutBindings.comment || undefined,
-      disabled: !activeObject || activeObject instanceof ActiveSelection,
+      disabled: !boardSnapshot.activeObjectId || capabilities.activeIsMultiSelection,
       keywords: ["comment note"],
       run: editObjectComment,
     },
@@ -5295,8 +4852,8 @@ export function BoardCanvas({
       keywords: ["grid"],
       run: () =>
         updateAppearance({
-          ...appearanceRef.current,
-          gridVisible: !appearanceRef.current.gridVisible,
+          ...runtime.appearance,
+          gridVisible: !runtime.appearance.gridVisible,
         }),
     },
     {
@@ -5370,80 +4927,83 @@ export function BoardCanvas({
   };
 
 
-  const layers = useMemo(() => {
-    const objects = [
-      ...(canvasRef.current?.getObjects() ?? []),
-    ].reverse() as CanvasObjectWithData[];
-    const byId = new Map(
-      objects.flatMap((object) =>
-        object.data?.objectId ? [[object.data.objectId, object] as const] : [],
-      ),
-    );
-    return flattenHierarchy(
-      objects.flatMap((object) =>
-        object.data?.objectId
-          ? [{ id: object.data.objectId, parentId: object.data.parentId }]
-          : [],
-      ),
-    ).flatMap(({ id, depth, hasChildren }, index) => {
-      const object = byId.get(id);
-      if (!object) return [];
-      return [{
-        object,
-        depth,
-        hasChildren,
-        label:
-          object.data?.name ??
-          object.data?.type ??
-          `对象 ${objects.length - index}`,
-      }];
-    });
-  }, [layerVersion, board.id]);
-  const filteredLayers = useMemo(() => {
-    const query = layerQuery.trim().toLocaleLowerCase("zh-CN");
-    if (!query) return layers;
-    return layers.filter(
-      (item) =>
-        item.label.toLocaleLowerCase("zh-CN").includes(query) ||
-        item.object.data?.comment?.toLocaleLowerCase("zh-CN").includes(query),
-    );
-  }, [layers, layerQuery]);
-  const layerRowHeight = 44;
-  const layerViewportHeight = 352;
-  const layerOverscan = 5;
-  const layerVisibleCount = Math.ceil(layerViewportHeight / layerRowHeight);
-  const layerStart = Math.min(
-    Math.max(0, filteredLayers.length - layerVisibleCount),
-    Math.max(0, Math.floor(layerScrollTop / layerRowHeight) - layerOverscan),
-  );
-  const visibleLayers = filteredLayers
-    .slice(
-      layerStart,
-      Math.min(
-        filteredLayers.length,
-        layerStart + layerVisibleCount + layerOverscan * 2,
-      ),
-    )
-    .map((item, index) => ({ ...item, index: layerStart + index }));
-  const selectedObject = canvasRef.current?.getActiveObject() as
-    | CanvasObjectWithData
-    | undefined;
-  const selectedHasComment =
-    !(selectedObject instanceof ActiveSelection) &&
-    Boolean(selectedObject?.data?.comment);
-  const focusSequence = canvasRef.current
-    ? focusObjects(canvasRef.current)
-    : [];
+  const selectedHasComment = capabilities.activeHasComment;
+  const focusSequence = boardStructure.focusItems;
+
+  const handleToolbarCommand = (command: BoardToolbarCommand) => {
+    switch (command) {
+      case "select": setTool("select"); break;
+      case "addText": addText(); break;
+      case "addNote": void addNote(); break;
+      case "addChecklist": void addChecklistNote(); break;
+      case "addArrow": addArrow(); break;
+      case "addRectangle": addRectangle(); break;
+      case "addVerticalGuide": addGuide("x"); break;
+      case "addHorizontalGuide": addGuide("y"); break;
+      case "toggleDrawing": setTool((current) => toggleBoardDrawingTool(current, lastDrawingTool)); break;
+      case "toggleDrawingPanel": setDrawingPanelOpen((value) => !value); break;
+      case "toggleEraser": toggleEraser(); break;
+      case "undoStroke": undoLastStroke(); break;
+      case "moveBottom": moveSelection(false); break;
+      case "moveTop": moveSelection(true); break;
+      case "rotate": transformSelection("rotate"); break;
+      case "flipX": transformSelection("flipX"); break;
+      case "flipY": transformSelection("flipY"); break;
+      case "alignLeft": alignSelection("left"); break;
+      case "alignCenterX": alignSelection("centerX"); break;
+      case "alignRight": alignSelection("right"); break;
+      case "alignTop": alignSelection("top"); break;
+      case "alignCenterY": alignSelection("centerY"); break;
+      case "alignBottom": alignSelection("bottom"); break;
+      case "distributeX": distributeSelection("x"); break;
+      case "distributeY": distributeSelection("y"); break;
+      case "arrangeCompact": arrangeCompact(); break;
+      case "normalizeWidth": normalizeSize("width"); break;
+      case "normalizeHeight": normalizeSize("height"); break;
+      case "resetTransform": resetSelectionTransform(); break;
+      case "toggleLock": toggleLockSelection(); break;
+      case "group": groupSelection(); break;
+      case "parent": parentSelection(); break;
+      case "unparent": unparentSelection(); break;
+      case "ungroup": ungroupSelection(); break;
+      case "maskRect": applyMask("rect"); break;
+      case "maskCircle": applyMask("circle"); break;
+      case "crop": {
+        const id = boardSnapshot.activeObjectId;
+        const active = id ? objectById(id) : null;
+        if (active instanceof FabricImage) openCropDialog(active);
+        break;
+      }
+      case "resetCrop": resetSelectionCrop(); break;
+      case "toggleGrayscale": setSelectionGrayscale("toggle"); break;
+      case "restoreColor": setSelectionGrayscale(false); break;
+      case "setOpacity": void setSelectionOpacity(); break;
+      case "duplicate": void duplicateSelection(); break;
+      case "editComment": void editObjectComment(); break;
+      case "delete": deleteSelection(); break;
+      case "undo": restoreHistory(-1); break;
+      case "redo": restoreHistory(1); break;
+      case "fitAll": fitObjects(false); break;
+      case "toggleFocus": toggleObjectFocus(); break;
+      case "fitSelection": fitObjects(true); break;
+      case "toggleLayers": setLayersOpen((value) => !value); break;
+      case "toggleGrid": updateAppearance({ ...runtime.appearance, gridVisible: !runtime.appearance.gridVisible }); break;
+      case "editAppearance": void editBoardAppearance(); break;
+      case "toggleCanvasLock": toggleCanvasLock(); break;
+      case "toggleCanvasGrayscale": void toggleCanvasGrayscale(); break;
+      case "cycleGridStyle": void cycleGridStyle(); break;
+      case "zoom100": void setZoom100(); break;
+      case "resetViewport": void resetViewport(); break;
+      case "sampleColor": void sampleColor(); break;
+      case "toggleSampling": void toggleSampling(); break;
+    }
+  };
   const focusedIndex = focusSequence.findIndex(
-    (object) => object.data?.objectId === focusedObjectId,
+    (object) => object.id === focusedObjectId,
   );
   const focusedObject =
     focusedIndex >= 0 ? focusSequence[focusedIndex] : undefined;
-  const focusedAsset = assets.find(
-    (asset) => asset.id === focusedObject?.data?.assetId,
-  );
-  const focusedTitle =
-    focusedObject?.data?.name ?? focusedAsset?.title ?? "白板素材";
+  const focusedTitle = focusedObject?.title ?? "白板素材";
 
   return (
     <section
@@ -5471,7 +5031,7 @@ export function BoardCanvas({
             ) {
               event.preventDefault();
               const point = canvasRef.current.getScenePoint(event.nativeEvent);
-              void addDroppedAssets(assetIds, { x: point.x, y: point.y });
+              void controller.importAssetIds(assetIds, { x: point.x, y: point.y });
               return;
             }
           } catch {
@@ -5558,24 +5118,15 @@ export function BoardCanvas({
           {dropNotice}
         </div>
       )}
-      {cropTarget && (() => {
-        const original = cropTarget.getOriginalSize();
-        const initial = {
-          x: (cropTarget.cropX ?? 0) / original.width,
-          y: (cropTarget.cropY ?? 0) / original.height,
-          width: (cropTarget.width ?? original.width) / original.width,
-          height: (cropTarget.height ?? original.height) / original.height,
-        };
-        return (
-          <CropDialog
-            title={(cropTarget as CanvasObjectWithData).data?.name ?? "图片"}
-            src={cropTarget.getSrc()}
-            initial={initial}
-            onApply={applyCrop}
-            onClose={() => setCropTarget(null)}
-          />
-        );
-      })()}
+      {cropTarget && (
+        <CropDialog
+          title={cropTarget.title}
+          src={cropTarget.src}
+          initial={cropTarget.initial}
+          onApply={applyCrop}
+          onClose={() => setCropTarget(null)}
+        />
+      )}
       {shortcutSettingsOpen && (
         <BoardShortcutSettings
           bindings={shortcutBindings}
@@ -5631,16 +5182,16 @@ export function BoardCanvas({
             </button>
           </div>
         </div>
-        <span className={`save-state ${saved ? "saved" : ""}`}>
+        <span className={`save-state ${boardSnapshot.saved ? "saved" : ""}`}>
           <span />
-          {saved ? "已保存" : "保存中"}
+          {boardSnapshot.saved ? "已保存" : "保存中"}
         </span>
       </header>
 
       <div
         className={`board-host ${appearance.gridVisible ? "" : "grid-hidden"} ${
-          canvasModeRef.current.grayscale ? "board-grayscale" : ""
-        } grid-style-${canvasModeRef.current.gridStyle} ${
+          runtime.canvasMode.grayscale ? "board-grayscale" : ""
+        } grid-style-${runtime.canvasMode.gridStyle} ${
           colorSampling ? "color-sampling" : ""
         }`}
         ref={hostRef}
@@ -5653,381 +5204,38 @@ export function BoardCanvas({
         }
       >
         <canvas ref={canvasElementRef} />
-        <div className="canvas-toolbar toolbar-compact" role="toolbar" aria-label="白板工具">
-          <button
-            className={`toolbar-primary ${tool === "select" ? "active" : ""}`}
-            onClick={() => setTool("select")}
-            aria-label="选择工具"
-          >
-            <MousePointer2 size={16} />
-          </button>
-          <span className="toolbar-divider toolbar-primary" />
-          <button onClick={addText} aria-label="添加文字">
-            <Type size={16} />
-          </button>
-          <button
-            className="toolbar-primary"
-            onClick={() => void addNote()}
-            aria-label="新建便签（富文本/链接/清单）"
-          >
-            <StickyNote size={16} />
-          </button>
-          <button onClick={() => void addChecklistNote()} aria-label="新建清单">
-            <ListTodo size={16} />
-          </button>
-          <button onClick={addArrow} aria-label="添加箭头">
-            <ArrowUpRight size={16} />
-          </button>
-          <button onClick={addRectangle} aria-label="添加矩形">
-            <Square size={16} />
-          </button>
-          <button onClick={() => addGuide("x")} aria-label="添加垂直参考线">
-            <span className="text-tool-icon">│</span>
-          </button>
-          <button onClick={() => addGuide("y")} aria-label="添加水平参考线">
-            <span className="text-tool-icon">—</span>
-          </button>
-          <button
-            className={`toolbar-primary ${isBoardDrawingTool(tool) ? "active" : ""}`}
-            onClick={() =>
-              setTool((current) =>
-                toggleBoardDrawingTool(current, lastDrawingTool),
-              )
+        <BoardToolbar
+          state={{
+            tool,
+            drawingToolActive: isBoardDrawingTool(tool),
+            drawingPanelOpen,
+            selectedHasComment,
+            focused: Boolean(focusedObjectId),
+            layersOpen,
+            gridVisible: appearance.gridVisible,
+            canvasLocked,
+            canvasGrayscale: runtime.canvasMode.grayscale,
+            sampling: runtime.sampling,
+            moreOpen: toolbarMoreOpen,
+          }}
+          onCommand={handleToolbarCommand}
+          shortcuts={shortcutBindings}
+          moreButtonRef={toolbarMoreButtonRef}
+          onMoreClick={(event) => {
+            if (toolbarMoreOpen) {
+              setToolbarMoreOpen(false);
+              return;
             }
-            aria-label={isBoardDrawingTool(tool) ? "退出绘图工具" : "启用绘图工具"}
-          >
-            <Paintbrush size={16} />
-          </button>
-          <button
-            className={drawingPanelOpen ? "active" : ""}
-            onClick={() => setDrawingPanelOpen((value) => !value)}
-            aria-label="绘图工具设置"
-          >
-            <ChevronDown size={15} />
-          </button>
-          <button
-            className={`toolbar-primary ${tool === "eraser" ? "active" : ""}`}
-            onClick={toggleEraser}
-            aria-label="橡皮擦（点击或拖动擦除笔画）"
-            title="橡皮擦（点击或拖动擦除笔画）"
-          >
-            <Eraser size={16} />
-          </button>
-          <button
-            onClick={undoLastStroke}
-            aria-label="撤销上一笔画"
-            title="撤销上一笔画"
-          >
-            <Undo2 size={16} />
-          </button>
-          <span className="toolbar-divider" />
-          <button
-            onClick={() => moveSelection(false)}
-            aria-label="移到最底层"
-          >
-            <ArrowDownToLine size={16} />
-          </button>
-          <button
-            onClick={() => moveSelection(true)}
-            aria-label="移到最顶层"
-          >
-            <ArrowUpToLine size={16} />
-          </button>
-          <button
-            onClick={() => transformSelection("rotate")}
-            aria-label="顺时针旋转 90°"
-          >
-            <RotateCw size={16} />
-          </button>
-          <button
-            onClick={() => transformSelection("flipX")}
-            aria-label="水平翻转"
-          >
-            <FlipHorizontal2 size={16} />
-          </button>
-          <button
-            onClick={() => transformSelection("flipY")}
-            aria-label="垂直翻转"
-          >
-            <FlipVertical2 size={16} />
-          </button>
-          <button onClick={() => alignSelection("left")} aria-label="左对齐">
-            <AlignStartVertical size={16} />
-          </button>
-          <button onClick={() => alignSelection("centerX")} aria-label="水平居中">
-            <AlignCenterVertical size={16} />
-          </button>
-          <button onClick={() => alignSelection("right")} aria-label="右对齐">
-            <AlignEndVertical size={16} />
-          </button>
-          <button onClick={() => alignSelection("top")} aria-label="顶部对齐">
-            <AlignStartHorizontal size={16} />
-          </button>
-          <button onClick={() => alignSelection("centerY")} aria-label="垂直居中">
-            <AlignCenterHorizontal size={16} />
-          </button>
-          <button onClick={() => alignSelection("bottom")} aria-label="底部对齐">
-            <AlignEndHorizontal size={16} />
-          </button>
-          <button onClick={() => distributeSelection("x")} aria-label="水平分布">
-            <span className="text-tool-icon">H</span>
-          </button>
-          <button onClick={() => distributeSelection("y")} aria-label="垂直分布">
-            <span className="text-tool-icon">V</span>
-          </button>
-          <button
-            onClick={arrangeCompact}
-            aria-label="紧凑排列（有选区时排列选区）"
-          >
-            <LayoutGrid size={16} />
-          </button>
-          <button onClick={() => normalizeSize("width")} aria-label="统一宽度">
-            <span className="text-tool-icon">W</span>
-          </button>
-          <button onClick={() => normalizeSize("height")} aria-label="统一高度">
-            <span className="text-tool-icon">H</span>
-          </button>
-          <button
-            onClick={resetSelectionTransform}
-            aria-label="重置尺寸、旋转和翻转"
-            data-shortcut={shortcutBindings.resetTransform}
-          >
-            <RotateCcw size={16} />
-          </button>
-          <button onClick={toggleLockSelection} aria-label="锁定或解锁">
-            <Lock size={16} />
-          </button>
-          <button
-            onClick={groupSelection}
-            aria-label="组合"
-            data-shortcut={shortcutBindings.group}
-          >
-            <GroupIcon size={16} />
-          </button>
-          <button
-            onClick={parentSelection}
-            aria-label="建立父子关系（首个选中对象为父级）"
-            data-shortcut={shortcutBindings.parent}
-          >
-            <GitBranch size={16} />
-          </button>
-          <button
-            onClick={unparentSelection}
-            aria-label="解除父级"
-            data-shortcut={shortcutBindings.unparent}
-          >
-            <Unlink size={16} />
-          </button>
-          <button
-            onClick={ungroupSelection}
-            aria-label="取消组合"
-            data-shortcut={shortcutBindings.ungroup}
-          >
-            <LockOpen size={16} />
-          </button>
-          <button onClick={() => applyMask("rect")} aria-label="矩形蒙版">
-            <Square size={15} />
-          </button>
-          <button onClick={() => applyMask("circle")} aria-label="圆形蒙版">
-            <CircleIcon size={15} />
-          </button>
-          <button
-            onClick={() => {
-              const active = canvasRef.current?.getActiveObject();
-              if (active instanceof FabricImage) setCropTarget(active);
-            }}
-            aria-label="裁切图片"
-          >
-            <Crop size={15} />
-          </button>
-          <button onClick={resetSelectionCrop} aria-label="重置图片裁切">
-            <RotateCcw size={15} />
-          </button>
-          <button
-            onClick={() => setSelectionGrayscale("toggle")}
-            aria-label="切换图片灰度"
-          >
-            <span className="text-tool-icon">B/W</span>
-          </button>
-          <button
-            onClick={() => setSelectionGrayscale(false)}
-            aria-label="恢复图片原色"
-          >
-            <span className="color-dot-icon" />
-          </button>
-          <button
-            onClick={() => void setSelectionOpacity()}
-            aria-label="透明度"
-          >
-            <span className="text-tool-icon">%</span>
-          </button>
-          <button
-            onClick={() => void duplicateSelection()}
-            aria-label="复制对象"
-            data-shortcut={shortcutBindings.duplicate}
-          >
-            <CopyPlus size={16} />
-          </button>
-          <button
-            className={selectedHasComment ? "active" : ""}
-            onClick={() => void editObjectComment()}
-            aria-label={
-              selectedHasComment ? "编辑对象评论" : "添加对象评论"
-            }
-            data-shortcut={shortcutBindings.comment}
-          >
-            <MessageSquareText size={16} />
-          </button>
-          <button
-            onClick={deleteSelection}
-            aria-label="删除对象"
-            data-shortcut={shortcutBindings.delete}
-          >
-            <Trash2 size={16} />
-          </button>
-          <span className="toolbar-divider" />
-          <button
-            onClick={() => restoreHistory(-1)}
-            aria-label="撤销"
-            data-shortcut={shortcutBindings.undo}
-          >
-            <Undo2 size={16} />
-          </button>
-          <button
-            onClick={() => restoreHistory(1)}
-            aria-label="重做"
-            data-shortcut={shortcutBindings.redo}
-          >
-            <Redo2 size={16} />
-          </button>
-          <button
-            onClick={() => fitObjects(false)}
-            aria-label="适应全部对象"
-            data-shortcut={shortcutBindings.fitAll}
-          >
-            <Maximize size={16} />
-          </button>
-          <button
-            className={focusedObjectId ? "active" : ""}
-            onClick={toggleObjectFocus}
-            aria-label={focusedObjectId ? "退出单图聚焦" : "聚焦选中图片"}
-            data-shortcut={shortcutBindings.focus}
-          >
-            <ScanSearch size={16} />
-          </button>
-          <button
-            onClick={() => fitObjects(true)}
-            aria-label="适应选区"
-            data-shortcut={shortcutBindings.fitSelection}
-          >
-            <Focus size={16} />
-          </button>
-          <button
-            className={`toolbar-primary ${layersOpen ? "active" : ""}`}
-            onClick={() => setLayersOpen((value) => !value)}
-            aria-label="图层"
-          >
-            <Layers size={16} />
-          </button>
-          <span className="toolbar-divider" />
-          <button
-            className={appearance.gridVisible ? "active" : ""}
-            onClick={() =>
-              updateAppearance({
-                ...appearanceRef.current,
-                gridVisible: !appearanceRef.current.gridVisible,
-              })
-            }
-            aria-label={appearance.gridVisible ? "隐藏网格" : "显示网格"}
-            data-shortcut={shortcutBindings.toggleGrid}
-          >
-            <Grid3X3 size={16} />
-          </button>
-          <button
-            onClick={() => void editBoardAppearance()}
-            aria-label="白板背景与网格设置"
-          >
-            <Palette size={16} />
-          </button>
-          <span className="toolbar-divider" />
-          <button
-            onClick={toggleCanvasLock}
-            className={canvasLocked ? "active" : ""}
-            aria-label={canvasLocked ? "解锁画布" : "锁定整个画布"}
-            title={canvasLocked ? "解锁画布" : "锁定整个画布"}
-          >
-            {canvasLocked ? <LockOpen size={16} /> : <Lock size={16} />}
-          </button>
-          <button
-            onClick={() => void toggleCanvasGrayscale()}
-            className={canvasModeRef.current.grayscale ? "active" : ""}
-            aria-label={canvasModeRef.current.grayscale ? "恢复画布原色" : "画布整体灰度"}
-            title={canvasModeRef.current.grayscale ? "恢复画布原色" : "画布整体灰度"}
-          >
-            <span className="text-tool-icon">灰度</span>
-          </button>
-          <button
-            onClick={() => void cycleGridStyle()}
-            aria-label="切换网格样式（线/点/无）"
-            title="切换网格样式（线/点/无）"
-          >
-            <Grid3X3 size={16} />
-          </button>
-          <button
-            onClick={() => void setZoom100()}
-            aria-label="100% 缩放"
-            title="100% 缩放"
-          >
-            <span className="text-tool-icon">100%</span>
-          </button>
-          <button
-            onClick={() => void resetViewport()}
-            aria-label="重置相机（适应全部对象）"
-            title="重置相机（适应全部对象）"
-          >
-            <Maximize size={16} />
-          </button>
-          <button
-            onClick={() => void sampleColor()}
-            aria-label="取色"
-            title="从画布取色"
-          >
-            <Pipette size={16} />
-          </button>
-          <button
-            onClick={() => void toggleSampling()}
-            aria-label="切换采样（nearest/bilinear）"
-            title={`采样：${samplingRef.current === "nearest" ? "nearest（像素）" : "bilinear（平滑）"}`}
-          >
-            <span className="text-tool-icon">
-              {samplingRef.current === "nearest" ? "NN" : "BL"}
-            </span>
-          </button>
-          <span className="toolbar-divider" />
-          <button
-            ref={toolbarMoreButtonRef}
-            className={`toolbar-more-btn ${toolbarMoreOpen ? "active" : ""}`}
-            onClick={(event) => {
-              if (toolbarMoreOpen) {
-                setToolbarMoreOpen(false);
-                return;
-              }
-              setToolbarMorePosition(
-                toolbarPanelPosition(
-                  event.currentTarget.getBoundingClientRect(),
-                  window.innerWidth,
-                  window.innerHeight,
-                ),
-              );
-              setToolbarMoreOpen(true);
-            }}
-            aria-label="更多工具"
-            aria-haspopup="dialog"
-            aria-expanded={toolbarMoreOpen}
-          >
-            <span className="text-tool-icon">⋯</span>
-          </button>
-        </div>
+            setToolbarMorePosition(
+              toolbarPanelPosition(
+                event.currentTarget.getBoundingClientRect(),
+                window.innerWidth,
+                window.innerHeight,
+              ),
+            );
+            setToolbarMoreOpen(true);
+          }}
+        />
         {toolbarMoreOpen && (
           <aside
             className="board-toolbar-more"
@@ -6343,388 +5551,61 @@ export function BoardCanvas({
           </aside>
         )}
         {layersOpen && (
-          <aside className="layers-panel">
-            <header>
-              <strong>图层</strong>
-              <span>拖到中间建立父级，拖到边缘重排</span>
-            </header>
-            <label className="layer-search">
-              <Search size={13} />
-              <input
-                value={layerQuery}
-                onChange={(event) => setLayerQuery(event.target.value)}
-                placeholder="搜索图层"
-                aria-label="搜索图层"
-              />
-            </label>
-            <div
-              className="layer-root-drop"
-              onDragOver={(event) => {
-                if (
-                  event.dataTransfer.types.includes(
-                    "application/x-refcanvas-layer",
-                  )
-                ) {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }
-              }}
-              onDrop={(event) => {
-                const id = event.dataTransfer.getData(
-                  "application/x-refcanvas-layer",
-                );
-                const canvas = canvasRef.current;
-                const object = canvas
-                  ? hierarchyObjects(canvas).find(
-                      (item) => item.data?.objectId === id,
-                    )
-                  : undefined;
-                if (!object) return;
-                event.preventDefault();
-                setHierarchyParent(object, undefined);
-                setLayerDropTarget(null);
-              }}
-            >
-              <Unlink size={13} />
-              拖到这里解除父级
-            </div>
-            <div
-              className="layer-list-viewport"
-              onScroll={(event) => setLayerScrollTop(event.currentTarget.scrollTop)}
-            >
-              <div
-                className="layer-list-spacer"
-                style={{ height: filteredLayers.length * layerRowHeight }}
-              >
-            {visibleLayers.map(({ object, label, depth, hasChildren, index }) => {
-              const locked = Boolean(object.lockMovementX && object.lockMovementY);
-              const dropMode =
-                layerDropTarget &&
-                layerDropTarget.id === object.data?.objectId
-                  ? layerDropTarget.mode
-                  : null;
-              return (
-                <div
-                  className={`layer-row ${
-                    dropMode ? `drop-${dropMode}` : ""
-                  }`}
-                  style={{ top: index * layerRowHeight }}
-                  key={object.data?.objectId ?? label}
-                  draggable
-                  onDragStart={(event) => {
-                    if (!object.data?.objectId) {
-                      event.preventDefault();
-                      return;
-                    }
-                    event.dataTransfer.setData(
-                      "application/x-refcanvas-layer",
-                      object.data.objectId,
-                    );
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragOver={(event) => {
-                    const draggedId = event.dataTransfer.getData(
-                      "application/x-refcanvas-layer",
-                    );
-                    if (!draggedId || draggedId === object.data?.objectId) return;
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    const ratio = (event.clientY - bounds.top) / bounds.height;
-                    setLayerDropTarget({
-                      id: object.data?.objectId ?? "",
-                      mode:
-                        ratio < 0.25
-                          ? "before"
-                          : ratio > 0.75
-                            ? "after"
-                            : "parent",
-                    });
-                  }}
-                  onDragEnd={() => setLayerDropTarget(null)}
-                  onDrop={(event) => {
-                    const draggedId = event.dataTransfer.getData(
-                      "application/x-refcanvas-layer",
-                    );
-                    const canvas = canvasRef.current;
-                    const dragged = canvas
-                      ? hierarchyObjects(canvas).find(
-                          (item) => item.data?.objectId === draggedId,
-                        )
-                      : undefined;
-                    if (!dragged || dragged === object) return;
-                    event.preventDefault();
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    const ratio = (event.clientY - bounds.top) / bounds.height;
-                    const mode =
-                      ratio < 0.25
-                        ? "before"
-                        : ratio > 0.75
-                          ? "after"
-                          : "parent";
-                    if (mode === "parent") {
-                      setHierarchyParent(dragged, object.data?.objectId);
-                    } else {
-                      reorderHierarchyObject(
-                        dragged,
-                        object,
-                        mode === "before",
-                      );
-                    }
-                    setLayerDropTarget(null);
-                  }}
-                >
-                  <button
-                    className="layer-name"
-                    style={{ paddingLeft: 10 + depth * 14 }}
-                    onClick={() => {
-                      canvasRef.current?.setActiveObject(object);
-                      canvasRef.current?.requestRenderAll();
-                    }}
-                    onDoubleClick={() => {
-                      void dialog.requestForm({
-                        title: "重命名图层",
-                        confirmLabel: "保存名称",
-                        fields: [
-                          {
-                            name: "name",
-                            label: "图层名称",
-                            initialValue: label,
-                            required: true,
-                            maxLength: 120,
-                          },
-                        ],
-                        onSubmit: ({ name }) => {
-                          object.data = { ...(object.data ?? {}), name };
-                          canvasRef.current?.fire("object:modified", {
-                            target: object,
-                          });
-                          setLayerVersion((value) => value + 1);
-                        },
-                      });
-                    }}
-                  >
-                    <span className="layer-tree-marker">
-                      {depth > 0 ? "↳" : hasChildren ? <GitBranch size={12} /> : null}
-                    </span>
-                    <span>{label}</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      object.set("visible", !object.visible);
-                      canvasRef.current?.fire("object:modified", { target: object });
-                      canvasRef.current?.requestRenderAll();
-                    }}
-                    aria-label={object.visible ? "隐藏图层" : "显示图层"}
-                  >
-                    {object.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      const next = !locked;
-                      object.set({
-                        lockMovementX: next,
-                        lockMovementY: next,
-                        lockRotation: next,
-                        lockScalingX: next,
-                        lockScalingY: next,
-                      });
-                      canvasRef.current?.fire("object:modified", { target: object });
-                      canvasRef.current?.requestRenderAll();
-                    }}
-                    aria-label={locked ? "解锁图层" : "锁定图层"}
-                  >
-                    {locked ? <Lock size={14} /> : <LockOpen size={14} />}
-                  </button>
-                  <div className="layer-row-more">
-                    <button
-                      aria-label={`${label} 更多操作`}
-                      aria-haspopup="menu"
-                      aria-expanded={layerMenuId === object.data?.objectId}
-                      onClick={(event) => {
-                        const id = object.data?.objectId ?? null;
-                        if (layerMenuId === id) {
-                          closeLayerMenu();
-                          return;
-                        }
-                        // Fixed 4-item menu, so its box is known from CSS
-                        // (.layer-row-menu width 196 + popover padding → 172
-                        // tall): place synchronously, no measure-flash needed.
-                        setLayerMenuPlacement(
-                          placeTriggerMenu(
-                            event.currentTarget.getBoundingClientRect(),
-                            { width: 196, height: 172 },
-                            {
-                              width: window.innerWidth,
-                              height: window.innerHeight,
-                            },
-                          ),
-                        );
-                        setLayerMenuId(id);
-                      }}
-                    >
-                      <MoreHorizontal size={14} />
-                    </button>
-                    {layerMenuId === object.data?.objectId &&
-                      createPortal(
-                        <div
-                          className="folder-actions-popover layer-row-menu"
-                          role="menu"
-                          style={{
-                            left: layerMenuPlacement?.left ?? 0,
-                            top: layerMenuPlacement?.top ?? 0,
-                            visibility: layerMenuPlacement ? "visible" : "hidden",
-                          }}
-                          onPointerDown={(event) => event.stopPropagation()}
-                        >
-                          <button
-                            role="menuitem"
-                            onClick={() => {
-                              void editObjectComment(object);
-                              closeLayerMenu();
-                            }}
-                          >
-                            <MessageSquareText size={15} />
-                            {object.data?.comment ? "编辑评论" : "添加评论"}
-                          </button>
-                          <button
-                            role="menuitem"
-                            onClick={() => {
-                              const canvas = canvasRef.current;
-                              if (!canvas) return;
-                              const objects = canvas.getObjects();
-                              canvas.moveObjectTo(
-                                object,
-                                Math.min(objects.length - 1, objects.indexOf(object) + 1),
-                              );
-                              canvas.fire("object:modified", { target: object });
-                              canvas.requestRenderAll();
-                              closeLayerMenu();
-                            }}
-                          >
-                            <ChevronUp size={15} />
-                            上移一层
-                          </button>
-                          <button
-                            role="menuitem"
-                            onClick={() => {
-                              const canvas = canvasRef.current;
-                              if (!canvas) return;
-                              const objects = canvas.getObjects();
-                              canvas.moveObjectTo(
-                                object,
-                                Math.max(0, objects.indexOf(object) - 1),
-                              );
-                              canvas.fire("object:modified", { target: object });
-                              canvas.requestRenderAll();
-                              closeLayerMenu();
-                            }}
-                          >
-                            <ChevronDown size={15} />
-                            下移一层
-                          </button>
-                          <button
-                            role="menuitem"
-                            onClick={() => {
-                              canvasRef.current?.setActiveObject(object);
-                              canvasRef.current?.requestRenderAll();
-                              closeLayerMenu();
-                            }}
-                          >
-                            <ScanSearch size={15} />
-                            定位并选中
-                          </button>
-                        </div>,
-                        // `document` is a BoardDocumentV3 prop here (line 176),
-                        // shadowing the global — reach the DOM via window.
-                        window.document.body,
-                      )}
-                  </div>
-                </div>
-              );
-            })}
-              </div>
-            </div>
-          </aside>
+          <BoardLayerPanel
+            rows={boardStructure.layers}
+            onCommand={(command, id) => { controller.command(command, id); }}
+            onReparent={(id, parentId) => {
+              const canvas = canvasRef.current;
+              const object = canvas ? hierarchyObjects(canvas).find((item) => item.data?.objectId === id) : undefined;
+              if (object) setHierarchyParent(object, parentId ?? undefined);
+            }}
+            onReorder={(id, targetId, before) => {
+              const canvas = canvasRef.current;
+              if (!canvas) return;
+              const objects = hierarchyObjects(canvas);
+              const object = objects.find((item) => item.data?.objectId === id);
+              const target = objects.find((item) => item.data?.objectId === targetId);
+              if (object && target) reorderHierarchyObject(object, target, before);
+            }}
+            onRename={(row) => {
+              void dialog.requestForm({
+                title: "重命名图层",
+                confirmLabel: "保存名称",
+                fields: [{ name: "name", label: "图层名称", initialValue: row.name, required: true, maxLength: 120 }],
+                onSubmit: ({ name }) => { controller.rename(row.id, name); },
+              });
+            }}
+            onComment={(id) => {
+              const canvas = canvasRef.current;
+              const object = canvas ? hierarchyObjects(canvas).find((item) => item.data?.objectId === id) : undefined;
+              if (object) void editObjectComment(object);
+            }}
+          />
         )}
         {inspectorOpen && (
           <BoardInspector
-            canvasRef={canvasRef}
+            selectionCount={boardSnapshot.selectionCount}
+            name={boardSnapshot.inspector?.name ?? null}
+            metrics={boardSnapshot.inspector?.metrics ?? null}
+            onCommit={(key, value) => { controller.updateInspector(key, value); }}
             onClose={() => setInspectorOpen(false)}
           />
         )}
         {focusedObjectId && focusedIndex >= 0 && (
-          <div className="board-focus-controls" role="group" aria-label="单图聚焦">
-            <div className="board-focus-copy" aria-live="polite">
-              <strong title={focusedTitle}>{focusedTitle}</strong>
-              <span>
-                {focusedIndex + 1} / {focusSequence.length}
-              </span>
-            </div>
-            <button
-              onClick={() => {
-                setFocusPlaying(false);
-                stepFocusedObject(-1);
-              }}
-              aria-label="上一张"
-              data-shortcut="←"
-            >
-              <ChevronLeft size={17} />
-            </button>
-            <button
-              className={`focus-play-toggle ${focusPlaying ? "active" : ""}`}
-              onClick={() => setFocusPlaying((value) => !value)}
-              aria-label={focusPlaying ? "暂停幻灯片" : "播放幻灯片"}
-            >
-              <span className={`focus-icon-state ${focusPlaying ? "" : "shown"}`}>
-                <Play size={16} />
-              </span>
-              <span className={`focus-icon-state ${focusPlaying ? "shown" : ""}`}>
-                <Pause size={16} />
-              </span>
-            </button>
-            <button
-              onClick={() => {
-                setFocusPlaying(false);
-                stepFocusedObject(1);
-              }}
-              aria-label="下一张"
-              data-shortcut="→"
-            >
-              <ChevronRight size={17} />
-            </button>
-            <label>
-              <span className="sr-only">幻灯片间隔</span>
-              <select
-                value={focusInterval}
-                onChange={(event) => setFocusInterval(Number(event.target.value))}
-                aria-label="幻灯片间隔"
-              >
-                <option value="3">3 秒</option>
-                <option value="5">5 秒</option>
-                <option value="10">10 秒</option>
-              </select>
-            </label>
-            <label>
-              <span className="sr-only">幻灯片顺序</span>
-              <select
-                value={slideMode}
-                onChange={(event) =>
-                  setSlideModeAndRebuild(
-                    event.target.value as "order" | "shuffle" | "random",
-                  )
-                }
-                aria-label="幻灯片顺序"
-              >
-                <option value="order">顺序</option>
-                <option value="shuffle">洗牌</option>
-                <option value="random">随机</option>
-              </select>
-            </label>
-            <button onClick={exitObjectFocus} aria-label="退出单图聚焦">
-              <X size={16} />
-            </button>
-          </div>
+          <BoardFocusOverlay
+            title={focusedTitle}
+            index={focusedIndex}
+            count={focusSequence.length}
+            playing={focusPlaying}
+            interval={focusInterval}
+            mode={slideMode}
+            onPrevious={() => { setFocusPlaying(false); stepFocusedObject(-1); }}
+            onTogglePlaying={() => setFocusPlaying((value) => !value)}
+            onNext={() => { setFocusPlaying(false); stepFocusedObject(1); }}
+            onIntervalChange={setFocusInterval}
+            onModeChange={setSlideModeAndRebuild}
+            onExit={exitObjectFocus}
+          />
         )}
         <div className="zoom-control">
           <button
@@ -6732,24 +5613,28 @@ export function BoardCanvas({
               const canvas = canvasRef.current;
               if (!canvas) return;
               canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-              setZoom(100);
+              controller.setZoom(100);
             }}
             aria-label="重置视图"
           >
             <RotateCcw size={14} />
           </button>
-          <span>{zoom}%</span>
+          <span>{boardSnapshot.zoom}%</span>
         </div>
         {hudMessage && (
           <div className="board-hud" role="status" aria-live="polite">
             {hudMessage}
           </div>
         )}
-        {selectedHasComment && selectedObject?.data?.comment && (
+        {selectedHasComment && boardSnapshot.activeComment && (
           <BoardObjectComment
-            name={selectedObject.data.name ?? selectedObject.data.type ?? "对象"}
-            comment={selectedObject.data.comment}
-            onEdit={() => void editObjectComment(selectedObject)}
+            name={boardSnapshot.activeObjectName ?? "对象"}
+            comment={boardSnapshot.activeComment}
+            onEdit={() => {
+              const id = boardSnapshot.activeObjectId;
+              const object = id ? objectById(id) : undefined;
+              if (object) void editObjectComment(object);
+            }}
           />
         )}
         {snapIndicator && snapIndicator.visible && (
@@ -6874,7 +5759,8 @@ export function BoardCanvas({
                 <button
                   role="menuitem"
                   onClick={() => {
-                    focusBoardObject(boardContextMenu.target!);
+                    const object = objectById(boardContextMenu.target!.id);
+                    if (object) focusBoardObject(object);
                     setBoardContextMenu(null);
                   }}
                 >
@@ -6884,9 +5770,8 @@ export function BoardCanvas({
                 <button
                   role="menuitem"
                   onClick={() => {
-                    if (boardContextMenu.target instanceof FabricImage) {
-                      setCropTarget(boardContextMenu.target);
-                    }
+                    const object = objectById(boardContextMenu.target!.id);
+                    if (object instanceof FabricImage) openCropDialog(object);
                     setBoardContextMenu(null);
                   }}
                 >
@@ -6942,7 +5827,8 @@ export function BoardCanvas({
                 <button
                   role="menuitem"
                   onClick={() => {
-                    focusBoardObject(boardContextMenu.target!);
+                    const object = objectById(boardContextMenu.target!.id);
+                    if (object) focusBoardObject(object);
                     setBoardContextMenu(null);
                   }}
                 >
@@ -6952,9 +5838,8 @@ export function BoardCanvas({
                 <button
                   role="menuitem"
                   onClick={() => {
-                    if (boardContextMenu.target instanceof FabricImage) {
-                      setCropTarget(boardContextMenu.target);
-                    }
+                    const object = objectById(boardContextMenu.target!.id);
+                    if (object instanceof FabricImage) openCropDialog(object);
                     setBoardContextMenu(null);
                   }}
                 >
@@ -6971,25 +5856,21 @@ export function BoardCanvas({
                   <span className="text-tool-icon">B/W</span>
                   切换灰度
                 </button>
-                {(boardContextMenu.target as CanvasObjectWithData | undefined)
-                  ?.data?.gif && (
+                {boardContextMenu.target.hasGif && (
                   <button
                     role="menuitem"
                     onClick={() => {
-                      toggleGifPlayback(
-                        boardContextMenu.target as CanvasObjectWithData,
-                      );
+                      const object = objectById(boardContextMenu.target!.id);
+                      if (object) toggleGifPlayback(object);
                       setBoardContextMenu(null);
                     }}
                   >
-                    {(boardContextMenu.target as CanvasObjectWithData).data?.gif
-                      ?.playing ? (
+                    {boardContextMenu.target.gifPlaying ? (
                       <Pause size={16} />
                     ) : (
                       <Play size={16} />
                     )}
-                    {(boardContextMenu.target as CanvasObjectWithData).data?.gif
-                      ?.playing
+                    {boardContextMenu.target.gifPlaying
                       ? "暂停 GIF"
                       : "播放 GIF"}
                   </button>
@@ -7004,16 +5885,16 @@ export function BoardCanvas({
                   <span className="text-tool-icon">NN</span>
                   切换采样
                 </button>
-                {onLocateAssetRef.current && (
+                {eventBindingsRef.current.onLocateAsset && (
                   <button
                     role="menuitem"
                     onClick={() => {
-                      const assetId = boardContextMenu.target?.data?.assetId;
+                      const assetId = boardContextMenu.target?.assetId;
                       if (assetId) {
                         void window.refCanvas.library
                           .get(assetId)
                           .then((loaded) => {
-                            if (loaded) onLocateAssetRef.current?.(loaded);
+                            if (loaded) eventBindingsRef.current.onLocateAsset?.(loaded);
                           });
                       }
                       setBoardContextMenu(null);
@@ -7026,7 +5907,7 @@ export function BoardCanvas({
                 <button
                   role="menuitem"
                   onClick={() => {
-                    const assetId = boardContextMenu.target?.data?.assetId;
+                    const assetId = boardContextMenu.target?.assetId;
                     setBoardContextMenu(null);
                     if (assetId) void relinkBoardReference(assetId);
                   }}
@@ -7076,8 +5957,8 @@ export function BoardCanvas({
                   role="menuitem"
                   onClick={() => {
                     updateAppearance({
-                      ...appearanceRef.current,
-                      gridVisible: !appearanceRef.current.gridVisible,
+                      ...runtime.appearance,
+                      gridVisible: !runtime.appearance.gridVisible,
                     });
                     setBoardContextMenu(null);
                   }}

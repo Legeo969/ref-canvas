@@ -8,7 +8,6 @@ import {
   Film,
   FolderOpen,
   FolderPlus,
-  PanelsTopLeft,
   RefreshCw,
   Search,
   Scissors,
@@ -21,7 +20,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
   DirectoryBatchAction,
   DirectoryBatchSnapshot,
@@ -31,7 +30,6 @@ import type {
   RegisteredScript,
   SequenceGroupInfo,
 } from "../../shared/contracts";
-import { applySelectionClick } from "../app/directory-selection";
 import {
   assetGridNavigationTarget,
   type AssetGridNavigationKey,
@@ -57,12 +55,24 @@ import {
   SequenceCard,
   SequencePreviewDialog,
 } from "./SequencePreview";
+import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
+import {
+  calculateDirectoryVirtualWindow,
+  DIRECTORY_CARD_WIDTH as cardWidth,
+  DIRECTORY_GRID_GAP as gap,
+  DIRECTORY_PAGE_SIZE as directoryPageSize,
+  DIRECTORY_ROW_HEIGHT as rowHeight,
+  indexDirectoryPages,
+  MAXIMUM_CACHED_DIRECTORY_PAGES as maximumCachedPages,
+  visibleDirectoryWindow,
+} from "../features/directory/directory-virtual-grid";
+import { useDirectorySelection } from "../features/directory/use-directory-selection";
+import {
+  DirectoryPreviewCoordinator,
+} from "../features/directory/directory-preview-coordinator";
+import { resolveDirectorySelectionScope } from "../features/directory/directory-query-model";
+import { DirectoryBatchToolbar } from "./directory/DirectoryBatchToolbar";
 
-const cardWidth = 148;
-const rowHeight = 160;
-const gap = 12;
-const directoryPageSize = 512;
-const maximumCachedPages = 12;
 type DirectoryFormatFilter = "all" | FoundFormatGroupId | "other";
 
 /** 目录条目拖拽 MIME：携带 {path, isDirectory}，由 Sidebar 文件夹行消费。 */
@@ -122,10 +132,8 @@ function DirectoryCard({
   displayName,
 }: DirectoryCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
   useEffect(() => {
     setThumbnailUrl(null);
-    setFailed(false);
     if (entry.isDirectory) return;
     const request = window.refCanvas.filesystem.previewToken?.(entry.path);
     if (!request) return;
@@ -142,12 +150,15 @@ function DirectoryCard({
     };
   }, [entry.path, entry.isDirectory, entry.extension, priority]);
 
-  const canPreview = !entry.isDirectory && thumbnailUrl && !failed;
+  const preview = useRetryingPreviewUrl(thumbnailUrl);
+  const canPreview = !entry.isDirectory && preview.url && preview.status !== "failed";
 
   return (
     <button
       className={`asset-card directory-card ${selected ? "selected" : ""}`}
+      aria-busy={preview.status === "loading" || preview.status === "waiting"}
       onClick={(event) => {
+        if (preview.status === "failed") preview.retry();
         if (entry.isDirectory && folderClickMode === "single") onEnter();
         else onSelect(event);
       }}
@@ -173,10 +184,12 @@ function DirectoryCard({
       <span className="asset-preview">
         {canPreview ? (
           <img
-            src={thumbnailUrl}
+            className={preview.status === "ready" ? "" : "preview-image-pending"}
+            src={preview.url!}
             alt=""
             draggable={false}
-            onError={() => setFailed(true)}
+            onLoad={preview.markReady}
+            onError={preview.markError}
           />
         ) : entry.isDirectory ? (
           <span className="asset-placeholder">
@@ -185,7 +198,18 @@ function DirectoryCard({
           </span>
         ) : (
           <span className="asset-placeholder">
-            <span>{entry.extension.toUpperCase() || "FILE"}</span>
+            {preview.status === "failed" ? <RefreshCw size={24} /> : null}
+            <span>
+              {preview.status === "failed"
+                ? "点击重试预览"
+                : entry.extension.toUpperCase() || "FILE"}
+            </span>
+          </span>
+        )}
+        {(preview.status === "loading" || preview.status === "waiting") && (
+          <span className="preview-cache-loading" role="status">
+            <RefreshCw size={15} />
+            {preview.status === "waiting" ? "正在等待预览…" : "正在生成预览…"}
           </span>
         )}
         {selected && !entry.isDirectory && (
@@ -304,18 +328,27 @@ export function DirectoryAssetPanel() {
   const scrollFrameRef = useRef<number | null>(null);
   const pendingScrollTopRef = useRef(0);
   // 选择模型：多选（Ctrl/Shift/Ctrl+A）供批量与即时预览共用。
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
-  const [allMatchingSelected, setAllMatchingSelected] = useState(false);
-  const [excludedPaths, setExcludedPaths] = useState<Set<string>>(new Set());
+  const directorySelection = useDirectorySelection();
+  const {
+    selectedPaths,
+    allMatchingSelected,
+    excludedPaths,
+    anchor: selectionAnchor,
+  } = directorySelection.state;
   const [directoryRevision, setDirectoryRevision] = useState("");
   const [directoryFileTotal, setDirectoryFileTotal] = useState(0);
   const [directoryScanComplete, setDirectoryScanComplete] = useState(false);
   const [batchJob, setBatchJob] = useState<DirectoryBatchSnapshot | null>(null);
-  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   const [shortcutNotice, setShortcutNotice] = useState<string | null>(null);
   const shortcutNoticeTimerRef = useRef<number | null>(null);
-  // 即时预览的当前条目路径（null = 未打开）。
-  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  const [previewCoordinator] = useState(() => new DirectoryPreviewCoordinator());
+  const previewSnapshot = useSyncExternalStore(
+    previewCoordinator.subscribe,
+    previewCoordinator.getSnapshot,
+    previewCoordinator.getSnapshot,
+  );
+  const previewPath = previewSnapshot.path;
+  useEffect(() => () => previewCoordinator.dispose(), [previewCoordinator]);
   // 图片序列：目录级检测结果（按首帧路径索引）与预览对话框。
   const [sequenceGroups, setSequenceGroups] = useState<Map<string, SequenceGroupInfo>>(
     () => new Map(),
@@ -489,9 +522,7 @@ export function DirectoryAssetPanel() {
       store.directoryEntries.filter((entry) => !entry.isDirectory).length,
     );
     setDirectoryScanComplete(false);
-    setAllMatchingSelected(false);
-    setExcludedPaths(new Set());
-    setSelectedPaths(new Set());
+    directorySelection.clear();
     pageRequestsRef.current.clear();
     if (store.directoryPath) {
       void loadDirectoryPage(0);
@@ -536,8 +567,7 @@ export function DirectoryAssetPanel() {
       }
       if (snapshot.state === "reset" || snapshot.state === "invalidated") {
         setDirectoryScanComplete(snapshot.state === "reset");
-        setAllMatchingSelected(false);
-        setExcludedPaths(new Set());
+        directorySelection.clear();
         const topIndex = Math.max(
           0,
           Math.floor(viewport.top / rowHeight) * Math.max(1, Math.floor(
@@ -604,9 +634,7 @@ export function DirectoryAssetPanel() {
   }, [batchJob?.id]);
 
   const runSearch = (value: string) => {
-    setSelectedPaths(new Set());
-    setAllMatchingSelected(false);
-    setExcludedPaths(new Set());
+    directorySelection.clear();
     if (searchId) {
       void window.refCanvas.filesystem.cancelSearch(searchId);
       setSearchId(null);
@@ -651,7 +679,7 @@ export function DirectoryAssetPanel() {
     setSearchComplete(false);
     setSearchSnapshot(null);
     setQuery("");
-    setSelectedPaths(new Set());
+    directorySelection.clear();
   };
 
   // FND-002 §5.2：每标签独立保存查询与滚动位置。
@@ -774,38 +802,30 @@ export function DirectoryAssetPanel() {
     return () => observer.disconnect();
   }, [entries.length === 0]);
 
-  const columns = Math.max(
-    1,
-    Math.floor((viewport.width + gap) / (cardWidth + gap)),
-  );
   const totalEntries = Math.max(
     0,
     (searchId ? searchTotal : directoryTotal) -
       (collapseLoadedSequences ? hiddenSequencePaths.size : 0),
   );
-  const rowCount = Math.ceil(totalEntries / columns);
-  const startRow = Math.max(0, Math.floor(viewport.top / rowHeight) - 2);
-  const endRow = Math.min(
+  const virtualWindow = calculateDirectoryVirtualWindow({
+    width: viewport.width,
+    height: viewport.height,
+    scrollTop: viewport.top,
+    total: totalEntries,
+  });
+  const {
+    columns,
     rowCount,
-    Math.ceil((viewport.top + viewport.height) / rowHeight) + 3,
-  );
-  const firstVisibleRow = Math.floor(viewport.top / rowHeight);
-  const lastVisibleRow = Math.ceil(
-    (viewport.top + viewport.height) / rowHeight,
-  );
+    startRow,
+    endRow,
+    firstVisibleRow,
+    lastVisibleRow,
+  } = virtualWindow;
   const indexedEntries = useMemo(() => {
-    const indexed = new Map<number, DirectoryEntry>();
-    for (const [offset, page] of directoryPages) {
-      page.forEach((entry, index) => indexed.set(offset + index, entry));
-    }
-    return indexed;
+    return indexDirectoryPages(directoryPages);
   }, [directoryPages]);
   const indexedSearchEntries = useMemo(() => {
-    const indexed = new Map<number, DirectoryEntry>();
-    for (const [offset, page] of searchPages) {
-      page.forEach((entry, index) => indexed.set(offset + index, entry));
-    }
-    return indexed;
+    return indexDirectoryPages(searchPages);
   }, [searchPages]);
   const activeIndexedEntries = useMemo(() => {
     const source = searchId ? indexedSearchEntries : indexedEntries;
@@ -827,17 +847,8 @@ export function DirectoryAssetPanel() {
     indexedEntriesRef.current = activeIndexedEntries;
   }, [activeIndexedEntries]);
   const visible = useMemo(() => {
-    const result: Array<{ entry: DirectoryEntry | null; absoluteIndex: number }> = [];
-    const start = startRow * columns;
-    const end = Math.min(totalEntries, endRow * columns);
-    for (let index = start; index < end; index += 1) {
-      result.push({
-        entry: activeIndexedEntries.get(index) ?? null,
-        absoluteIndex: index,
-      });
-    }
-    return result;
-  }, [activeIndexedEntries, columns, endRow, startRow, totalEntries]);
+    return visibleDirectoryWindow(activeIndexedEntries, virtualWindow);
+  }, [activeIndexedEntries, virtualWindow]);
 
   useEffect(() => {
     if (
@@ -898,44 +909,26 @@ export function DirectoryAssetPanel() {
     store.directoryHistoryIndex < store.directoryHistory.length - 1;
   const canGoForward = store.directoryHistoryIndex > 0;
 
-  const previewEntry =
-    (previewPath &&
-      visibleEntries.find((entry) => entry.path === previewPath)) ??
-    null;
+  useEffect(() => previewCoordinator.syncEntries(visibleEntries), [previewCoordinator, visibleEntries]);
+  const previewEntry = previewSnapshot.entry;
 
   const selectEntry = (entry: DirectoryEntry, event: React.MouseEvent) => {
     store.selectDirectoryEntry(entry);
-    if (allMatchingSelected) {
-      if (event.ctrlKey || event.metaKey) {
-        setExcludedPaths((current) => {
-          const next = new Set(current);
-          if (next.has(entry.path)) next.delete(entry.path);
-          else next.add(entry.path);
-          return next;
-        });
-        return;
-      }
-      setAllMatchingSelected(false);
-      setExcludedPaths(new Set());
-      setSelectedPaths(new Set([entry.path]));
-      setSelectionAnchor(entry.path);
-      return;
-    }
-    const result = applySelectionClick(
-      selectedPaths,
+    directorySelection.click(
       files.map((item) => item.path),
-      selectionAnchor,
       entry.path,
-      { ctrl: event.ctrlKey, shift: event.shiftKey },
+      event.ctrlKey || event.metaKey,
+      event.shiftKey,
     );
-    setSelectedPaths(result.selection);
-    setSelectionAnchor(result.anchor);
   };
 
   const openPreview = (entry: DirectoryEntry) => {
     if (entry.isDirectory) return;
     store.selectDirectoryEntry(entry);
-    setPreviewPath(entry.path);
+    previewCoordinator.open(entry);
+    if (window.refCanvas.library?.getByPath) {
+      void previewCoordinator.materialize((path) => window.refCanvas.library.getByPath(path));
+    }
   };
 
   const toggleQuickAccess = async (entry: DirectoryEntry) => {
@@ -949,11 +942,8 @@ export function DirectoryAssetPanel() {
   };
 
   const navigatePreview = (delta: number) => {
-    if (!previewPath) return;
-    const index = files.findIndex((entry) => entry.path === previewPath);
-    if (index === -1) return;
-    const next = files[(index + delta + files.length) % files.length];
-    if (next) setPreviewPath(next.path);
+    const entry = previewCoordinator.adjacent(delta);
+    if (entry) store.selectDirectoryEntry(entry);
   };
 
   const tagEntry = async (entry: DirectoryEntry) => {
@@ -1083,8 +1073,8 @@ export function DirectoryAssetPanel() {
         : undefined,
     );
     await store.reloadDirectory();
-    setPreviewPath(null);
-    setSelectedPaths(new Set());
+    previewCoordinator.close();
+    directorySelection.clear();
   };
 
   /** 复制/移动到目标目录（冲突先询问策略，传当前目录 revision）。 */
@@ -1115,7 +1105,7 @@ export function DirectoryAssetPanel() {
     }
   };
 
-  const closePreview = () => setPreviewPath(null);
+  const closePreview = () => previewCoordinator.close();
 
   // ===== 批量操作（选中文件集合） =====
   const selectedFilePaths = () =>
@@ -1129,10 +1119,7 @@ export function DirectoryAssetPanel() {
   };
 
   const selectFileFromKeyboard = (entry: DirectoryEntry) => {
-    setAllMatchingSelected(false);
-    setExcludedPaths(new Set());
-    setSelectedPaths(new Set([entry.path]));
-    setSelectionAnchor(entry.path);
+    directorySelection.selectOnly(entry.path);
     store.selectDirectoryEntry(entry);
 
     const absoluteIndex = visibleEntries.findIndex(
@@ -1196,9 +1183,7 @@ export function DirectoryAssetPanel() {
   };
 
   const clearSelection = () => {
-    setSelectedPaths(new Set());
-    setAllMatchingSelected(false);
-    setExcludedPaths(new Set());
+    directorySelection.clear();
     store.selectDirectoryEntry(null);
   };
 
@@ -1207,24 +1192,17 @@ export function DirectoryAssetPanel() {
       !allMatchingSelected ||
       !window.refCanvas.filesystem.startBatch
     ) return false;
-    const selection = searchId
-      ? searchComplete && searchRevision
-        ? {
-            mode: "search" as const,
-            searchId,
-            revision: searchRevision,
-            excludedPaths: [...excludedPaths],
-          }
-        : null
-      : directoryScanComplete && directoryRevision && store.directoryPath
-        ? {
-            mode: "all" as const,
-            directoryPath: store.directoryPath,
-            revision: directoryRevision,
-            excludedPaths: [...excludedPaths],
-            extensions: formatFilterExtensions,
-          }
-        : null;
+    const selection = resolveDirectorySelectionScope({
+      allMatchingSelected,
+      searchId,
+      searchComplete,
+      searchRevision,
+      directoryPath: store.directoryPath,
+      directoryScanComplete,
+      directoryRevision,
+      excludedPaths,
+      extensions: formatFilterExtensions,
+    });
     if (!selection) return false;
     const snapshot = await window.refCanvas.filesystem.startBatch(
       selection,
@@ -1237,24 +1215,17 @@ export function DirectoryAssetPanel() {
 
   const copySelectedPaths = async () => {
     if (allMatchingSelected) {
-      const selection = searchId
-        ? searchComplete && searchRevision
-          ? {
-              mode: "search" as const,
-              searchId,
-              revision: searchRevision,
-              excludedPaths: [...excludedPaths],
-            }
-          : null
-        : directoryScanComplete && directoryRevision && store.directoryPath
-          ? {
-              mode: "all" as const,
-              directoryPath: store.directoryPath,
-              revision: directoryRevision,
-              excludedPaths: [...excludedPaths],
-              extensions: formatFilterExtensions,
-            }
-          : null;
+      const selection = resolveDirectorySelectionScope({
+        allMatchingSelected,
+        searchId,
+        searchComplete,
+        searchRevision,
+        directoryPath: store.directoryPath,
+        directoryScanComplete,
+        directoryRevision,
+        excludedPaths,
+        extensions: formatFilterExtensions,
+      });
       if (!selection) return;
       const snapshot = await window.refCanvas.filesystem.exportPaths(selection);
       if (snapshot) {
@@ -1319,7 +1290,7 @@ export function DirectoryAssetPanel() {
     const paths = selectedFilePaths();
     if (!paths.length) return;
     await store.trashEntries(paths);
-    setPreviewPath(null);
+    previewCoordinator.close();
     clearSelection();
   };
 
@@ -1468,12 +1439,9 @@ export function DirectoryAssetPanel() {
         (!searchId && directoryScanComplete && directoryRevision) ||
         (searchId && searchComplete && searchRevision)
       ) {
-        setAllMatchingSelected(true);
-        setExcludedPaths(new Set());
-        setSelectedPaths(new Set());
+        directorySelection.selectAllMatching();
       } else {
-        setSelectedPaths(new Set(files.map((entry) => entry.path)));
-        setSelectionAnchor(files[0]?.path ?? null);
+        directorySelection.selectLoaded(files.map((entry) => entry.path));
       }
       return;
     }
@@ -1692,68 +1660,27 @@ export function DirectoryAssetPanel() {
         </div>
       )}
 
-      {selectedCount > 0 && (
-        <div className="batch-toolbar">
-          <span>{selectedCount} 项已选</span>
-          <button
-            onClick={() => void addSelectedToBoard()}
-            title="加入参考板"
-            aria-label="加入参考板"
-          >
-            <PanelsTopLeft size={14} />
-          </button>
-          <button
-            onClick={() => void copySelectedPaths()}
-            title={allMatchingSelected ? "导出 UTF-8 路径清单" : "复制选中文件路径"}
-          >
-            <Copy size={14} />
-          </button>
-          {selectedVideoPaths.length > 0 && (
-            <button
-              onClick={() => {
-                const primary = files.find((item) => item.path === selectedVideoPaths[0]);
-                if (primary) store.selectDirectoryEntry(primary);
-                window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
-                  detail: { path: selectedVideoPaths[0], paths: selectedVideoPaths, tool: "gif" },
-                })), 0);
-              }}
-              title={`用 ${selectedVideoPaths.length} 个视频片段生成 GIF`}
-              aria-label="打开多视频 GIF 工作台"
-            >
-              <Film size={14} />
-            </button>
-          )}
-          <button onClick={() => void batchCopyTo()} title="复制到…">
-            <Copy size={14} />
-          </button>
-          <button onClick={() => void batchMoveTo()} title="移动到…">
-            <FolderOpen size={14} />
-          </button>
-          <button onClick={() => clipboardSelection("copy")} title="复制（到剪贴板）">
-            <Copy size={14} />
-          </button>
-          <button onClick={() => clipboardSelection("cut")} title="剪切">
-            <Scissors size={14} />
-          </button>
-          <button onClick={() => void batchTag()} title="设置标签">
-            <Tags size={14} />
-          </button>
-          <button
-            className="danger"
-            onClick={() => void batchTrash()}
-            title="移入回收站"
-          >
-            <Trash2 size={14} />
-          </button>
-          <button
-            className="danger"
-            onClick={clearSelection}
-            title="清除选择"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
+      <DirectoryBatchToolbar
+        selectedCount={selectedCount}
+        allMatchingSelected={allMatchingSelected}
+        selectedVideoCount={selectedVideoPaths.length}
+        onAddToBoard={() => void addSelectedToBoard()}
+        onCopyPaths={() => void copySelectedPaths()}
+        onOpenVideoGif={() => {
+          const primary = files.find((item) => item.path === selectedVideoPaths[0]);
+          if (primary) store.selectDirectoryEntry(primary);
+          window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
+            detail: { path: selectedVideoPaths[0], paths: selectedVideoPaths, tool: "gif" },
+          })), 0);
+        }}
+        onCopyTo={() => void batchCopyTo()}
+        onMoveTo={() => void batchMoveTo()}
+        onClipboardCopy={() => clipboardSelection("copy")}
+        onClipboardCut={() => clipboardSelection("cut")}
+        onTag={() => void batchTag()}
+        onTrash={() => void batchTrash()}
+        onClear={clearSelection}
+      />
       {(() => {
         void clipboardVersion; // 订阅剪贴板变更以触发粘贴条渲染。
         const clipboard = getDirectoryClipboard();

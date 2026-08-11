@@ -47,6 +47,11 @@ import { managedStorePath } from "./library-manager";
 import { MetadataEnricher } from "./metadata-enricher";
 import { WatchReconcileService } from "./watch-reconcile-service";
 import { specializedKindForExtension } from "../../shared/asset-kind";
+import {
+  imageVisualSignature,
+  visualSimilarity,
+} from "./visual-signature-service";
+export { imageVisualSignature, visualSimilarity } from "./visual-signature-service";
 
 /**
  * Files whose extension is not a specialized kind are imported as `generic`
@@ -137,91 +142,6 @@ export async function fullFileHash(filename: string): Promise<string> {
     stream.on("error", reject);
     stream.on("end", () => resolve(hash.digest("hex")));
   });
-}
-
-export async function imageVisualSignature(filename: string): Promise<{
-  visualHash: string;
-  colorSignature: string;
-  dominantColor: { r: number; g: number; b: number };
-}> {
-  const source = sharp(filename, { animated: false, failOn: "none" }).rotate();
-  const [gray, color] = await Promise.all([
-    source
-      .clone()
-      .resize(9, 8, { fit: "fill" })
-      .greyscale()
-      .raw()
-      .toBuffer(),
-    source
-      .clone()
-      .flatten({ background: { r: 255, g: 255, b: 255 } })
-      .resize(4, 4, { fit: "fill" })
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true }),
-  ]);
-  let hash = 0n;
-  for (let y = 0; y < 8; y += 1) {
-    for (let x = 0; x < 8; x += 1) {
-      hash <<= 1n;
-      if (gray[y * 9 + x] > gray[y * 9 + x + 1]) hash |= 1n;
-    }
-  }
-  const channels = color.info.channels;
-  const rgb = Buffer.alloc(48);
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  for (let pixel = 0; pixel < 16; pixel += 1) {
-    rgb[pixel * 3] = color.data[pixel * channels];
-    rgb[pixel * 3 + 1] = color.data[pixel * channels + Math.min(1, channels - 1)];
-    rgb[pixel * 3 + 2] = color.data[pixel * channels + Math.min(2, channels - 1)];
-    red += rgb[pixel * 3];
-    green += rgb[pixel * 3 + 1];
-    blue += rgb[pixel * 3 + 2];
-  }
-  return {
-    visualHash: hash.toString(16).padStart(16, "0"),
-    colorSignature: rgb.toString("base64"),
-    dominantColor: {
-      r: Math.round(red / 16),
-      g: Math.round(green / 16),
-      b: Math.round(blue / 16),
-    },
-  };
-}
-
-function hammingDistance(left: string, right: string): number {
-  let value = BigInt(`0x${left}`) ^ BigInt(`0x${right}`);
-  let distance = 0;
-  while (value) {
-    value &= value - 1n;
-    distance += 1;
-  }
-  return distance;
-}
-
-export function visualSimilarity(
-  left: { visualHash: string; colorSignature: string },
-  right: { visualHash: string; colorSignature: string },
-): number {
-  const structureDifference = hammingDistance(
-    left.visualHash,
-    right.visualHash,
-  ) / 64;
-  const leftColor = Buffer.from(left.colorSignature, "base64");
-  const rightColor = Buffer.from(right.colorSignature, "base64");
-  const length = Math.min(leftColor.length, rightColor.length);
-  if (!length) return 0;
-  let colorDifference = 0;
-  for (let index = 0; index < length; index += 1) {
-    colorDifference += Math.abs(leftColor[index] - rightColor[index]);
-  }
-  colorDifference /= length * 255;
-  return Math.max(
-    0,
-    Math.min(100, (1 - structureDifference * 0.8 - colorDifference * 0.2) * 100),
-  );
 }
 
 async function exists(filename: string): Promise<boolean> {
@@ -346,9 +266,9 @@ export class LibraryService {
     thumbnailBackground: "checker",
     includeSubfolderAssets: true,
     panelLayout: {
-      sidebarWidth: 260,
-      assetWidth: 350,
-      detailsWidth: 360,
+      sidebarWidth: 180,
+      assetWidth: 280,
+      detailsWidth: 1100,
       collapsed: [],
     },
   };
@@ -1267,44 +1187,84 @@ export class LibraryService {
 
   async trashAssets(scope: SelectionScope): Promise<number> {
     const ids = this.database.resolveSelection(scope);
+    return this.trashAssetsByAuthorizedPaths(ids.map((id) => ({
+      id,
+      sourcePath: this.database.getAsset(id)?.path ?? "",
+    })));
+  }
+
+  async trashAssetsByAuthorizedPaths(
+    entries: Array<{ id: string; sourcePath: string }>,
+    finalGuard?: (filename: string) => Promise<string>,
+  ): Promise<number> {
     let moved = 0;
-    for (const id of ids) {
+    for (const { id, sourcePath: authorizedSource } of entries) {
       const asset = this.database.getAsset(id);
-      if (!asset || asset.lifecycle !== "active") continue;
+      if (!asset || asset.lifecycle !== "active" || !authorizedSource) continue;
+      const sourcePath = finalGuard ? await finalGuard(authorizedSource) : authorizedSource;
       const target = this.trashPathFor(asset);
       const operationId = this.database.recordFileOperation(
         id,
         "trash",
-        asset.path,
+        sourcePath,
         target,
       );
-      this.selfMovedPaths.add(path.normalize(asset.path));
+      this.selfMovedPaths.add(path.normalize(sourcePath));
       try {
-        await moveVerified(asset.path, target);
+        await moveVerified(sourcePath, target);
         this.database.markTrashed(id, target);
         this.database.completeFileOperation(operationId);
         moved += 1;
       } finally {
-        setTimeout(() => this.selfMovedPaths.delete(path.normalize(asset.path)), 1_000);
+        setTimeout(() => this.selfMovedPaths.delete(path.normalize(sourcePath)), 1_000);
       }
     }
     return moved;
   }
 
   async restoreAssets(ids: string[]): Promise<number> {
-    let restored = 0;
+    return this.restoreAssetsFromPlan(await this.planRestoreAssets(ids));
+  }
+
+  async planRestoreAssets(ids: string[]): Promise<Array<{
+    id: string;
+    sourcePath: string;
+    targetPath: string;
+  }>> {
+    const result = [];
     for (const id of ids) {
       const asset = this.database.getAsset(id);
       if (!asset?.trashPath || asset.lifecycle !== "trashed") continue;
-      const target = await availableRestorePath(asset.path);
+      result.push({ id, sourcePath: asset.trashPath, targetPath: await availableRestorePath(asset.path) });
+    }
+    return result;
+  }
+
+  async restoreAssetsFromPlan(plans: Array<{
+    id: string;
+    sourcePath: string;
+    targetPath: string;
+  }>, finalGuard?: (sourcePath: string, targetPath: string) => Promise<{
+    sourcePath: string;
+    targetPath: string;
+  }>): Promise<number> {
+    let restored = 0;
+    for (const plan of plans) {
+      const { id } = plan;
+      const asset = this.database.getAsset(id);
+      if (!asset?.trashPath || asset.lifecycle !== "trashed") continue;
+      const guarded = finalGuard
+        ? await finalGuard(plan.sourcePath, plan.targetPath)
+        : plan;
+      const { sourcePath, targetPath } = guarded;
       const operationId = this.database.recordFileOperation(
         id,
         "restore",
-        asset.trashPath,
-        target,
+        sourcePath,
+        targetPath,
       );
-      await moveVerified(asset.trashPath, target);
-      this.database.markRestored(id, target);
+      await moveVerified(sourcePath, targetPath);
+      this.database.markRestored(id, targetPath);
       this.database.completeFileOperation(operationId);
       restored += 1;
     }
@@ -1312,17 +1272,26 @@ export class LibraryService {
   }
 
   async purgeAssets(ids: string[]): Promise<number> {
+    return this.purgeAssetsByAuthorizedPaths(ids.map((id) => ({
+      id,
+      trashPath: this.database.getAsset(id)?.trashPath ?? "",
+    })));
+  }
+
+  async purgeAssetsByAuthorizedPaths(
+    entries: Array<{ id: string; trashPath: string }>,
+  ): Promise<number> {
     let purged = 0;
-    for (const id of ids) {
+    for (const { id, trashPath } of entries) {
       const asset = this.database.getAsset(id);
       if (!asset || asset.lifecycle !== "trashed") continue;
       const operationId = this.database.recordFileOperation(
         id,
         "purge",
-        asset.trashPath ?? "",
+        trashPath,
         "",
       );
-      if (asset.trashPath) await unlink(asset.trashPath).catch(() => undefined);
+      if (trashPath) await unlink(trashPath).catch(() => undefined);
       this.database.markPurged(id);
       this.database.completeFileOperation(operationId);
       purged += 1;
@@ -1373,7 +1342,12 @@ export class LibraryService {
     return this.database.listDuplicateGroups();
   }
 
-  async mergeDuplicates(keepId: string, removeIds: string[]): Promise<AssetRecord> {
+  async mergeDuplicates(
+    keepId: string,
+    removeIds: string[],
+    authorizedPaths?: Map<string, string>,
+    finalGuard?: (filename: string) => Promise<string>,
+  ): Promise<AssetRecord> {
     const keep = this.database.getAsset(keepId);
     if (!keep) throw new Error("ASSET_NOT_FOUND");
     const keepPath = this.database.getAssetPath(keepId);
@@ -1391,7 +1365,10 @@ export class LibraryService {
           throw new Error("DUPLICATE_HASH_MISMATCH");
         }
         this.database.setContentHash(id, hash);
-        await this.trashAssets({ mode: "ids", ids: [id] });
+        await this.trashAssetsByAuthorizedPaths([{
+          id,
+          sourcePath: authorizedPaths?.get(id) ?? filename,
+        }], finalGuard);
         removed.push(id);
       }
       return this.database.mergeAssetRecords(keepId, removeIds);
@@ -1682,6 +1659,10 @@ export class LibraryService {
       storeBytes,
       canMigrateDirectly: managed.length === 0 && files.length === 0,
     };
+  }
+
+  managedStorePathForAuthorization(): string {
+    return this.managedStore;
   }
 
   /**

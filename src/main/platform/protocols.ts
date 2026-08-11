@@ -25,6 +25,11 @@ import { thumbnailCacheFilename } from "./thumbnail-cache";
 import type { ThumbnailWorkerClient } from "./thumbnail-worker-client";
 import type { ProviderRegistry } from "./provider-registry";
 import { invokeThumbnail } from "./provider-registry";
+import {
+  evaluateProtocolRequest,
+  protocolResponseHeaders,
+  type ProtocolOriginPolicyOptions,
+} from "./protocol-origin-policy";
 
 interface ProtocolDependencies {
   getDatabase(): RefCanvasDatabase;
@@ -34,6 +39,7 @@ interface ProtocolDependencies {
   getProviderRegistry(): ProviderRegistry;
   previewTokens: PreviewTokenRegistry;
   thumbnailQueue: PreviewQueue<Buffer>;
+  originPolicy: ProtocolOriginPolicyOptions;
 }
 
 function thumbnailPriority(url: URL): number {
@@ -132,6 +138,7 @@ async function generateThumbnail(
         height: size.height,
         outputPath: cacheFile,
         channel,
+        signal,
       });
       return readFile(result.path);
     }
@@ -156,6 +163,8 @@ async function generateThumbnail(
 
 function registerAssetProtocol(dependencies: ProtocolDependencies): void {
   protocol.handle("refasset", async (request) => {
+    const access = evaluateProtocolRequest(request, dependencies.originPolicy);
+    if (!access.allowed) return new Response("Forbidden", { status: 403 });
     const url = new URL(request.url);
     if (url.host !== "asset" && url.host !== "thumbnail") {
       return new Response("Not found", { status: 404 });
@@ -176,11 +185,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320"><rect width="100%" height="100%" fill="#191d1e"/><path d="M214 112h52v64h-52z" fill="none" stroke="#68716d" stroke-width="4"/><text x="240" y="208" text-anchor="middle" fill="#939c98" font-family="Segoe UI,sans-serif" font-size="14">${label}</text></svg>`;
       return new Response(svg, {
         status: 200,
-        headers: {
-          "Content-Type": "image/svg+xml",
-          "Access-Control-Allow-Origin": "*",
-          "Cross-Origin-Resource-Policy": "cross-origin",
-        },
+        headers: protocolResponseHeaders(access, "image/svg+xml"),
       });
     }
     if (url.host === "thumbnail") {
@@ -194,11 +199,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
           );
           if (custom) {
             return new Response(new Uint8Array(custom), {
-              headers: {
-                "Content-Type": "image/png",
-                "Access-Control-Allow-Origin": "*",
-                "Cross-Origin-Resource-Policy": "cross-origin",
-              },
+              headers: protocolResponseHeaders(access, "image/png"),
             });
           }
         }
@@ -227,17 +228,16 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         await mkdir(path.dirname(cacheFile), { recursive: true });
         const indexed = dependencies.getPreviewCacheIndex()?.get(cacheKey);
         if (indexed?.status === "failed") {
-          return new Response("No thumbnail", { status: 404 });
+          if (!url.searchParams.has("previewRetry")) {
+            return new Response("No thumbnail", { status: 404 });
+          }
+          dependencies.getPreviewCacheIndex()?.clearFailure(cacheKey);
         }
         const cached = await readFile(cacheFile).catch(() => null);
         if (cached) {
           dependencies.getPreviewCacheIndex()?.recordSuccess(cacheKey, cacheFile, cached.byteLength);
           return new Response(new Uint8Array(cached), {
-            headers: {
-              "Content-Type": "image/png",
-              "Access-Control-Allow-Origin": "*",
-              "Cross-Origin-Resource-Policy": "cross-origin",
-            },
+            headers: protocolResponseHeaders(access, "image/png"),
           });
         }
         const png = await dependencies.thumbnailQueue.enqueue(`asset:${cacheFile}`, async (signal) => {
@@ -264,11 +264,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
           signal: request.signal,
         });
         return new Response(new Uint8Array(png), {
-          headers: {
-            "Content-Type": "image/png",
-            "Access-Control-Allow-Origin": "*",
-            "Cross-Origin-Resource-Policy": "cross-origin",
-          },
+          headers: protocolResponseHeaders(access, "image/png"),
         });
       } catch {
         if (request.signal.aborted) {
@@ -293,10 +289,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         filename = candidate;
       }
     }
-    return fileProtocolResponse(filename, request, {
-      "Access-Control-Allow-Origin": "*",
-      "Cross-Origin-Resource-Policy": "cross-origin",
-    });
+    return fileProtocolResponse(filename, request, protocolResponseHeaders(access));
   });
 }
 
@@ -307,6 +300,8 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
  */
 function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
   protocol.handle("refbrowse", async (request) => {
+    const access = evaluateProtocolRequest(request, dependencies.originPolicy);
+    if (!access.allowed) return new Response("Forbidden", { status: 403 });
     const url = new URL(request.url);
     if (url.host !== "preview" && url.host !== "thumbnail") {
       return new Response("Not found", { status: 404 });
@@ -362,7 +357,10 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
         await mkdir(cacheDirectory, { recursive: true });
         const indexed = dependencies.getPreviewCacheIndex()?.get(key);
         if (indexed?.status === "failed") {
-          return new Response("No thumbnail", { status: 404 });
+          if (!url.searchParams.has("previewRetry")) {
+            return new Response("No thumbnail", { status: 404 });
+          }
+          dependencies.getPreviewCacheIndex()?.clearFailure(key);
         }
         const png = await dependencies.thumbnailQueue.enqueue(cacheFile, async (signal) => {
           const cached = await readFile(cacheFile).catch(() => null);
@@ -386,11 +384,7 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
           signal: request.signal,
         });
         return new Response(Uint8Array.from(png), {
-          headers: {
-            "Content-Type": "image/png",
-            "Access-Control-Allow-Origin": "*",
-            "Cross-Origin-Resource-Policy": "cross-origin",
-          },
+          headers: protocolResponseHeaders(access, "image/png"),
         });
       } catch {
         if (request.signal.aborted) {
@@ -416,10 +410,7 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
         return new Response("No thumbnail", { status: 404 });
       }
     }
-    return fileProtocolResponse(real, request, {
-      "Access-Control-Allow-Origin": "*",
-      "Cross-Origin-Resource-Policy": "cross-origin",
-    });
+    return fileProtocolResponse(real, request, protocolResponseHeaders(access));
   });
 }
 

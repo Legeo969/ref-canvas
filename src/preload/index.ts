@@ -1,5 +1,15 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { RefCanvasApi } from "../shared/contracts";
+
+function applyUiScale(preferences: unknown): void {
+  if (!preferences || typeof preferences !== "object") return;
+  const foundSettings = (preferences as { foundSettings?: unknown }).foundSettings;
+  if (!foundSettings || typeof foundSettings !== "object") return;
+  const scale = (foundSettings as { uiScale?: unknown }).uiScale;
+  if (typeof scale !== "number" || !Number.isFinite(scale)) return;
+  webFrame.setZoomFactor(Math.min(1.5, Math.max(0.8, scale)));
+  window.setTimeout(() => window.dispatchEvent(new Event("resize")), 0);
+}
 
 const api: RefCanvasApi = {
   library: {
@@ -499,9 +509,16 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:export-diagnostics"),
     setGlobalShortcuts: (enabled) =>
       ipcRenderer.invoke("system:set-global-shortcuts", enabled),
-    getPreferences: () => ipcRenderer.invoke("system:get-preferences"),
-    setPreferences: (prefs) =>
-      ipcRenderer.invoke("system:set-preferences", prefs),
+    getPreferences: async () => {
+      const preferences = await ipcRenderer.invoke("system:get-preferences");
+      applyUiScale(preferences);
+      return preferences;
+    },
+    setPreferences: async (prefs) => {
+      const preferences = await ipcRenderer.invoke("system:set-preferences", prefs);
+      applyUiScale(preferences);
+      return preferences;
+    },
     getAppInfo: () => ipcRenderer.invoke("system:get-app-info"),
     getMigrationFailure: () =>
       ipcRenderer.invoke("system:get-migration-failure"),

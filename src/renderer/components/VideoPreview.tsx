@@ -1,4 +1,4 @@
-import { Film, Images, Palette, Pause, Play, Repeat2, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { Film, Images, Pause, Play, Repeat2, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
@@ -271,19 +271,15 @@ export function VideoPreview({
             序列帧
           </button>
           {onOpenTool ? (
-            <>
-              <button type="button" className="video-gif-button" onClick={() => onOpenTool("color", timecode)} title="打开色彩工具"><Palette size={14} />色彩</button>
-              <PreviewColorBar
-                compact
-                live
-                autoRefresh
-                assetPath={asset.path}
-                timeMs={paletteTimeMs}
-                revision={paletteTimeMs}
-                source={() => frameSource && !playing ? frameImageRef.current : videoRef.current}
-                onSelect={(color) => onOpenTool("color", timecode, color)}
-              />
-            </>
+            <PreviewColorBar
+              compact
+              live
+              autoRefresh
+              assetPath={asset.path}
+              timeMs={paletteTimeMs}
+              revision={paletteTimeMs}
+              source={() => frameSource && !playing ? frameImageRef.current : videoRef.current}
+            />
           ) : (
             <PreviewColorBar
               compact

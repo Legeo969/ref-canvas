@@ -47,6 +47,15 @@ import {
   createPreferencesSliceState,
   type PreferencesSliceState,
 } from "../features/preferences/preferences-slice";
+import {
+  selectAssetId,
+  selectionStateFromScope,
+} from "../features/library/selection-model";
+import { importJobState } from "../features/library/import-job-model";
+import {
+  renamedBoardState,
+  savedBoardState,
+} from "../features/board/board-state-model";
 export {
   ASSET_PAGE_SIZE,
   MAX_RESIDENT_ASSET_PAGES,
@@ -194,36 +203,6 @@ interface AppState
   materializeEntry(path: string): Promise<void>;
 }
 
-function selectionState(
-  scope: SelectionScope,
-  assets: AssetRecord[],
-): Pick<
-  AppState,
-  | "selectedIds"
-  | "allMatchingSelected"
-  | "excludedIds"
-  | "selectedAsset"
-  | "selectionAnchorId"
-> {
-  if (scope.mode === "query") {
-    return {
-      selectedIds: new Set(),
-      allMatchingSelected: true,
-      excludedIds: new Set(scope.excludedIds),
-      selectedAsset: null,
-      selectionAnchorId: null,
-    };
-  }
-  const ids = new Set(scope.ids);
-  return {
-    selectedIds: ids,
-    allMatchingSelected: false,
-    excludedIds: new Set(),
-    selectedAsset: assets.find((asset) => ids.has(asset.id)) ?? null,
-    selectionAnchorId: scope.ids[0] ?? null,
-  };
-}
-
 let navigationHydrated = false;
 let assetQueryRevision = 0;
 
@@ -340,10 +319,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? await window.refCanvas.boards.load(activeBoard.id)
       : null;
     const unsubscribeImport = window.refCanvas.library.onImportProgress((importJob) => {
-      set({
-        importJob,
-        importing: !["completed", "cancelled", "failed"].includes(importJob.state),
-      });
+      set(importJobState(importJob));
       if (importJob.state === "completed") {
           void get().reloadAssets();
       }
@@ -747,53 +723,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectAssetInGrid: (id, mode) => {
     const state = get();
-    if (
-      mode === "replace" &&
-      !state.allMatchingSelected &&
-      state.selectedIds.size === 1 &&
-      state.selectedIds.has(id) &&
-      state.selectedAsset?.id === id
-    ) {
-      return;
-    }
-    if (state.allMatchingSelected && mode === "toggle") {
-      const excludedIds = new Set(state.excludedIds);
-      if (excludedIds.has(id)) excludedIds.delete(id);
-      else excludedIds.add(id);
-      set({
-        excludedIds,
-        selectedAsset: state.assets.find((asset) => asset.id === id) ?? null,
-      });
-      return;
-    }
-    const next = new Set(state.selectedIds);
-    if (mode === "replace") {
-      next.clear();
-      next.add(id);
-    } else if (mode === "toggle") {
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-    } else {
-      const anchorIndex = state.assets.findIndex(
-        (asset) => asset.id === state.selectionAnchorId,
-      );
-      const targetIndex = state.assets.findIndex((asset) => asset.id === id);
-      if (anchorIndex >= 0 && targetIndex >= 0) {
-        next.clear();
-        const start = Math.min(anchorIndex, targetIndex);
-        const end = Math.max(anchorIndex, targetIndex);
-        for (const asset of state.assets.slice(start, end + 1)) next.add(asset.id);
-      } else {
-        next.add(id);
-      }
-    }
-    set({
-      selectedIds: next,
-      allMatchingSelected: false,
-      excludedIds: new Set(),
-      selectionAnchorId: mode === "range" ? state.selectionAnchorId : id,
-      selectedAsset: state.assets.find((asset) => asset.id === id) ?? null,
-    });
+    const next = selectAssetId(state, id, mode);
+    if (next) set(next);
   },
 
   selectAllMatching: () =>
@@ -829,14 +760,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     await window.refCanvas.library.batchUpdate(scope, patch);
     set({ tags: await window.refCanvas.library.listTags() });
     await get().reloadAssets();
-    set(selectionState(scope, get().assets));
+    set(selectionStateFromScope(scope, get().assets));
   },
 
   batchRename: async (pattern) => {
     const scope = get().selectionScope();
     await window.refCanvas.library.batchRename(scope, pattern);
     await get().reloadAssets();
-    set(selectionState(scope, get().assets));
+    set(selectionStateFromScope(scope, get().assets));
   },
 
   trashSelection: async () => {
@@ -865,7 +796,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   importPaths: async (paths) => {
     if (!paths.length) return;
     const importJob = await window.refCanvas.library.startImport(paths);
-    set({ importJob, importing: true });
+    set(importJobState(importJob));
   },
 
   cancelImport: async () => {
@@ -1055,11 +986,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const board = get().activeBoard;
     if (!board) return;
     const summary = await window.refCanvas.boards.save(board.id, document);
-    set((state) => ({
-      boardDocument: document,
-      activeBoard: summary,
-      boards: state.boards.map((item) => item.id === summary.id ? summary : item),
-    }));
+    set((state) => savedBoardState(state.boards, summary, document));
   },
 
   createBoard: async (title) => {
@@ -1080,10 +1007,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   renameBoard: async (id, title) => {
     const summary = await window.refCanvas.boards.rename(id, title);
-    set((state) => ({
-      boards: state.boards.map((board) => board.id === id ? summary : board),
-      activeBoard: state.activeBoard?.id === id ? summary : state.activeBoard,
-    }));
+    set((state) => renamedBoardState(state.boards, state.activeBoard, summary));
   },
 
   deleteBoard: async (id) => {

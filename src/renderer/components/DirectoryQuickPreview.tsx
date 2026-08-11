@@ -1,12 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
-  Copy,
-  Eye,
-  FolderOpen,
   Shapes,
-  Tags,
-  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -23,7 +18,17 @@ import { ModelPreview } from "./ModelPreview";
 import { HdrPreview } from "./HdrPreview";
 import { VideoPreview } from "./VideoPreview";
 import { AudioPreview } from "./AudioPreview";
-import { PanoramaPreview } from "./PanoramaPreview";
+import { ImageReviewPreview } from "./ImageReviewPreview";
+import {
+  PreviewSessionModeButtons,
+  usePreviewSessionMode,
+} from "./PreviewSessionMode";
+import {
+  PreviewSessionShell,
+  PreviewSessionTitle,
+  PreviewSurface,
+  type PreviewRendererKind,
+} from "./PreviewSessionShell";
 
 interface DirectoryQuickPreviewProps {
   entry: DirectoryEntry;
@@ -45,17 +50,13 @@ export function DirectoryQuickPreview({
   files,
   query,
   onNavigate,
-  onOpen,
-  onReveal,
-  onCopyPath,
-  onTag,
-  onTrash,
   onClose,
 }: DirectoryQuickPreviewProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [fullImageReady, setFullImageReady] = useState(false);
   const index = files.findIndex((item) => item.path === entry.path);
+  const previewSession = usePreviewSessionMode(entry.path, onClose);
 
   useEffect(() => {
     setPreviewUrl(null);
@@ -74,6 +75,13 @@ export function DirectoryQuickPreview({
   }, [entry.path, entry.extension]);
 
   const kind = assetKindForExtension(entry.extension);
+  const rendererKind: PreviewRendererKind =
+    entry.extension === "exr" || entry.extension === "hdr"
+      ? "hdr"
+      : kind === "image" || kind === "video" || kind === "audio" ||
+          kind === "pdf" || kind === "model3d" || kind === "font"
+        ? kind
+        : "generic";
   const rawUrl = previewUrl ? `refbrowse://preview/${previewUrl}` : null;
   const thumbnailUrl = previewUrl
     ? `refbrowse://thumbnail/${previewUrl}?priority=preview`
@@ -138,16 +146,19 @@ export function DirectoryQuickPreview({
     }
     if (kind === "image") {
       return (
-        browserImageExtensions.has(entry.extension) && fullImageReady ? (
-          <PanoramaPreview source={rawUrl!} alt={entry.name} />
-        ) : (
-          <img
-            src={thumbnailUrl!}
-            className="progressive-preview proxy"
-            alt=""
-            draggable={false}
-            onError={() => setFailed(true)}
+        browserImageExtensions.has(entry.extension) ? (
+          <ImageReviewPreview
+            asset={{
+              id: entry.path,
+              title: entry.name,
+              path: entry.path,
+              extension: entry.extension,
+              kind: "image",
+              previewUrl: fullImageReady ? rawUrl! : thumbnailUrl!,
+            }}
           />
+        ) : (
+          <img src={thumbnailUrl!} alt="" draggable={false} onError={() => setFailed(true)} />
         )
       );
     }
@@ -209,26 +220,43 @@ export function DirectoryQuickPreview({
 
   return (
     <div className="directory-preview-overlay" onPointerDown={onClose}>
-      <div
+      <PreviewSessionShell
+        as="div"
+        elementRef={previewSession.rootRef}
+        focused={previewSession.focused}
+        fullscreen={previewSession.fullscreen}
         className="directory-preview"
         role="dialog"
         aria-label={translate("preview.previewNamed").replace("{name}", entry.name)}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <button
-          className="icon-button preview-close"
-          aria-label={translate("preview.close")}
-          onClick={onClose}
-        >
-          <X size={17} />
-        </button>
-        <div className="directory-preview-stage">
-          {previewContent()}
+        <div className="directory-preview-session-actions">
+          <PreviewSessionModeButtons
+            focused={previewSession.focused}
+            fullscreen={previewSession.fullscreen}
+            onToggleFocus={previewSession.toggleFocus}
+            onToggleFullscreen={() => void previewSession.toggleFullscreen()}
+          />
+          <button
+            className="icon-button preview-close"
+            aria-label={translate("preview.close")}
+            title={translate("preview.close")}
+            onClick={onClose}
+          >
+            <X size={17} />
+          </button>
         </div>
+        <PreviewSurface renderer={rendererKind} className="directory-preview-stage">
+          {previewContent()}
+        </PreviewSurface>
         <div className="directory-preview-info">
-          <h3 title={entry.name}>
-            <HighlightedText text={entry.name} query={query} />
-          </h3>
+          <PreviewSessionTitle
+            title={(
+              <h3 title={entry.name}>
+                <HighlightedText text={entry.name} query={query} />
+              </h3>
+            )}
+          />
           <p className="directory-preview-path" title={entry.path}>
             <HighlightedText text={entry.path} query={query} />
           </p>
@@ -249,43 +277,6 @@ export function DirectoryQuickPreview({
               extension: entry.extension,
             }}
           />
-        </div>
-        <div className="directory-preview-actions">
-          <button
-            className="secondary-button"
-            onClick={() => onOpen(entry)}
-          >
-            <Eye size={14} />
-            {translate("preview.open")}
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => onReveal(entry)}
-          >
-            <FolderOpen size={14} />
-            {translate("preview.revealShort")}
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => onCopyPath(entry)}
-          >
-            <Copy size={14} />
-            {translate("preview.copyPath")}
-          </button>
-          <button
-            className="secondary-button"
-            onClick={() => onTag(entry)}
-          >
-            <Tags size={14} />
-            {translate("preview.setTags")}
-          </button>
-          <button
-            className="secondary-button danger"
-            onClick={() => onTrash(entry)}
-          >
-            <Trash2 size={14} />
-            {translate("preview.moveToTrash")}
-          </button>
         </div>
         <button
           className="preview-nav preview-prev"
@@ -309,7 +300,7 @@ export function DirectoryQuickPreview({
         >
           <ChevronRight size={20} />
         </button>
-      </div>
+      </PreviewSessionShell>
     </div>
   );
 }

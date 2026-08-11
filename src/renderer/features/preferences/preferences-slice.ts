@@ -16,9 +16,9 @@ export function createPreferencesSliceState(): PreferencesSliceState {
       thumbnailBackground: "checker",
       includeSubfolderAssets: true,
       panelLayout: {
-        sidebarWidth: 260,
-        assetWidth: 350,
-        detailsWidth: 760,
+        sidebarWidth: 180,
+        assetWidth: 280,
+        detailsWidth: 1100,
         collapsed: [],
       },
     },

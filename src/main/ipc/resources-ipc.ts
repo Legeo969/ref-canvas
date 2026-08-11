@@ -39,6 +39,11 @@ import type { FoundSettings } from "../../shared/contracts";
 import { mergeFoundSettings } from "./found-settings";
 import { idSchema, pathSchema } from "./schemas";
 import { extractDominantPalette } from "../../shared/color-palette";
+import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
+import {
+  assertAbsoluteLocalPath,
+} from "../platform/local-path-security";
+import type { WriteAccessController } from "../platform/write-access-controller";
 
 interface ResourcesIpcDependencies {
   getDatabase(): RefCanvasDatabase;
@@ -50,6 +55,8 @@ interface ResourcesIpcDependencies {
   getScriptsService(): ScriptsService;
   previewTokens: PreviewTokenRegistry;
   notifyMountsChanged(change: MountChangedEvent): void;
+  windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
+  writeAccess: WriteAccessController;
 }
 
 /**
@@ -82,7 +89,7 @@ export function registerResourcesIpc(
 
   ipc.handle("mounts:list", () => database().listMountRoots());
   ipc.handle("mounts:add", async (mountPath) => {
-    const resolved = path.resolve(pathSchema.parse(mountPath));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(mountPath));
     const existing = database()
       .listMountRoots()
       .find((item) => item.path === resolved);
@@ -113,7 +120,7 @@ export function registerResourcesIpc(
   // --- metadata（计划 §7.2 / §13.4）---
 
   ipc.handle("metadata:ensure", (filename) =>
-    library().materializePath(path.resolve(pathSchema.parse(filename))),
+    library().materializePath(assertAbsoluteLocalPath(pathSchema.parse(filename))),
   );
   ipc.handle("metadata:patch", (assetId, patch) => {
     const parsedId = idSchema.parse(assetId);
@@ -137,7 +144,7 @@ export function registerResourcesIpc(
   // --- media（计划 §9 / §13.4）---
 
   ipc.handle("media:probe", async (filename) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
     const { result } = await invokeProbe(
       dependencies.getProviderRegistry(),
@@ -151,7 +158,7 @@ export function registerResourcesIpc(
     return result;
   });
   ipc.handle("media:thumbnail", async (filename, options) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
     const parsed =
       z
@@ -276,7 +283,7 @@ export function registerResourcesIpc(
    * ffmpeg -ss + accurate_seek 按毫秒时间戳提取，输出缓存并签发 token。
    */
   ipc.handle("media:frame", async (filename, options) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const parsed = z
       .object({
         timeMs: z.number().min(0).max(86_400_000).default(0),
@@ -312,7 +319,7 @@ export function registerResourcesIpc(
     });
   });
   ipc.handle("media:palette", async (filename, options) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const parsed = z
       .object({
         timeMs: z.number().min(0).max(86_400_000).default(0),
@@ -353,7 +360,7 @@ export function registerResourcesIpc(
     }
   });
   ipc.handle("media:preview", (filename) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const token = dependencies.previewTokens.tokenFor(resolved);
     return {
       source: `refbrowse://preview/${token}`,
@@ -365,7 +372,7 @@ export function registerResourcesIpc(
    * samples：目标峰值数量（0 使用 provider 默认）。
    */
   ipc.handle("media:waveform", async (filename, options) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
     const parsed =
       z
@@ -387,7 +394,7 @@ export function registerResourcesIpc(
    * 阶段 4：文本预览读取（前 N 字节，UTF-8 探测，二进制拒绝）。
    */
   ipc.handle("media:readText", async (filename, options) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const parsed =
       z
         .object({
@@ -398,7 +405,7 @@ export function registerResourcesIpc(
     return readTextPreview(resolved, parsed.limit);
   });
   ipc.handle("media:convert", async (filename, targetFormat, requestedJobId) => {
-    const resolved = path.resolve(pathSchema.parse(filename));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
     const jobId = z.string().min(1).max(128).optional().parse(requestedJobId);
     return runMediaJob(jobId, async (signal, currentJobId) => {
@@ -423,7 +430,7 @@ export function registerResourcesIpc(
     controller.abort(new Error("MEDIA_JOB_CANCELLED"));
     return true;
   });
-  ipc.handle("media:exportGif", async (request) => {
+  ipc.handleWithEvent("media:exportGif", async (event, request) => {
     const parsed = z.object({
       inputPath: pathSchema.optional(),
       clips: z.array(z.object({
@@ -441,13 +448,18 @@ export function registerResourcesIpc(
     }).refine((value) => Boolean(value.inputPath || value.clips?.length), {
       message: "GIF_EXPORT_EMPTY",
     }).parse(request);
+    const outputDirectory = assertAbsoluteLocalPath(parsed.outputDirectory);
+    const inputPath = parsed.inputPath ? assertAbsoluteLocalPath(parsed.inputPath) : undefined;
+    const clips = parsed.clips?.map((clip) => ({
+      ...clip,
+      inputPath: assertAbsoluteLocalPath(clip.inputPath),
+    }));
+    const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+    const candidate = await availableOutputPath(outputDirectory, safeBase, "gif");
+    const [outputPath] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [{ path: candidate, mode: "destination" }],
+    );
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
-      const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const outputPath = await availableOutputPath(parsed.outputDirectory, safeBase, "gif");
-      const clips = parsed.clips?.map((clip) => ({
-        ...clip,
-        inputPath: path.resolve(clip.inputPath),
-      }));
       const common = {
         fps: parsed.fps ?? 12,
         maxWidth: parsed.maxWidth ?? 960,
@@ -459,12 +471,12 @@ export function registerResourcesIpc(
         ? await exportVideosToGif({ ...common, clips }, signal)
         : await exportVideoToGif({
             ...common,
-            inputPath: path.resolve(parsed.inputPath!),
+            inputPath: inputPath!,
           }, signal);
       return { ...result, outputPath, frameCount: null, jobId };
     });
   });
-  ipc.handle("media:exportFrames", async (request) => {
+  ipc.handleWithEvent("media:exportFrames", async (event, request) => {
     const parsed = z.object({
       inputPath: pathSchema,
       outputDirectory: pathSchema,
@@ -476,16 +488,22 @@ export function registerResourcesIpc(
       quality: z.number().int().min(1).max(100).optional(),
       jobId: z.string().min(1).max(128).optional(),
     }).parse(request);
+    const inputPath = assertAbsoluteLocalPath(parsed.inputPath);
+    const [outputDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [
+        { path: assertAbsoluteLocalPath(parsed.outputDirectory), mode: "destination" },
+      ],
+    );
     return runMediaJob(parsed.jobId, async (signal, jobId) => ({
       ...(await exportVideoFrames({
         ...parsed,
-        inputPath: path.resolve(parsed.inputPath),
-        outputDirectory: path.resolve(parsed.outputDirectory),
+        inputPath,
+        outputDirectory,
       }, signal)),
       jobId,
     }));
   });
-  ipc.handle("media:exportDisplayChannel", async (request) => {
+  ipc.handleWithEvent("media:exportDisplayChannel", async (event, request) => {
     const parsed = z.object({
       inputPath: pathSchema,
       outputDirectory: pathSchema,
@@ -493,8 +511,19 @@ export function registerResourcesIpc(
       channel: z.string().trim().regex(/^[a-z0-9_.-]{1,256}$/i).optional(),
       jobId: z.string().min(1).max(128).optional(),
     }).parse(request);
+    const inputPath = assertAbsoluteLocalPath(parsed.inputPath);
+    const outputDirectory = assertAbsoluteLocalPath(parsed.outputDirectory);
+    const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+    const safeChannel = parsed.channel?.replace(/[^a-z0-9_.-]/gi, "_") ?? "composite";
+    const candidate = await availableOutputPath(
+      outputDirectory, `${safeBase}-${safeChannel}`, "png",
+    );
+    const [authorizedOutputPath] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [
+        { path: candidate, mode: "destination" },
+      ],
+    );
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
-      const inputPath = path.resolve(parsed.inputPath);
       const extension = path.extname(inputPath).replace(/^\./, "").toLowerCase();
       if (extension !== "exr" && extension !== "hdr") {
         throw new Error("DISPLAY_CHANNEL_FORMAT_UNSUPPORTED");
@@ -505,13 +534,6 @@ export function registerResourcesIpc(
         { path: inputPath, kind, extension, size: 0 },
       );
       signal.throwIfAborted();
-      const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const safeChannel = parsed.channel?.replace(/[^a-z0-9_.-]/gi, "_") ?? "composite";
-      const outputPath = await availableOutputPath(
-        path.resolve(parsed.outputDirectory),
-        `${safeBase}-${safeChannel}`,
-        "png",
-      );
       const { result } = await invokeThumbnail(
         dependencies.getProviderRegistry(),
         {
@@ -520,7 +542,7 @@ export function registerResourcesIpc(
           extension,
           width: Math.max(16, probe.width ?? 1920),
           height: Math.max(16, probe.height ?? 1080),
-          outputPath,
+          outputPath: authorizedOutputPath,
           channel: parsed.channel,
         },
       );
@@ -538,7 +560,7 @@ export function registerResourcesIpc(
   // --- sequences（计划 §9.4 / §13.4）---
 
   ipc.handle("sequences:detect", async (directory, options) => {
-    const resolved = path.resolve(pathSchema.parse(directory));
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(directory));
     const parsed =
       z
         .object({ customPatterns: z.array(z.string()).max(16).optional() })
@@ -583,7 +605,7 @@ export function registerResourcesIpc(
 
   // --- sequences:exportMp4（阶段 5 §10.1 MP4 presets）---
 
-  ipc.handle("sequences:exportMp4", async (request) => {
+  ipc.handleWithEvent("sequences:exportMp4", async (event, request) => {
     const parsed = z
       .object({
         files: z.array(pathSchema).min(1).max(100_000),
@@ -594,6 +616,13 @@ export function registerResourcesIpc(
         jobId: z.string().min(1).max(128).optional(),
       })
       .parse(request);
+    const files = parsed.files.map(assertAbsoluteLocalPath);
+    const outputDirectory = assertAbsoluteLocalPath(parsed.outputDirectory);
+    const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+    const candidate = await availableOutputPath(outputDirectory, safeBase, "mp4");
+    const [outputPath] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [{ path: candidate, mode: "destination" }],
+    );
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
       const found = database().getSetting<Partial<FoundSettings>>(
         "foundSettings",
@@ -609,10 +638,8 @@ export function registerResourcesIpc(
         ) ??
         settings.mp4Presets.find((item) => item.enabled) ??
         settings.mp4Presets[0];
-      const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const outputPath = await availableOutputPath(parsed.outputDirectory, safeBase, "mp4");
       const result = await exportSequenceToMp4({
-        files: parsed.files.map((file) => path.resolve(file)),
+        files,
         fps: parsed.fps,
         codec: preset.codec,
         quality: preset.quality,
@@ -630,7 +657,7 @@ export function registerResourcesIpc(
     });
   });
 
-  ipc.handle("sequences:exportGif", async (request) => {
+  ipc.handleWithEvent("sequences:exportGif", async (event, request) => {
     const parsed = z.object({
       files: z.array(pathSchema).min(1).max(100_000),
       fps: z.number().int().min(1).max(60),
@@ -639,11 +666,16 @@ export function registerResourcesIpc(
       maxWidth: z.number().int().min(64).max(3840).optional(),
       jobId: z.string().min(1).max(128).optional(),
     }).parse(request);
+    const files = parsed.files.map(assertAbsoluteLocalPath);
+    const outputDirectory = assertAbsoluteLocalPath(parsed.outputDirectory);
+    const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+    const candidate = await availableOutputPath(outputDirectory, safeBase, "gif");
+    const [outputPath] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [{ path: candidate, mode: "destination" }],
+    );
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
-      const safeBase = parsed.baseName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
-      const outputPath = await availableOutputPath(parsed.outputDirectory, safeBase, "gif");
       const result = await exportSequenceToGif({
-        files: parsed.files.map((file) => path.resolve(file)),
+        files,
         fps: parsed.fps,
         maxWidth: parsed.maxWidth ?? 960,
         outputPath,
@@ -657,38 +689,21 @@ export function registerResourcesIpc(
     });
   });
 
-  // --- scripts（阶段 5 §10.5：Python/Shell 脚本信任执行）---
+  // Arbitrary child processes cannot be constrained by drive grants. Keep the
+  // IPC surface for compatibility, but fail closed until a brokered sandbox is
+  // available.
+  const scriptExecutionDisabled = (): never => {
+    throw new Error("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
+  };
 
   ipc.handle("scripts:list", () => dependencies.getScriptsService().list());
-
-  ipc.handle("scripts:register", async (request) => {
-    const parsed = z
-      .object({
-        path: pathSchema,
-        name: z.string().max(128).optional(),
-        timeoutMs: z.number().int().min(1_000).max(600_000).default(60_000),
-      })
-      .parse(request);
-    return dependencies.getScriptsService().register(
-      path.resolve(parsed.path),
-      parsed.name,
-      parsed.timeoutMs,
-    );
-  });
+  ipc.handle("scripts:register", scriptExecutionDisabled);
 
   ipc.handle("scripts:unregister", (id) => {
     dependencies.getScriptsService().unregister(z.string().min(1).max(64).parse(id));
   });
 
-  ipc.handle("scripts:run", async (request) => {
-    const parsed = z
-      .object({
-        id: z.string().min(1).max(64),
-        cwd: pathSchema,
-      })
-      .parse(request);
-    return dependencies.getScriptsService().run(parsed.id, path.resolve(parsed.cwd));
-  });
+  ipc.handle("scripts:run", scriptExecutionDisabled);
 
   // --- color:get-status（阶段 5 §10.3 色彩管理）---
 
@@ -722,7 +737,7 @@ export function registerResourcesIpc(
 
   // --- media:downscale（阶段 5 §10.4 Downscale naming）---
 
-  ipc.handle("media:downscale", async (request) => {
+  ipc.handleWithEvent("media:downscale", async (event, request) => {
     const parsed = z
       .object({
         paths: z.array(pathSchema).min(1).max(500),
@@ -731,23 +746,50 @@ export function registerResourcesIpc(
         jobId: z.string().min(1).max(128).optional(),
       })
       .parse(request);
-    return runMediaJob(parsed.jobId, async (signal, jobId) => {
-      const found = database().getSetting<Partial<FoundSettings>>(
-        "foundSettings",
-        {},
-      );
-      const settings: FoundSettings = {
-        ...FOUND_SETTINGS_DEFAULTS,
-        ...found,
-      };
-      const items = parsed.paths.map((sourcePath) =>
-        planDownscale(path.resolve(sourcePath), {
+    const sourcePaths = parsed.paths.map(assertAbsoluteLocalPath);
+    const found = database().getSetting<Partial<FoundSettings>>("foundSettings", {});
+    const settings: FoundSettings = { ...FOUND_SETTINGS_DEFAULTS, ...found };
+    const planned = sourcePaths.map((sourcePath) =>
+        planDownscale(sourcePath, {
           maxDimension: parsed.maxDimension,
           mode: parsed.mode,
           suffix: settings.downscaleSuffix,
           subdirectory: settings.downscaleSubdirectory,
         }),
       );
+    const requests = planned.flatMap((item) => [
+      ...(parsed.mode === "backup" ? [{ path: item.sourcePath, mode: "existing" as const }] : []),
+      { path: item.outputPath, mode: "destination" as const },
+      ...(item.backupPath ? [{ path: item.backupPath, mode: "destination" as const }] : []),
+    ]);
+    const window = dependencies.windowForSender(event);
+    const authorized = await dependencies.writeAccess.authorize(
+      window, parsed.mode === "backup" ? "move" : "export", requests,
+    );
+    let cursor = 0;
+    let items = planned.map((item) => ({
+      sourcePath: parsed.mode === "backup" ? authorized[cursor++] : item.sourcePath,
+      outputPath: authorized[cursor++],
+      backupPath: item.backupPath ? authorized[cursor++] : null,
+    }));
+    if (parsed.mode === "backup") {
+      const final = await dependencies.writeAccess.authorize(
+        window,
+        "move",
+        items.flatMap((item) => [
+          { path: item.sourcePath, mode: "existing" as const },
+          { path: item.outputPath, mode: "destination" as const },
+          { path: item.backupPath!, mode: "destination" as const },
+        ]),
+      );
+      cursor = 0;
+      items = items.map(() => ({
+        sourcePath: final[cursor++],
+        outputPath: final[cursor++],
+        backupPath: final[cursor++],
+      }));
+    }
+    return runMediaJob(parsed.jobId, async (signal, jobId) => {
       const results: Array<{
         sourcePath: string;
         outputPath: string;

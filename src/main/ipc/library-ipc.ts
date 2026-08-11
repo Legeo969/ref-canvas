@@ -6,6 +6,7 @@ import { assetColorLabels } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryService } from "../services/library-service";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import type { WriteAccessController } from "../platform/write-access-controller";
 import {
   idSchema,
   idsSchema,
@@ -22,6 +23,7 @@ interface LibraryIpcDependencies {
   getLibrary(): LibraryService;
   safeFilename(value: string): string;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
+  writeAccess: WriteAccessController;
 }
 
 export function registerLibraryIpc(
@@ -128,18 +130,69 @@ export function registerLibraryIpc(
       z.string().trim().min(1).max(256).parse(pattern),
     ),
   );
-  ipc.handle("library:trash", (scope) =>
-    library().trashAssets(selectionSchema.parse(scope)),
-  );
+  ipc.handleWithEvent("library:trash", async (event, scope) => {
+    const parsedScope = selectionSchema.parse(scope);
+    const assets = database().resolveSelection(parsedScope)
+      .map((id) => database().getAsset(id))
+      .filter((asset): asset is NonNullable<typeof asset> => asset?.lifecycle === "active");
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(
+      window, "trash",
+      assets.map((asset) => ({ path: asset.path, mode: "existing" })),
+    );
+    const finalPaths = await dependencies.writeAccess.authorize(
+      window, "trash",
+      canonical.map((filename) => ({ path: filename, mode: "existing" })),
+    );
+    return library().trashAssetsByAuthorizedPaths(
+      assets.map((asset, index) => ({ id: asset.id, sourcePath: finalPaths[index] })),
+    );
+  });
   ipc.handle("library:remove-from-library", (scope) =>
     library().removeFromLibrary(selectionSchema.parse(scope)),
   );
-  ipc.handle("library:restore", (ids) =>
-    library().restoreAssets(idsSchema.parse(ids)),
-  );
-  ipc.handle("library:purge", (ids) =>
-    library().purgeAssets(idsSchema.parse(ids)),
-  );
+  ipc.handleWithEvent("library:restore", async (event, ids) => {
+    const parsedIds = idsSchema.parse(ids);
+    const plans = await library().planRestoreAssets(parsedIds);
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(
+      window, "move",
+      plans.flatMap((plan) => [
+        { path: plan.sourcePath, mode: "existing" as const },
+        { path: plan.targetPath, mode: "destination" as const },
+      ]),
+    );
+    const finalPaths = await dependencies.writeAccess.authorize(
+      window, "move",
+      canonical.map((filename, index) => ({
+        path: filename,
+        mode: index % 2 === 0 ? "existing" as const : "destination" as const,
+      })),
+    );
+    return library().restoreAssetsFromPlan(plans.map((plan, index) => ({
+      id: plan.id,
+      sourcePath: finalPaths[index * 2],
+      targetPath: finalPaths[index * 2 + 1],
+    })));
+  });
+  ipc.handleWithEvent("library:purge", async (event, ids) => {
+    const parsedIds = idsSchema.parse(ids);
+    const entries = parsedIds.map((id) => ({ id, asset: database().getAsset(id) }))
+      .filter((entry) => entry.asset?.lifecycle === "trashed" && entry.asset.trashPath);
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(
+      window, "trash",
+      entries.map((entry) => ({ path: entry.asset!.trashPath!, mode: "existing" })),
+    );
+    const finalPaths = await dependencies.writeAccess.authorize(
+      window, "trash",
+      canonical.map((filename) => ({ path: filename, mode: "existing" })),
+    );
+    return library().purgeAssetsByAuthorizedPaths(entries.map((entry, index) => ({
+      id: entry.id,
+      trashPath: finalPaths[index],
+    })));
+  });
   ipc.handle("library:forget-trash", (ids) =>
     library().forgetTrashedAssets(idsSchema.parse(ids)),
   );
@@ -325,9 +378,22 @@ export function registerLibraryIpc(
     database().deleteSavedView(idSchema.parse(id));
   });
   ipc.handle("library:list-duplicates", () => library().findDuplicates());
-  ipc.handle("library:merge-duplicates", (keepId, removeIds) =>
-    library().mergeDuplicates(idSchema.parse(keepId), idsSchema.parse(removeIds)),
-  );
+  ipc.handleWithEvent("library:merge-duplicates", async (event, keepId, removeIds) => {
+    const parsedRemoveIds = idsSchema.parse(removeIds);
+    const assets = parsedRemoveIds.map((id) => database().getAsset(id));
+    if (assets.some((asset) => !asset)) throw new Error("ASSET_NOT_FOUND");
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(
+      window, "trash", assets.map((asset) => ({ path: asset!.path, mode: "existing" })),
+    );
+    const finalPaths = await dependencies.writeAccess.authorize(
+      window, "trash", canonical.map((filename) => ({ path: filename, mode: "existing" })),
+    );
+    return library().mergeDuplicates(
+      idSchema.parse(keepId), parsedRemoveIds,
+      new Map(parsedRemoveIds.map((id, index) => [id, finalPaths[index]])),
+    );
+  });
   ipc.handle("library:find-similar", (id, options) =>
     library().findSimilar(
       idSchema.parse(id),
@@ -373,9 +439,14 @@ export function registerLibraryIpc(
       properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    const destination = path.join(
+    const requestedDestination = path.join(
       result.filePaths[0],
       `${dependencies.safeFilename(board.summary.title)}.refcanvas-project`,
+    );
+    const [destination] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [
+        { path: requestedDestination, mode: "destination" },
+      ],
     );
     await mkdir(destination, { recursive: true });
     const assets = [];

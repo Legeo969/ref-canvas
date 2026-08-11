@@ -243,6 +243,12 @@ export class AiJobService {
     return this.jobs.get(id);
   }
 
+  authorizationDirectoryForRetry(id: string): string {
+    const request = this.sessionRequests.get(id);
+    if (!request) throw new Error("AI_RETRY_REQUEST_UNAVAILABLE");
+    return request.outputDirectory;
+  }
+
   list(limit = 100): AiJobSnapshot[] {
     return this.jobs.list(limit);
   }
@@ -268,7 +274,7 @@ export class AiJobService {
   }
 
   /** retry 创建新尝试并关联原 job；旧 failed 记录保留。 */
-  async retry(id: string): Promise<AiJobSnapshot> {
+  async retry(id: string, outputDirectory?: string): Promise<AiJobSnapshot> {
     const source = this.jobs.get(id);
     if (!source) throw new Error("AI_JOB_NOT_FOUND");
     if (source.state !== "failed") throw new Error("AI_JOB_NOT_FAILED");
@@ -277,7 +283,10 @@ export class AiJobService {
     if (!originalRequest) {
       throw new Error("AI_RETRY_REQUEST_UNAVAILABLE");
     }
-    const validated = await this.validateRequest(originalRequest);
+    const validated = await this.validateRequest({
+      ...originalRequest,
+      outputDirectory: outputDirectory ?? originalRequest.outputDirectory,
+    });
     const job = this.jobs.retryFrom(
       source.id,
       source.provider,

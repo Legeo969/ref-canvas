@@ -1,11 +1,5 @@
 import {
-  ArchiveRestore,
   Check,
-  ChevronDown,
-  ChevronUp,
-  Clipboard,
-  DatabaseBackup,
-  FileWarning,
   FolderOpen,
   Gauge,
   Info,
@@ -39,11 +33,9 @@ import { PANEL_DEFAULTS } from "../app/panel-layout";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
 import { AiProviderSettings } from "./AiProviderSettings";
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
+import { SelectMenu } from "./SelectMenu";
+import { AboutSettings } from "./settings/AboutSettings";
+import { MaintenanceSettings } from "./settings/MaintenanceSettings";
 
 export type SettingsTab =
   | "general"
@@ -154,14 +146,6 @@ export function SettingsPanel({
           : normalized[0],
       },
     });
-  };
-
-  const moveFpsPreset = (index: number, offset: -1 | 1) => {
-    const nextIndex = index + offset;
-    if (nextIndex < 0 || nextIndex >= foundSettings.sequenceFpsPresets.length) return;
-    const next = [...foundSettings.sequenceFpsPresets];
-    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
-    updateFpsPresets(next);
   };
 
   const updateMp4Presets = (mp4Presets: FoundSettings["mp4Presets"]) => {
@@ -284,20 +268,19 @@ export function SettingsPanel({
                     {translate("settings.language")}
                     <small>{translate("settings.languageHint")}</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={appPreferences?.language ?? "en"}
-                    onChange={(event) =>
+                    ariaLabel={translate("settings.language")}
+                    options={APP_LANGUAGES.map((language) => ({
+                      value: language.code,
+                      label: language.label,
+                    }))}
+                    onValueChange={(value) =>
                       void setAppPreference({
-                        language: event.target.value as AppLanguage,
+                        language: value as AppLanguage,
                       })
                     }
-                  >
-                    {APP_LANGUAGES.map((language) => (
-                      <option key={language.code} value={language.code}>
-                        {language.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="settings-toggle">
                   <input
@@ -354,23 +337,23 @@ export function SettingsPanel({
                       PureRef 2.1 默认映射：Alt/中键平移、Z 缩放、Ctrl 旋转、C/V 裁切
                     </small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={
                       appPreferences?.boardSettings.interactionPreset ?? "pureref"
                     }
-                    onChange={(event) =>
+                    ariaLabel="控制方式"
+                    options={[
+                      { value: "pureref", label: "PureRef 2.1 默认控制" },
+                      { value: "standard", label: "标准参考板" },
+                    ]}
+                    onValueChange={(value) =>
                       void setAppPreference({
                         boardSettings: {
-                          interactionPreset: event.target.value as
-                            | "pureref"
-                            | "standard",
+                          interactionPreset: value,
                         },
                       })
                     }
-                  >
-                    <option value="pureref">PureRef 2.1 默认控制</option>
-                    <option value="standard">标准参考板</option>
-                  </select>
+                  />
                 </label>
                 <label className="settings-toggle">
                   <input
@@ -412,42 +395,42 @@ export function SettingsPanel({
                     图片采样
                     <small>近邻采样适合像素美术</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={
                       appPreferences?.boardSettings.sampling ?? "bilinear"
                     }
-                    onChange={(event) =>
+                    ariaLabel="图片采样"
+                    options={[
+                      { value: "bilinear", label: "双线性" },
+                      { value: "nearest", label: "近邻" },
+                    ]}
+                    onValueChange={(value) =>
                       void setAppPreference({
                         boardSettings: {
-                          sampling: event.target.value as
-                            | "nearest"
-                            | "bilinear",
+                          sampling: value,
                         },
                       })
                     }
-                  >
-                    <option value="bilinear">双线性</option>
-                    <option value="nearest">近邻</option>
-                  </select>
+                  />
                 </label>
                 <label className="settings-row">
                   <span>
                     撤销历史上限
                     <small>超出后丢弃最早的记录</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={appPreferences?.boardSettings.undoLimit ?? 99}
-                    onChange={(event) =>
+                    ariaLabel="撤销历史上限"
+                    options={[20, 50, 99, 200].map((value) => ({
+                      value,
+                      label: `${value} 步`,
+                    }))}
+                    onValueChange={(value) =>
                       void setAppPreference({
-                        boardSettings: { undoLimit: Number(event.target.value) },
+                        boardSettings: { undoLimit: value },
                       })
                     }
-                  >
-                    <option value={20}>20 步</option>
-                    <option value={50}>50 步</option>
-                    <option value={99}>99 步</option>
-                    <option value={200}>200 步</option>
-                  </select>
+                  />
                 </label>
               </div>
             )}
@@ -477,19 +460,21 @@ export function SettingsPanel({
                     文件夹打开方式
                     <small>单击直接进入，或双击进入</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={appPreferences?.foundSettings.folderClickMode ?? "double"}
-                    onChange={(event) =>
+                    ariaLabel="文件夹打开方式"
+                    options={[
+                      { value: "single", label: "单击" },
+                      { value: "double", label: "双击" },
+                    ]}
+                    onValueChange={(value) =>
                       void setAppPreference({
                         foundSettings: {
-                          folderClickMode: event.target.value as "single" | "double",
+                          folderClickMode: value,
                         },
                       })
                     }
-                  >
-                    <option value="single">单击</option>
-                    <option value="double">双击</option>
-                  </select>
+                  />
                 </label>
                 <h3>格式支持</h3>
                 <div className="format-groups-editor">
@@ -609,106 +594,45 @@ export function SettingsPanel({
                     <small>无交互时缓慢旋转模型</small>
                   </span>
                 </label>
-                <div className="settings-editor">
-                  <div className="settings-editor-heading">
-                    <span>
-                      图片序列 FPS 预设
-                      <small>预览和导出共用，勾选项为打开序列时的默认速度</small>
-                    </span>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={foundSettings.sequenceFpsPresets.length >= 10}
-                      onClick={() => {
-                        const candidates = [15, 24, 25, 30, 60, 90, 120];
-                        const next = candidates.find(
-                          (value) => !foundSettings.sequenceFpsPresets.includes(value),
-                        ) ?? Math.min(240, Math.max(...foundSettings.sequenceFpsPresets) + 1);
-                        updateFpsPresets([...foundSettings.sequenceFpsPresets, next]);
-                      }}
-                    >
-                      <Plus size={14} />
-                      添加
-                    </button>
-                  </div>
-                  <div className="fps-preset-list">
-                    {foundSettings.sequenceFpsPresets.map((preset, index) => (
-                      <div className="fps-preset-row" key={`${preset}-${index}`}>
-                        <button
-                          type="button"
-                          className={preset === foundSettings.defaultSequenceFps ? "active" : ""}
-                          aria-label={`设 ${preset} FPS 为默认`}
-                          title="设为默认"
-                          onClick={() => updateFpsPresets(foundSettings.sequenceFpsPresets, preset)}
-                        >
-                          <Check size={14} />
-                        </button>
-                        <input
-                          type="number"
-                          min={1}
-                          max={240}
-                          defaultValue={preset}
-                          aria-label={`FPS 预设 ${index + 1}`}
-                          onBlur={(event) => {
-                            const value = Math.max(1, Math.min(240, Number(event.target.value) || preset));
-                            const next = [...foundSettings.sequenceFpsPresets];
-                            next[index] = value;
-                            updateFpsPresets(next, preset === foundSettings.defaultSequenceFps ? value : undefined);
-                          }}
-                        />
-                        <span>FPS</span>
-                        <button
-                          type="button"
-                          aria-label="上移 FPS 预设"
-                          disabled={index === 0}
-                          onClick={() => moveFpsPreset(index, -1)}
-                        >
-                          <ChevronUp size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="下移 FPS 预设"
-                          disabled={index === foundSettings.sequenceFpsPresets.length - 1}
-                          onClick={() => moveFpsPreset(index, 1)}
-                        >
-                          <ChevronDown size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="删除 FPS 预设"
-                          disabled={foundSettings.sequenceFpsPresets.length === 1}
-                          onClick={() =>
-                            updateFpsPresets(
-                              foundSettings.sequenceFpsPresets.filter((_, itemIndex) => itemIndex !== index),
-                            )
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                <div className="settings-row fps-preset-select-row">
+                  <span>
+                    图片序列 FPS 预设
+                    <small>选择打开图片序列时使用的默认播放与导出帧率</small>
+                  </span>
+                  <SelectMenu
+                    value={foundSettings.defaultSequenceFps}
+                    ariaLabel="图片序列 FPS 预设"
+                    options={foundSettings.sequenceFpsPresets.map((preset) => ({
+                      value: preset,
+                      label: `${preset} FPS`,
+                    }))}
+                    onValueChange={(preset) =>
+                      updateFpsPresets(foundSettings.sequenceFpsPresets, preset)
+                    }
+                  />
                 </div>
                 <label className="settings-row">
                   <span>
                     Alpha 背景
                     <small>透明图片预览的棋盘格/纯色背景</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={appPreferences?.foundSettings.alphaBackground ?? "checker"}
-                    onChange={(event) =>
+                    ariaLabel="Alpha 背景"
+                    options={[
+                      { value: "checker", label: "棋盘格" },
+                      { value: "black", label: "黑色" },
+                      { value: "white", label: "白色" },
+                      { value: "custom", label: "自定义" },
+                    ]}
+                    onValueChange={(value) =>
                       void setAppPreference({
                         foundSettings: {
-                          alphaBackground: event.target.value as FoundSettings["alphaBackground"],
+                          alphaBackground: value,
                         },
                       })
                     }
-                  >
-                    <option value="checker">棋盘格</option>
-                    <option value="black">黑色</option>
-                    <option value="white">白色</option>
-                    <option value="custom">自定义</option>
-                  </select>
+                  />
                 </label>
                 {(appPreferences?.foundSettings.alphaBackground ?? "checker") ===
                   "custom" && (
@@ -794,20 +718,22 @@ export function SettingsPanel({
                     Downscale 命名模式
                     <small>后缀追加 / 分辨率子目录 / 备份原文件</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={appPreferences?.foundSettings.downscaleMode ?? "suffix"}
-                    onChange={(event) =>
+                    ariaLabel="Downscale 命名模式"
+                    options={[
+                      { value: "suffix", label: "文件名追加分辨率" },
+                      { value: "subdirectory", label: "输出到分辨率子目录" },
+                      { value: "backup", label: "保持原名并备份原文件" },
+                    ]}
+                    onValueChange={(value) =>
                       void setAppPreference({
                         foundSettings: {
-                          downscaleMode: event.target.value as FoundSettings["downscaleMode"],
+                          downscaleMode: value,
                         },
                       })
                     }
-                  >
-                    <option value="suffix">文件名追加分辨率</option>
-                    <option value="subdirectory">输出到分辨率子目录</option>
-                    <option value="backup">保持原名并备份原文件</option>
-                  </select>
+                  />
                 </label>
                 <label className="settings-row">
                   <span>分辨率后缀（suffix 模式）</span>
@@ -888,44 +814,47 @@ export function SettingsPanel({
                             updateMp4Presets(next);
                           }}
                         />
-                        <select
+                        <SelectMenu
                           value={preset.codec}
-                          aria-label={`${preset.label} 编码器`}
-                          onChange={(event) => {
+                          ariaLabel={`${preset.label} 编码器`}
+                          options={[
+                            { value: "h264", label: "H.264" },
+                            { value: "h265", label: "H.265" },
+                          ]}
+                          onValueChange={(value) => {
                             const next = [...foundSettings.mp4Presets];
-                            next[index] = { ...preset, codec: event.target.value as "h264" | "h265" };
+                            next[index] = { ...preset, codec: value };
                             updateMp4Presets(next);
                           }}
-                        >
-                          <option value="h264">H.264</option>
-                          <option value="h265">H.265</option>
-                        </select>
-                        <select
+                        />
+                        <SelectMenu
                           value={preset.quality}
-                          aria-label={`${preset.label} 质量`}
-                          onChange={(event) => {
+                          ariaLabel={`${preset.label} 质量`}
+                          options={[
+                            { value: "medium", label: "中" },
+                            { value: "high", label: "高" },
+                            { value: "best", label: "最佳" },
+                          ]}
+                          onValueChange={(value) => {
                             const next = [...foundSettings.mp4Presets];
-                            next[index] = { ...preset, quality: event.target.value as "medium" | "high" | "best" };
+                            next[index] = { ...preset, quality: value };
                             updateMp4Presets(next);
                           }}
-                        >
-                          <option value="medium">中</option>
-                          <option value="high">高</option>
-                          <option value="best">最佳</option>
-                        </select>
-                        <select
+                        />
+                        <SelectMenu
                           value={preset.resolution}
-                          aria-label={`${preset.label} 分辨率`}
-                          onChange={(event) => {
+                          ariaLabel={`${preset.label} 分辨率`}
+                          options={[
+                            { value: "original", label: "原始" },
+                            { value: "half", label: "1/2" },
+                            { value: "quarter", label: "1/4" },
+                          ]}
+                          onValueChange={(value) => {
                             const next = [...foundSettings.mp4Presets];
-                            next[index] = { ...preset, resolution: event.target.value as "original" | "half" | "quarter" };
+                            next[index] = { ...preset, resolution: value };
                             updateMp4Presets(next);
                           }}
-                        >
-                          <option value="original">原始</option>
-                          <option value="half">1/2</option>
-                          <option value="quarter">1/4</option>
-                        </select>
+                        />
                         <button
                           type="button"
                           className={preset.id === foundSettings.defaultMp4PresetId ? "active" : ""}
@@ -1144,19 +1073,21 @@ export function SettingsPanel({
                     关闭行为
                     <small>关闭窗口时完全退出或最小化到托盘</small>
                   </span>
-                  <select
+                  <SelectMenu
                     value={appPreferences?.foundSettings.closeBehavior ?? "quit"}
-                    onChange={(event) =>
+                    ariaLabel="关闭行为"
+                    options={[
+                      { value: "quit", label: "完全退出" },
+                      { value: "tray", label: "最小化到托盘" },
+                    ]}
+                    onValueChange={(value) =>
                       void setAppPreference({
                         foundSettings: {
-                          closeBehavior: event.target.value as "quit" | "tray",
+                          closeBehavior: value,
                         },
                       })
                     }
-                  >
-                    <option value="quit">完全退出</option>
-                    <option value="tray">最小化到托盘</option>
-                  </select>
+                  />
                 </label>
               </div>
             )}
@@ -1164,214 +1095,31 @@ export function SettingsPanel({
             {tab === "ai" && <AiProviderSettings />}
 
             {tab === "maintenance" && (
-              <div className="settings-group">
-                <h3>{translate("settings.maintenance")}</h3>
-                <div className="maintenance-action-list">
-                  <button
-                    className="maintenance-action"
-                    onClick={async () => {
-                      await window.refCanvas.backups.create();
-                      await reload();
-                    }}
-                  >
-                    <DatabaseBackup size={17} />
-                    <span>
-                      <strong>立即备份</strong>
-                      <small>保存当前本地索引和偏好，可用于回滚。</small>
-                    </span>
-                  </button>
-                  <button
-                    className="maintenance-action"
-                    onClick={() =>
-                      void window.refCanvas.system.rebuildThumbnailCache()
-                    }
-                  >
-                    <ArchiveRestore size={17} />
-                    <span>
-                      <strong>重建缩略图缓存</strong>
-                      <small>清理并重新生成预览图，不改动磁盘源文件。</small>
-                    </span>
-                  </button>
-                  <button
-                    className="maintenance-action"
-                    onClick={() =>
-                      void window.refCanvas.system.exportDiagnostics()
-                    }
-                  >
-                    <FileWarning size={17} />
-                    <span>
-                      <strong>导出诊断</strong>
-                      <small>收集版本、索引和媒体状态，写入诊断文件。</small>
-                    </span>
-                  </button>
-                  <button
-                    className="maintenance-action"
-                    disabled={mediaMetadata.state === "running"}
-                    onClick={() =>
-                      void window.refCanvas.library.startMediaMetadataRebuild()
-                    }
-                  >
-                    <ScanLine size={17} />
-                    <span>
-                      <strong>
-                        {mediaMetadata.state === "running"
-                          ? "正在解析媒体"
-                          : "重建媒体元数据"}
-                      </strong>
-                      <small>重新提取视频、音频和图片序列的媒体信息。</small>
-                    </span>
-                  </button>
-                </div>
-                {mediaMetadata.state !== "idle" && mediaMetadata.total > 0 && (
-                  <div className="maintenance-progress">
-                    <div>
-                      <span>
-                        {mediaMetadata.state === "running"
-                          ? "正在离线解析视频与音频"
-                          : mediaMetadata.state === "cancelled"
-                            ? "媒体元数据重建已取消"
-                            : "媒体元数据重建完成"}
-                      </span>
-                      <strong>
-                        {mediaMetadata.processed} / {mediaMetadata.total}
-                      </strong>
-                    </div>
-                    <progress
-                      max={Math.max(1, mediaMetadata.total)}
-                      value={mediaMetadata.processed}
-                    />
-                    <small>
-                      已更新 {mediaMetadata.updated}，失败 {mediaMetadata.failed}
-                    </small>
-                    {mediaMetadata.state === "running" && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void window.refCanvas.library.cancelMediaMetadataRebuild()
-                        }
-                      >
-                        取消
-                      </button>
-                    )}
-                  </div>
-                )}
-                <h3>本地备份</h3>
-                <div className="backup-list">
-                  {backups.map((backup) => (
-                    <div className="backup-row" key={backup.path}>
-                      <div>
-                        <strong>
-                          {backup.automatic ? "自动备份" : "手动备份"}
-                        </strong>
-                        <span>
-                          {new Date(backup.createdAt).toLocaleString()} ·{" "}
-                          {formatBytes(backup.size)}
-                        </span>
-                      </div>
-                      <button
-                        className="secondary-button"
-                        onClick={() =>
-                          void dialog
-                            .requestConfirm({
-                              title: "恢复备份？",
-                              description:
-                                "恢复会替换当前数据库并重启 RefCanvas。当前数据库会保留回滚副本。",
-                              confirmLabel: "恢复",
-                            })
-                            .then((confirmed) => {
-                              if (confirmed) {
-                                void window.refCanvas.backups.restore(
-                                  backup.path,
-                                );
-                              }
-                            })
-                        }
-                      >
-                        恢复
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <MaintenanceSettings
+                backups={backups}
+                mediaMetadata={mediaMetadata}
+                onCreateBackup={() => {
+                  void window.refCanvas.backups.create().then(reload);
+                }}
+                onRestoreBackup={(backup) => {
+                  void dialog.requestConfirm({
+                    title: "恢复备份？",
+                    description: "恢复会替换当前数据库并重启 RefCanvas。当前数据库会保留回滚副本。",
+                    confirmLabel: "恢复",
+                  }).then((confirmed) => {
+                    if (confirmed) void window.refCanvas.backups.restore(backup.path);
+                  });
+                }}
+              />
             )}
 
             {tab === "about" && (
-              <div className="settings-group about-group">
-                <h3>{translate("settings.about")}</h3>
-                <div className="about-mark">
-                  <span className="brand-mark">R</span>
-                  <div>
-                    <strong>RefCanvas</strong>
-                    <span>{appInfo?.appVersion ?? "…"}</span>
-                  </div>
-                </div>
-                <dl className="about-list">
-                  <div>
-                    <dt>安装渠道</dt>
-                    <dd>{appInfo?.installChannel ?? "…"}</dd>
-                  </div>
-                  <div>
-                    <dt>Electron</dt>
-                    <dd>{appInfo?.electronVersion ?? "…"}</dd>
-                  </div>
-                  <div>
-                    <dt>Node</dt>
-                    <dd>{appInfo?.nodeVersion ?? "…"}</dd>
-                  </div>
-                  <div>
-                    <dt>数据库 schema</dt>
-                    <dd>{appInfo?.databaseSchemaVersion ?? "…"}</dd>
-                  </div>
-                  <div>
-                    <dt>索引数据库</dt>
-                    <dd title={appInfo?.libraryPath ?? undefined}>
-                      {appInfo?.libraryPath ?? "未打开"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>平台</dt>
-                    <dd>{appInfo?.platform ?? "…"}</dd>
-                  </div>
-                </dl>
-                <div className="about-actions">
-                  <button
-                    className="secondary-button"
-                    onClick={() =>
-                      void window.refCanvas.system.writeClipboard(versionInfo)
-                    }
-                  >
-                    <Clipboard size={15} />
-                    复制版本信息
-                  </button>
-                  <button
-                    className="secondary-button"
-                    onClick={() =>
-                      void window.refCanvas.system.openDataFolder()
-                    }
-                  >
-                    <FolderOpen size={15} />
-                    打开数据目录
-                  </button>
-                  <button
-                    className="secondary-button danger"
-                    disabled={!appInfo?.uninstallAvailable}
-                    title={
-                      appInfo?.uninstallAvailable
-                        ? undefined
-                        : translate("settings.uninstallHint")
-                    }
-                    onClick={() => void requestUninstall()}
-                  >
-                    <Trash2 size={15} />
-                    {translate("settings.uninstall")}
-                  </button>
-                </div>
-                {uninstallError && (
-                  <p className="about-uninstall-error" role="alert">
-                    {uninstallError}
-                  </p>
-                )}
-              </div>
+              <AboutSettings
+                appInfo={appInfo}
+                versionInfo={versionInfo}
+                uninstallError={uninstallError}
+                onRequestUninstall={() => void requestUninstall()}
+              />
             )}
           </div>
         </div>

@@ -12,8 +12,10 @@
  * 用法：pnpm test:package [platformDir]
  */
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { createHash } = require("node:crypto");
 
 const root = path.resolve(__dirname, "../..");
 const platformDir =
@@ -49,11 +51,57 @@ if (fs.existsSync(asar)) {
     "node_modules/@ffprobe-installer/win32-x64/ffprobe.exe",
     "node_modules/@img/sharp-win32-x64/package.json",
     "node_modules/better-sqlite3/prebuilds/win32-x64.node",
+    "assets/native/openimageio/win32-x64/oiiotool.exe",
+    "assets/native/openimageio/win32-x64/OpenImageIO.dll",
+    "assets/native/openimageio/win32-x64/OpenEXR_v_3_3_5_OpenImageIO_v3_1.dll",
+    "assets/native/openimageio/win32-x64/msvcp140.dll",
+    "assets/native/openimageio/win32-x64/vcruntime140.dll",
+    "assets/native/openimageio/win32-x64/vcruntime140_1.dll",
   ]) {
     check(
       `unpacked: ${required}`,
       fs.existsSync(path.join(unpacked, required)),
     );
+  }
+  const oiioRoot = path.join(unpacked, "assets", "native", "openimageio");
+  const runtimeManifestPath = path.join(oiioRoot, "RUNTIME-MANIFEST.json");
+  check("OpenImageIO runtime manifest", fs.existsSync(runtimeManifestPath));
+  if (fs.existsSync(runtimeManifestPath)) {
+    try {
+      const runtimeManifest = JSON.parse(fs.readFileSync(runtimeManifestPath, "utf8"));
+      for (const item of runtimeManifest.files) {
+        const filename = path.join(oiioRoot, ...item.path.split("/"));
+        const digest = fs.existsSync(filename) ? createHash("sha256").update(fs.readFileSync(filename)).digest("hex") : "missing";
+        check(`runtime hash: ${item.path}`, digest === item.sha256);
+      }
+      const actual = [];
+      const walkRuntime = (directory) => {
+        for (const name of fs.readdirSync(directory).sort()) {
+          const filename = path.join(directory, name);
+          if (fs.statSync(filename).isDirectory()) walkRuntime(filename);
+          else if (filename !== runtimeManifestPath) actual.push(path.relative(oiioRoot, filename).replaceAll("\\", "/"));
+        }
+      };
+      walkRuntime(oiioRoot);
+      check("runtime explicit allowlist", JSON.stringify(actual.sort()) === JSON.stringify(runtimeManifest.files.map((item) => item.path).sort()));
+
+      const packagedTool = path.join(oiioRoot, "win32-x64", "oiiotool.exe");
+      const versionOutput = execFileSync(packagedTool, ["--version"], { encoding: "utf8", timeout: 15_000 });
+      check("packaged oiiotool launches", versionOutput.includes("3.1.16.0"), versionOutput.trim());
+      const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "refcanvas-package-oiio-"));
+      try {
+        const source = path.join(temporary, "beauty-dwaa.exr");
+        const preview = path.join(temporary, "preview.png");
+        execFileSync(packagedTool, ["--create", "32x16", "3", "--fill:color=0.05,0.1,0.2", "32x16", "--fill:color=0.8,0.4,0.1", "16x16+16+0", "--chnames", "Beauty.R,Beauty.G,Beauty.B", "--scanline", "--compression", "dwaa", "-d", "half", "-o", source], { timeout: 15_000 });
+        execFileSync(packagedTool, [source, "--subimage", "0", "--flatten", "--ch", "Beauty.R,Beauty.G,Beauty.B", "--colorconvert", "linear", "sRGB", "-d", "uint8", "-o", preview], { timeout: 15_000 });
+        const stats = execFileSync(packagedTool, ["--stats", preview], { encoding: "utf8", timeout: 15_000 });
+        check("packaged DWAA Beauty decode", fs.existsSync(preview) && fs.statSync(preview).size > 100 && /Constant:\s+No/i.test(stats), `${fs.statSync(preview).size} bytes, non-flat`);
+      } finally {
+        fs.rmSync(temporary, { recursive: true, force: true });
+      }
+    } catch (error) {
+      check("packaged OpenImageIO executable smoke", false, error.message);
+    }
   }
   const notices = path.join(unpacked, "THIRD_PARTY_NOTICES.md");
   const manifest = path.join(unpacked, "LICENSE-MANIFEST.json");

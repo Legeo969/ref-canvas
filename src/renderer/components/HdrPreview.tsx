@@ -5,8 +5,10 @@ import {
   useFoundSettings,
 } from "../app/found-settings";
 import { translate } from "../app/i18n";
-import { Download, FolderOpen } from "lucide-react";
+import { Download, FolderOpen, RefreshCw } from "lucide-react";
+import { ImagePreviewViewport } from "./ImagePreviewViewport";
 import { PreviewColorBar } from "./PreviewColorBar";
+import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
 
 type ToneMappingName = "aces" | "reinhard" | "neutral";
 type DisplayComponent = "R" | "G" | "B" | "A";
@@ -44,7 +46,7 @@ export function HdrPreview({
   const fallbackRef = useRef<HTMLImageElement | null>(null);
   const [exposure, setExposure] = useState(1);
   const [toneMapping, setToneMapping] = useState<ToneMappingName>("aces");
-  const [status, setStatus] = useState<"loading" | "ready" | "failed">(
+  const [textureStatus, setTextureStatus] = useState<"loading" | "ready" | "failed">(
     "loading",
   );
   const [layers, setLayers] = useState<DisplayLayer[]>([]);
@@ -72,6 +74,8 @@ export function HdrPreview({
   const displaySource = selectedChannel === null
     ? source
     : `${source}${source.includes("?") ? "&" : "?"}channel=${encodeURIComponent(selectedChannel)}`;
+  const preview = useRetryingPreviewUrl(displaySource);
+  const requestSource = preview.url ?? displaySource;
 
   const exportChannel = async () => {
     if (!path || exporting) return;
@@ -140,7 +144,7 @@ export function HdrPreview({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    setStatus("loading");
+    setTextureStatus("loading");
     const scene = new THREE.Scene();
     scene.background = null;
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
@@ -193,7 +197,7 @@ export function HdrPreview({
     const loader = new THREE.TextureLoader();
     let active = true;
     loader.load(
-      displaySource,
+      requestSource,
       (texture) => {
         if (!active) {
           texture.dispose();
@@ -203,12 +207,13 @@ export function HdrPreview({
         textureRef.current = texture;
         material.map = texture;
         material.needsUpdate = true;
-        setStatus("ready");
+        setTextureStatus("ready");
+        preview.markReady();
         resize();
       },
       undefined,
       () => {
-        if (active) setStatus("failed");
+        if (active) setTextureStatus("failed");
       },
     );
 
@@ -224,7 +229,7 @@ export function HdrPreview({
       cameraRef.current = null;
       planeRef.current = null;
     };
-  }, [displaySource, extension]);
+  }, [requestSource, extension]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -238,35 +243,51 @@ export function HdrPreview({
 
   return (
     <div className="hdr-preview">
-      <div
-        className="hdr-preview-stage"
-        style={{ background: alphaBackgroundStyle(foundSettings) }}
+      <ImagePreviewViewport
+        assetKey={displaySource}
+        checkerBackground={alphaBackgroundStyle(foundSettings)}
+        toolbarEnd={
+          <PreviewColorBar
+            compact
+            source={() => fallbackRef.current}
+            revision={displaySource}
+          />
+        }
       >
-        <img
-          ref={fallbackRef}
-          className="hdr-preview-fallback"
-          src={displaySource}
-          alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
-          draggable={false}
-        />
-        <div
-          className="hdr-preview-canvas"
-          ref={hostRef}
-          style={{ opacity: status === "ready" ? 1 : 0 }}
-        />
-        {status === "loading" && (
-          <span className="preview-message">{translate("hdr.generating")}</span>
+        {({ style }) => (
+          <div className="hdr-preview-stage" style={style}>
+            <img
+              ref={fallbackRef}
+              className="hdr-preview-fallback"
+              src={requestSource}
+              alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
+              draggable={false}
+              onLoad={preview.markReady}
+              onError={preview.markError}
+            />
+            <div
+              className="hdr-preview-canvas"
+              ref={hostRef}
+              style={{ opacity: textureStatus === "ready" ? 1 : 0 }}
+            />
+            {(preview.status === "loading" || preview.status === "waiting") && (
+              <span className="preview-message" role="status">
+                {preview.status === "waiting" ? "正在等待 EXR 预览…" : translate("hdr.generating")}
+              </span>
+            )}
+            {preview.status === "failed" && (
+              <span className="preview-message preview-message-retry">
+                <span>{translate("hdr.failed")}</span>
+                <button type="button" onClick={preview.retry} aria-label="重试 EXR 预览">
+                  <RefreshCw size={15} />
+                  重试
+                </button>
+              </span>
+            )}
+          </div>
         )}
-        {status === "failed" && (
-          <span className="preview-message">{translate("hdr.failed")}</span>
-        )}
-      </div>
+      </ImagePreviewViewport>
       <div className="hdr-preview-controls">
-        <PreviewColorBar
-          compact
-          source={() => fallbackRef.current}
-          revision={displaySource}
-        />
         {layers.length > 0 && (
           <div className="hdr-channel-control" role="group" aria-label={translate("hdr.channelsGroup")}>
             <label className="hdr-layer-select">

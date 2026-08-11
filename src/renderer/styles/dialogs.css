@@ -1335,6 +1335,15 @@
   font-size: 11px;
 }
 
+.settings-row > .select-menu-trigger {
+  width: min(280px, 42%);
+  flex: 0 0 auto;
+}
+
+.fps-preset-select-row .select-menu-trigger {
+  width: min(180px, 42%);
+}
+
 .settings-row > input[type="text"],
 .settings-row > input[type="number"] {
   min-width: 120px;
@@ -1510,13 +1519,11 @@
   line-height: 1.45;
 }
 
-.fps-preset-list,
 .mp4-preset-list {
   display: grid;
   gap: 5px;
 }
 
-.fps-preset-row,
 .mp4-preset-row {
   display: flex;
   min-width: 0;
@@ -1526,26 +1533,7 @@
   padding: 3px 0;
 }
 
-.fps-preset-row > input {
-  width: 84px;
-  height: 34px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 7px;
-  background: #1c2021;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  color: #c8d1cc;
-  font-size: 11px;
-}
-
-.fps-preset-row > span {
-  margin-right: auto;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.fps-preset-row > button,
-.mp4-preset-row > button {
+.mp4-preset-row > button:not(.select-menu-trigger) {
   display: grid;
   width: 40px;
   height: 40px;
@@ -1559,16 +1547,13 @@
   cursor: pointer;
 }
 
-.fps-preset-row > button:hover:not(:disabled),
-.mp4-preset-row > button:hover:not(:disabled),
-.fps-preset-row > button.active,
-.mp4-preset-row > button.active {
+.mp4-preset-row > button:not(.select-menu-trigger):hover:not(:disabled),
+.mp4-preset-row > button:not(.select-menu-trigger).active {
   background: rgba(127, 184, 160, 0.14);
   color: #9fd0ba;
 }
 
-.fps-preset-row > button:disabled,
-.mp4-preset-row > button:disabled {
+.mp4-preset-row > button:not(.select-menu-trigger):disabled {
   cursor: default;
   opacity: 0.28;
 }
@@ -1581,7 +1566,7 @@
 }
 
 .mp4-preset-row > input[type="text"],
-.mp4-preset-row > select {
+.mp4-preset-row > .select-menu-trigger {
   min-width: 0;
   height: 34px;
   padding: 0 7px;
@@ -1597,8 +1582,10 @@
   width: 112px;
 }
 
-.mp4-preset-row > select {
+.mp4-preset-row > .select-menu-trigger {
+  min-width: 90px;
   width: 90px;
+  min-height: 34px;
 }
 
 .maintenance-action-list {
@@ -3257,6 +3244,45 @@
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
 }
 
+.directory-preview-session-actions {
+  position: absolute;
+  z-index: 12;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+  border-radius: 10px;
+  background: rgba(12, 15, 14, 0.72);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.directory-preview-session-actions .preview-close {
+  position: static;
+  width: 40px;
+  height: 40px;
+}
+
+.directory-preview:is(.preview-session-focused, :fullscreen) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+}
+
+.directory-preview:is(.preview-session-focused, :fullscreen) .directory-preview-stage {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.directory-preview:is(.preview-session-focused, :fullscreen) .directory-preview-info,
+.directory-preview:is(.preview-session-focused, :fullscreen) .preview-nav {
+  display: none;
+}
+
 .directory-preview-stage {
   grid-column: 1;
   grid-row: 1;
@@ -3284,7 +3310,8 @@
 .directory-preview-stage > .model-preview,
 .directory-preview-stage > .audio-preview,
 .directory-preview-stage > .video-preview,
-.directory-preview-stage > .hdr-preview {
+.directory-preview-stage > .hdr-preview,
+.directory-preview-stage > .image-review {
   width: 100%;
   height: min(54vh, 560px);
   border: 0;
@@ -3299,6 +3326,19 @@
 
 .directory-preview-stage > img {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Space is a read-only inspection surface: media renderers may keep their
+   controls in normal previews, but the quick-preview shell only exposes
+   content, details, previous/next, and close. */
+.directory-preview-stage .image-preview-toolbar,
+.directory-preview-stage .hdr-preview-controls,
+.directory-preview-stage .video-step-controls,
+.directory-preview-stage .video-workbench-seek,
+.directory-preview-stage .model-preview-toolbar,
+.directory-preview-stage .model-preview-actions,
+.directory-preview-stage .media-notes-toolbar {
+  display: none;
 }
 
 .progressive-preview {
@@ -3855,6 +3895,7 @@
   .settings-row > input[type="text"],
   .settings-row > input[type="number"],
   .settings-row select,
+  .settings-row > .select-menu-trigger,
   .settings-path-control {
     width: 100%;
     max-width: none;
@@ -3868,7 +3909,7 @@
     flex: 1 1 150px;
   }
 
-  .mp4-preset-row > select {
+  .mp4-preset-row > .select-menu-trigger {
     flex: 1 1 90px;
   }
 
@@ -4063,8 +4104,14 @@
 
 .hdr-preview-stage {
   position: relative;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
+}
+
+.hdr-preview > .image-preview-viewport {
+  height: 100%;
 }
 
 .hdr-preview-fallback {
@@ -4088,6 +4135,38 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.preview-message-retry {
+  gap: 10px;
+}
+
+.preview-message-retry button {
+  display: inline-flex;
+  min-width: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: var(--shadow-border);
+  color: #cbd4d0;
+  cursor: pointer;
+  transition-property: scale, background-color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.preview-message-retry button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-border-hover);
+}
+
+.preview-message-retry button:active {
+  scale: 0.96;
 }
 
 .hdr-preview-controls {

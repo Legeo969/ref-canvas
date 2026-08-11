@@ -30,6 +30,9 @@ import {
   parseWorkflow,
   type ComfyWorkflowBinding,
 } from "../services/ai/comfyui-workflow";
+import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
+import { assertAbsoluteLocalPath } from "../platform/local-path-security";
+import type { WriteAccessController } from "../platform/write-access-controller";
 
 const comfyInputRefSchema = z.object({
   nodeId: z.string().min(1).max(256),
@@ -109,6 +112,8 @@ export interface AiIpcDependencies {
   reloadProviders?(): Promise<void>;
   /** 变更广播（index.ts 注入 broadcastAll）。 */
   notifyAiChanged(snapshot: AiJobSnapshot | null): void;
+  windowForSender?(event: IpcMainInvokeEvent): BrowserWindow;
+  writeAccess?: WriteAccessController;
 }
 
 const AI_SETTINGS_KEY = "aiSettings";
@@ -164,6 +169,12 @@ export function registerAiIpc(
   dependencies: AiIpcDependencies,
 ): void {
   const service = () => dependencies.getAiJobService();
+  const security = (event: IpcMainInvokeEvent) => {
+    if (!dependencies.writeAccess || !dependencies.windowForSender) {
+      throw new Error("WRITE_AUTHORIZATION_UNAVAILABLE");
+    }
+    return { access: dependencies.writeAccess, window: dependencies.windowForSender(event) };
+  };
 
   ipc.handle("ai:list-providers", async () => {
     const providers = await service().listProviders();
@@ -183,7 +194,7 @@ export function registerAiIpc(
     return service().get(parsed);
   });
 
-  ipc.handle("ai:start", async (input) => {
+  ipc.handleWithEvent("ai:start", async (event, input) => {
     const parsed = z
       .object({
         provider: aiProviderKindSchema,
@@ -193,7 +204,16 @@ export function registerAiIpc(
     if (parsed.provider === "mock" && !dependencies.isMockAllowed()) {
       throw new Error("AI_MOCK_FORBIDDEN");
     }
-    const job = await service().start(parsed.provider, parsed.request);
+    const secured = security(event);
+    const [outputDirectory] = await secured.access.authorize(
+      secured.window, "export", [
+        { path: assertAbsoluteLocalPath(parsed.request.outputDirectory), mode: "destination" },
+      ],
+    );
+    const job = await service().start(parsed.provider, {
+      ...parsed.request,
+      outputDirectory,
+    });
     dependencies.notifyAiChanged(job);
     return job;
   });
@@ -205,9 +225,15 @@ export function registerAiIpc(
     return job;
   });
 
-  ipc.handle("ai:retry", async (id) => {
+  ipc.handleWithEvent("ai:retry", async (event, id) => {
     const parsed = aiJobIdSchema.parse(id);
-    const job = await service().retry(parsed);
+    const secured = security(event);
+    const [outputDirectory] = await secured.access.authorize(
+      secured.window, "export", [
+        { path: service().authorizationDirectoryForRetry(parsed), mode: "destination" },
+      ],
+    );
+    const job = await service().retry(parsed, outputDirectory);
     dependencies.notifyAiChanged(job);
     return job;
   });

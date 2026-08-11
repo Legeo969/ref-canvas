@@ -168,4 +168,25 @@ describe("DirectoryQuickPreview", () => {
       "ABC",
     );
   });
+
+  it("keeps Space preview read-only with details, navigation and close only", async () => {
+    const host = await renderPreview("png");
+    expect(host.querySelector(".directory-preview-actions")).toBeNull();
+    expect(host.textContent).toContain("D:\\private\\sample.png");
+    expect(host.querySelector(".preview-close")).toBeTruthy();
+    expect(host.querySelector('[aria-label*="复制"]')).toBeNull();
+    expect(host.querySelector('[aria-label*="删除"]')).toBeNull();
+  });
+
+  it("applies the shared focused class so focus changes the quick-preview layout", async () => {
+    const host = await renderPreview("png");
+    const preview = host.querySelector(".directory-preview");
+    expect(preview?.classList.contains("preview-session-focused")).toBe(false);
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+    });
+    expect(preview?.classList.contains("preview-session-focused")).toBe(true);
+    expect(preview?.getAttribute("data-preview-focused")).toBe("true");
+    expect(host.querySelector('[aria-label="退出聚焦预览"]')?.getAttribute("aria-pressed")).toBe("true");
+  });
 });

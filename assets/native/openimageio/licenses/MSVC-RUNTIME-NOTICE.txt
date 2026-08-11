@@ -1,0 +1,9 @@
+Microsoft Visual C++ 2022 x64 Runtime 14.44.35112
+
+The Microsoft VC143 runtime DLLs in win32-x64 are unmodified redistributable
+code copied from Visual Studio 2022 Build Tools. They are distributed solely
+to run the bundled OpenImageIO sidecar on Windows x64 without requiring a
+separate user installation. Their use and redistribution are governed by the
+Microsoft Visual Studio licensing terms that accompany Build Tools.
+
+Copyright (c) Microsoft Corporation. All rights reserved.

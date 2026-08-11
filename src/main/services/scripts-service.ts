@@ -154,7 +154,7 @@ export class ScriptsService {
         script.kind === "py"
           ? [script.path]
           : script.kind === "ps1"
-            ? ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script.path]
+            ? ["-NoProfile", "-File", script.path]
             : [];
       const child = spawn(command, args, {
         cwd: path.resolve(cwd),

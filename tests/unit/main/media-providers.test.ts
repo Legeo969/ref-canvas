@@ -240,6 +240,55 @@ describe("stage 3 media providers", () => {
     expect(Math.abs(green - blue)).toBeLessThanOrEqual(2);
   });
 
+  it("uses the native sidecar for canonical EXR channel order", async () => {
+    const directory = await tempDirectory("refcanvas-exr-native-");
+    const source = await writeExrFixture(
+      directory,
+      "canonical.exr",
+      0,
+      ["B", "G", "R"],
+      { B: 0.5, G: 0.5, R: 0.5 },
+    );
+    const outputPath = path.join(directory, "native.png");
+    await new HdrProvider().thumbnail({
+      path: source,
+      kind: "image",
+      extension: "exr",
+      width: 64,
+      height: 64,
+      outputPath,
+    });
+    const [red, green, blue] = await centerPixelRgb(outputPath);
+    expect(red).toBeGreaterThanOrEqual(168);
+    expect(Math.abs(red - green)).toBeLessThanOrEqual(8);
+    expect(Math.abs(green - blue)).toBeLessThanOrEqual(8);
+  });
+
+  it("previews an arbitrary single EXR channel through OpenImageIO", async () => {
+    const directory = await tempDirectory("refcanvas-exr-arbitrary-channel-");
+    const source = await writeExrFixture(
+      directory,
+      "single-channel.exr",
+      0,
+      ["Z-depth.y"],
+      { "Z-depth.y": 0.5 },
+    );
+    const outputPath = path.join(directory, "depth.png");
+    await new HdrProvider().thumbnail({
+      path: source,
+      kind: "image",
+      extension: "exr",
+      channel: "Z-depth.y",
+      width: 64,
+      height: 64,
+      outputPath,
+    });
+    const [red, green, blue] = await centerPixelRgb(outputPath);
+    expect(red).toBeGreaterThanOrEqual(168);
+    expect(Math.abs(red - green)).toBeLessThanOrEqual(2);
+    expect(Math.abs(green - blue)).toBeLessThanOrEqual(2);
+  });
+
   it("exposes EXR metadata fields for the inspector", async () => {
     const directory = await tempDirectory("refcanvas-exr-meta-");
     const filename = await writeExrFixture(directory);

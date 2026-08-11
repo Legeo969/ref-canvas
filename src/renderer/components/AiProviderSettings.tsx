@@ -18,6 +18,7 @@ import type {
   AiSettings,
 } from "../../shared/contracts";
 import { translate } from "../app/i18n";
+import { SelectMenu } from "./SelectMenu";
 
 type ComfyInputRef = { nodeId: string; inputName: string };
 
@@ -367,60 +368,54 @@ export function AiProviderSettings() {
               <>
                 <label className="settings-row">
                   <span>{translate("aiSettings.bindingSource")}</span>
-                  <select
+                  <SelectMenu
                     value={toValue(binding.source)}
-                    onChange={(event) =>
+                    ariaLabel={translate("aiSettings.bindingSource")}
+                    options={[
+                      { value: "", label: "—" },
+                      ...sourceCandidates,
+                    ]}
+                    onValueChange={(value) =>
                       setBinding((current) => ({
                         ...current,
-                        source: parseRef(event.target.value),
+                        source: parseRef(value),
                       }))
                     }
-                  >
-                    <option value="">—</option>
-                    {sourceCandidates.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="settings-row">
                   <span>{translate("aiSettings.bindingPrompt")}</span>
-                  <select
+                  <SelectMenu
                     value={toValue(binding.prompt)}
-                    onChange={(event) =>
+                    ariaLabel={translate("aiSettings.bindingPrompt")}
+                    options={[
+                      { value: "", label: "—" },
+                      ...inputOptionsList,
+                    ]}
+                    onValueChange={(value) =>
                       setBinding((current) => ({
                         ...current,
-                        prompt: parseRef(event.target.value),
+                        prompt: parseRef(value),
                       }))
                     }
-                  >
-                    <option value="">—</option>
-                    {inputOptionsList.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="settings-row">
                   <span>{translate("aiSettings.bindingBatchSize")}</span>
-                  <select
+                  <SelectMenu
                     value={toValue(binding.batchSize)}
-                    onChange={(event) =>
+                    ariaLabel={translate("aiSettings.bindingBatchSize")}
+                    options={[
+                      { value: "", label: "—" },
+                      ...inputOptionsList,
+                    ]}
+                    onValueChange={(value) =>
                       setBinding((current) => ({
                         ...current,
-                        batchSize: parseRef(event.target.value),
+                        batchSize: parseRef(value),
                       }))
                     }
-                  >
-                    <option value="">—</option>
-                    {inputOptionsList.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <div className="settings-row ai-binding-row">
                   <span>{translate("aiSettings.bindingOutputs")}</span>
@@ -533,20 +528,24 @@ export function AiProviderSettings() {
         ))}
         <label className="settings-row">
           <span>{translate("aiSettings.defaultProvider")}</span>
-          <select
-            value={settings?.defaultProvider ?? ""}
-            onChange={(event) =>
+          <SelectMenu
+            value={
+              settings?.defaultProvider ??
+              availableProviders[0]?.kind ??
+              "remote-rest"
+            }
+            ariaLabel={translate("aiSettings.defaultProvider")}
+            options={availableProviders.map((provider) => ({
+              value: provider.kind,
+              label: provider.label,
+            }))}
+            disabled={availableProviders.length === 0}
+            onValueChange={(value) =>
               void window.refCanvas.ai
-                .setSettings({ defaultProvider: event.target.value as AiProviderKind })
+                .setSettings({ defaultProvider: value as AiProviderKind })
                 .then(setSettings)
             }
-          >
-            {availableProviders.map((provider) => (
-              <option key={provider.kind} value={provider.kind}>
-                {provider.label}
-              </option>
-            ))}
-          </select>
+          />
         </label>
       </div>
 

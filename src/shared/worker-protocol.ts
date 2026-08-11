@@ -116,6 +116,8 @@ export interface ProviderThumbnailInput {
   outputPath?: string;
   /** HDR/EXR 的通道或 layer 选择（如 R、Beauty.R、Beauty）；缺省为自动合成。 */
   channel?: string;
+  /** Main-process cancellation; native sidecars must terminate on abort. */
+  signal?: AbortSignal;
 }
 
 export interface ProviderThumbnailResult {

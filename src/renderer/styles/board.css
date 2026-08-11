@@ -864,13 +864,22 @@
   display: grid;
   width: min(1180px, calc(100vw - 48px));
   height: min(820px, calc(100vh - 48px));
-  grid-template-rows: 64px minmax(0, 1fr) 56px;
+  grid-template-rows: 64px minmax(0, 1fr) auto 56px;
   overflow: hidden;
   border-radius: 18px;
   background: #181c1d;
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.11),
     0 32px 96px rgba(0, 0, 0, 0.58);
+}
+
+.quick-preview-shell:is(.preview-session-focused, :fullscreen) {
+  grid-template-rows: 56px minmax(0, 1fr);
+}
+
+.quick-preview-shell:is(.preview-session-focused, :fullscreen) .quick-preview-details,
+.quick-preview-shell:is(.preview-session-focused, :fullscreen) .quick-preview-footer {
+  display: none;
 }
 
 .quick-preview-header,
@@ -963,7 +972,7 @@
 }
 
 .quick-preview-stage.is-image {
-  padding: 24px;
+  padding: 0;
 }
 
 .quick-preview-content {
@@ -995,7 +1004,9 @@
 .quick-preview-content > iframe,
 .quick-preview-content > .model-preview,
 .quick-preview-content > .audio-preview,
-.quick-preview-content > .preview-file {
+.quick-preview-content > .preview-file,
+.quick-preview-content > .image-review,
+.quick-preview-content > .hdr-preview {
   width: 100%;
   height: 100%;
   border: 0;
@@ -1004,6 +1015,65 @@
 .quick-preview-content > video {
   background: #0c0f10;
   object-fit: contain;
+}
+
+.quick-preview-content .image-preview-toolbar,
+.quick-preview-content .hdr-preview-controls,
+.quick-preview-content .video-step-controls,
+.quick-preview-content .model-preview-toolbar,
+.quick-preview-content .model-preview-actions,
+.quick-preview-content .media-notes-toolbar {
+  display: none !important;
+}
+
+.quick-preview-details {
+  display: grid;
+  max-height: min(220px, 30vh);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  padding: 12px 18px;
+  overflow: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.065);
+  background: #181c1d;
+}
+
+.quick-preview-details dl {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.quick-preview-details dl > div {
+  min-width: 0;
+}
+
+.quick-preview-details dt {
+  margin-bottom: 3px;
+  color: #69736e;
+  font-size: 10px;
+}
+
+.quick-preview-details dd {
+  overflow: hidden;
+  margin: 0;
+  color: #b0b8b4;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-preview-details .media-info-section {
+  min-width: 0;
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .quick-preview-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .quick-preview-footer {

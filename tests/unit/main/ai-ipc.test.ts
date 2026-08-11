@@ -124,6 +124,8 @@ describe("AI IPC registration (FND-008 §9)", () => {
     const ipc = {
       handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
         handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
     } as unknown as SecureIpcRegistrar;
     registerAiIpc(ipc, {
       getDatabase: () => database,
@@ -131,6 +133,11 @@ describe("AI IPC registration (FND-008 §9)", () => {
       isMockAllowed: () => options.mockAllowed !== false,
       getSecretStore: () => secretStore,
       notifyAiChanged,
+      windowForSender: () => ({}) as Electron.BrowserWindow,
+      writeAccess: {
+        authorize: async (_window, _operation, requests) =>
+          requests.map((request) => request.path),
+      } as import("../../../src/main/platform/write-access-controller").WriteAccessController,
     });
     const invoke = async (channel: string, ...args: unknown[]): Promise<unknown> => {
       const handler = handlers.get(channel)!;

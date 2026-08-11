@@ -15,6 +15,9 @@ const packagedRuntimePaths = [
   "/node_modules/better-sqlite3",
   "/node_modules/node-addon-api",
   "/node_modules/sharp",
+  "/node_modules/exrs",
+  "/node_modules/shallow-equals",
+  "/node_modules/tslib",
   "/node_modules/@img",
   "/node_modules/detect-libc",
   "/node_modules/semver",
@@ -32,7 +35,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpackDir:
-        "node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static}",
+        "{node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static},assets/native/openimageio}",
     },
     executableName: "RefCanvas",
     icon: "assets/installer/refcanvas.ico",

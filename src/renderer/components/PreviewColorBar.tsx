@@ -53,7 +53,7 @@ export function PreviewColorBar({
     const requestId = ++requestRef.current;
     setLoading(true);
     setError(false);
-    if (assetPath && window.refCanvas.media?.palette) {
+    if (assetPath && window.refCanvas?.media?.palette) {
       try {
         const extracted = await window.refCanvas.media.palette(assetPath, {
           timeMs,
@@ -117,7 +117,7 @@ export function PreviewColorBar({
   }, [autoRefresh, revision]);
 
   const copy = async (color: PaletteColor) => {
-    await window.refCanvas.system.writeClipboard(color.hex);
+    await window.refCanvas?.system?.writeClipboard(color.hex);
     setCopied(color.hex);
   };
 

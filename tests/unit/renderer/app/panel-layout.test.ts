@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  BOARD_PANEL_IDS,
   BOARD_MIN_WIDTH,
+  DIRECTORY_PANEL_IDS,
   PANEL_DEFAULTS,
   PANEL_LIMITS,
   adjustPanelWidth,
@@ -94,7 +96,7 @@ describe("withCollapsed", () => {
 });
 
 describe("panelLayoutForWindow", () => {
-  const wide = 1800;
+  const wide = 1920;
   const defaultSum =
     PANEL_DEFAULTS.sidebarWidth +
     PANEL_DEFAULTS.assetWidth +
@@ -147,6 +149,30 @@ describe("panelLayoutForWindow", () => {
     });
     const result = panelLayoutForWindow(layout, 640);
     expect(result.collapsed).toContain("asset");
+  });
+
+  it("keeps the complete three-column browser visible at 150% effective width", () => {
+    const layout = normalizePanelLayout({
+      sidebarWidth: 180,
+      assetWidth: 280,
+      detailsWidth: 1100,
+    });
+    const result = panelLayoutForWindow(layout, 1280, DIRECTORY_PANEL_IDS);
+    expect(result.collapsed).toEqual([]);
+    expect(result.sidebarWidth).toBe(180);
+    expect(result.detailsWidth).toBe(740);
+    expect(1280 - result.sidebarWidth - result.detailsWidth).toBe(
+      BOARD_MIN_WIDTH,
+    );
+  });
+
+  it("ignores browser-only panel widths in the board workspace", () => {
+    const layout = normalizePanelLayout({
+      sidebarWidth: 260,
+      assetWidth: 720,
+      detailsWidth: 1200,
+    });
+    expect(panelLayoutForWindow(layout, 900, BOARD_PANEL_IDS)).toEqual(layout);
   });
 });
 
@@ -224,5 +250,21 @@ describe("adjustPanelWidth", () => {
     const windowWidth = 2400;
     const result = adjustPanelWidth(layout, "asset", 2000, windowWidth);
     expect(result.assetWidth).toBe(PANEL_LIMITS.asset.max);
+  });
+
+  it("uses only rendered browser panels when calculating resize room", () => {
+    const layout = normalizePanelLayout({
+      sidebarWidth: 180,
+      assetWidth: 720,
+      detailsWidth: 600,
+    });
+    const result = adjustPanelWidth(
+      layout,
+      "details",
+      100,
+      1280,
+      DIRECTORY_PANEL_IDS,
+    );
+    expect(result.detailsWidth).toBe(700);
   });
 });

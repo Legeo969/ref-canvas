@@ -8,6 +8,9 @@
 import { z } from "zod";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
+import { assertAbsoluteLocalPath } from "../platform/local-path-security";
+import type { WriteAccessController } from "../platform/write-access-controller";
 
 const collectionIdSchema = z.string().min(1).max(64);
 const collectionNameSchema = z.string().trim().min(1).max(256);
@@ -60,6 +63,8 @@ export interface CollectionsIpcDependencies {
   getDatabase(): RefCanvasDatabase;
   /** 变更广播（index.ts 注入 broadcastAll）。 */
   notifyCollectionsChanged(): void;
+  windowForSender?(event: IpcMainInvokeEvent): BrowserWindow;
+  writeAccess?: WriteAccessController;
 }
 
 export function registerCollectionsIpc(
@@ -131,9 +136,17 @@ export function registerCollectionsIpc(
     return item;
   });
 
-  ipc.handle("collections:export", (input) => {
+  ipc.handleWithEvent("collections:export", async (event, input) => {
     const parsed = exportSchema.parse(input);
-    return service().export(parsed.collectionId, parsed.targetDirectory, {
+    if (!dependencies.writeAccess || !dependencies.windowForSender) {
+      throw new Error("WRITE_AUTHORIZATION_UNAVAILABLE");
+    }
+    const [targetDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event), "export", [
+        { path: assertAbsoluteLocalPath(parsed.targetDirectory), mode: "destination" },
+      ],
+    );
+    return service().export(parsed.collectionId, targetDirectory, {
       jobId: parsed.jobId,
     });
   });

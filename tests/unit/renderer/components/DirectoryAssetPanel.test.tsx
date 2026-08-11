@@ -26,7 +26,48 @@ describe("DirectoryAssetPanel", () => {
       for (const root of roots.splice(0)) root.unmount();
     });
     vi.unstubAllGlobals();
+    vi.useRealTimers();
     document.body.replaceChildren();
+  });
+
+  it("retries a transient thumbnail failure without reselecting the asset", async () => {
+    vi.useFakeTimers();
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          previewToken: vi.fn(async () => "retry-token"),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [{
+        path: "D:\\refs\\shot.exr",
+        name: "shot.exr",
+        isDirectory: false,
+        extension: "exr",
+        size: 100,
+      }],
+      directoryTotal: 1,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+    const initial = host.querySelector<HTMLImageElement>(".directory-card img");
+    expect(initial?.src).toContain("refbrowse://thumbnail/retry-token");
+    await act(async () => initial?.dispatchEvent(new Event("error")));
+    expect(host.querySelector('[role="status"]')?.textContent).toContain("正在等待预览");
+    await act(async () => vi.advanceTimersByTimeAsync(600));
+    const retried = host.querySelector<HTMLImageElement>(".directory-card img");
+    expect(retried?.src).toContain("previewRetry=1");
+    await act(async () => retried?.dispatchEvent(new Event("load")));
+    expect(host.querySelector('[role="status"]')).toBeNull();
   });
 
   it("reloads the directory immediately when subfolder depth changes", async () => {

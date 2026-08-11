@@ -1215,6 +1215,7 @@
 
 .workbench-file-actions {
   display: flex;
+  align-items: center;
   flex: 0 0 auto;
   gap: 4px;
 }
@@ -1240,6 +1241,40 @@
 
 .workbench-file-actions button:active {
   scale: 0.96;
+}
+
+.directory-workbench-panel:is(.preview-session-focused, :fullscreen) .workbench-header {
+  position: absolute;
+  z-index: 30;
+  top: 8px;
+  right: 8px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(12, 15, 14, 0.72);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.directory-workbench-panel:is(.preview-session-focused, :fullscreen) .workbench-mode-tabs,
+.directory-workbench-panel:is(.preview-session-focused, :fullscreen) .workbench-external-action,
+.directory-workbench-panel:is(.preview-session-focused, :fullscreen) .workbench-tool-content {
+  display: none;
+}
+
+.directory-workbench-panel:is(.preview-session-focused, :fullscreen) .workbench-preview-shell {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: #111514;
+}
+
+.directory-workbench-panel:is(.preview-session-focused, :fullscreen) .workbench-asset-label {
+  top: 12px;
+  left: 12px;
+  max-width: calc(100% - 132px);
 }
 
 .workbench-preview-shell {

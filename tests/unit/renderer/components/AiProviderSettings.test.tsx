@@ -205,7 +205,7 @@ describe("AiProviderSettings (FND-009/010)", () => {
     expect(ai.importComfyuiWorkflow).toHaveBeenCalledWith("D:\\workflow.json");
     // 绑定未填写 → 保存被阻止（绑定编辑器内的保存按钮）。
     const saveBindingButton = host.querySelector<HTMLButtonElement>(
-      ".ai-binding-editor button",
+      ".ai-binding-editor > .secondary-button",
     );
     expect(saveBindingButton).toBeTruthy();
     await act(async () => {

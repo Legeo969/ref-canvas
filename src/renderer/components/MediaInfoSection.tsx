@@ -244,7 +244,7 @@ export function MediaInfoSection({ asset }: { asset: MediaInfoAsset }) {
     let cancelled = false;
     setProbe(null);
     setFailed(false);
-    if (!window.refCanvas.media?.probe) return;
+    if (!window.refCanvas?.media?.probe) return;
     void window.refCanvas.media
       .probe(asset.path)
       .then((result) => {

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
-// Bump after EXR layer selection changes so cached transparent auxiliary
-// passes are regenerated from the selected Beauty/Final Image layer.
-export const PREVIEW_CACHE_VERSION = "preview-v4";
+// Bump after replacing FFmpeg EXR decoding with the OpenEXR WASM pipeline so
+// stale gray/failed proxies are regenerated from Composite/Beauty.
+export const PREVIEW_CACHE_VERSION = "preview-v5";
 
 export interface PreviewCacheIdentity {
   realPath: string;

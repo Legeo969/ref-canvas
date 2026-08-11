@@ -22,7 +22,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import type { BoardSettings, BoardSummary } from "../../shared/contracts";
-import { PANEL_DEFAULTS, panelLayoutForWindow } from "./panel-layout";
+import {
+  BOARD_PANEL_IDS,
+  DIRECTORY_PANEL_IDS,
+  PANEL_DEFAULTS,
+  normalizePanelLayout,
+  panelLayoutForWindow,
+  panelWidthOf,
+  setPanelWidthOf,
+  withCollapsed,
+  type PanelId,
+  type PanelLayout,
+} from "./panel-layout";
 import {
   presentationModeForWorkspace,
   presentationTargetForF11,
@@ -41,16 +52,13 @@ import { CaptureOverlay } from "../components/CaptureOverlay";
 import { PreviewWindow } from "../components/PreviewWindow";
 import { TaskCenter } from "../components/TaskCenter";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
-import { DirectoryDetailsPanel } from "../components/DirectoryDetailsPanel";
 import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
 import { useDialog } from "../components/DialogProvider";
 import { DuplicatesPanel } from "../components/DuplicatesPanel";
-import {
-  PanelDividers,
-  applyPanelLayoutStyles,
-} from "../components/PanelDividers";
+import { PanelDividers } from "../components/PanelDividers";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { Sidebar } from "../components/Sidebar";
+import { FoundPreviewPanel } from "../components/FoundPreviewPanel";
 import { useAppStore } from "./store";
 
 /**
@@ -124,9 +132,7 @@ function WorkspaceApp() {
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"general" | "found">("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
-  const [panelLayout, setPanelLayout] = useState(() =>
-    panelLayoutForWindow(PANEL_DEFAULTS, window.innerWidth),
-  );
+  const [panelLayout, setPanelLayout] = useState(PANEL_DEFAULTS);
   const [presentationMode, setPresentationModeState] = useState(false);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [pinPending, setPinPending] = useState(false);
@@ -177,23 +183,20 @@ function WorkspaceApp() {
 
   useEffect(() => {
     if (!store.preferences) return;
-    setPanelLayout(applyPanelLayoutStyles(store.preferences.panelLayout, window.innerWidth));
+    setPanelLayout(normalizePanelLayout(store.preferences.panelLayout));
   }, [store.preferences?.panelLayout, store.preferences]);
 
   useEffect(() => {
     const onResize = () => {
       setWindowWidth(window.innerWidth);
-      setPanelLayout((current) =>
-        panelLayoutForWindow(current, window.innerWidth),
-      );
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
   useEffect(() => {
-    setPanelLayout((current) => panelLayoutForWindow(current, windowWidth));
-  }, [windowWidth]);
+    setWindowWidth(window.innerWidth);
+  }, [uiScale]);
 
   useEffect(() => {
     const openDuplicates = () => setDuplicatesOpen(true);
@@ -443,12 +446,28 @@ function WorkspaceApp() {
     await store.openDirectory(directory);
   };
 
+  const activePanelIds =
+    store.workspaceMode === "directory" ? DIRECTORY_PANEL_IDS : BOARD_PANEL_IDS;
+  const effectivePanelLayout = panelLayoutForWindow(
+    panelLayout,
+    windowWidth,
+    activePanelIds,
+  );
+  const commitPanelLayout = (panel: PanelId, next: PanelLayout) => {
+    const desired = setPanelWidthOf(
+      withCollapsed(panelLayout, panel, next.collapsed.includes(panel)),
+      panel,
+      panelWidthOf(next, panel),
+    );
+    setPanelLayout(desired);
+    void store.setPreferences({ panelLayout: desired });
+  };
+
   return (
     <main
       className={`app-shell ${store.focusMode ? "focus-mode" : ""} ${
         boardPresentationMode ? "presentation-mode" : ""
       }`}
-      style={{ zoom: uiScale }}
     >
       {captureSource &&
         createPortal(
@@ -690,12 +709,10 @@ function WorkspaceApp() {
         <Sidebar />
         <PanelDividers
           panel="sidebar"
-          layout={panelLayout}
+          activePanels={activePanelIds}
+          layout={effectivePanelLayout}
           windowWidth={windowWidth}
-          onCommit={(next) => {
-            setPanelLayout(next);
-            void store.setPreferences({ panelLayout: next });
-          }}
+          onCommit={(next) => commitPanelLayout("sidebar", next)}
         />
         {store.workspaceMode === "board" ? (
           store.activeBoard && store.boardDocument ? (
@@ -728,14 +745,12 @@ function WorkspaceApp() {
             </div>
             <PanelDividers
               panel="details"
-              layout={panelLayout}
+              activePanels={activePanelIds}
+              layout={effectivePanelLayout}
               windowWidth={windowWidth}
-              onCommit={(next) => {
-                setPanelLayout(next);
-                void store.setPreferences({ panelLayout: next });
-              }}
+              onCommit={(next) => commitPanelLayout("details", next)}
             />
-            <DirectoryDetailsPanel entry={store.selectedDirectoryEntry} />
+            <FoundPreviewPanel entry={store.selectedDirectoryEntry} />
           </>
         ) : (
           <>
@@ -745,14 +760,12 @@ function WorkspaceApp() {
             </div>
             <PanelDividers
               panel="details"
-              layout={panelLayout}
+              activePanels={activePanelIds}
+              layout={effectivePanelLayout}
               windowWidth={windowWidth}
-              onCommit={(next) => {
-                setPanelLayout(next);
-                void store.setPreferences({ panelLayout: next });
-              }}
+              onCommit={(next) => commitPanelLayout("details", next)}
             />
-            <DirectoryDetailsPanel entry={store.selectedDirectoryEntry} />
+            <FoundPreviewPanel entry={store.selectedDirectoryEntry} />
           </>
         )}
       </div>

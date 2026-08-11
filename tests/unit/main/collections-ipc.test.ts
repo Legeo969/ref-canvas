@@ -33,8 +33,18 @@ async function setup() {
   const ipc = {
     handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
       handlers.set(channel, handler),
+    handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+      handlers.set(channel, (...args) => handler({}, ...args)),
   } as unknown as SecureIpcRegistrar;
-  registerCollectionsIpc(ipc, { getDatabase: () => database, notifyCollectionsChanged });
+  registerCollectionsIpc(ipc, {
+    getDatabase: () => database,
+    notifyCollectionsChanged,
+    windowForSender: () => ({}) as Electron.BrowserWindow,
+    writeAccess: {
+      authorize: async (_window, _operation, requests) =>
+        requests.map((request) => request.path),
+    } as import("../../../src/main/platform/write-access-controller").WriteAccessController,
+  });
   // 模拟 ipcMain.handle 语义：同步抛错也转为拒绝的 Promise。
   const invoke = async (channel: string, ...args: unknown[]): Promise<unknown> => {
     const handler = handlers.get(channel)!;

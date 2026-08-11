@@ -6,6 +6,8 @@ import { z } from "zod";
 import type { AssetRecord, BoardDocument } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import { assertAbsoluteLocalPath } from "../platform/local-path-security";
+import type { WriteAccessController } from "../platform/write-access-controller";
 import type { BoardReferenceService } from "../services/board-reference-service";
 import { boardDocumentSchema } from "./board-schema";
 import { idSchema, pathSchema } from "./schemas";
@@ -19,6 +21,7 @@ interface BoardIpcDependencies {
   pngDataUrlToBuffer(dataUrl: string): Buffer;
   relinkBoardAsset(assetId: string, filename: string): Promise<AssetRecord>;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
+  writeAccess: WriteAccessController;
 }
 
 export function registerBoardIpc(
@@ -60,8 +63,8 @@ export function registerBoardIpc(
     return true;
   });
   ipc.handleWithEvent("boards:close-window", (event) => {
-    const window = BrowserWindow.fromWebContents(event.sender);
-    if (window && window !== dependencies.getMainWindow()) window.close();
+    const window = dependencies.windowForSender(event);
+    if (window !== dependencies.getMainWindow()) window.close();
     return true;
   });
   ipc.handle("boards:get-assets", (id) => {
@@ -81,7 +84,7 @@ export function registerBoardIpc(
     }
     const asset = await dependencies.relinkBoardAsset(
       parsedAssetId,
-      path.resolve(pathSchema.parse(filename)),
+      assertAbsoluteLocalPath(pathSchema.parse(filename)),
     );
     return {
       assetId: parsedAssetId,
@@ -105,13 +108,16 @@ export function registerBoardIpc(
       filters: [{ name: "RefCanvas 项目", extensions: ["refcanvas"] }],
     });
     if (result.canceled || !result.filePath) return null;
+    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: result.filePath, mode: "destination" },
+    ]);
     if (!parsedOptions.embedAssets) {
       await writeFile(
-        result.filePath,
+        destination,
         JSON.stringify(loaded.document, null, 2),
         "utf8",
       );
-      return result.filePath;
+      return destination;
     }
     const bundleDirectory = await mkdtemp(
       path.join(os.tmpdir(), "refcanvas-board-package-"),
@@ -148,7 +154,7 @@ export function registerBoardIpc(
         }
       }
       await writeFile(
-        result.filePath,
+        destination,
         JSON.stringify(
           {
             format: "refcanvas-package",
@@ -166,7 +172,7 @@ export function registerBoardIpc(
     } finally {
       await rm(bundleDirectory, { recursive: true, force: true });
     }
-    return result.filePath;
+    return destination;
   });
   ipc.handleWithEvent("boards:export-json", async (event, id) => {
     const loaded = database().loadBoard(idSchema.parse(id));
@@ -180,12 +186,15 @@ export function registerBoardIpc(
       filters: [{ name: "RefCanvas 项目", extensions: ["refcanvas"] }],
     });
     if (result.canceled || !result.filePath) return null;
+    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: result.filePath, mode: "destination" },
+    ]);
     await writeFile(
-      result.filePath,
+      destination,
       JSON.stringify(loaded.document, null, 2),
       "utf8",
     );
-    return result.filePath;
+    return destination;
   });
   ipc.handleWithEvent("boards:export-png", async (event, id, dataUrl) => {
     const loaded = database().loadBoard(idSchema.parse(id));
@@ -196,10 +205,13 @@ export function registerBoardIpc(
       filters: [{ name: "PNG 图片", extensions: ["png"] }],
     });
     if (result.canceled || !result.filePath) return null;
+    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: result.filePath, mode: "destination" },
+    ]);
     await writeFile(
-      result.filePath,
+      destination,
       dependencies.pngDataUrlToBuffer(z.string().parse(dataUrl)),
     );
-    return result.filePath;
+    return destination;
   });
 }

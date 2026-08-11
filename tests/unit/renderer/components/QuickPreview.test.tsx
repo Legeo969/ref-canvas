@@ -52,6 +52,7 @@ describe("QuickPreview", () => {
       for (const root of roots.splice(0)) root.unmount();
     });
     document.body.replaceChildren();
+    vi.restoreAllMocks();
   });
 
   it("continues to the next asset across a cursor page boundary", async () => {
@@ -97,9 +98,14 @@ describe("QuickPreview", () => {
     );
   });
 
-  it("updates favorite and rating without closing on select space", async () => {
+  it("shows only asset details and navigation without management actions", async () => {
     const onUpdate = vi.fn(async () => undefined);
     const onClose = vi.fn();
+    Object.assign(window, {
+      refCanvas: {
+        media: { probe: vi.fn(async () => ({ width: 100, height: 100, duration: null, extra: {} })) },
+      },
+    });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -119,24 +125,12 @@ describe("QuickPreview", () => {
         />,
       );
     });
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }));
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "4" }));
-    });
-
-    expect(onUpdate).toHaveBeenNthCalledWith(1, "asset-1", {
-      favorite: true,
-    });
-    expect(onUpdate).toHaveBeenNthCalledWith(2, "asset-1", { rating: 4 });
-
-    const select = document.querySelector(
-      ".quick-preview-organize select",
-    ) as HTMLSelectElement;
-    await act(async () => {
-      select.dispatchEvent(
-        new KeyboardEvent("keydown", { key: " ", bubbles: true }),
-      );
-    });
+    expect(document.querySelector(".quick-preview-details")?.textContent).toContain("D:\\assets\\1.png");
+    expect(document.querySelector(".quick-preview-details")?.textContent).toContain("100 × 100");
+    expect(document.querySelector(".quick-preview-organize")).toBeNull();
+    expect(document.querySelector("[aria-label*='收藏']")).toBeNull();
+    expect(document.querySelector("[aria-label*='评分']")).toBeNull();
+    expect(onUpdate).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
 });

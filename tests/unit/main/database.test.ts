@@ -29,6 +29,128 @@ function createAsset(overrides: Partial<NewAsset> = {}): NewAsset {
 }
 
 describe("RefCanvasDatabase", () => {
+  describe("visual signature identity", () => {
+    const signature = {
+      visualHash: "0123456789abcdef",
+      colorSignature: "1020304050607080",
+      dominantColor: { r: 16, g: 32, b: 48 },
+    };
+
+    it("preserves a signature for metadata refreshes and same-path renames", () => {
+      database = new RefCanvasDatabase(":memory:");
+      const original = database.upsertAsset(createAsset()).asset;
+      database.setVisualSignature(
+        original.id,
+        signature.visualHash,
+        signature.colorSignature,
+        signature.dominantColor,
+      );
+
+      database.upsertAsset(createAsset({
+        title: "Renamed without changing content",
+        notes: "metadata refreshed",
+        mtimeMs: 9999,
+        width: 2048,
+      }));
+
+      expect(database.getVisualSignature(original.id)).toEqual({
+        visualHash: signature.visualHash,
+        colorSignature: signature.colorSignature,
+      });
+      expect(database.listImagesMissingVisualIndex()).toEqual([]);
+    });
+
+    it.each([
+      ["size", { size: 2048 }],
+      ["fingerprint", { fingerprint: "changed" }],
+    ])("clears a signature when %s changes", (_label, change) => {
+      database = new RefCanvasDatabase(":memory:");
+      const original = database.upsertAsset(createAsset()).asset;
+      database.setVisualSignature(
+        original.id,
+        signature.visualHash,
+        signature.colorSignature,
+        signature.dominantColor,
+      );
+
+      database.upsertAsset(createAsset(change));
+
+      expect(database.getVisualSignature(original.id)).toBeNull();
+      expect(database.listImagesMissingVisualIndex()).toEqual([
+        { id: original.id, path: original.path },
+      ]);
+    });
+
+    it("preserves same-content relinks and invalidates changed-content relinks", () => {
+      database = new RefCanvasDatabase(":memory:");
+      const original = database.upsertAsset(createAsset()).asset;
+      database.setVisualSignature(
+        original.id,
+        signature.visualHash,
+        signature.colorSignature,
+        signature.dominantColor,
+      );
+
+      database.relinkAsset(original.id, createAsset({
+        path: "E:\\moved\\temple.png",
+        pathKey: "e:\\moved\\temple.png",
+      }));
+      expect(database.getVisualSignature(original.id)?.visualHash).toBe(
+        signature.visualHash,
+      );
+
+      database.relinkAsset(original.id, createAsset({
+        path: "F:\\replaced\\temple.png",
+        pathKey: "f:\\replaced\\temple.png",
+        fingerprint: "replacement",
+      }));
+      expect(database.getVisualSignature(original.id)).toBeNull();
+    });
+
+    it("applies identity rules atomically in bulk upserts", () => {
+      database = new RefCanvasDatabase(":memory:");
+      const firstInput = createAsset();
+      const secondInput = createAsset({
+        path: "D:\\references\\second.png",
+        pathKey: "d:\\references\\second.png",
+      });
+      const [first, second] = database.upsertAssets([firstInput, secondInput]);
+      for (const result of [first, second]) {
+        database.setVisualSignature(
+          result.asset.id,
+          signature.visualHash,
+          signature.colorSignature,
+          signature.dominantColor,
+        );
+      }
+
+      database.upsertAssets([
+        { ...firstInput, title: "Metadata only" },
+        { ...secondInput, size: secondInput.size + 1 },
+      ]);
+
+      expect(database.getVisualSignature(first.asset.id)).not.toBeNull();
+      expect(database.getVisualSignature(second.asset.id)).toBeNull();
+    });
+
+    it("uses a supplied fresh signature instead of clearing it", () => {
+      database = new RefCanvasDatabase(":memory:");
+      const original = database.upsertAsset(createAsset()).asset;
+      database.setVisualSignature(original.id, "old", "old", { r: 1, g: 2, b: 3 });
+
+      database.upsertAsset(createAsset({
+        fingerprint: "new-content",
+        ...signature,
+      }));
+
+      expect(database.getVisualSignature(original.id)).toEqual({
+        visualHash: signature.visualHash,
+        colorSignature: signature.colorSignature,
+      });
+      expect(database.listImagesMissingVisualIndex()).toEqual([]);
+    });
+  });
+
   it("reuses an asset imported from the same normalized path", () => {
     database = new RefCanvasDatabase(":memory:");
     const first = database.upsertAsset(createAsset());

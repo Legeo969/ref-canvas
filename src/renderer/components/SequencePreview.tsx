@@ -6,6 +6,7 @@ import {
   Gauge,
   Pause,
   Play,
+  RefreshCw,
   SkipBack,
   SkipForward,
   SlidersHorizontal,
@@ -20,6 +21,7 @@ import type {
 import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
+import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
 
 /**
  * 图片序列预览（阶段 3 §9.4）：播放、逐帧、FPS 调节、帧范围/缺帧显示。
@@ -499,11 +501,9 @@ export function SequenceCard({
   onPreview(): void;
 }) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setThumbnailUrl(null);
-    setFailed(false);
     let cancelled = false;
     void window.refCanvas.filesystem
       .previewToken?.(sequence.files[0])
@@ -518,25 +518,45 @@ export function SequenceCard({
     };
   }, [sequence.files]);
 
+  const preview = useRetryingPreviewUrl(thumbnailUrl);
+
   const missing = sequence.missingFrames.length;
   return (
     <button
       className={`asset-card directory-card sequence-card ${selected ? "selected" : ""}`}
-      onClick={onSelect}
+      aria-busy={preview.status === "loading" || preview.status === "waiting"}
+      onClick={(event) => {
+        if (preview.status === "failed") preview.retry();
+        onSelect(event);
+      }}
       onDoubleClick={onPreview}
     >
       <span className="asset-preview">
-        {thumbnailUrl && !failed ? (
+        {preview.url && preview.status !== "failed" ? (
           <img
-            src={thumbnailUrl}
+            className={preview.status === "ready" ? "" : "preview-image-pending"}
+            src={preview.url}
             alt=""
             draggable={false}
-            onError={() => setFailed(true)}
+            onLoad={preview.markReady}
+            onError={preview.markError}
           />
         ) : (
           <span className="asset-placeholder">
-            <Film size={26} strokeWidth={1.35} />
-            <span>{translate("sequence.cardLabel")}</span>
+            {preview.status === "failed"
+              ? <RefreshCw size={24} />
+              : <Film size={26} strokeWidth={1.35} />}
+            <span>
+              {preview.status === "failed"
+                ? "点击重试预览"
+                : translate("sequence.cardLabel")}
+            </span>
+          </span>
+        )}
+        {(preview.status === "loading" || preview.status === "waiting") && (
+          <span className="preview-cache-loading" role="status">
+            <RefreshCw size={15} />
+            {preview.status === "waiting" ? "正在等待预览…" : "正在生成预览…"}
           </span>
         )}
         <span className="sequence-badge">

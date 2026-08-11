@@ -11,6 +11,8 @@ import type { ZipArchiveService } from "../services/zip-archive-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import { assertAbsoluteLocalPath } from "../platform/local-path-security";
+import type { WriteAccessController } from "../platform/write-access-controller";
 import type { MountRoot } from "../../shared/contracts";
 import {
   directoryPathsSchema,
@@ -53,6 +55,7 @@ interface FilesystemIpcDependencies {
   previewTokens: PreviewTokenRegistry;
   trashDirectoryPath(filename: string): Promise<void>;
   windowForSender(event: IpcMainInvokeEvent): Electron.BrowserWindow;
+  writeAccess: WriteAccessController;
   /** FND-007：流式 ZIP 归档服务（可取消）。 */
   getArchiveService(): ZipArchiveService;
 }
@@ -66,15 +69,15 @@ export function registerFilesystemIpc(
   const batches = () => dependencies.getDirectoryBatches();
   const fileOperations = () => dependencies.getFileOperations();
   const isLocalDrivePath = (filename: string): boolean => {
-    const root = path.parse(filename).root;
-    if (!root) return false;
-    if (process.platform !== "win32") {
-      return root === path.parse(process.cwd()).root;
+    try {
+      assertAbsoluteLocalPath(filename);
+      return true;
+    } catch {
+      return false;
     }
-    return /^[A-Za-z]:\\$/.test(root);
   };
   const isAllowedPath = (filename: string): boolean => {
-    const resolved = path.resolve(filename);
+    const resolved = assertAbsoluteLocalPath(filename);
     const inMount = dependencies.getMountRoots().some((mount) => {
       if (mount.state !== "online") return false;
       const relative = path.relative(path.resolve(mount.path), resolved);
@@ -86,7 +89,7 @@ export function registerFilesystemIpc(
     return inMount || isLocalDrivePath(resolved);
   };
   const assertAllowedPath = (filename: string): string => {
-    const resolved = path.resolve(filename);
+    const resolved = assertAbsoluteLocalPath(filename);
     if (!isAllowedPath(resolved)) throw new Error("PATH_OUTSIDE_MOUNT_ROOT");
     return resolved;
   };
@@ -199,48 +202,83 @@ export function registerFilesystemIpc(
   ipc.handle("filesystem:materialize", (filename) =>
     library().materializePath(assertAllowedPath(pathSchema.parse(filename))),
   );
-  ipc.handle("filesystem:rename", async (filename, newName, options) => {
+  ipc.handleWithEvent("filesystem:rename", async (event, filename, newName, options) => {
     const parsedOptions = parseFileOperationOptions(options);
     const resolved = await fileOperations().assertPath(
       assertAllowedPath(pathSchema.parse(filename)),
       parsedOptions,
     );
+    const parsedName = z.string().trim().min(1).max(255).parse(newName);
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(
+      window,
+      "rename",
+      [
+        { path: resolved, mode: "existing" },
+        { path: path.join(path.dirname(resolved), parsedName), mode: "destination" },
+      ],
+    );
     return library().renameSourceFile(
-      resolved,
-      z.string().trim().min(1).max(255).parse(newName),
+      canonical[0],
+      path.basename(canonical[1]),
     );
   });
-  ipc.handle("filesystem:trash", async (filenames, options) => {
+  ipc.handleWithEvent("filesystem:trash", async (event, filenames, options) => {
     const parsedOptions = parseFileOperationOptions(options);
-    for (const filename of directoryPathsSchema.parse(filenames)) {
-      const resolved = await fileOperations().assertPath(
-        assertAllowedPath(filename),
-        parsedOptions,
-      );
-      await dependencies.trashDirectoryPath(resolved);
+    const resolvedPaths = await Promise.all(directoryPathsSchema.parse(filenames).map(
+      (filename) => fileOperations().assertPath(assertAllowedPath(filename), parsedOptions),
+    ));
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(
+      window,
+      "trash",
+      resolvedPaths.map((filename) => ({ path: filename, mode: "existing" })),
+    );
+    const finalPaths = await dependencies.writeAccess.authorize(
+      window,
+      "trash",
+      canonical.map((filename) => ({ path: filename, mode: "existing" })),
+    );
+    for (const finalPath of finalPaths) {
+      await dependencies.trashDirectoryPath(finalPath);
     }
   });
-  ipc.handle("filesystem:create-folder", (parentPath, name, options) =>
-    fileOperations().createFolder(
-      assertAllowedPath(pathSchema.parse(parentPath)),
-      z.string().trim().min(1).max(120).parse(name),
-      parseFileOperationOptions(options),
-    ),
-  );
-  ipc.handle("filesystem:copy", (sources, targetDirectory, options) =>
-    fileOperations().copy(
-      directoryPathsSchema.parse(sources).map(assertAllowedPath),
-      assertAllowedPath(pathSchema.parse(targetDirectory)),
-      parseFileOperationOptions(options),
-    ),
-  );
-  ipc.handle("filesystem:move", (sources, targetDirectory, options) =>
-    fileOperations().move(
-      directoryPathsSchema.parse(sources).map(assertAllowedPath),
-      assertAllowedPath(pathSchema.parse(targetDirectory)),
-      parseFileOperationOptions(options),
-    ),
-  );
+  ipc.handleWithEvent("filesystem:create-folder", async (event, parentPath, name, options) => {
+    const parent = assertAllowedPath(pathSchema.parse(parentPath));
+    const folderName = z.string().trim().min(1).max(120).parse(name);
+    const [canonicalTarget] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "create-folder", [
+      { path: path.join(parent, folderName), mode: "destination" },
+    ]);
+    return fileOperations().createFolder(
+      path.dirname(canonicalTarget), path.basename(canonicalTarget), parseFileOperationOptions(options),
+    );
+  });
+  ipc.handleWithEvent("filesystem:copy", async (event, sources, targetDirectory, options) => {
+    const parsedSources = directoryPathsSchema.parse(sources).map(assertAllowedPath);
+    const target = assertAllowedPath(pathSchema.parse(targetDirectory));
+    const [canonicalTarget] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "copy", [
+      { path: target, mode: "destination" },
+    ]);
+    return fileOperations().copy(parsedSources, canonicalTarget, parseFileOperationOptions(options));
+  });
+  ipc.handleWithEvent("filesystem:move", async (event, sources, targetDirectory, options) => {
+    const parsedSources = directoryPathsSchema.parse(sources).map(assertAllowedPath);
+    const target = assertAllowedPath(pathSchema.parse(targetDirectory));
+    const window = dependencies.windowForSender(event);
+    const canonical = await dependencies.writeAccess.authorize(window, "move", [
+      ...parsedSources.map((filename) => ({ path: filename, mode: "existing" as const })),
+      { path: target, mode: "destination" },
+    ]);
+    const finalPaths = await dependencies.writeAccess.authorize(window, "move", canonical.map(
+      (filename, index) => ({
+        path: filename,
+        mode: index < parsedSources.length ? "existing" as const : "destination" as const,
+      }),
+    ));
+    return fileOperations().move(
+      finalPaths.slice(0, parsedSources.length), finalPaths.at(-1)!, parseFileOperationOptions(options),
+    );
+  });
   ipc.handle("filesystem:open", (filename) =>
     shell.openPath(assertAllowedPath(pathSchema.parse(filename))),
   );
@@ -262,7 +300,7 @@ export function registerFilesystemIpc(
       };
     }),
   );
-  ipc.handle("filesystem:start-batch", (selection, action) => {
+  ipc.handleWithEvent("filesystem:start-batch", async (event, selection, action) => {
     const parsedSelection = directorySelectionSchema.parse(selection);
     if (parsedSelection.mode === "explicit") {
       parsedSelection.paths.forEach(assertAllowedPath);
@@ -270,10 +308,53 @@ export function registerFilesystemIpc(
       assertAllowedPath(parsedSelection.directoryPath);
       parsedSelection.excludedPaths.forEach(assertAllowedPath);
     }
-    return batches().start(
-      parsedSelection,
-      directoryBatchActionSchema.parse(action),
-    );
+    const parsedAction = directoryBatchActionSchema.parse(action);
+    if (parsedAction.type === "trash") {
+      const window = dependencies.windowForSender(event);
+      const targets: string[] = [];
+      if (parsedSelection.mode === "explicit") {
+        targets.push(...parsedSelection.paths.map(assertAllowedPath));
+      } else {
+        // Freeze every page before authorization. The background job must not
+        // resolve a query again after the user grants access.
+        let offset = 0;
+        while (true) {
+          const page = parsedSelection.mode === "all"
+            ? await service().resolveSelection(
+                parsedSelection.directoryPath,
+                parsedSelection.revision,
+                parsedSelection.excludedPaths,
+                offset,
+              )
+            : await service().resolveSearchSelection(
+                parsedSelection.searchId,
+                parsedSelection.revision,
+                parsedSelection.excludedPaths,
+                 offset,
+               );
+          targets.push(...page.paths.map(assertAllowedPath));
+          if (page.nextOffset === null) break;
+          offset = page.nextOffset;
+        }
+      }
+      const canonical = await dependencies.writeAccess.authorize(
+        window,
+        "trash",
+        targets.map((filename) => ({ path: filename, mode: "existing" })),
+      );
+      // One full-set final canonical check occurs before the batch is started.
+      // No authorization prompt can occur after the first mutation.
+      const finalPaths = await dependencies.writeAccess.authorize(
+        window,
+        "trash",
+        canonical.map((filename) => ({ path: filename, mode: "existing" })),
+      );
+      return batches().start(
+        { mode: "explicit", paths: finalPaths },
+        parsedAction,
+      );
+    }
+    return batches().start(parsedSelection, parsedAction);
   });
   ipc.handleWithEvent("filesystem:export-paths", async (event, selection) => {
     const parsedSelection = directorySelectionSchema.parse(selection);
@@ -289,10 +370,13 @@ export function registerFilesystemIpc(
       filters: [{ name: "UTF-8 文本", extensions: ["txt"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    await writeFile(result.filePath, "\uFEFF", "utf8");
+    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: result.filePath, mode: "destination" },
+    ]);
+    await writeFile(destination, "\uFEFF", "utf8");
     return batches().start(parsedSelection, {
       type: "exportPaths",
-      destination: result.filePath,
+      destination,
     });
   });
   ipc.handle("filesystem:get-batch", (id) =>
@@ -302,7 +386,7 @@ export function registerFilesystemIpc(
     batches().cancel(z.string().uuid().parse(id)),
   );
   // FND-007 §8.2：流式 ZIP 归档（可取消、冲突编号、临时文件原子移动）。
-  ipc.handle("filesystem:archive", async (input) => {
+  ipc.handleWithEvent("filesystem:archive", async (event, input) => {
     const parsed = z
       .object({
         sources: directoryPathsSchema,
@@ -311,14 +395,16 @@ export function registerFilesystemIpc(
         jobId: z.string().min(1).max(128),
       })
       .parse(input);
-    const sources = parsed.sources
-      .map((filename) => path.resolve(filename))
-      .filter(isAllowedPath);
+    const sources = parsed.sources.map(assertAllowedPath);
     if (sources.length === 0) throw new Error("ARCHIVE_NO_ALLOWED_SOURCE");
+    const targetDirectory = assertAllowedPath(parsed.targetDirectory);
+    const [canonicalOutput] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "archive", [
+      { path: path.join(targetDirectory, `${parsed.baseName}.zip`), mode: "destination" },
+    ]);
     return dependencies.getArchiveService().archive(sources, {
       jobId: parsed.jobId,
-      targetDirectory: path.resolve(parsed.targetDirectory),
-      baseName: parsed.baseName,
+      targetDirectory: path.dirname(canonicalOutput),
+      baseName: path.basename(canonicalOutput, ".zip"),
     });
   });
   ipc.handle("filesystem:cancel-archive", (jobId) =>
@@ -329,8 +415,13 @@ export function registerFilesystemIpc(
   ipc.on("system:start-native-drag-paths", (event, filenames) => {
     const resolved = directoryPathsSchema
       .parse(filenames)
-      .map((filename) => path.resolve(filename))
-      .filter(isAllowedPath)
+      .flatMap((filename) => {
+        try {
+          return [assertAllowedPath(filename)];
+        } catch {
+          return [];
+        }
+      })
       .filter((filename) => existsSync(filename));
     if (!resolved.length) return;
     const icon = nativeImage.createFromPath(resolved[0]);

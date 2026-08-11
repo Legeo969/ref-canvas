@@ -27,6 +27,7 @@ function applyWidthVariables(layout: PanelLayout): void {
 
 interface PanelDividersProps {
   panel: PanelId;
+  activePanels?: readonly PanelId[];
   /** 已含窗口收缩保护的渲染布局。 */
   layout: PanelLayout;
   windowWidth: number;
@@ -39,6 +40,7 @@ interface PanelDividersProps {
  */
 export function PanelDividers({
   panel,
+  activePanels,
   layout,
   windowWidth,
   onCommit,
@@ -71,7 +73,13 @@ export function PanelDividers({
       drag.panel,
       event.clientX - drag.startX,
     );
-    const next = adjustPanelWidth(layoutRef.current, drag.panel, delta, windowWidth);
+    const next = adjustPanelWidth(
+      layoutRef.current,
+      drag.panel,
+      delta,
+      windowWidth,
+      activePanels,
+    );
     applyWidthVariables(next);
   };
 
@@ -85,7 +93,15 @@ export function PanelDividers({
     dragRef.current = null;
     event.currentTarget.classList.remove("dragging");
     document.body.classList.remove("panel-resizing");
-    onCommit(adjustPanelWidth(layoutRef.current, drag.panel, delta, windowWidth));
+    onCommit(
+      adjustPanelWidth(
+        layoutRef.current,
+        drag.panel,
+        delta,
+        windowWidth,
+        activePanels,
+      ),
+    );
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -95,7 +111,15 @@ export function PanelDividers({
       (event.key === "ArrowRight" ? 1 : -1) *
       (event.shiftKey ? KEYBOARD_STEP_FAST : KEYBOARD_STEP);
     const delta = panelResizeDelta(panel, physicalDelta);
-    onCommit(adjustPanelWidth(layoutRef.current, panel, delta, windowWidth));
+    onCommit(
+      adjustPanelWidth(
+        layoutRef.current,
+        panel,
+        delta,
+        windowWidth,
+        activePanels,
+      ),
+    );
   };
 
   const handleDoubleClick = () => {
@@ -137,9 +161,10 @@ export function PanelDividers({
 export function applyPanelLayoutStyles(
   panelLayout: unknown,
   windowWidth: number,
+  activePanels?: readonly PanelId[],
 ): PanelLayout {
   const base = normalizePanelLayout(panelLayout ?? PANEL_DEFAULTS);
-  const effective = panelLayoutForWindow(base, windowWidth);
+  const effective = panelLayoutForWindow(base, windowWidth, activePanels);
   applyWidthVariables(effective);
   return effective;
 }

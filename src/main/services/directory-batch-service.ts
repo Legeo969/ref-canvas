@@ -18,6 +18,7 @@ export class DirectoryBatchService {
   private readonly jobs = new Map<string, DirectoryBatchSnapshot>();
   private readonly cancelled = new Set<string>();
   private readonly events = new EventEmitter();
+  private readonly pathGuards = new Map<string, (filename: string) => Promise<string>>();
 
   constructor(private readonly dependencies: BatchDependencies) {}
 
@@ -29,6 +30,7 @@ export class DirectoryBatchService {
   start(
     selection: DirectorySelectionScope,
     action: DirectoryBatchAction,
+    pathGuard?: (filename: string) => Promise<string>,
   ): DirectoryBatchSnapshot {
     const now = new Date().toISOString();
     const snapshot: DirectoryBatchSnapshot = {
@@ -42,6 +44,7 @@ export class DirectoryBatchService {
       updatedAt: now,
     };
     this.jobs.set(snapshot.id, snapshot);
+    if (pathGuard) this.pathGuards.set(snapshot.id, pathGuard);
     void this.run(snapshot, selection);
     return { ...snapshot, failed: [...snapshot.failed] };
   }
@@ -108,6 +111,7 @@ export class DirectoryBatchService {
       });
     } finally {
       this.cancelled.delete(snapshot.id);
+      this.pathGuards.delete(snapshot.id);
       this.emit(snapshot);
     }
   }
@@ -119,7 +123,8 @@ export class DirectoryBatchService {
     for (const filename of paths) {
       if (this.cancelled.has(snapshot.id)) return;
       try {
-        await this.dependencies.process(filename, snapshot.action);
+        const guarded = await this.pathGuards.get(snapshot.id)?.(filename) ?? filename;
+        await this.dependencies.process(guarded, snapshot.action);
       } catch (error) {
         snapshot.failed.push({
           path: filename,

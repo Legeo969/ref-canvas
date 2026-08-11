@@ -8,9 +8,9 @@ export interface PanelLayout {
 }
 
 export const PANEL_DEFAULTS: PanelLayout = {
-  sidebarWidth: 260,
-  assetWidth: 350,
-  detailsWidth: 760,
+  sidebarWidth: 180,
+  assetWidth: 280,
+  detailsWidth: 1100,
   collapsed: [],
 };
 
@@ -24,6 +24,9 @@ export const PANEL_LIMITS: Record<PanelId, { min: number; max: number }> = {
 export const BOARD_MIN_WIDTH = 360;
 
 export const PANEL_ID_LIST: readonly PanelId[] = ["sidebar", "asset", "details"];
+
+export const DIRECTORY_PANEL_IDS: readonly PanelId[] = ["sidebar", "details"];
+export const BOARD_PANEL_IDS: readonly PanelId[] = ["sidebar"];
 
 export const PANEL_CSS_VARIABLES: Record<PanelId, string> = {
   sidebar: "--panel-sidebar",
@@ -131,38 +134,44 @@ export function withCollapsed(
 export function panelLayoutForWindow(
   layout: PanelLayout,
   windowWidth: number,
+  activePanels: readonly PanelId[] = PANEL_ID_LIST,
 ): PanelLayout {
   const collapsed = new Set(layout.collapsed);
-  const visible = PANEL_ID_LIST.filter((id) => !collapsed.has(id));
+  const visible = activePanels.filter((id) => !collapsed.has(id));
   const base = visible.reduce((sum, id) => sum + panelWidthOf(layout, id), 0);
   if (windowWidth - base >= BOARD_MIN_WIDTH) {
     return { ...layout, collapsed: PANEL_ID_LIST.filter((id) => collapsed.has(id)) };
   }
   const minimums = visible.reduce((sum, id) => sum + PANEL_LIMITS[id].min, 0);
   if (windowWidth - minimums >= BOARD_MIN_WIDTH) {
-    const widths = {} as Record<PanelId, number>;
-    for (const id of PANEL_ID_LIST) {
-      widths[id] = collapsed.has(id) ? panelWidthOf(layout, id) : PANEL_LIMITS[id].min;
+    const widths: Record<PanelId, number> = {
+      sidebar: layout.sidebarWidth,
+      asset: layout.assetWidth,
+      details: layout.detailsWidth,
+    };
+    let overflow = Math.max(0, base + BOARD_MIN_WIDTH - windowWidth);
+    for (const id of ["details", "asset", "sidebar"] as const) {
+      if (!visible.includes(id) || overflow <= 0) continue;
+      const shrinkBy = Math.min(
+        overflow,
+        Math.max(0, widths[id] - PANEL_LIMITS[id].min),
+      );
+      widths[id] -= shrinkBy;
+      overflow -= shrinkBy;
     }
     return setPanelWidths(layout, widths);
   }
   const next = new Set(collapsed);
-  if (!next.has("details")) next.add("details");
-  const visibleAfterDetails = PANEL_ID_LIST.filter((id) => !next.has(id));
-  const minimumsAfterDetails = visibleAfterDetails.reduce(
-    (sum, id) => sum + PANEL_LIMITS[id].min,
-    0,
-  );
-  if (windowWidth - minimumsAfterDetails < BOARD_MIN_WIDTH) {
-    next.add("sidebar");
-  }
-  const widths = {} as Record<PanelId, number>;
-  for (const id of PANEL_ID_LIST) {
-    widths[id] =
-      collapsed.has(id) || next.has(id) ? panelWidthOf(layout, id) : PANEL_LIMITS[id].min;
+  for (const id of ["details", "sidebar", "asset"] as const) {
+    if (!activePanels.includes(id) || next.has(id)) continue;
+    next.add(id);
+    const remainingMinimums = activePanels
+      .filter((panel) => !next.has(panel))
+      .reduce((sum, panel) => sum + PANEL_LIMITS[panel].min, 0);
+    if (windowWidth - remainingMinimums >= BOARD_MIN_WIDTH) break;
   }
   return {
-    ...setPanelWidths(layout, widths),
+    ...layout,
     collapsed: PANEL_ID_LIST.filter((id) => next.has(id)),
   };
 }
@@ -188,11 +197,12 @@ export function adjustPanelWidth(
   panel: PanelId,
   delta: number,
   windowWidth: number,
+  activePanels: readonly PanelId[] = PANEL_ID_LIST,
 ): PanelLayout {
   if (layout.collapsed.includes(panel) && delta <= 0) return layout;
   if (layout.collapsed.includes(panel)) {
     // 折叠面板被拖开时，先确认恢复后白板仍能保留最小宽度。
-    const others = PANEL_ID_LIST.filter(
+    const others = activePanels.filter(
       (id) => id !== panel && !layout.collapsed.includes(id),
     );
     const otherWidths = others.reduce((sum, id) => sum + expandedWidths(layout)[id], 0);
@@ -204,7 +214,8 @@ export function adjustPanelWidth(
     ? withCollapsed(layout, panel, false)
     : layout;
   const widths = expandedWidths(working);
-  const board = windowWidth - widths.sidebar - widths.asset - widths.details;
+  const occupied = activePanels.reduce((sum, id) => sum + widths[id], 0);
+  const board = windowWidth - occupied;
   const room = Math.max(0, board - BOARD_MIN_WIDTH);
   const current = panelWidthOf(working, panel);
   const limit = PANEL_LIMITS[panel];

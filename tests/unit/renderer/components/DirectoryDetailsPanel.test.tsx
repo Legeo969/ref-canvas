@@ -43,7 +43,7 @@ describe("DirectoryDetailsPanel workbench", () => {
     document.body.replaceChildren();
   });
 
-  it("opens from the live palette and saves then deletes a color", async () => {
+  it("copies live palette colors inline without opening a color workbench", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     const color = {
@@ -51,6 +51,7 @@ describe("DirectoryDetailsPanel workbench", () => {
       hex: "#da8578",
       count: 30,
     };
+    const writeClipboard = vi.fn(async () => undefined);
     Object.assign(window, {
       refCanvas: {
         metadata: { ensure: vi.fn(async () => ({ asset })) },
@@ -69,7 +70,7 @@ describe("DirectoryDetailsPanel workbench", () => {
         filesystem: { open: vi.fn(), reveal: vi.fn() },
         system: {
           getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
-          writeClipboard: vi.fn(async () => undefined),
+          writeClipboard,
         },
       } as unknown as RefCanvasApi,
     });
@@ -85,7 +86,7 @@ describe("DirectoryDetailsPanel workbench", () => {
     });
 
     const liveColor = host.querySelector<HTMLButtonElement>(
-      '.video-step-controls [aria-label="查看颜色 #da8578"]',
+      '.video-step-controls [aria-label="复制颜色 #da8578"]',
     );
     expect(liveColor).toBeTruthy();
     await act(async () => {
@@ -94,19 +95,10 @@ describe("DirectoryDetailsPanel workbench", () => {
       await Promise.resolve();
     });
 
-    expect(host.querySelector('[aria-label="色彩提取"]')).toBeTruthy();
-    expect(host.textContent).toContain("RGB");
-    expect(host.textContent).toContain("218, 133, 120");
-
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="添加颜色到色板"]')?.click();
-    });
-    expect(host.querySelector('[aria-label="查看颜色 #da8578"]')).toBeTruthy();
-
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="删除色板颜色"]')?.click();
-    });
-    expect(host.querySelector('[aria-label="已保存色板"]')?.textContent).toContain("点击 + 保存颜色");
+    expect(writeClipboard).toHaveBeenCalledWith("#da8578");
+    expect(host.querySelector('[aria-label="色彩提取"]')).toBeNull();
+    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
   });
 
   it("switches AI inside the workbench and binds the current material", async () => {

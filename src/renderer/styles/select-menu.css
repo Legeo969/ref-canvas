@@ -1,0 +1,178 @@
+.select-menu-trigger {
+  display: inline-flex;
+  min-width: 150px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: #1b2021;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.16);
+  color: #d8dfdb;
+  cursor: pointer;
+  font-size: 11px;
+  text-align: left;
+  transition-property: background-color, box-shadow, color, scale;
+  transition-duration: 140ms;
+  transition-timing-function: ease-out;
+}
+
+.select-menu-trigger:hover:not(:disabled) {
+  background: #202627;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.13),
+    0 4px 12px rgba(0, 0, 0, 0.16);
+  color: #f0f5f2;
+}
+
+.select-menu-trigger.open {
+  background: #293532;
+  box-shadow:
+    inset 0 0 0 1px rgba(89, 202, 166, 0.42),
+    0 0 0 3px rgba(58, 178, 143, 0.08);
+  color: #f0fbf7;
+}
+
+.select-menu-trigger:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.select-menu-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-menu-chevron {
+  flex: 0 0 auto;
+  color: #8f9b96;
+  rotate: 0deg;
+  transition-property: rotate, color;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.select-menu-trigger.open .select-menu-chevron {
+  color: #a9e4d1;
+  rotate: 180deg;
+}
+
+.select-menu-popover {
+  position: fixed;
+  z-index: 1200;
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 10px;
+  background: rgba(37, 44, 46, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 14px 36px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(16px);
+  transform-origin: center top;
+  animation: select-menu-enter 140ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.select-menu-popover.opens-above {
+  transform-origin: center bottom;
+}
+
+.select-menu-popover > button {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #c7cfcb;
+  cursor: pointer;
+  font-size: 11px;
+  text-align: left;
+  transition-property: background-color, color, scale;
+  transition-duration: 110ms;
+  transition-timing-function: ease-out;
+}
+
+.select-menu-popover > button:hover,
+.select-menu-popover > button.active {
+  background: rgba(255, 255, 255, 0.075);
+  color: #f1f5f3;
+}
+
+.select-menu-popover > button.selected {
+  background: #317c66;
+  color: #f5fffb;
+}
+
+.select-menu-popover > button.selected.active,
+.select-menu-popover > button.selected:hover {
+  background: #378a70;
+}
+
+.select-menu-popover > button:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.select-menu-popover > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-menu-popover > button > svg {
+  flex: 0 0 auto;
+  opacity: 0;
+  scale: 0.25;
+  filter: blur(4px);
+  transition-property: opacity, scale, filter;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.select-menu-popover > button.selected > svg {
+  opacity: 1;
+  scale: 1;
+  filter: blur(0);
+}
+
+@keyframes select-menu-enter {
+  from {
+    opacity: 0;
+    scale: 0.98;
+    translate: 0 -4px;
+  }
+
+  to {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-menu-trigger,
+  .select-menu-chevron,
+  .select-menu-popover > button,
+  .select-menu-popover > button > svg {
+    transition-duration: 0.01ms;
+  }
+
+  .select-menu-popover {
+    animation: none;
+  }
+}

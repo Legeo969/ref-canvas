@@ -25,10 +25,12 @@ import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryManager } from "../services/library-manager";
 import type { LibraryService } from "../services/library-service";
 import { resolveNativeDragAssets } from "../platform/native-drag";
+import { assertAbsoluteLocalPath } from "../platform/local-path-security";
 import type { PreviewCacheIndex } from "../platform/preview-cache-index";
 import type { PreviewQueue } from "../platform/preview-queue";
 import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import type { WriteAccessController } from "../platform/write-access-controller";
 import { thumbnailCacheFilename } from "../platform/thumbnail-cache";
 import { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import {
@@ -62,12 +64,13 @@ interface SystemIpcDependencies {
   pngDataUrlToBuffer(dataUrl: string): Buffer;
   registerOverlayEmergencyShortcut(): boolean;
   restoreCaptureWindow(): void;
-  saveCapture(buffer: Buffer): Promise<string>;
+  saveCapture(buffer: Buffer, directory?: string): Promise<string>;
   scheduleBackgroundServices(): void;
   state: SystemIpcState;
   thumbnailQueue: PreviewQueue<Buffer>;
   thumbnailWorker: ThumbnailWorkerClient | null;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
+  writeAccess: WriteAccessController;
 }
 
 /**
@@ -175,7 +178,9 @@ export function registerSystemIpc(
   const state = dependencies.state;
 
   ipc.handle("system:open-external", async (filename) => {
-    await shell.openPath(z.string().min(1).parse(filename));
+    const local = assertAbsoluteLocalPath(z.string().min(1).max(32_768).parse(filename));
+    const error = await shell.openPath(local);
+    if (error) throw new Error(`OPEN_PATH_FAILED: ${error}`);
   });
   ipc.handle("system:open-recycle-bin", async () => {
     if (process.platform !== "win32") {
@@ -184,16 +189,22 @@ export function registerSystemIpc(
     await shell.openExternal("shell:RecycleBinFolder");
   });
   ipc.handle("system:open-files-with-default-app", async (paths) => {
-    const parsed = z.array(z.string().min(1).max(32_768)).min(1).max(500).parse(paths);
-    await Promise.all(
-      parsed.map((filename) => shell.openPath(filename)),
-    );
+    const parsed = z.array(z.string().min(1).max(32_768)).min(1).max(500).parse(paths)
+      .map(assertAbsoluteLocalPath);
+    const errors = (await Promise.all(parsed.map((filename) => shell.openPath(filename))))
+      .filter(Boolean);
+    if (errors.length) throw new Error(`OPEN_PATH_FAILED: ${errors.join("; ")}`);
   });
   ipc.handle("system:reveal", async (filename) => {
-    await revealInFileManager(z.string().min(1).parse(filename), shell);
+    await revealInFileManager(
+      assertAbsoluteLocalPath(z.string().min(1).max(32_768).parse(filename)),
+      shell,
+    );
   });
   ipc.handle("system:open-preview-window", async (filename) => {
-    dependencies.openPreviewWindow(z.string().min(1).max(32_768).parse(filename));
+    dependencies.openPreviewWindow(
+      assertAbsoluteLocalPath(z.string().min(1).max(32_768).parse(filename)),
+    );
   });
   ipc.handle("system:open-data-folder", async () => {
     await shell.openPath(app.getPath("userData"));
@@ -279,8 +290,11 @@ export function registerSystemIpc(
       filters: [{ name: "PNG", extensions: ["png"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    await writeFile(result.filePath, png);
-    return result.filePath;
+    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: result.filePath, mode: "destination" },
+    ]);
+    await writeFile(destination, png);
+    return destination;
   });
   ipc.handleWithEvent("system:toggle-always-on-top", (event) => {
     const window = dependencies.windowForSender(event);
@@ -350,10 +364,13 @@ export function registerSystemIpc(
     }
     return window.isFullScreen();
   });
-  ipc.handle("system:capture-clipboard", async () => {
+  ipc.handleWithEvent("system:capture-clipboard", async (event) => {
     const image = clipboard.readImage();
     if (image.isEmpty()) return null;
-    const filename = await dependencies.saveCapture(image.toPNG());
+    const [captureDirectory] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: path.join(app.getPath("pictures"), "RefCanvas Captures"), mode: "destination" },
+    ]);
+    const filename = await dependencies.saveCapture(image.toPNG(), captureDirectory);
     await library().importPaths([filename]);
     return database().getAssetByPath(filename);
   });
@@ -396,10 +413,14 @@ export function registerSystemIpc(
       throw error;
     }
   });
-  ipc.handle("system:save-region-capture", async (dataUrl) => {
+  ipc.handleWithEvent("system:save-region-capture", async (event, dataUrl) => {
     try {
+      const [captureDirectory] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+        { path: path.join(app.getPath("pictures"), "RefCanvas Captures"), mode: "destination" },
+      ]);
       const filename = await dependencies.saveCapture(
         dependencies.pngDataUrlToBuffer(z.string().parse(dataUrl)),
+        captureDirectory,
       );
       await library().importPaths([filename]);
       return database().getAssetByPath(filename);
@@ -437,6 +458,9 @@ export function registerSystemIpc(
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     if (result.canceled || !result.filePath) return null;
+    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+      { path: result.filePath, mode: "destination" },
+    ]);
     const databaseStat = await stat(dependencies.getDatabaseFilename()).catch(
       () => null,
     );
@@ -452,8 +476,8 @@ export function registerSystemIpc(
       library: database().getLibraryStats(),
       generatedAt: new Date().toISOString(),
     };
-    await writeFile(result.filePath, JSON.stringify(payload, null, 2), "utf8");
-    return result.filePath;
+    await writeFile(destination, JSON.stringify(payload, null, 2), "utf8");
+    return destination;
   });
   ipc.handle("system:set-global-shortcuts", (enabled) =>
     dependencies.configureGlobalShortcuts(z.boolean().parse(enabled)),

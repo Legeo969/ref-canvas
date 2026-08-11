@@ -11,7 +11,6 @@ import {
   screen,
   shell,
   Tray,
-  type WebFrameMain,
 } from "electron";
 import {
   appendFile,
@@ -24,6 +23,7 @@ import {
 } from "node:fs/promises";
 import { statSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import Database from "better-sqlite3";
 import { BackupService } from "./services/backup-service";
@@ -115,6 +115,8 @@ import {
   secureWebPreferences,
 } from "./platform/window-security";
 import type { BoardDocument } from "../shared/contracts";
+import { TrustedWindowRegistry } from "./platform/trusted-window-registry";
+import { WriteAccessController } from "./platform/write-access-controller";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -145,6 +147,8 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 /** 独立白板窗口：boardId → BrowserWindow（同一白板同时只允许一个窗口）。 */
 const boardWindows = new Map<string, BrowserWindow>();
+const trustedWindows = new TrustedWindowRegistry();
+const writeAccess = new WriteAccessController(() => [app.getPath("userData")]);
 let database: RefCanvasDatabase;
 let library: LibraryService;
 let backups: BackupService;
@@ -267,8 +271,10 @@ function pngDataUrlToBuffer(dataUrl: string): Buffer {
   return Buffer.from(parsed.slice(parsed.indexOf(",") + 1), "base64");
 }
 
-async function saveCapture(buffer: Buffer): Promise<string> {
-  const directory = path.join(app.getPath("pictures"), "RefCanvas Captures");
+async function saveCapture(
+  buffer: Buffer,
+  directory = path.join(app.getPath("pictures"), "RefCanvas Captures"),
+): Promise<string> {
   await mkdir(directory, { recursive: true });
   const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
   const filename = path.join(directory, `RefCanvas-${stamp}.png`);
@@ -351,10 +357,13 @@ function configureGlobalShortcuts(enabled: boolean): boolean {
     "CommandOrControl+Shift+C",
     () => {
       const image = clipboard.readImage();
-      if (!image.isEmpty()) {
-        void saveCapture(image.toPNG()).then((filename) =>
+      if (!image.isEmpty() && mainWindow && !mainWindow.isDestroyed()) {
+        const captureDirectory = path.join(app.getPath("pictures"), "RefCanvas Captures");
+        void writeAccess.authorize(mainWindow, "export", [
+          { path: captureDirectory, mode: "destination" },
+        ]).then(([canonicalDirectory]) => saveCapture(image.toPNG(), canonicalDirectory)).then((filename) =>
           library.importPaths([filename]),
-        );
+        ).catch(() => undefined);
       }
     },
   );
@@ -487,18 +496,11 @@ async function importCommandLineEntries(entries: string[]): Promise<boolean> {
   return importedProject;
 }
 
-function validateSender(frame: WebFrameMain | null): boolean {
-  if (!frame) return false;
-  if (mainWindow && frame.top === mainWindow.webContents.mainFrame) return true;
-  for (const window of boardWindows.values()) {
-    if (frame.top === window.webContents.mainFrame) return true;
-  }
-  return false;
-}
+const validateSender = trustedWindows.validateSender.bind(trustedWindows);
 
-/** IPC 对话框/窗口操作的目标窗口：优先 sender 所在窗口，回退主窗口。 */
+/** IPC 对话框/窗口操作只允许已登记且仍存活的发送窗口。 */
 function windowForSender(event: Electron.IpcMainInvokeEvent): BrowserWindow {
-  return BrowserWindow.fromWebContents(event.sender) ?? mainWindow!;
+  return trustedWindows.windowForSender(event);
 }
 
 /** 向主窗口与全部白板窗口广播进度事件。 */
@@ -802,13 +804,18 @@ function registerIpc(): void {
     getLibrary: () => library,
     safeFilename,
     windowForSender,
+    writeAccess,
   });
   registerLibraryManagementIpc(ipc, {
     getLibrary: () => library,
+    windowForSender,
+    writeAccess,
   });
   registerCollectionsIpc(ipc, {
     getDatabase: () => database,
     notifyCollectionsChanged: () => broadcastAll("collections:changed"),
+    windowForSender,
+    writeAccess,
   });
   registerAiIpc(ipc, {
     getDatabase: () => database,
@@ -819,6 +826,8 @@ function registerIpc(): void {
       aiJobService.replaceProviders(await buildAiProviders());
     },
     notifyAiChanged: (snapshot) => broadcastAll("ai:changed", snapshot),
+    windowForSender,
+    writeAccess,
   });
   registerTaskCenterIpc(ipc, {
     getTaskCenter: () => taskCenter,
@@ -832,6 +841,7 @@ function registerIpc(): void {
     previewTokens,
     trashDirectoryPath,
     windowForSender,
+    writeAccess,
     getArchiveService: () => zipArchiveService,
   });
   registerBackupIpc(ipc, {
@@ -850,6 +860,7 @@ function registerIpc(): void {
     relinkBoardAsset: (assetId, filename) =>
       library.relinkAsset(assetId, filename),
     windowForSender,
+    writeAccess,
   });
 
   registerResourcesIpc(ipc, {
@@ -862,9 +873,15 @@ function registerIpc(): void {
     getScriptsService: () => scriptsService,
     previewTokens,
     notifyMountsChanged: (change) => broadcastAll("mounts:changed", change),
+    windowForSender,
+    writeAccess,
   });
 
-  registerActionIpc(ipc, () => actions);
+  registerActionIpc(ipc, {
+    getActions: () => actions,
+    windowForSender,
+    writeAccess,
+  });
   registerMediaNotesIpc(ipc, () => database);
   registerSystemIpc(ipc, {
     configureGlobalShortcuts,
@@ -934,6 +951,7 @@ function registerIpc(): void {
     thumbnailQueue,
     thumbnailWorker,
     windowForSender,
+    writeAccess,
   });
 }
 
@@ -958,6 +976,7 @@ function createRecoveryWindow(): void {
     },
     webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
   });
+  trustedWindows.register(mainWindow);
   hardenWindowNavigation(mainWindow.webContents);
   mainWindow.once("ready-to-show", () => {
     const window = mainWindow;
@@ -1031,6 +1050,7 @@ function createWindow(): void {
     },
     webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
   });
+  trustedWindows.register(mainWindow);
 
   hardenWindowNavigation(mainWindow.webContents);
   mainWindow.once("ready-to-show", () => mainWindow?.show());
@@ -1106,6 +1126,7 @@ function openBoardWindow(boardId: string): void {
     },
     webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
   });
+  trustedWindows.register(window);
   hardenWindowNavigation(window.webContents);
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => {
@@ -1168,6 +1189,7 @@ function openPreviewWindow(filename: string): void {
     },
     webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
   });
+  trustedWindows.register(window);
   hardenWindowNavigation(window.webContents);
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => previewWindows.delete(window));
@@ -1321,6 +1343,16 @@ void app.whenReady().then(async () => {
     getProviderRegistry: () => providerRegistry!,
     previewTokens,
     thumbnailQueue,
+    originPolicy: {
+      allowedOrigins: MAIN_WINDOW_VITE_DEV_SERVER_URL
+        ? [MAIN_WINDOW_VITE_DEV_SERVER_URL]
+        : [],
+      allowedReferrerPrefixes: MAIN_WINDOW_VITE_DEV_SERVER_URL
+        ? [MAIN_WINDOW_VITE_DEV_SERVER_URL]
+        : [
+            `${pathToFileURL(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}`)).href}/`,
+          ],
+    },
   });
   registerIpc();
   if (database.getSetting("globalShortcuts", false)) {
@@ -1393,6 +1425,7 @@ app.on("before-quit", () => {
 });
 
 async function shutdownServices(): Promise<void> {
+  writeAccess.clear();
   saveMainWindowBounds();
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();

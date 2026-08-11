@@ -466,6 +466,38 @@
   outline-offset: -1px;
 }
 
+.asset-preview img.preview-image-pending {
+  opacity: 0;
+}
+
+.preview-cache-loading {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  place-items: center;
+  gap: 8px;
+  background: #191d1e;
+  color: #74807a;
+  font-size: 10px;
+  text-align: center;
+}
+
+.preview-cache-loading svg {
+  animation: preview-cache-spin 900ms linear infinite;
+}
+
+@keyframes preview-cache-spin {
+  to { rotate: 360deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-cache-loading svg {
+    animation: none;
+  }
+}
+
 .asset-placeholder {
   display: grid;
   gap: 9px;

@@ -15,6 +15,7 @@
     "package": "electron-forge package",
     "make": "node scripts/build/make.cjs",
     "release:windows": "node scripts/build/release-windows.cjs",
+    "native:openimageio": "node scripts/build/install-openimageio.cjs",
     "check": "pnpm check:repo && pnpm lint && pnpm typecheck && pnpm test",
     "check:repo": "node scripts/qa/repository-check.cjs",
     "lint": "eslint .",
@@ -35,6 +36,7 @@
     "@ffprobe-installer/ffprobe": "2.1.2",
     "better-sqlite3": "13.0.2",
     "chokidar": "5.0.0",
+    "exrs": "1.0.3",
     "fabric": "7.4.0",
     "ffmpeg-static": "5.3.0",
     "lucide-react": "0.468.0",
@@ -42,6 +44,7 @@
     "react-dom": "19.2.8",
     "sharp": "0.35.3",
     "three": "0.185.1",
+    "tslib": "2.8.1",
     "zod": "4.1.12",
     "zustand": "5.0.8"
   },

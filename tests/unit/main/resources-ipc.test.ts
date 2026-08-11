@@ -23,6 +23,8 @@ describe("resources IPC mount events", () => {
         channel: string,
         handler: (...args: unknown[]) => unknown,
       ) => handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
     } as unknown as SecureIpcRegistrar;
     const mounts: Array<{
       id: string;
@@ -99,6 +101,8 @@ describe("resources IPC mount events", () => {
     const ipc = {
       handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
         handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
     } as unknown as SecureIpcRegistrar;
     const dependencies = {
       getDatabase: () => ({}),
@@ -118,5 +122,77 @@ describe("resources IPC mount events", () => {
       expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
     ]));
     expect((palette as Array<unknown>).length).toBe(2);
+  });
+
+  it("fails closed for renderer-triggered arbitrary script registration and execution", async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    const register = vi.fn();
+    const run = vi.fn();
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({}),
+      getLibrary: () => ({}),
+      getMountService: () => ({}),
+      getProviderRegistry: () => ({}),
+      getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => "D:\\cache",
+      getScriptsService: () => ({ list: () => [], unregister: vi.fn(), register, run }),
+      previewTokens: {},
+      notifyMountsChanged: vi.fn(),
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    expect(() => handlers.get("scripts:register")?.({
+      path: "D:\\attack.ps1",
+      timeoutMs: 60_000,
+    })).toThrow("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
+    expect(() => handlers.get("scripts:run")?.({
+      id: "attacker",
+      cwd: "D:\\",
+    })).toThrow("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
+    expect(register).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("finishes the full backup-downscale authorization set before any media mutation", async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    const authorize = vi.fn()
+      .mockImplementationOnce(async (
+        _window: Electron.BrowserWindow,
+        _operation: string,
+        requests: Array<{ path: string }>,
+      ) => requests.map((request) => request.path))
+      .mockRejectedValueOnce(new Error("WRITE_ACCESS_DENIED"));
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({ getSetting: () => ({}) }),
+      getLibrary: () => ({}),
+      getMountService: () => ({}),
+      getProviderRegistry: () => ({}),
+      getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => "D:\\cache",
+      getScriptsService: () => ({}),
+      previewTokens: {},
+      notifyMountsChanged: vi.fn(),
+      windowForSender: () => ({}) as Electron.BrowserWindow,
+      writeAccess: { authorize },
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    await expect(handlers.get("media:downscale")?.({
+      paths: ["C:\\images\\a.png", "D:\\images\\b.png"],
+      maxDimension: 2_048,
+      mode: "backup",
+    })).rejects.toThrow("WRITE_ACCESS_DENIED");
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(authorize.mock.calls[1][2]).toHaveLength(6);
   });
 });

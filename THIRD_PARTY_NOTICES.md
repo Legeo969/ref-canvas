@@ -1,6 +1,6 @@
 # RefCanvas Third-Party Notices
 
-生成时间：2026-08-08T15:41:31.545Z（应用版本 0.38.0）
+生成时间：2026-08-11T13:10:54.889Z（应用版本 0.38.4）
 
 本清单覆盖生产依赖及其传递依赖。GPL/AGPL 强传染许可的依赖不会进入发布包。
 
@@ -9,8 +9,10 @@
 - **ffmpeg-static**：GPL-3.0-or-later（静态 ffmpeg 二进制，仅作为外部进程调用；不链接进 RefCanvas 本体）
 - **@ffprobe-installer**：GPL-3.0-or-later（静态 ffprobe 二进制，同上）
 - **sharp / @img**：Apache-2.0（libvips 为 LGPL-3.0，动态链接，sharp 通过其 Node 绑定使用）
+- **OpenImageIO 3.1.16.0 / OpenEXR 3.3.5**：Apache-2.0 / BSD-3-Clause 等（官方 Windows x64 wheel 的独立 sidecar；每个动态依赖的许可文本位于 `assets/native/openimageio/licenses/`，文件哈希见 `RUNTIME-MANIFEST.json`）
+- **Microsoft Visual C++ 2022 x64 Runtime 14.44.35112**：按 Visual Studio Build Tools 可再发行代码条款随 sidecar 分发，确保全新 Windows 系统无需另行安装解码器运行库
 
-## Dependencies（27）
+## Dependencies（31）
 
 ### @derhuerst/http-basic@8.2.4
 
@@ -447,6 +449,16 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+### exrs@1.0.3
+
+许可：BSD-3-Clause
+
+（无 LICENSE 文本，见包内声明）
+### exrs-raw-wasm-bindgen@0.1.0
+
+许可：BSD-3-Clause
+
+（无 LICENSE 文本，见包内声明）
 ### ffmpeg-static@5.3.0
 
 许可：GPL-3.0-or-later
@@ -856,6 +868,32 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+### shallow-equals@1.0.0
+
+许可：MIT
+
+## The MIT License (MIT) ##
+
+Copyright (c) 2014 Hugh Kennedy
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
 ### sharp@0.35.3
 
 许可：Apache-2.0
@@ -1061,6 +1099,22 @@ IN THE SOFTWARE.
 """
 
 
+### tslib@2.8.1
+
+许可：0BSD
+
+Copyright (c) Microsoft Corporation.
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+PERFORMANCE OF THIS SOFTWARE.
 ### typedarray@0.0.6
 
 许可：MIT

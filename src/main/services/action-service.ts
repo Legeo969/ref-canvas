@@ -159,6 +159,19 @@ export class ActionService {
     return job ? structuredClone(job.snapshot) : null;
   }
 
+  authorizationDirectoryFor(request: AssetActionRequest): string {
+    return path.resolve(
+      request.outputDirectory
+        ?? path.join(this.defaultBaseDirectory, defaultDirectoryName(request.type)),
+    );
+  }
+
+  authorizationDirectoryForRetry(id: string): string {
+    const job = this.jobs.get(id);
+    if (!job) throw new Error("ACTION_JOB_NOT_FOUND");
+    return this.authorizationDirectoryFor(job.request);
+  }
+
   cancel(id: string): boolean {
     const job = this.jobs.get(id);
     if (!job || ["completed", "cancelled", "failed"].includes(job.snapshot.state)) {
@@ -168,7 +181,7 @@ export class ActionService {
     return true;
   }
 
-  retry(id: string): AssetActionSnapshot {
+  retry(id: string, outputDirectory?: string): AssetActionSnapshot {
     const job = this.jobs.get(id);
     if (!job) throw new Error("ACTION_JOB_NOT_FOUND");
     const failedIds = job.snapshot.items
@@ -179,7 +192,7 @@ export class ActionService {
       failedIds.length > 0
         ? { mode: "ids", ids: failedIds }
         : job.request.targets;
-    return this.start({ ...job.request, targets });
+    return this.start({ ...job.request, targets, outputDirectory: outputDirectory ?? job.request.outputDirectory });
   }
 
   private assetIdForPath(filename: string): string | null {

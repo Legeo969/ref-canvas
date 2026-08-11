@@ -80,6 +80,13 @@ export class PreviewCacheIndex {
     this.upsert(key, "", 0, "failed", now + FAILURE_TTL_MS, now);
   }
 
+  /** Manual/renderer retries may bypass a negative cache without deleting a success. */
+  clearFailure(key: string): void {
+    this.database
+      .prepare("DELETE FROM preview_cache WHERE cache_key = ? AND status = 'failed'")
+      .run(key);
+  }
+
   prune(now = Date.now()): string[] {
     const expired = this.database
       .prepare(

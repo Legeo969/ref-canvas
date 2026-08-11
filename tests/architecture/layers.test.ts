@@ -461,6 +461,7 @@ describe("physical module boundaries", () => {
     );
     expect(entry.trim().split(/\r?\n/)).toEqual([
       '@import "./shell.css";',
+      '@import "./select-menu.css";',
       '@import "./directory.css";',
       '@import "./library.css";',
       '@import "./board.css";',
@@ -468,11 +469,186 @@ describe("physical module boundaries", () => {
       '@import "./collections.css";',
       '@import "./ai.css";',
       '@import "./image-review.css";',
+      '@import "./found-preview.css";',
     ]);
     await Promise.all(
-      ["shell", "directory", "library", "board", "dialogs", "collections", "ai", "image-review"].map((name) =>
+      ["shell", "select-menu", "directory", "library", "board", "dialogs", "collections", "ai", "image-review", "found-preview"].map((name) =>
         readFile(path.join(rendererRoot, "styles", `${name}.css`), "utf8"),
       ),
     );
+  });
+
+  it("keeps board React integration behind controllers and lightweight snapshots", async () => {
+    const boardCanvas = await readFile(
+      path.join(rendererRoot, "components", "BoardCanvas.tsx"),
+      "utf8",
+    );
+    for (const moduleName of [
+      "board-runtime-controller",
+      "board-canvas-controller",
+      "board-persistence-controller",
+      "board-import-controller",
+      "use-board-bindings",
+      "use-board-gesture-keys",
+      "use-board-shortcuts",
+    ]) {
+      await readFile(
+        path.join(rendererRoot, "features", "board", `${moduleName}.ts`),
+        "utf8",
+      );
+      expect(boardCanvas).toContain(`../features/board/${moduleName}`);
+    }
+    for (const removedMirror of [
+      "assetsRef",
+      "onSaveRef",
+      "documentRef",
+      "appearanceRef",
+      "canvasModeRef",
+      "samplingRef",
+    ]) {
+      expect(boardCanvas).not.toContain(removedMirror);
+    }
+    expect(boardCanvas.split(/\r?\n/).length).toBeLessThan(6_500);
+
+    const controller = await readFile(
+      path.join(rendererRoot, "features", "board", "board-canvas-controller.ts"),
+      "utf8",
+    );
+    expect(controller).toContain("syncDocument(boardId");
+    expect(controller).toContain("canvas.on(");
+    expect(controller).toContain("canvas.off(");
+    expect(controller).toContain("command(command: BoardControllerCommand, id: string)");
+    expect(controller).not.toMatch(/selectionIds:\s*(?:Fabric|CanvasObject)/);
+
+    for (const component of [
+      "BoardToolbar.tsx",
+      "BoardLayerPanel.tsx",
+      "BoardFocusOverlay.tsx",
+    ]) {
+      const presentation = await readFile(
+        path.join(rendererRoot, "components", "board", component),
+        "utf8",
+      );
+      expect(presentation).not.toMatch(/from ["']fabric["']/);
+      expect(presentation).not.toContain("getObjects(");
+      expect(presentation).not.toContain("getActiveObjects(");
+      expect(boardCanvas).toContain(`./board/${component.replace(".tsx", "")}`);
+    }
+    const inspector = await readFile(
+      path.join(rendererRoot, "components", "BoardInspector.tsx"),
+      "utf8",
+    );
+    expect(inspector).not.toMatch(/from ["']fabric["']/);
+
+    const sourceFile = ts.createSourceFile(
+      "BoardCanvas.tsx",
+      boardCanvas,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    let boardFunction: ts.FunctionLikeDeclaration | undefined;
+    sourceFile.forEachChild((node) => {
+      if (ts.isFunctionDeclaration(node) && node.name?.text === "BoardCanvas") {
+        boardFunction = node;
+      }
+    });
+    expect(boardFunction).toBeDefined();
+    const forbiddenFabricState: string[] = [];
+    const renderReads: string[] = [];
+    const visit = (node: ts.Node, insideCallback = false) => {
+      if (ts.isCallExpression(node) && node.expression.getText(sourceFile) === "useState") {
+        const stateType = node.typeArguments?.map((argument) => argument.getText(sourceFile)).join(" ") ?? "";
+        if (/(?:Fabric|CanvasObject)/.test(stateType)) forbiddenFabricState.push(stateType);
+      }
+      if (!insideCallback && ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        if (["getObjects", "getActiveObjects", "getActiveObject"].includes(node.expression.name.text)) {
+          renderReads.push(node.expression.getText(sourceFile));
+        }
+      }
+      const callback = insideCallback || (node !== boardFunction && ts.isFunctionLike(node));
+      ts.forEachChild(node, (child) => visit(child, callback));
+    };
+    visit(boardFunction!);
+    expect(forbiddenFabricState).toEqual([]);
+    // Callback-time Fabric reads are allowed; render-time derived arrays are not.
+    expect(renderReads).toEqual([]);
+  });
+
+  it("keeps directory orchestration behind behavior-owning domain models", async () => {
+    const panel = await readFile(
+      path.join(rendererRoot, "components", "DirectoryAssetPanel.tsx"),
+      "utf8",
+    );
+    for (const moduleName of [
+      "directory-virtual-grid",
+      "use-directory-selection",
+      "directory-preview-coordinator",
+      "directory-query-model",
+    ]) {
+      const module = await readFile(
+        path.join(rendererRoot, "features", "directory", `${moduleName}.ts`),
+        "utf8",
+      );
+      expect(panel).toContain(`../features/directory/${moduleName}`);
+      expect(module).toMatch(/export function/);
+    }
+    // 选择行为保留在 domain model 中；panel 经由 hook 编排，不直接持有逻辑。
+    const selectionHook = await readFile(
+      path.join(rendererRoot, "features", "directory", "use-directory-selection.ts"),
+      "utf8",
+    );
+    const selectionModel = await readFile(
+      path.join(rendererRoot, "features", "directory", "directory-selection-model.ts"),
+      "utf8",
+    );
+    expect(selectionHook).toContain("./directory-selection-model");
+    expect(selectionModel).toMatch(/export function/);
+    const toolbar = await readFile(
+      path.join(rendererRoot, "components", "directory", "DirectoryBatchToolbar.tsx"),
+      "utf8",
+    );
+    expect(panel).toContain('./directory/DirectoryBatchToolbar');
+    expect(toolbar).toContain("selectedCount");
+  });
+
+  it("splits settings, store, library, and i18n behind compatible facades", async () => {
+    const settings = await readFile(
+      path.join(rendererRoot, "components", "SettingsPanel.tsx"),
+      "utf8",
+    );
+    expect(settings).toContain('./settings/AboutSettings');
+    expect(settings).toContain('./settings/MaintenanceSettings');
+
+    const store = await readFile(path.join(rendererRoot, "app", "store.ts"), "utf8");
+    expect(store).toContain('../features/library/selection-model');
+    expect(store).toContain('../features/library/import-job-model');
+    expect(store).toContain('../features/board/board-state-model');
+
+    const library = await readFile(
+      path.join(mainRoot, "services", "library-service.ts"),
+      "utf8",
+    );
+    expect(library).toContain('./visual-signature-service');
+    expect(library).toContain('export { imageVisualSignature, visualSimilarity }');
+
+    const i18n = await readFile(path.join(rendererRoot, "app", "i18n.ts"), "utf8");
+    expect(i18n.split(/\r?\n/).length).toBeLessThan(600);
+    for (const fragment of [
+      "shell",
+      "directory",
+      "board",
+      "collections",
+      "preview-media",
+      "ai",
+      "settings",
+      "common",
+    ]) {
+      const catalog = await readFile(
+        path.join(rendererRoot, "app", "i18n-catalogs", `${fragment}.ts`),
+        "utf8",
+      );
+      expect(catalog).toContain("satisfies Record<string, Partial<Record<MessageKey, string>>>");
+    }
   });
 });

@@ -54,6 +54,9 @@ const productionNames = new Set([
   "better-sqlite3",
   "node-addon-api",
   "sharp",
+  "exrs",
+  "shallow-equals",
+  "tslib",
   "detect-libc",
   "semver",
   "@ffprobe-installer",
@@ -76,12 +79,42 @@ while (queue.length) {
     if (fs.existsSync(candidate)) queue.push(dependency);
   }
 }
+const bundledExrsRuntime = path.join(
+  topNodeModules,
+  "exrs",
+  "node_modules",
+  "exrs-raw-wasm-bindgen",
+);
+if (fs.existsSync(bundledExrsRuntime)) {
+  walkDependencies(bundledExrsRuntime, new Set(), 0, entries);
+}
 entries.sort((left, right) => left.name.localeCompare(right.name));
 
 const manifest = {
   generatedAt: new Date().toISOString(),
   appVersion: rootPackage.version,
   count: entries.length,
+  bundledRuntimes: [
+    {
+      name: "OpenImageIO Windows runtime",
+      version: "3.1.16.0",
+      license: "Apache-2.0 AND bundled third-party licenses AND LicenseRef-MSVC-Redist",
+      source: "openimageio-3.1.16.0-cp313-cp313-win_amd64.whl",
+      sha256: "c0e2b5599fd0d346115387db77a196b5e47441857f4a0c34071e57e7fda73b03",
+      licenseFiles: [
+        "assets/native/openimageio/LICENSE.md",
+        "assets/native/openimageio/THIRD-PARTY.md",
+        "assets/native/openimageio/licenses/FREETYPE-FTL.txt",
+        "assets/native/openimageio/licenses/GIFLIB-COPYING",
+        "assets/native/openimageio/licenses/IMATH-LICENSE.md",
+        "assets/native/openimageio/licenses/LIBTIFF-LICENSE.md",
+        "assets/native/openimageio/licenses/MSVC-RUNTIME-NOTICE.txt",
+        "assets/native/openimageio/licenses/OPENEXR-LICENSE.md",
+        "assets/native/openimageio/licenses/OPENJPEG-LICENSE",
+        "assets/native/openimageio/licenses/ZLIB-LICENSE",
+      ],
+    },
+  ],
   entries: entries.map(({ licenseText, ...entry }) => entry),
 };
 fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -98,6 +131,8 @@ const lines = [
   "- **ffmpeg-static**：GPL-3.0-or-later（静态 ffmpeg 二进制，仅作为外部进程调用；不链接进 RefCanvas 本体）",
   "- **@ffprobe-installer**：GPL-3.0-or-later（静态 ffprobe 二进制，同上）",
   "- **sharp / @img**：Apache-2.0（libvips 为 LGPL-3.0，动态链接，sharp 通过其 Node 绑定使用）",
+  "- **OpenImageIO 3.1.16.0 / OpenEXR 3.3.5**：Apache-2.0 / BSD-3-Clause 等（官方 Windows x64 wheel 的独立 sidecar；每个动态依赖的许可文本位于 `assets/native/openimageio/licenses/`，文件哈希见 `RUNTIME-MANIFEST.json`）",
+  "- **Microsoft Visual C++ 2022 x64 Runtime 14.44.35112**：按 Visual Studio Build Tools 可再发行代码条款随 sidecar 分发，确保全新 Windows 系统无需另行安装解码器运行库",
   "",
   `## Dependencies（${entries.length}）`,
   "",

@@ -47,6 +47,7 @@ import { AiJobsRepository } from "./repositories/ai-jobs-repository";
 import { CollectionService } from "../services/collection-service";
 import { CollectionResolutionService } from "../services/collection-resolution-service";
 import { SettingsRepository } from "./repositories/settings-repository";
+import { hasSameAssetContentIdentity } from "./asset-content-identity";
 
 export {
   DATABASE_SCHEMA_VERSION,
@@ -134,7 +135,27 @@ export type NewAsset = Omit<
   metadataError?: string | null;
   metadataUpdatedAt?: string | null;
   metadataJobId?: string | null;
+  /** Optional freshly-computed visual index values supplied with the write. */
+  visualHash?: string | null;
+  colorSignature?: string | null;
+  dominantColor?: { r: number; g: number; b: number } | null;
 };
+
+function visualSignatureParams(asset: NewAsset): {
+  visual_hash: string | null;
+  color_signature: string | null;
+  dominant_r: number | null;
+  dominant_g: number | null;
+  dominant_b: number | null;
+} {
+  return {
+    visual_hash: asset.visualHash ?? null,
+    color_signature: asset.colorSignature ?? null,
+    dominant_r: asset.dominantColor?.r ?? null,
+    dominant_g: asset.dominantColor?.g ?? null,
+    dominant_b: asset.dominantColor?.b ?? null,
+  };
+}
 
 function mapAssetAnnotation(row: AssetAnnotationRow): AssetAnnotation {
   return {
@@ -239,12 +260,31 @@ export class RefCanvasDatabase {
     const now = new Date().toISOString();
 
     if (existing) {
+      const preserveVisual = hasSameAssetContentIdentity(existing, asset);
       this.db.prepare(`
         UPDATE assets SET title = @title, path = @path, extension = @extension,
           size = @size, mtime_ms = @mtime_ms, fingerprint = @fingerprint,
           content_hash = @content_hash,
-          visual_hash = NULL, color_signature = NULL,
-          dominant_r = NULL, dominant_g = NULL, dominant_b = NULL,
+          visual_hash = CASE
+            WHEN @visual_hash IS NOT NULL THEN @visual_hash
+            WHEN @preserve_visual = 1 THEN visual_hash
+            ELSE NULL END,
+          color_signature = CASE
+            WHEN @color_signature IS NOT NULL THEN @color_signature
+            WHEN @preserve_visual = 1 THEN color_signature
+            ELSE NULL END,
+          dominant_r = CASE
+            WHEN @dominant_r IS NOT NULL THEN @dominant_r
+            WHEN @preserve_visual = 1 THEN dominant_r
+            ELSE NULL END,
+          dominant_g = CASE
+            WHEN @dominant_g IS NOT NULL THEN @dominant_g
+            WHEN @preserve_visual = 1 THEN dominant_g
+            ELSE NULL END,
+          dominant_b = CASE
+            WHEN @dominant_b IS NOT NULL THEN @dominant_b
+            WHEN @preserve_visual = 1 THEN dominant_b
+            ELSE NULL END,
           lifecycle = 'active', deleted_at = NULL, trash_path = NULL,
           link_state = 'online', storage_mode = @storage_mode,
           width = @width, height = @height, duration = @duration, bpm = @bpm,
@@ -273,6 +313,8 @@ export class RefCanvasDatabase {
         metadata_updated_at: asset.metadataUpdatedAt ?? now,
         metadata_job_id: asset.metadataJobId ?? null,
         updated_at: now,
+        preserve_visual: preserveVisual ? 1 : 0,
+        ...visualSignatureParams(asset),
       });
       if (
         asset.libraryRelativePath !== undefined ||
@@ -297,14 +339,16 @@ export class RefCanvasDatabase {
     this.db.prepare(`
       INSERT INTO assets (
         id, title, kind, path, path_key, extension, size, mtime_ms,
-        fingerprint, content_hash, lifecycle, deleted_at, trash_path,
+        fingerprint, content_hash, visual_hash, color_signature,
+        dominant_r, dominant_g, dominant_b, lifecycle, deleted_at, trash_path,
         favorite, rating, color_label, link_state, notes, width, height,
         duration, bpm, custom_fields, custom_thumbnail_path,
         metadata_status, metadata_error, metadata_updated_at, metadata_job_id,
         storage_mode, library_relative_path, original_source_path,
         created_at, updated_at
       ) VALUES (@id, @title, @kind, @path, @path_key, @extension, @size,
-        @mtime_ms, @fingerprint, @content_hash, 'active', NULL, NULL,
+        @mtime_ms, @fingerprint, @content_hash, @visual_hash, @color_signature,
+        @dominant_r, @dominant_g, @dominant_b, 'active', NULL, NULL,
         0, 0, 'none', @link_state, @notes, @width, @height, @duration, @bpm,
         @custom_fields, @custom_thumbnail_path, @metadata_status,
         @metadata_error, @metadata_updated_at, @metadata_job_id, @storage_mode,
@@ -337,6 +381,7 @@ export class RefCanvasDatabase {
       original_source_path: asset.originalSourcePath ?? null,
       created_at: now,
       updated_at: now,
+      ...visualSignatureParams(asset),
     });
     return { asset: this.getAssetAfterWrite(id, hydrateRelations), reused: false };
   }
@@ -761,18 +806,45 @@ export class RefCanvasDatabase {
   }
 
   relinkAsset(id: string, asset: NewAsset): AssetRecord {
-    if (!this.getAsset(id)) throw new Error("ASSET_NOT_FOUND");
+    const current = this.db
+      .prepare("SELECT * FROM assets WHERE id = ?")
+      .get(id) as AssetRow | undefined;
+    if (!current) throw new Error("ASSET_NOT_FOUND");
+    const preserveVisual = hasSameAssetContentIdentity(current, asset);
     this.db.prepare(`
       UPDATE assets SET kind = ?, path = ?, path_key = ?, extension = ?,
         size = ?, mtime_ms = ?, fingerprint = ?, content_hash = ?,
-        visual_hash = NULL, color_signature = NULL,
-        dominant_r = NULL, dominant_g = NULL, dominant_b = NULL,
+        visual_hash = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN ? = 1 THEN visual_hash ELSE NULL END,
+        color_signature = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN ? = 1 THEN color_signature ELSE NULL END,
+        dominant_r = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN ? = 1 THEN dominant_r ELSE NULL END,
+        dominant_g = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN ? = 1 THEN dominant_g ELSE NULL END,
+        dominant_b = CASE
+          WHEN ? IS NOT NULL THEN ?
+          WHEN ? = 1 THEN dominant_b ELSE NULL END,
         lifecycle = 'active', deleted_at = NULL, trash_path = NULL,
         link_state = 'online', storage_mode = ?, width = ?, height = ?,
         duration = ?, bpm = ?, custom_fields = ?, updated_at = ? WHERE id = ?
     `).run(
       asset.kind, asset.path, asset.pathKey, asset.extension, asset.size,
       asset.mtimeMs, asset.fingerprint, asset.contentHash ?? null,
+      asset.visualHash ?? null, asset.visualHash ?? null,
+      preserveVisual ? 1 : 0,
+      asset.colorSignature ?? null, asset.colorSignature ?? null,
+      preserveVisual ? 1 : 0,
+      asset.dominantColor?.r ?? null, asset.dominantColor?.r ?? null,
+      preserveVisual ? 1 : 0,
+      asset.dominantColor?.g ?? null, asset.dominantColor?.g ?? null,
+      preserveVisual ? 1 : 0,
+      asset.dominantColor?.b ?? null, asset.dominantColor?.b ?? null,
+      preserveVisual ? 1 : 0,
       asset.storageMode ?? "linked",
       asset.width, asset.height, asset.duration, asset.bpm ?? null,
       JSON.stringify(asset.customFields ?? {}), new Date().toISOString(), id,

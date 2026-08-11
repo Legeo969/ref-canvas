@@ -10,6 +10,16 @@ import { useEffect, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { translate } from "../app/i18n";
 import { AssetPreview } from "./AssetPreview";
+import {
+  PreviewSessionModeButtons,
+  usePreviewSessionMode,
+} from "./PreviewSessionMode";
+import {
+  PreviewSessionShell,
+  PreviewSessionTitle,
+  PreviewSurface,
+  previewRendererKind,
+} from "./PreviewSessionShell";
 
 interface PreviewWindowProps {
   path: string;
@@ -19,6 +29,7 @@ interface PreviewWindowProps {
 export function PreviewWindow({ path, onClose }: PreviewWindowProps) {
   const [asset, setAsset] = useState<AssetRecord | null>(null);
   const [failed, setFailed] = useState(false);
+  const previewSession = usePreviewSessionMode(path, onClose);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,22 +51,29 @@ export function PreviewWindow({ path, onClose }: PreviewWindowProps) {
     };
   }, [path]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
   return (
-    <main className="preview-window">
+    <PreviewSessionShell
+      as="main"
+      elementRef={previewSession.rootRef}
+      focused={previewSession.focused}
+      fullscreen={previewSession.fullscreen}
+      className="preview-window"
+    >
       <header className="preview-window-header">
-        <span className="preview-window-title" title={path}>
-          {path.split(/[\\/]/).pop() ?? path}
-        </span>
+        <PreviewSessionTitle
+          className="preview-window-title-region"
+          titleClassName="preview-window-title"
+          title={<span title={path}>{path.split(/[\\/]/).pop() ?? path}</span>}
+        />
         <div className="preview-window-actions">
-          <button className="icon-button" onClick={() => void window.refCanvas.filesystem.reveal(path)} aria-label={translate("preview.reveal")}>
+          <PreviewSessionModeButtons
+            focused={previewSession.focused}
+            fullscreen={previewSession.fullscreen}
+            onToggleFocus={previewSession.toggleFocus}
+            onToggleFullscreen={() => void previewSession.toggleFullscreen()}
+            showFocus={false}
+          />
+          <button className="icon-button preview-window-external-action" onClick={() => void window.refCanvas.filesystem.reveal(path)} aria-label={translate("preview.reveal")}>
             <FolderOpen size={15} />
           </button>
           <button className="icon-button" onClick={onClose} aria-label={translate("preview.closeFloating")}>
@@ -63,7 +81,10 @@ export function PreviewWindow({ path, onClose }: PreviewWindowProps) {
           </button>
         </div>
       </header>
-      <div className="preview-window-body">
+      <PreviewSurface
+        renderer={asset ? previewRendererKind(asset) : "generic"}
+        className="preview-window-body"
+      >
         {asset ? (
           <AssetPreview asset={asset} />
         ) : failed ? (
@@ -71,7 +92,7 @@ export function PreviewWindow({ path, onClose }: PreviewWindowProps) {
         ) : (
           <p className="preview-window-loading">{translate("preview.loading")}</p>
         )}
-      </div>
-    </main>
+      </PreviewSurface>
+    </PreviewSessionShell>
   );
 }

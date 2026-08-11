@@ -120,14 +120,9 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
       }
       return browserImageExtensions.has(asset.extension.toLowerCase())
         ? (
-            <div style={{ background: alphaBackgroundStyle(foundSettings) }}>
-              <ImageReviewPreview
-                asset={asset}
-                onOpenColor={onOpenTool
-                  ? (color) => onOpenTool("color", 0, color)
-                  : undefined}
-              />
-            </div>
+            <ImageReviewPreview
+              asset={asset}
+            />
           )
         : <SystemThumbnail asset={asset} />;
     case "video":

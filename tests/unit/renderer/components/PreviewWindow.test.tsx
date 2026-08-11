@@ -43,6 +43,17 @@ describe("preview window (FND-004)", () => {
   });
 
   it("renders the asset preview for an indexed path", async () => {
+    const exitFullscreen = vi.fn(async () => {
+      throw new Error("Document not active");
+    });
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: null,
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: exitFullscreen,
+    });
     const asset = {
       id: "asset-1",
       path: "D:\\refs\\a.png",
@@ -72,6 +83,80 @@ describe("preview window (FND-004)", () => {
       await Promise.resolve();
     });
     expect(host.textContent).toContain("a.png");
+    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeNull();
+    expect(host.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
+    expect(host.querySelector(".preview-session-shell.preview-window")).toBeTruthy();
+    expect(host.querySelector('[data-preview-renderer="image"]')).toBeTruthy();
+    expect(exitFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("keeps floating preview isolated with fullscreen then close Escape order", async () => {
+    const asset = {
+      id: "asset-1",
+      path: "D:\\refs\\a.png",
+      title: "a.png",
+      kind: "image",
+      extension: "png",
+      previewUrl: "refbrowse://preview/t-1",
+      thumbnailUrl: "refbrowse://thumbnail/t-1",
+      size: 100,
+      linkState: "online",
+    };
+    const onClose = vi.fn();
+    Object.assign(window, {
+      refCanvas: {
+        library: { getByPath: vi.fn(async () => asset) },
+        filesystem: { reveal: vi.fn(async () => undefined) },
+      },
+    });
+    let fullscreenElement: Element | null = null;
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      get: () => fullscreenElement,
+    });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn(async () => {
+        fullscreenElement = document.querySelector(".preview-window");
+        document.dispatchEvent(new Event("fullscreenchange"));
+      }),
+    });
+    Object.defineProperty(document, "exitFullscreen", {
+      configurable: true,
+      value: vi.fn(async () => {
+        fullscreenElement = null;
+        document.dispatchEvent(new Event("fullscreenchange"));
+      }),
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<PreviewWindow path={asset.path} onClose={onClose} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".preview-window")?.classList.contains("preview-session-focused")).toBe(false);
+    expect(host.querySelector('[aria-label="退出全屏预览"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label*="聚焦"]')).toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("shows an error card for an unindexed path", async () => {

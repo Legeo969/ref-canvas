@@ -93,6 +93,13 @@ describe("UI shell regressions", () => {
     expect(css).toMatch(/\.folder-actions-popover\s*{[^}]*position: fixed;/s);
   });
 
+  it("uses page-level UI scaling so portaled submenus share one coordinate system", async () => {
+    const app = await readFile(path.resolve("src/renderer/app/App.tsx"), "utf8");
+    const preload = await readFile(path.resolve("src/preload/index.ts"), "utf8");
+    expect(app).not.toContain("style={{ zoom:");
+    expect(preload).toContain("webFrame.setZoomFactor");
+  });
+
   it("lets the hidden state override every board grid style", async () => {
     const css = await readStyles();
     expect(css.indexOf(".board-host.grid-hidden")).toBeGreaterThan(
