@@ -23,6 +23,7 @@ import {
   statsFromStl,
   type GeometryStats,
 } from "../services/media/geometry-stats";
+import { renderObjThumbnail } from "../services/media/model-thumbnail";
 
 /**
  * Geometry provider（计划 §6.2 / §9.1）：GLTF/GLB/OBJ/STL 几何统计。
@@ -38,7 +39,7 @@ export const GEOMETRY_PROVIDER_MANIFEST: ResourceProviderManifest = {
   kinds: ["model3d"],
   extensions: ["glb", "gltf", "obj", "stl", "fbx"],
   mimeTypes: ["model/gltf-binary", "model/gltf+json"],
-  capabilities: ["probe", "metadata"],
+  capabilities: ["probe", "metadata", "thumbnail"],
   priority: 20,
   runtime: "node",
 };
@@ -118,8 +119,12 @@ export class GeometryProvider implements ResourceProvider {
     };
   }
 
-  thumbnail(_input: ProviderThumbnailInput): Promise<ProviderThumbnailResult> {
-    throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
+  async thumbnail(input: ProviderThumbnailInput): Promise<ProviderThumbnailResult> {
+    if (input.extension.toLowerCase() !== "obj" || !input.outputPath) {
+      throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
+    }
+    await renderObjThumbnail(input.path, input.outputPath, input.width, input.height);
+    return { path: input.outputPath, width: input.width, height: input.height };
   }
 
   waveform(_input: ProviderWaveformInput): Promise<ProviderWaveformResult> {

@@ -359,6 +359,21 @@ describe("stage 3 media providers", () => {
     });
   });
 
+  it("renders an OBJ thumbnail without an installed DCC application", async () => {
+    const directory = await tempDirectory("refcanvas-obj-thumb-");
+    const source = await writeObjFixture(directory);
+    const outputPath = path.join(directory, "obj-thumb.png");
+    const provider = new GeometryProvider();
+    expect(provider.manifest.capabilities).toContain("thumbnail");
+    const result = await provider.thumbnail({
+      path: source, kind: "model3d", extension: "obj",
+      width: 320, height: 240, outputPath,
+    });
+    expect(result.path).toBe(outputPath);
+    const metadata = await sharp(outputPath).metadata();
+    expect(metadata).toMatchObject({ format: "png", width: 320, height: 240 });
+  });
+
   it("probes ASCII and binary STL files", async () => {
     const directory = await tempDirectory("refcanvas-stl-");
     const provider = new GeometryProvider();

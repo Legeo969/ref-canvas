@@ -95,6 +95,7 @@ async function generateThumbnail(
     extension === "exr" ||
     extension === "hdr" ||
     kind === "video" ||
+    kind === "model3d" ||
     extension === "psd" ||
     extension === "psb" ||
     kind === "audio" ||
