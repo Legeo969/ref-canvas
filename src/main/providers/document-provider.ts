@@ -50,6 +50,8 @@ const OFFICE_EXTENSIONS: Record<string, string> = {
   epub: "EPUB：无本地渲染器",
 };
 
+const READABLE_OFFICE_EXTENSIONS = new Set(["docx", "xlsx", "pptx"]);
+
 export const DOCUMENT_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "document-provider",
   version: "1.0.0",
@@ -134,7 +136,9 @@ export class DocumentProvider implements ResourceProvider {
         duration: null,
         extra: {
           format: extension,
-          unsupportedReason: OFFICE_EXTENSIONS[extension],
+          ...(READABLE_OFFICE_EXTENSIONS.has(extension)
+            ? { previewMode: "extracted-text" }
+            : { unsupportedReason: OFFICE_EXTENSIONS[extension] }),
         },
       };
     }

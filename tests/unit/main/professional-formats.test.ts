@@ -12,6 +12,8 @@ import {
 import { AudioProvider } from "../../../src/main/providers/audio-provider";
 import { DccProvider } from "../../../src/main/providers/dcc-provider";
 import { DocumentProvider } from "../../../src/main/providers/document-provider";
+import { zipSync, strToU8 } from "fflate";
+import { readTextPreview } from "../../../src/main/services/media/text-reader";
 import { FontProvider } from "../../../src/main/providers/font-provider";
 import { ImageProvider } from "../../../src/main/providers/image-provider";
 
@@ -280,14 +282,28 @@ describe("DocumentProvider（阶段 4：文档）", () => {
     await provider.dispose();
   });
 
-  it("Office 文档：明确降级", async () => {
+  it("Office Open XML 文档：声明只读文字预览", async () => {
     const directory = await withTemp();
     const target = path.join(directory, "doc.docx");
     await writeFile(target, Buffer.from("PK\u0003\u0004 fake zip", "latin1"));
     const provider = new DocumentProvider();
     const result = await provider.probe({ path: target, kind: "generic", extension: "docx", size: 0 });
-    expect(result.extra.unsupportedReason).toContain("Word");
+    expect(result.extra.previewMode).toBe("extracted-text");
+    expect(result.extra.unsupportedReason).toBeUndefined();
     await provider.dispose();
+  });
+
+  it.each([
+    ["docx", "word/document.xml", "<w:document><w:p><w:r><w:t>项目说明</w:t></w:r></w:p></w:document>"],
+    ["xlsx", "xl/worksheets/sheet1.xml", "<worksheet><row><c><v>预算表</v></c></row></worksheet>"],
+    ["pptx", "ppt/slides/slide1.xml", "<p:sld><a:p><a:r><a:t>提案首页</a:t></a:r></a:p></p:sld>"],
+  ])("提取 %s 的只读文字预览", async (extension, entry, xml) => {
+    const directory = await withTemp();
+    const target = path.join(directory, `sample.${extension}`);
+    await writeFile(target, Buffer.from(zipSync({ [entry]: strToU8(xml) })));
+    const result = await readTextPreview(target);
+    expect(result.text).toContain(extension === "docx" ? "项目说明" : extension === "xlsx" ? "预算表" : "提案首页");
+    expect(result.encoding).toBe("Office Open XML");
   });
 
   it("二进制文件 probe 失败（不当作文本）", async () => {

@@ -1,4 +1,6 @@
-import { open } from "node:fs/promises";
+import { open, readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import { unzipSync } from "fflate";
 
 /**
  * 文本预览读取（阶段 4：专业格式 — 文档）。
@@ -15,10 +17,77 @@ export interface TextPreview {
   lineCount: number;
 }
 
+const OFFICE_TEXT_EXTENSIONS = new Set(["docx", "xlsx", "pptx"]);
+
+function decodeXmlText(xml: string): string {
+  return xml
+    .replace(/<w:tab\s*\/>/g, "\t")
+    .replace(/<w:br\s*\/>|<a:br\s*\/>/g, "\n")
+    .replace(/<\/w:p>|<\/a:p>|<\/row>|<\/si>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function officeEntries(extension: string, entries: Record<string, Uint8Array>): string[] {
+  const names = Object.keys(entries);
+  if (extension === "docx") return names.filter((name) => name === "word/document.xml");
+  if (extension === "pptx") {
+    return names
+      .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }
+  return names
+    .filter((name) => name === "xl/sharedStrings.xml" || /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+async function readOfficeTextPreview(filename: string, limit: number): Promise<TextPreview> {
+  const info = await stat(filename);
+  if (info.size > 128 * 1024 * 1024) throw new Error("OFFICE_READ_FAILED:TOO_LARGE");
+  const extension = path.extname(filename).slice(1).toLowerCase();
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(new Uint8Array(await readFile(filename)));
+  } catch {
+    throw new Error("OFFICE_READ_FAILED:INVALID_PACKAGE");
+  }
+  const decoder = new TextDecoder("utf-8");
+  const sections = officeEntries(extension, entries).map((name, index) => {
+    const label = extension === "pptx"
+      ? `--- 幻灯片 ${index + 1} ---`
+      : extension === "xlsx" && name.includes("worksheets/")
+        ? `--- 工作表 ${name.match(/\d+/)?.[0] ?? index + 1} ---`
+        : "";
+    const text = decodeXmlText(decoder.decode(entries[name]));
+    return [label, text].filter(Boolean).join("\n");
+  });
+  const complete = sections.filter(Boolean).join("\n\n");
+  if (!complete) throw new Error("OFFICE_READ_FAILED:NO_TEXT");
+  const text = complete.slice(0, limit);
+  return {
+    text,
+    encoding: "Office Open XML",
+    truncated: complete.length > limit,
+    byteLength: info.size,
+    lineCount: text.split(/\r\n|\n|\r/).length,
+  };
+}
+
 export async function readTextPreview(
   filename: string,
   limit = 200_000,
 ): Promise<TextPreview> {
+  const extension = path.extname(filename).slice(1).toLowerCase();
+  if (OFFICE_TEXT_EXTENSIONS.has(extension)) {
+    return readOfficeTextPreview(filename, limit);
+  }
   const file = await open(filename, "r");
   try {
     const buffer = Buffer.alloc(limit);

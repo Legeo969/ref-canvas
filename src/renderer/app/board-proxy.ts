@@ -13,3 +13,16 @@ export function boardProxyUrl(
   const separator = thumbnailUrl.includes("?") ? "&" : "?";
   return `${thumbnailUrl}${separator}variant=board&size=${size}&priority=visible`;
 }
+
+/** Prefer the cached board proxy, but never replace a decodable source with a format card. */
+export async function loadBoardImageWithFallback<T>(
+  proxyUrl: string,
+  sourceUrl: string,
+  load: (url: string) => Promise<T>,
+): Promise<{ image: T; source: "proxy" | "original" }> {
+  try {
+    return { image: await load(proxyUrl), source: "proxy" };
+  } catch {
+    return { image: await load(sourceUrl), source: "original" };
+  }
+}

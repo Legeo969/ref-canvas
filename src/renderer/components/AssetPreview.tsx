@@ -163,7 +163,11 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
       );
     case "generic": {
       const textExtensions = ["txt", "md", "markdown", "rtf", "srt", "vtt", "json", "yaml", "yml", "xml", "csv", "log", "ini", "toml", "conf", "html", "htm", "css", "js", "ts", "py", "sh", "bat", "ps1"];
+      const readableOfficeExtensions = ["docx", "xlsx", "pptx"];
       if (textExtensions.includes(asset.extension.toLowerCase())) {
+        return <TextPreview asset={asset} />;
+      }
+      if (readableOfficeExtensions.includes(asset.extension.toLowerCase())) {
         return <TextPreview asset={asset} />;
       }
       if (needsUnsupportedCheck) {

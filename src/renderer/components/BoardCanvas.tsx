@@ -74,6 +74,7 @@ import type {
   BoardSettings,
   BoardSummary,
 } from "../../shared/contracts";
+import { browserImageExtensions } from "../../shared/asset-kind";
 import {
   clampOpacity,
   constrainedAxis,
@@ -139,6 +140,7 @@ import { applyBoardControls } from "../app/board-controls";
 import {
   boardProxySizeForPixels,
   boardProxyUrl,
+  loadBoardImageWithFallback,
 } from "../app/board-proxy";
 import { ModelPreview, type ModelView } from "./ModelPreview";
 import { AssetPreview } from "./AssetPreview";
@@ -471,6 +473,7 @@ export function BoardCanvas({
   const [modelView, setModelView] = useState<ModelView | null>(null);
   // 阶段 6 §11：双击进入完整 preview（视频/音频/高位深图片）。
   const [previewAsset, setPreviewAsset] = useState<AssetRecord | null>(null);
+  const [readyBoardId, setReadyBoardId] = useState<string | null>(null);
   // assets 解析完成后应用引用状态：missing/offline 对象显示半透明占位
   // （保留位置/尺寸/变换，不破坏 Board document）。
   useEffect(() => {
@@ -495,6 +498,84 @@ export function BoardCanvas({
     }
     canvas.requestRenderAll();
   }, [assets]);
+
+  // Older builds persisted a format card when the board proxy failed even if the
+  // original browser-decodable image was healthy. Restore those cards in place.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || readyBoardId !== board.id) return;
+    let cancelled = false;
+    const restore = async () => {
+      let changed = false;
+      for (const object of [...canvas.getObjects()] as CanvasObjectWithData[]) {
+        if (cancelled || object instanceof FabricImage || !(object instanceof Group)) continue;
+        const card = object as CanvasObjectWithData & Group;
+        const asset = assets.find((item) => item.id === card.data?.assetId);
+        if (
+          !asset ||
+          asset.kind !== "image" ||
+          asset.linkState !== "online" ||
+          !browserImageExtensions.has(asset.extension.toLowerCase())
+        ) continue;
+        try {
+          const initialProxySize = boardProxySizeForPixels(
+            Math.max(object.getScaledWidth(), object.getScaledHeight()) * window.devicePixelRatio,
+          );
+          const loaded = await loadBoardImageWithFallback(
+            boardProxyUrl(asset.thumbnailUrl, initialProxySize),
+            asset.previewUrl,
+            (url) => FabricImage.fromURL(url, { crossOrigin: "anonymous" }),
+          );
+          if (cancelled || !canvas.getObjects().includes(object)) continue;
+          const image = loaded.image as CanvasObjectWithData & FabricImage;
+          const width = Math.max(1, image.width);
+          const height = Math.max(1, image.height);
+          const scale = Math.min(
+            object.getScaledWidth() / width,
+            object.getScaledHeight() / height,
+          );
+          const center = object.getCenterPoint();
+          image.set({
+            left: center.x,
+            top: center.y,
+            originX: "center",
+            originY: "center",
+            angle: object.angle,
+            scaleX: scale,
+            scaleY: scale,
+            opacity: object.opacity,
+            cornerColor: "#3ab28f",
+            cornerStrokeColor: "#10241e",
+            borderColor: "#3ab28f",
+            transparentCorners: false,
+            data: {
+              ...(card.data ?? {}),
+              sourceUrl: asset.previewUrl,
+              ...(loaded.source === "proxy" ? { boardProxySize: initialProxySize } : {}),
+            },
+          });
+          const index = canvas.getObjects().indexOf(object);
+          const active = canvas.getActiveObject() === object;
+          canvas.remove(object);
+          canvas.insertAt(Math.max(0, index), image);
+          applyBoardControls(image);
+          image.setCoords();
+          if (active) canvas.setActiveObject(image);
+          changed = true;
+        } catch {
+          // Both proxy and source failed; keep the recoverable reference card.
+        }
+      }
+      if (!changed || cancelled) return;
+      canvas.requestRenderAll();
+      controller.refreshSnapshot();
+      scheduleSaveRef.current?.();
+    };
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, [assets, board.id, readyBoardId]);
   // GIF 动画播放器，按对象 objectId 索引；随画布生命周期创建/销毁。
   const gifAnimatorsRef = useRef(new Map<string, GifAnimator>());
   const [cropTarget, setCropTarget] = useState<BoardCropTargetSnapshot | null>(null);
@@ -509,7 +590,6 @@ export function BoardCanvas({
   const [canvasLocked, setCanvasLocked] = useState(
     document.canvasMode?.locked ?? false,
   );
-  const [readyBoardId, setReadyBoardId] = useState<string | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false);
   const [shortcutBindings, setShortcutBindings] =
@@ -3867,13 +3947,17 @@ export function BoardCanvas({
             Math.min(asset.height ?? 230, 230),
           ) * window.devicePixelRatio,
         );
-        const sourceUrl =
-          asset.extension === "gif"
-            ? asset.previewUrl
-            : boardProxyUrl(asset.thumbnailUrl, initialProxySize);
-        const image = await FabricImage.fromURL(sourceUrl, {
+        const loadImage = (url: string) => FabricImage.fromURL(url, {
           crossOrigin: "anonymous",
         });
+        const loaded = asset.extension === "gif"
+          ? { image: await loadImage(asset.previewUrl), source: "original" as const }
+          : await loadBoardImageWithFallback(
+              boardProxyUrl(asset.thumbnailUrl, initialProxySize),
+              asset.previewUrl,
+              loadImage,
+            );
+        const image = loaded.image;
         const width = image.width || 1;
         const height = image.height || 1;
         const scale = Math.min(300 / width, 230 / height, 1);
@@ -3890,7 +3974,7 @@ export function BoardCanvas({
             type: "asset",
             assetId: asset.id,
             sourceUrl: asset.previewUrl,
-            ...(asset.extension === "gif"
+            ...(asset.extension === "gif" || loaded.source === "original"
               ? {}
               : { boardProxySize: initialProxySize }),
             objectId: crypto.randomUUID(),

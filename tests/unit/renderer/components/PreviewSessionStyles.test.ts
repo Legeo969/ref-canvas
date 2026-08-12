@@ -48,4 +48,9 @@ describe("preview session controls", () => {
     expect(found).toMatch(/\.found-preview-panel:fullscreen \.found-tab-bar \[role="tab"\][^{]*{[^}]*display:\s*none/s);
     expect(found).toMatch(/\.found-preview-viewport[^}]*min-height:\s*0/s);
   });
+
+  it("gives fitted images a stable viewport box instead of relying on intrinsic size", async () => {
+    const css = await readFile(path.resolve("src/renderer/styles/image-review.css"), "utf8");
+    expect(css).toMatch(/\.image-review-img\s*{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*contain;/s);
+  });
 });

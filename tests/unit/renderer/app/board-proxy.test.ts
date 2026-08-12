@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { boardProxySizeForPixels, boardProxyUrl } from "../../../../src/renderer/app/board-proxy";
+import { boardProxySizeForPixels, boardProxyUrl, loadBoardImageWithFallback } from "../../../../src/renderer/app/board-proxy";
 
 describe("board image proxies", () => {
   it("selects one of the bounded proxy sizes", () => {
@@ -18,5 +18,16 @@ describe("board image proxies", () => {
       "refasset://thumbnail/7bfbf174-6a5e-4f75-a1d5-bc929639abc2?variant=board&size=1024&priority=visible",
     );
     expect(url).not.toContain(":\\");
+  });
+
+  it("uses the original image when board proxy generation fails", async () => {
+    const calls: string[] = [];
+    const result = await loadBoardImageWithFallback("proxy", "original", async (url) => {
+      calls.push(url);
+      if (url === "proxy") throw new Error("proxy failed");
+      return { url };
+    });
+    expect(calls).toEqual(["proxy", "original"]);
+    expect(result).toEqual({ image: { url: "original" }, source: "original" });
   });
 });
