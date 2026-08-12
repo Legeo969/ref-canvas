@@ -56,6 +56,16 @@ Changing assets resets renderer-local state. Async work is keyed to the active a
 - `<` expands colors extracted from the current image; the control becomes `>` while expanded and collapses the row when pressed again.
 - The color bar remains in the bottom workspace and cannot cover media.
 
+## Asset Notes
+
+- Every asset type exposes a Notes action in the shared bottom workspace.
+- Notes are stored as RefCanvas asset metadata and never modify the source file.
+- Every asset supports general notes. Users can create, edit, and delete multiple notes for the selected asset.
+- Video, GIF, EXR sequences, and image sequences additionally support timecode/frame-linked notes captured from the current playback position.
+- Selecting a linked note seeks the preview to its saved timecode or frame and displays that frame.
+- The notes editor expands inside the bottom workspace and does not cover or resize the media unpredictably.
+- Notes remain attached to the asset across navigation and application restarts, and update immediately after editing.
+
 ## GIF Export
 
 - Video and playable sequences can export GIF through the bottom workspace.
@@ -72,7 +82,7 @@ Normal mode keeps the directory browser visible and uses this vertical order in 
 2. Filename/title.
 3. One unobstructed media viewport.
 4. Primary transport and timeline.
-5. Format-specific controls, LUT, color palette, and export settings.
+5. Format-specific controls, LUT, color palette, asset notes, and export settings.
 
 The layout has stable heights and responsive constraints so controls do not shift or overlap at supported desktop sizes.
 
@@ -83,6 +93,7 @@ The layout has stable heights and responsive constraints so controls do not shif
 - Test video hover scrubbing and proxy fallback.
 - Test EXR sequence playback, frame stepping, multichannel extraction, built-in/imported LUT selection, and non-destructive color transforms.
 - Test eyedropper add, clear colors, and palette expand/collapse.
+- Test general notes for every asset type, timecode/frame-linked notes for playable assets, note seeking, persistence, editing, and deletion.
 - Test GIF's centered five-second default range, boundary clamping, range-handle updates, settings, progress, and cancellation.
 - Test thumbnail placeholders, OBJ/DCC generation routing, cache reuse, stale-result rejection, and immediate custom-thumbnail refresh in the middle grid.
 - Run focused Vitest suites, full typecheck/lint/test checks, package the Windows application, and inspect desktop screenshots at 1280x720 and 1920x1080.
