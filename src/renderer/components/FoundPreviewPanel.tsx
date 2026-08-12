@@ -24,6 +24,7 @@ import {
 import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
 import { FoundToolbar } from "./FoundToolbar";
 import { AssetNotesPanel } from "./AssetNotesPanel";
+import { PreviewColorTools } from "./PreviewColorTools";
 import { FoundEmptyState } from "./FoundEmptyState";
 import { FoundLayersPanel } from "./FoundLayersPanel";
 import { SequencePreviewDialog } from "./SequencePreview";
@@ -43,7 +44,7 @@ import {
   previewRendererKind,
 } from "./PreviewSessionShell";
 
-type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "notes";
+type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "notes" | "lut";
 type WorkbenchCommand = WorkbenchTool | "color";
 type PreviewTab = "preview" | "ai";
 
@@ -365,6 +366,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         }}
                       />
                     )}
+                    {tool === "lut" && <PreviewColorTools settings={foundSettings} />}
                   </div>
                 )}
 
@@ -418,6 +420,9 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       else if (isVideo) setTool("gif");
                     }}
                     onNotesToggle={() => setTool("notes")}
+                    onLutToggle={() => setTool("lut")}
+                    multichannel={entry.extension.toLowerCase() === "exr"}
+                    onMultichannelToggle={() => setTool("preview")}
                     />}
                     <div className="found-preview-controls-slot" ref={setControlsTarget} />
                   </div>

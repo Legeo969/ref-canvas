@@ -301,7 +301,7 @@ export function HdrPreview({
       <ControlsMount target={controlsTarget}>
         <div className="hdr-preview-controls">
         {layers.length > 0 && (
-          <div className="hdr-channel-control" role="group" aria-label={translate("hdr.channelsGroup")}>
+          <div className="hdr-channel-control" role="group" aria-label="提取多通道">
             <label className="hdr-layer-select">
               <span>{translate("hdr.layers")}</span>
               <select

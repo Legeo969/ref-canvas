@@ -294,6 +294,13 @@
 .found-preview-notes-action:active,
 .asset-notes-panel button:active { scale: 0.96; }
 
+.preview-color-tools { display: grid; gap: 10px; padding: 12px; background: var(--found-toolbar); }
+.preview-color-builtins, .preview-color-lut-row { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.preview-color-builtins span { padding: 4px 7px; border-radius: 3px; background: var(--surface-1); color: var(--found-text-secondary); }
+.preview-color-lut-path { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-color-tools button { display: grid; width: 40px; height: 40px; place-items: center; border: 0; background: transparent; color: var(--found-text-secondary); }
+.preview-color-tools small { color: var(--found-text-muted); }
+
 .found-preview-frame-label {
   margin-left: auto;
   color: var(--found-text-secondary);
