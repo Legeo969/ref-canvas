@@ -1,4 +1,4 @@
-import { Copy, Palette, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   extractDominantPalette,
@@ -47,6 +47,7 @@ export function PreviewColorBar({
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(true);
   const requestRef = useRef(0);
 
   const refresh = async () => {
@@ -127,14 +128,28 @@ export function PreviewColorBar({
       {!live && <button
         type="button"
         className="mini-icon-button preview-color-refresh"
-        aria-label={label}
-        title="从当前显示画面提取色彩（暂停或定位后刷新）"
+        aria-label="吸取颜色"
+        title={label}
         disabled={loading}
         onClick={() => void refresh()}
       >
-        {palette.length || loading ? <RefreshCw className={loading ? "spin" : undefined} size={14} /> : <Palette size={14} />}
+        <Plus className={loading ? "spin" : undefined} size={14} />
       </button>}
-      {palette.length > 0 && (
+      {palette.length > 0 && !live && <button
+        type="button"
+        className="mini-icon-button"
+        aria-label="清空颜色"
+        title="清空颜色"
+        onClick={() => { setPalette([]); onPaletteChange?.([]); }}
+      ><Trash2 size={14} /></button>}
+      {palette.length > 0 && !live && <button
+        type="button"
+        className="mini-icon-button"
+        aria-label={expanded ? "收起图片颜色" : "展开图片颜色"}
+        title={expanded ? "收起图片颜色" : "展开图片颜色"}
+        onClick={() => setExpanded((value) => !value)}
+      >{expanded ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}</button>}
+      {palette.length > 0 && expanded && (
         <div className="preview-color-swatches" aria-label="当前画面色彩栏">
           {palette.map((color) => (
             <button

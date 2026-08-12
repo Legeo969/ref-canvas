@@ -56,6 +56,7 @@ import {
   SequencePreviewDialog,
 } from "./SequencePreview";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
+import { hoverScrubTime } from "../app/hover-scrub";
 import {
   calculateDirectoryVirtualWindow,
   DIRECTORY_CARD_WIDTH as cardWidth,
@@ -143,6 +144,8 @@ export function DirectoryCard({
   thumbnailOverride,
 }: DirectoryCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [hoverScrub, setHoverScrub] = useState(false);
+  const hoverVideoRef = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     setThumbnailUrl(null);
     if (entry.isDirectory) return;
@@ -163,11 +166,21 @@ export function DirectoryCard({
 
   const preview = useRetryingPreviewUrl(directoryThumbnailSource(thumbnailUrl, thumbnailOverride));
   const canPreview = !entry.isDirectory && preview.url && preview.status !== "failed";
+  const isVideo = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(entry.extension);
+  const hoverVideoUrl = thumbnailUrl?.replace("refbrowse://thumbnail/", "refbrowse://preview/").replace(/\?.*$/, "") ?? null;
 
   return (
     <button
       className={`asset-card directory-card ${selected ? "selected" : ""}`}
       aria-busy={preview.status === "loading" || preview.status === "waiting"}
+      onMouseEnter={() => { if (isVideo) setHoverScrub(true); }}
+      onMouseLeave={() => setHoverScrub(false)}
+      onMouseMove={(event) => {
+        const video = hoverVideoRef.current;
+        if (!video || !Number.isFinite(video.duration)) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        video.currentTime = hoverScrubTime(event.clientX, bounds.left, bounds.width, video.duration);
+      }}
       onClick={(event) => {
         if (preview.status === "failed") preview.retry();
         if (entry.isDirectory && folderClickMode === "single") onEnter();
@@ -193,6 +206,14 @@ export function DirectoryCard({
       }}
     >
       <span className="asset-preview">
+        {hoverScrub && hoverVideoUrl && <video
+          ref={hoverVideoRef}
+          className="directory-hover-scrub"
+          src={hoverVideoUrl}
+          muted
+          preload="metadata"
+          playsInline
+        />}
         {canPreview && (
           <img
             className={preview.status === "ready" ? "" : "preview-image-pending"}

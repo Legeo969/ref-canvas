@@ -372,6 +372,17 @@
   height: 160px;
 }
 
+.directory-hover-scrub {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background: var(--surface-1);
+  object-fit: cover;
+  pointer-events: none;
+}
+
 .directory-card-wrap .asset-card {
   width: 100%;
 }
