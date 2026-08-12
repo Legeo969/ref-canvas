@@ -320,7 +320,7 @@ export function registerLibraryIpc(
     library().applyAutoTagRules(),
   );
   ipc.handle("library:set-custom-thumbnail", (id, thumbnailPath) =>
-    database().setCustomThumbnail(
+    library().setCustomThumbnail(
       idSchema.parse(id),
       thumbnailPath === null
         ? null

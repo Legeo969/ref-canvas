@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { PreviewColorBar } from "./PreviewColorBar";
+import { usePreviewTransportRegistration } from "./PreviewTransport";
 
 interface GifFrame {
   image: ImageBitmap;
@@ -18,6 +19,22 @@ interface GifFrame {
 
 interface DecodedGif {
   frames: GifFrame[];
+}
+
+export function gifFrameIndexForPosition(
+  frames: ReadonlyArray<Pick<GifFrame, "durationMs">>,
+  position: number,
+): number {
+  if (frames.length === 0) return 0;
+  const duration = frames.reduce((total, frame) => total + frame.durationMs, 0);
+  if (duration <= 0) return Math.min(frames.length - 1, Math.max(0, Math.round(position * (frames.length - 1))));
+  const target = Math.min(1, Math.max(0, position)) * duration;
+  let elapsed = 0;
+  for (let index = 0; index < frames.length; index += 1) {
+    elapsed += frames[index].durationMs;
+    if (target < elapsed || index === frames.length - 1) return index;
+  }
+  return frames.length - 1;
 }
 
 type ImageDecoderLike = {
@@ -46,11 +63,12 @@ const ImageDecoderCtor = (
  * speed, frame stepping, a frame timeline and current-frame export. The GIF is
  * decoded locally frame by frame; nothing leaves the machine.
  */
-export function GIFPreview({ asset }: { asset: AssetRecord }) {
+export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset: AssetRecord; managed?: boolean; onPaletteChange?: (colors: string[]) => void }) {
   const [gif, setGif] = useState<DecodedGif | null>(null);
   const [error, setError] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [rate, setRate] = useState(1);
+  const [looping, setLooping] = useState(true);
   const [frameIndex, setFrameIndex] = useState(0);
   const [exporting, setExporting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -116,7 +134,12 @@ export function GIFPreview({ asset }: { asset: AssetRecord }) {
       const frameDuration = current.frames[frameIndexRef.current]?.durationMs ?? 100;
       if (elapsed >= frameDuration / rateRef.current) {
         lastTickRef.current = timestamp;
-        frameIndexRef.current = (frameIndexRef.current + 1) % current.frames.length;
+        const next = frameIndexRef.current + 1;
+        if (next >= current.frames.length && !looping) {
+          setPlaying(false);
+          return;
+        }
+        frameIndexRef.current = next % current.frames.length;
         setFrameIndex(frameIndexRef.current);
       }
       rafRef.current = requestAnimationFrame(draw);
@@ -126,7 +149,7 @@ export function GIFPreview({ asset }: { asset: AssetRecord }) {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [gif, playing, rate]);
+  }, [gif, looping, playing, rate]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -160,6 +183,35 @@ export function GIFPreview({ asset }: { asset: AssetRecord }) {
     }
   };
 
+  const durationMs = gif?.frames.reduce((total, frame) => total + frame.durationMs, 0) ?? 0;
+  const elapsedMs = gif?.frames.slice(0, frameIndex).reduce((total, frame) => total + frame.durationMs, 0) ?? 0;
+  usePreviewTransportRegistration({
+    kind: "gif",
+    playing,
+    position: durationMs > 0 ? elapsedMs / durationMs : 0,
+    durationSeconds: durationMs / 1000,
+    frameIndex,
+    frameCount: gif?.frames.length ?? 0,
+    fps: durationMs > 0 && gif ? gif.frames.length / (durationMs / 1000) : null,
+    playbackRate: rate,
+    looping,
+    muted: true,
+    volume: 0,
+  }, {
+    togglePlaying: () => setPlaying((value) => !value),
+    seek: (position) => {
+      if (!gif?.frames.length) return;
+      const next = gifFrameIndexForPosition(gif.frames, position);
+      frameIndexRef.current = next;
+      setFrameIndex(next);
+    },
+    stepFrames: step,
+    setLooping,
+    setPlaybackRate: (value) => setRate(Math.min(8, Math.max(0.25, value))),
+    setMuted: () => undefined,
+    setVolume: () => undefined,
+  });
+
   if (error) {
     return <span className="preview-message">无法解码 GIF</span>;
   }
@@ -169,7 +221,7 @@ export function GIFPreview({ asset }: { asset: AssetRecord }) {
   return (
     <div className="gif-preview">
       <canvas ref={canvasRef} className="gif-preview-canvas" />
-      {count > 1 && (
+      {!managed && count > 1 && (
         <div className="gif-controls">
           <button
             aria-label={playing ? "暂停" : "播放"}
@@ -221,6 +273,7 @@ export function GIFPreview({ asset }: { asset: AssetRecord }) {
         compact
         source={() => canvasRef.current}
         revision={frameIndex}
+        onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
       />
     </div>
   );

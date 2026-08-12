@@ -23,9 +23,20 @@ import {
 import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
 import { FoundToolbar } from "./FoundToolbar";
 import { FoundEmptyState } from "./FoundEmptyState";
+import { FoundLayersPanel } from "./FoundLayersPanel";
+import { SequencePreviewDialog } from "./SequencePreview";
+import {
+  PreviewTransportProvider,
+  usePreviewTransport,
+} from "./PreviewTransport";
+import {
+  classifyFoundPreview,
+  formatFoundTimecode,
+  foundToolbarProgressColor,
+  type FoundToolbarVariant,
+} from "./found-preview-model";
 import {
   PreviewSessionShell,
-  PreviewSessionTitle,
   PreviewSurface,
   previewRendererKind,
 } from "./PreviewSessionShell";
@@ -42,7 +53,7 @@ const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
  * Replaces DirectoryDetailsPanel with Found tab bar + dual-row toolbar.
  * Preserves all existing state management, event wiring, and tool drawers.
  */
-export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
+function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const foundSettings = useFoundSettings();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
   const [mode, setMode] = useState<PreviewTab>("preview");
@@ -54,7 +65,10 @@ export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
   const [timeSeconds, setTimeSeconds] = useState(0);
   const [gifPaths, setGifPaths] = useState<string[]>([]);
   const [playbackFps, setPlaybackFps] = useState<number | null>(null);
+  const [colorSwatches, setColorSwatches] = useState<string[]>([]);
+  const [controlsTarget, setControlsTarget] = useState<HTMLDivElement | null>(null);
   const previewSession = usePreviewSessionMode(entry?.path ?? null);
+  const transport = usePreviewTransport();
 
   useEffect(() => {
     setAsset(null);
@@ -65,6 +79,7 @@ export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
     setTimeSeconds(0);
     setGifPaths(entry && !entry.isDirectory ? [entry.path] : []);
     setPlaybackFps(null);
+    setColorSwatches([]);
     if (!entry || entry.isDirectory) return;
     let cancelled = false;
     setLoading(true);
@@ -119,16 +134,12 @@ export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
 
   const isVideo = entry ? videoPattern.test(entry.extension) : false;
   const hasContent = !!(entry && asset && !entry.isDirectory);
+  const previewKind = entry && asset ? classifyFoundPreview(entry, asset) : null;
+  const toolbarVariant = previewKind && ["image", "svg", "gif", "video", "sequence"].includes(previewKind)
+    ? previewKind as FoundToolbarVariant
+    : null;
   const isPreview = mode === "preview";
   const selectTool = (next: WorkbenchTool) => setTool(next);
-
-  // Format timecode from seconds
-  const formatTimecode = (seconds: number): string => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
 
   const fpsLabel = playbackFps !== null
     ? `${playbackFps} fps`
@@ -264,22 +275,26 @@ export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
               <>
                 <PreviewSurface
                   renderer={previewRendererKind(asset)}
-                  className="workbench-preview-shell"
+                  className="workbench-preview-shell found-preview-viewport"
                 >
-                  <PreviewSessionTitle
-                    className="workbench-asset-label"
-                    titleClassName="directory-inspector-title"
-                    title={<span title={entry.path}>{entry.name}</span>}
-                  />
-                  <AssetPreview
-                    asset={asset}
-                    onTimeChange={setTimeSeconds}
-                    playbackFps={playbackFps}
-                    onOpenTool={(next, time) => {
-                      setTimeSeconds(time);
-                      if (next !== "color") setTool(next);
-                    }}
-                  />
+                  {previewKind === "svg" && <FoundLayersPanel />}
+                  {previewKind === "sequence" && entry.sequenceGroup ? (
+                    <SequencePreviewDialog key={entry.sequenceGroup.id} sequence={entry.sequenceGroup} embedded onClose={() => undefined} onPaletteChange={setColorSwatches} />
+                  ) : (
+                    <AssetPreview
+                      key={asset.path}
+                      asset={asset}
+                      onTimeChange={setTimeSeconds}
+                      playbackFps={playbackFps}
+                      onOpenTool={(next, time) => {
+                        setTimeSeconds(time);
+                        if (next !== "color") setTool(next);
+                      }}
+                      onPaletteChange={setColorSwatches}
+                      managed
+                      controlsTarget={controlsTarget}
+                    />
+                  )}
                 </PreviewSurface>
 
                 {/* Tool drawer (existing) */}
@@ -335,17 +350,55 @@ export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
                   </div>
                 )}
 
-                {/* Found toolbar — shown when no tool drawer is open */}
                 {tool === "preview" && (
-                  <FoundToolbar
-                    seekPosition={duration > 0 ? timeSeconds / duration : 0}
-                    onSeekChange={(p) => setTimeSeconds(p * duration)}
-                    timecode={formatTimecode(timeSeconds)}
-                    loopActive={false}
-                    fpsLabel={fpsLabel}
+                  <div className="found-preview-workspace">
+                    <div className="found-preview-file-row">
+                      <span className="found-preview-filename directory-inspector-title" title={entry.path}>
+                        {entry.name}
+                      </span>
+                      {transport.snapshot?.kind === "video" && (
+                        <span className="found-preview-frame-label">
+                          FRAME {String(transport.snapshot.frameIndex).padStart(3, "0")}
+                        </span>
+                      )}
+                      {transport.snapshot?.kind === "sequence" && entry.sequenceGroup && (
+                        <span className="found-preview-frame-label">
+                          SEQUENCE {String(entry.sequenceGroup.start + transport.snapshot.frameIndex).padStart(entry.sequenceGroup.width, "0")}
+                        </span>
+                      )}
+                    </div>
+                    {toolbarVariant && ["gif", "video", "sequence"].includes(toolbarVariant) && <FoundToolbar
+                    variant={toolbarVariant}
+                    seekPosition={transport.snapshot?.position ?? 0}
+                    onSeekChange={(position) => transport.actions?.seek(position)}
+                    timecode={transport.snapshot?.kind === "sequence"
+                      ? String((entry.sequenceGroup?.start ?? 0) + transport.snapshot.frameIndex)
+                      : formatFoundTimecode(
+                          (transport.snapshot?.position ?? 0) * (transport.snapshot?.durationSeconds ?? 0),
+                          transport.snapshot?.kind === "gif" ? transport.snapshot.fps : null,
+                        )}
+                    loopActive={transport.snapshot?.looping ?? false}
+                    onLoopToggle={() => transport.actions?.setLooping(!(transport.snapshot?.looping ?? false))}
+                    playing={transport.snapshot?.playing ?? false}
+                    onPlayingToggle={() => transport.actions?.togglePlaying()}
+                    onStepFrames={(delta) => transport.actions?.stepFrames(delta)}
+                    muted={transport.snapshot?.muted ?? false}
+                    onMutedToggle={() => transport.actions?.setMuted(!(transport.snapshot?.muted ?? false))}
+                    fpsLabel={transport.snapshot?.fps
+                      ? `${Number(transport.snapshot.fps.toFixed(2))} fps`
+                      : fpsLabel}
                     showUpperRow
-                    showLowerRow={isVideo || !!entry.extension.match(/^(gif|apng)$/i)}
-                  />
+                    showLowerRow
+                    progressColor={foundToolbarProgressColor(toolbarVariant)}
+                    colorSwatches={colorSwatches}
+                    onTrim={isVideo ? () => setTool("frames") : undefined}
+                    onGifExport={() => {
+                      if (transport.actions?.exportGif) transport.actions.exportGif();
+                      else if (isVideo) setTool("gif");
+                    }}
+                    />}
+                    <div className="found-preview-controls-slot" ref={setControlsTarget} />
+                  </div>
                 )}
               </>
             )}
@@ -366,5 +419,13 @@ export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
         )}
       </div>
     </PreviewSessionShell>
+  );
+}
+
+export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
+  return (
+    <PreviewTransportProvider>
+      <FoundPreviewPanelContent entry={entry} />
+    </PreviewTransportProvider>
   );
 }

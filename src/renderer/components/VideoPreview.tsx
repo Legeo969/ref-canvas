@@ -8,6 +8,7 @@ import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import { GifExportStudio } from "./GifExportStudio";
 import { PreviewColorBar } from "./PreviewColorBar";
 import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
+import { usePreviewTransportRegistration } from "./PreviewTransport";
 
 /**
  * 视频预览（阶段 3 §9.3）：原生播放 + 精确逐帧。
@@ -33,16 +34,20 @@ export function VideoPreview({
   onOpenTool,
   onTimeChange,
   playbackFps,
+  onPaletteChange,
 }: {
   asset: Pick<AssetRecord, "id" | "path" | "previewUrl">;
   persistNotes?: boolean;
   onOpenTool?: (tool: "gif" | "frames" | "color" | "fps", timeSeconds: number, color?: PaletteColor) => void;
   onTimeChange?: (timeSeconds: number) => void;
   playbackFps?: number | null;
+  onPaletteChange?: (colors: string[]) => void;
 }) {
   const foundSettings = useFoundSettings();
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameImageRef = useRef<HTMLImageElement>(null);
+  const assetPathRef = useRef(asset.path);
+  assetPathRef.current = asset.path;
   // 阶段 5：autoplay 偏好（默认播放）；首次挂载按设置决定是否自动播放。
   const [playing, setPlaying] = useState(foundSettings.autoplayVideo);
   const autoPlayedRef = useRef(false);
@@ -56,6 +61,8 @@ export function VideoPreview({
   const [framesDialogOpen, setFramesDialogOpen] = useState(false);
   const [looping, setLooping] = useState(true);
   const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [paletteTimeMs, setPaletteTimeMs] = useState(0);
   const lastFrameTimeRef = useRef(0);
   const paletteTimerRef = useRef<number | null>(null);
@@ -126,17 +133,72 @@ export function VideoPreview({
     setPlaying(false);
     setStepping(true);
     setFailed(false);
+    const requestPath = asset.path;
     void window.refCanvas.media
-      .frame(asset.path, { timeMs: next * 1000, width: 1920, height: 1080 })
+      .frame(requestPath, { timeMs: next * 1000, width: 1920, height: 1080 })
       .then((result) => {
+        if (assetPathRef.current !== requestPath) return;
         setFrameSource(result.source);
         setTimecode(next);
         onTimeChange?.(next);
         if (onOpenTool) schedulePalette(next, true);
       })
-      .catch(() => setFailed(true))
-      .finally(() => setStepping(false));
+      .catch(() => {
+        if (assetPathRef.current === requestPath) setFailed(true);
+      })
+      .finally(() => {
+        if (assetPathRef.current === requestPath) setStepping(false);
+      });
   };
+
+  usePreviewTransportRegistration({
+    kind: "video",
+    playing,
+    position: duration > 0 ? timecode / duration : 0,
+    durationSeconds: duration,
+    frameIndex: effectiveFrameRate ? Math.floor(timecode * effectiveFrameRate) : 0,
+    frameCount: effectiveFrameRate && duration > 0 ? Math.ceil(duration * effectiveFrameRate) : 0,
+    fps: effectiveFrameRate,
+    playbackRate,
+    looping,
+    muted,
+    volume,
+  }, {
+    togglePlaying: () => {
+      const video = videoRef.current;
+      if (!video) return;
+      if (video.paused) void video.play().catch(() => undefined);
+      else video.pause();
+    },
+    seek: (position) => {
+      const video = videoRef.current;
+      if (!video || duration <= 0) return;
+      const next = Math.min(1, Math.max(0, position)) * duration;
+      video.currentTime = next;
+      lastFrameTimeRef.current = next;
+      setTimecode(next);
+      setFrameSource(null);
+      onTimeChange?.(next);
+      schedulePalette(next, true);
+    },
+    stepFrames: step,
+    setLooping,
+    setPlaybackRate: (value) => {
+      const next = Math.min(8, Math.max(0.25, value));
+      if (videoRef.current) videoRef.current.playbackRate = next;
+      setPlaybackRate(next);
+    },
+    setMuted: (value) => {
+      if (videoRef.current) videoRef.current.muted = value;
+      setMuted(value);
+    },
+    setVolume: (value) => {
+      const next = Math.min(1, Math.max(0, value));
+      if (videoRef.current) videoRef.current.volume = next;
+      setVolume(next);
+      if (next > 0) setMuted(false);
+    },
+  });
 
   const content = (
     <div className="video-preview">
@@ -151,6 +213,11 @@ export function VideoPreview({
             setPlaying(true);
             setFrameSource(null);
           }}
+          onVolumeChange={(event) => {
+            setMuted(event.currentTarget.muted);
+            setVolume(event.currentTarget.volume);
+          }}
+          onRateChange={(event) => setPlaybackRate(event.currentTarget.playbackRate)}
           onPause={() => setPlaying(false)}
           onTimeUpdate={(event) => {
             lastFrameTimeRef.current = event.currentTarget.currentTime;
@@ -205,7 +272,7 @@ export function VideoPreview({
             onPointerUp={() => schedulePalette(videoRef.current?.currentTime ?? timecode, true)}
           />
         )}
-        <div className="video-step-controls">
+        <div className={`video-step-controls${onOpenTool ? " found-managed" : ""}`}>
           <button
             aria-label={translate("sequence.previousFrame")}
             disabled={stepping || effectiveFrameRate === null}
@@ -279,6 +346,7 @@ export function VideoPreview({
               timeMs={paletteTimeMs}
               revision={paletteTimeMs}
               source={() => frameSource && !playing ? frameImageRef.current : videoRef.current}
+              onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
             />
           ) : (
             <PreviewColorBar
@@ -287,6 +355,7 @@ export function VideoPreview({
               timeMs={timecode * 1000}
               source={() => frameSource && !playing ? frameImageRef.current : videoRef.current}
               revision={`${frameSource ?? "video"}:${timecode}:${playing}`}
+              onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
             />
           )}
         </div>

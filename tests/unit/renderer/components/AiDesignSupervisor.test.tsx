@@ -115,6 +115,23 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
     expect(host.textContent).toContain("2 个输出");
   });
 
+  it("uses the Found four-region structure when embedded", async () => {
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<AiDesignSupervisorPanel variant="embedded" initialSourcePath="D:\\src\\a.png" />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    expect(host.querySelector(".found-ai-source-region")).toBeTruthy();
+    expect(host.querySelector(".found-ai-feedback-region textarea")).toBeTruthy();
+    expect(host.querySelector(".found-ai-config-region")).toBeTruthy();
+    expect(host.querySelector(".found-ai-bottom-bar .primary-button")).toBeTruthy();
+  });
+
   it("adds source + references from the file picker and runs a job", async () => {
     const { refCanvas, ai } = baseRefCanvas();
     Object.assign(window, { refCanvas });

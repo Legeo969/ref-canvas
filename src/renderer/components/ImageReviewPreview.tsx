@@ -28,6 +28,9 @@ const LAYERED_FORMATS = new Set(["psd", "tif", "tiff", "svg"]);
 
 interface ImageReviewPreviewProps {
   asset: Pick<AssetRecord, "id" | "title" | "path" | "previewUrl" | "extension" | "kind">;
+  onPaletteChange?: (colors: string[]) => void;
+  managed?: boolean;
+  controlsTarget?: HTMLElement | null;
 }
 
 interface ColorSample {
@@ -39,7 +42,7 @@ function toHex(value: number): string {
   return value.toString(16).padStart(2, "0");
 }
 
-export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
+export function ImageReviewPreview({ asset, onPaletteChange, managed = false, controlsTarget }: ImageReviewPreviewProps) {
   const foundSettings = useFoundSettings();
   const imageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -109,11 +112,13 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
   };
 
   return (
-    <div className="image-review">
+    <div className={`image-review${managed ? " found-managed-preview" : ""}`}>
       <ImagePreviewViewport
         assetKey={`${asset.id}:${asset.previewUrl}`}
         checkerBackground={alphaBackgroundStyle(foundSettings)}
         interactionDisabled={eyedropActive}
+        canvasBackground={managed ? "var(--surface-1, #1d201f)" : undefined}
+        controlsTarget={controlsTarget}
         toolbarEnd={
           <>
             <button
@@ -134,6 +139,7 @@ export function ImageReviewPreview({ asset }: ImageReviewPreviewProps) {
               source={() => imageRef.current}
               revision={asset.previewUrl}
               label={translate("imageReview.palette")}
+              onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
             />
             {sample && (
               <button

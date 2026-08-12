@@ -4,13 +4,13 @@
    ========================================================= */
 
 :root {
-  /* Found panel palette (A-grade: pixel-sampled + QML cross-verified) */
-  --found-panel: #242424;
-  --found-toolbar: #2E2E2E;
-  --found-accent: #0085FF;
+  /* Shared application surfaces: preview renderers must not introduce a second theme. */
+  --found-panel: var(--surface-2, #202425);
+  --found-toolbar: var(--surface-2, #202425);
+  --found-accent: var(--accent, #3ab28f);
   --found-sequence: #59D165;
-  --found-canvas: #0F1119;
-  --found-canvas-audio: #242424;
+  --found-canvas: var(--surface-1, #1d201f);
+  --found-canvas-audio: var(--surface-1, #1d201f);
   --found-sequence-track: #393939;
   --found-slider-track: #3A3D45;
   --found-text-secondary: #8B8D94;
@@ -76,6 +76,177 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+
+.workbench-preview-shell {
+  position: relative;
+}
+
+.found-preview-panel .found-preview-viewport {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: var(--surface-1, #1d201f);
+}
+
+.found-preview-panel .found-preview-viewport > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+.found-preview-panel .found-preview-viewport,
+.found-preview-panel .found-managed-media-surface,
+.found-preview-panel .found-managed-preview,
+.found-preview-panel .gif-preview,
+.found-preview-panel .video-preview,
+.found-preview-panel .sequence-preview-stage {
+  background: var(--surface-1, #1d201f);
+}
+
+.found-preview-panel .found-managed-media-surface {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.found-preview-panel .found-managed-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.found-preview-panel .found-managed-preview.image-review,
+.found-preview-panel .found-managed-preview.hdr-preview,
+.found-preview-panel .found-managed-preview.model-preview { display: block; }
+
+.found-preview-panel .found-managed-preview .image-preview-viewport-stage,
+.found-preview-panel .found-managed-preview .hdr-preview-stage,
+.found-preview-panel .found-managed-preview .model-preview-canvas {
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.found-preview-panel .found-managed-preview.model-preview { overflow: hidden; }
+
+.found-preview-panel .found-managed-preview .model-preview-canvas {
+  position: relative;
+  inset: auto;
+  overflow: hidden;
+}
+
+.found-preview-panel .found-managed-preview .model-preview-feedback {
+  position: static;
+  grid-column: 1;
+  padding: 6px 10px;
+  border-radius: 0;
+  text-align: left;
+}
+
+.found-preview-panel .gif-preview,
+.found-preview-panel .video-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.found-preview-panel .gif-preview-canvas,
+.found-preview-panel .video-preview video,
+.found-preview-panel .sequence-preview-stage img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0;
+  background: transparent;
+  object-fit: contain;
+}
+
+.found-preview-panel .gif-preview > .preview-color-bar {
+  display: none;
+}
+
+.found-preview-workspace {
+  z-index: 2;
+  flex: 0 0 auto;
+  min-width: 0;
+  background: var(--found-toolbar);
+  border-top: 1px solid var(--found-divider);
+}
+
+.found-preview-controls-slot:empty { display: none; }
+
+.found-preview-controls-slot {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  background: var(--found-toolbar);
+}
+
+.found-preview-controls-slot .image-preview-toolbar,
+.found-preview-controls-slot .hdr-preview-controls,
+.found-preview-controls-slot .model-managed-controls {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-top: 1px solid var(--found-divider);
+  border-radius: 0;
+  background: var(--found-toolbar);
+  box-shadow: none;
+}
+
+.found-preview-controls-slot .hdr-preview-controls,
+.found-preview-controls-slot .model-managed-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.found-preview-controls-slot .model-camera-panel,
+.found-preview-controls-slot .model-preview-toolbar,
+.found-preview-controls-slot .model-preview-actions {
+  position: static;
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  flex-direction: row;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.found-preview-file-row {
+  display: flex;
+  height: 28px;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  color: #d0d2d6;
+}
+
+.found-preview-filename {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.found-preview-frame-label {
+  margin-left: auto;
+  color: var(--found-text-secondary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Focus and fullscreen keep only the shared session controls and renderer.
@@ -187,7 +358,7 @@
 .found-toolbar {
   flex: 0 0 auto;
   background: var(--found-toolbar);
-  border-top: 1px solid var(--found-divider);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .found-toolbar-row {
@@ -219,6 +390,17 @@
   font-size: 10px;
   cursor: pointer;
   transition: background 100ms ease-out, color 100ms ease-out;
+}
+
+.found-tool-btn:active:not(:disabled),
+.found-tool-label:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.found-tool-btn:disabled,
+.found-tool-label:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .found-tool-btn:hover {
@@ -340,4 +522,133 @@
 
 .found-toolbar-spacer {
   flex: 1 1 auto;
+}
+
+/* SVG Layers placeholder: parsing remains a later rendering capability. */
+.found-layers-panel {
+  flex: 0 0 auto;
+  background: var(--found-panel);
+  border-bottom: 1px solid var(--found-divider);
+}
+
+.found-layers-panel > button {
+  display: flex;
+  width: 100%;
+  height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #d0d2d6;
+  font-size: 11px;
+  text-align: left;
+}
+
+.found-layers-panel > button svg:first-child {
+  transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.found-layers-panel.open > button svg:first-child {
+  transform: rotate(90deg);
+}
+
+.found-layers-empty {
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--found-text-muted);
+  font-size: 10px;
+}
+
+/* The Found panel owns transport controls; standalone previews keep theirs. */
+.found-preview-panel .video-step-controls.found-managed,
+.found-preview-panel .video-workbench-seek {
+  display: none;
+}
+
+.sequence-inline-preview,
+.sequence-preview-shell.embedded {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sequence-preview-shell.embedded {
+  position: static;
+  max-width: none;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: var(--found-canvas);
+  box-shadow: none;
+}
+
+.sequence-preview-shell.embedded .quick-preview-stage {
+  flex: 1 1 auto;
+}
+
+.sequence-preview-shell.embedded .sequence-controls,
+.sequence-preview-shell.embedded .sequence-missing,
+.sequence-preview-shell.embedded .sequence-export-banner {
+  display: none;
+}
+
+.found-preview-panel .audio-preview {
+  width: 100%;
+  min-height: 100%;
+  justify-content: center;
+  background: var(--found-canvas-audio);
+}
+
+.found-preview-panel .audio-waveform {
+  width: calc(100% - 32px);
+  max-height: 180px;
+}
+
+.found-preview-panel .audio-meta {
+  display: grid;
+  width: calc(100% - 32px);
+  grid-template-columns: auto repeat(4, minmax(0, 1fr));
+  align-items: center;
+  gap: 10px;
+  color: var(--found-text-secondary);
+}
+
+.found-preview-panel .audio-meta span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.found-preview-panel .audio-meta small {
+  color: var(--found-text-muted);
+  font-size: 9px;
+}
+
+.found-preview-panel .audio-meta strong {
+  overflow: hidden;
+  color: #d7d9dc;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.found-preview-panel .preview-surface-pdf .preview-unavailable {
+  align-items: center;
+  justify-content: center;
+  background: var(--found-canvas);
+}
+
+.found-preview-panel .pdf-preview {
+  width: min(92%, 860px);
+  height: calc(100% - 32px);
+  border: 0;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.35);
 }

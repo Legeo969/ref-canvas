@@ -22,7 +22,8 @@ function formatDuration(seconds: number | null): string {
 export function AudioPreview({
   asset,
 }: {
-  asset: Pick<AssetRecord, "id" | "path" | "extension" | "previewUrl">;
+  asset: Pick<AssetRecord, "id" | "path" | "extension" | "previewUrl"> &
+    Partial<Pick<AssetRecord, "title" | "duration" | "customFields">>;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -63,9 +64,9 @@ export function AudioPreview({
     context.clearRect(0, 0, width, height);
     const data = peaksRef.current;
     if (!data || !data.length) {
-      context.fillStyle = "#3a4a44";
+      context.fillStyle = "#3a3d45";
       context.fillRect(0, height / 2 - 1, width, 2);
-      context.fillStyle = "#5d6f67";
+      context.fillStyle = "#8b8d94";
       context.font = "12px Segoe UI, sans-serif";
       context.fillText(translate("audio.loadingWaveform"), 12, 18);
       return;
@@ -76,7 +77,7 @@ export function AudioPreview({
       const x = i * step;
       const barHeight = Math.max(1.5, data[i] * (height - 12));
       const y = (height - barHeight) / 2;
-      context.fillStyle = x < progressX ? "#7fb8a0" : "#3d4f47";
+      context.fillStyle = x < progressX ? "#0085ff" : "#3a3d45";
       context.fillRect(x + 0.5, y, Math.max(1, step - 1), barHeight);
     }
   }, [peaks, progress]);
@@ -119,10 +120,11 @@ export function AudioPreview({
           <track kind="captions" />
         </audio>
         <div className="audio-meta">
-          <Headphones size={15} />
-          <span>{asset.extension.toUpperCase()}</span>
-          <span>{formatDuration(duration)}</span>
-          {peaks ? <span>{translate("audio.sampleCount").replace("{count}", String(peaks.length))}</span> : null}
+          <Headphones size={15} aria-hidden="true" />
+          <span><small>Name</small><strong>{asset.title || asset.path.split(/[\\/]/).at(-1) || "—"}</strong></span>
+          <span><small>Format</small><strong>{asset.extension.toUpperCase()}</strong></span>
+          <span><small>Length</small><strong>{formatDuration(duration ?? asset.duration ?? null)}</strong></span>
+          <span><small>Author</small><strong>{asset.customFields?.author || "—"}</strong></span>
         </div>
       </div>
     </MediaNotesOverlay>

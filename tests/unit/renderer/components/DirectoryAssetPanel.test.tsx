@@ -10,7 +10,7 @@ import {
 import { useAppStore } from "../../../../src/renderer/app/store";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { DialogProvider } from "../../../../src/renderer/components/DialogProvider";
-import { DirectoryAssetPanel } from "../../../../src/renderer/components/DirectoryAssetPanel";
+import { DirectoryAssetPanel, directoryThumbnailSource } from "../../../../src/renderer/components/DirectoryAssetPanel";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -19,6 +19,12 @@ setLanguage("zh-CN"); // 网格中嵌入已翻译的 SequenceCard 等子组件�
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 describe("DirectoryAssetPanel", () => {
+  it("prefers a revised indexed custom thumbnail over the source preview token", () => {
+    expect(directoryThumbnailSource(
+      "refbrowse://thumbnail/source-token?priority=visible",
+      { url: "refasset://thumbnail/asset-1", revision: "2026-08-12T09:00:00.000Z" },
+    )).toBe("refasset://thumbnail/asset-1?revision=2026-08-12T09%3A00%3A00.000Z");
+  });
   const roots: Array<ReturnType<typeof createRoot>> = [];
 
   afterEach(async () => {

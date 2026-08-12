@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { translate } from "../app/i18n";
 import { SelectMenu, type SelectMenuOption } from "./SelectMenu";
 
@@ -32,6 +33,8 @@ interface ImagePreviewViewportProps {
   children(state: ImageViewportRenderState): ReactNode;
   toolbarEnd?: ReactNode;
   interactionDisabled?: boolean;
+  canvasBackground?: string;
+  controlsTarget?: HTMLElement | null;
 }
 
 export function clampImageZoom(value: number): number {
@@ -66,6 +69,8 @@ export function ImagePreviewViewport({
   children,
   toolbarEnd,
   interactionDisabled = false,
+  canvasBackground = "var(--found-canvas, #0F1119)",
+  controlsTarget,
 }: ImagePreviewViewportProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
@@ -167,12 +172,61 @@ export function ImagePreviewViewport({
     transitionDuration: panning ? "0ms" : "90ms",
   }), [pan.x, pan.y, panning, rotation, zoom]);
 
+  const toolbar = (
+    <div className="image-preview-toolbar">
+      <div className="image-preview-toolbar-start">
+        <SelectMenu
+          value={zoomValue}
+          options={zoomOptions}
+          ariaLabel={translate("imageReview.fit")}
+          className="image-preview-zoom-menu"
+          onValueChange={(value) => {
+            if (value === "fit") {
+              fitView();
+              return;
+            }
+            applyZoom(Number(value));
+          }}
+        />
+        <button
+          type="button"
+          className="mini-icon-button"
+          title={translate("imageReview.fit")}
+          aria-label={translate("imageReview.fit")}
+          onClick={fitView}
+        >
+          <Maximize2 size={15} />
+        </button>
+        <button
+          type="button"
+          className="mini-icon-button"
+          title={translate("imageReview.rotate")}
+          aria-label={translate("imageReview.rotate")}
+          onClick={() => setRotation((value) => (value + 90) % 360)}
+        >
+          <RotateCw size={15} />
+        </button>
+        <button
+          type="button"
+          className={`mini-icon-button${showChecker ? " active" : ""}`}
+          title={translate("imageReview.checker")}
+          aria-label={translate("imageReview.checker")}
+          aria-pressed={showChecker}
+          onClick={() => setShowChecker((value) => !value)}
+        >
+          <Grid2X2 size={15} />
+        </button>
+      </div>
+      {toolbarEnd && <div className="image-preview-toolbar-end">{toolbarEnd}</div>}
+    </div>
+  );
+
   return (
     <div className="image-preview-viewport">
       <div
         ref={stageRef}
         className={`image-preview-viewport-stage${panning ? " is-panning" : ""}`}
-        style={{ background: showChecker ? checkerBackground : "var(--found-canvas, #0F1119)" }}
+        style={{ background: showChecker ? checkerBackground : canvasBackground }}
         onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -182,52 +236,7 @@ export function ImagePreviewViewport({
       >
         {children({ style: contentStyle, panning })}
       </div>
-      <div className="image-preview-toolbar">
-        <div className="image-preview-toolbar-start">
-          <SelectMenu
-            value={zoomValue}
-            options={zoomOptions}
-            ariaLabel={translate("imageReview.fit")}
-            className="image-preview-zoom-menu"
-            onValueChange={(value) => {
-              if (value === "fit") {
-                fitView();
-                return;
-              }
-              applyZoom(Number(value));
-            }}
-          />
-          <button
-            type="button"
-            className="mini-icon-button"
-            title={translate("imageReview.fit")}
-            aria-label={translate("imageReview.fit")}
-            onClick={fitView}
-          >
-            <Maximize2 size={15} />
-          </button>
-          <button
-            type="button"
-            className="mini-icon-button"
-            title={translate("imageReview.rotate")}
-            aria-label={translate("imageReview.rotate")}
-            onClick={() => setRotation((value) => (value + 90) % 360)}
-          >
-            <RotateCw size={15} />
-          </button>
-          <button
-            type="button"
-            className={`mini-icon-button${showChecker ? " active" : ""}`}
-            title={translate("imageReview.checker")}
-            aria-label={translate("imageReview.checker")}
-            aria-pressed={showChecker}
-            onClick={() => setShowChecker((value) => !value)}
-          >
-            <Grid2X2 size={15} />
-          </button>
-        </div>
-        {toolbarEnd && <div className="image-preview-toolbar-end">{toolbarEnd}</div>}
-      </div>
+      {controlsTarget ? createPortal(toolbar, controlsTarget) : toolbar}
     </div>
   );
 }

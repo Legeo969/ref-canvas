@@ -277,8 +277,8 @@ export function registerSystemIpc(
       const filename = path.join(directory, `${parsed.assetId}.png`);
       await mkdir(directory, { recursive: true });
       await writeFile(filename, png);
-      database().setCustomThumbnail(parsed.assetId, filename);
-      return filename;
+      const asset = dependencies.getLibrary().setCustomThumbnail(parsed.assetId, filename);
+      return { mode: "thumbnail" as const, asset };
     }
     const safeName = (parsed.defaultName ?? "RefCanvas-3D")
       .replace(/[\\/:*?"<>|]/g, "_")
@@ -294,7 +294,7 @@ export function registerSystemIpc(
       { path: result.filePath, mode: "destination" },
     ]);
     await writeFile(destination, png);
-    return destination;
+    return { mode: "export" as const, path: destination };
   });
   ipc.handleWithEvent("system:toggle-always-on-top", (event) => {
     const window = dependencies.windowForSender(event);

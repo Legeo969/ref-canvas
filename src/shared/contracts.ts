@@ -214,9 +214,13 @@ export interface ImportJobSnapshot {
 }
 
 export interface LibraryChangedEvent {
-  reason: "watch" | "reconcile";
+  reason: "watch" | "reconcile" | "thumbnail";
   paths: string[];
 }
+
+export type SaveRenderedImageResult =
+  | { mode: "export"; path: string }
+  | { mode: "thumbnail"; asset: AssetRecord };
 
 export interface WatchRoot {
   id: string;
@@ -556,6 +560,8 @@ export interface DirectoryEntry {
   duration?: number;
   /** 同目录文件序列的轻量识别结果；仅用于浏览和预览。 */
   sequence?: import("./file-sequence").FileSequenceInfo;
+  /** Full detected group supplied by the renderer for inline sequence preview. */
+  sequenceGroup?: SequenceGroupInfo;
   /** 本地索引中的用户标签；磁盘模式下按需回填。 */
   tags?: string[];
   /** 已按需建立索引时的收藏状态；未索引时未定义。 */
@@ -1956,7 +1962,7 @@ export interface RefCanvasApi {
         assetId?: string;
         defaultName?: string;
       },
-    ): Promise<string | null>;
+    ): Promise<SaveRenderedImageResult | null>;
     toggleAlwaysOnTop(): Promise<boolean>;
     /** Signals that initial renderer data is painted and background work may start. */
     markRendererInteractive(): Promise<void>;

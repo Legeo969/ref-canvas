@@ -115,6 +115,16 @@ interface DirectoryCardProps {
   /** 阶段 5：flatten 视图下显示相对路径（子目录条目）。 */
   displayName?: string;
   priority: "visible" | "overscan";
+  thumbnailOverride?: { url: string; revision: string };
+}
+
+export function directoryThumbnailSource(
+  generatedUrl: string | null,
+  override?: { url: string; revision: string },
+): string | null {
+  if (!override) return generatedUrl;
+  const separator = override.url.includes("?") ? "&" : "?";
+  return `${override.url}${separator}revision=${encodeURIComponent(override.revision)}`;
 }
 
 /** 未索引文件的预览/操作卡片（目录模式下复用虚拟网格布局）。 */
@@ -130,6 +140,7 @@ function DirectoryCard({
   priority,
   folderClickMode,
   displayName,
+  thumbnailOverride,
 }: DirectoryCardProps) {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -150,7 +161,7 @@ function DirectoryCard({
     };
   }, [entry.path, entry.isDirectory, entry.extension, priority]);
 
-  const preview = useRetryingPreviewUrl(thumbnailUrl);
+  const preview = useRetryingPreviewUrl(directoryThumbnailSource(thumbnailUrl, thumbnailOverride));
   const canPreview = !entry.isDirectory && preview.url && preview.status !== "failed";
 
   return (
@@ -340,6 +351,9 @@ export function DirectoryAssetPanel() {
   const [directoryScanComplete, setDirectoryScanComplete] = useState(false);
   const [batchJob, setBatchJob] = useState<DirectoryBatchSnapshot | null>(null);
   const [shortcutNotice, setShortcutNotice] = useState<string | null>(null);
+  const [thumbnailOverrides, setThumbnailOverrides] = useState<Map<string, { url: string; revision: string }>>(
+    () => new Map(),
+  );
   const shortcutNoticeTimerRef = useRef<number | null>(null);
   const [previewCoordinator] = useState(() => new DirectoryPreviewCoordinator());
   const previewSnapshot = useSyncExternalStore(
@@ -349,6 +363,23 @@ export function DirectoryAssetPanel() {
   );
   const previewPath = previewSnapshot.path;
   useEffect(() => () => previewCoordinator.dispose(), [previewCoordinator]);
+  useEffect(() => {
+    const library = window.refCanvas.library;
+    if (!library?.onLibraryChanged || !library.getByPath) return;
+    return library.onLibraryChanged((event) => {
+      if (event.reason !== "thumbnail") return;
+      for (const path of event.paths) {
+        void library.getByPath(path).then((asset) => {
+          if (!asset?.customThumbnailPath) return;
+          setThumbnailOverrides((current) => {
+            const next = new Map(current);
+            next.set(path, { url: asset.thumbnailUrl, revision: asset.updatedAt });
+            return next;
+          });
+        }).catch(() => undefined);
+      }
+    });
+  }, []);
   // 图片序列：目录级检测结果（按首帧路径索引）与预览对话框。
   const [sequenceGroups, setSequenceGroups] = useState<Map<string, SequenceGroupInfo>>(
     () => new Map(),
@@ -913,7 +944,8 @@ export function DirectoryAssetPanel() {
   const previewEntry = previewSnapshot.entry;
 
   const selectEntry = (entry: DirectoryEntry, event: React.MouseEvent) => {
-    store.selectDirectoryEntry(entry);
+    const sequenceGroup = sequenceIndex.byPath.get(entry.path);
+    store.selectDirectoryEntry(sequenceGroup ? { ...entry, sequenceGroup } : entry);
     directorySelection.click(
       files.map((item) => item.path),
       entry.path,
@@ -1900,6 +1932,7 @@ export function DirectoryAssetPanel() {
                 >
                   <DirectoryCard
                     entry={entry}
+                    thumbnailOverride={thumbnailOverrides.get(entry.path)}
                     tags={entry.tags}
                     selected={
                       allMatchingSelected

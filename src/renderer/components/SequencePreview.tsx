@@ -22,6 +22,7 @@ import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
+import { usePreviewTransportRegistration } from "./PreviewTransport";
 
 /**
  * 图片序列预览（阶段 3 §9.4）：播放、逐帧、FPS 调节、帧范围/缺帧显示。
@@ -67,9 +68,13 @@ export function sequenceFrameSourceUrl(extension: string, token: string): string
 export function SequencePreviewDialog({
   sequence,
   onClose,
+  embedded = false,
+  onPaletteChange,
 }: {
   sequence: SequenceGroupInfo;
   onClose(): void;
+  embedded?: boolean;
+  onPaletteChange?: (colors: string[]) => void;
 }) {
   const frames = useMemo(() => sequence.files, [sequence.files]);
   const foundSettings = useFoundSettings();
@@ -77,6 +82,7 @@ export function SequencePreviewDialog({
   // 作为 FPS presets 默认速度（检测器推断值保留给无设置时）。
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(foundSettings.autoplaySequence);
+  const [looping, setLooping] = useState(true);
   const [fps, setFps] = useState(
     foundSettings.defaultSequenceFps > 0
       ? foundSettings.defaultSequenceFps
@@ -136,8 +142,12 @@ export function SequencePreviewDialog({
     if (!playing || frames.length < 2) return;
     const tick = () => {
       if (!playingRef.current) return;
-      frameIndexRef.current =
-        (frameIndexRef.current + 1) % frames.length;
+      const next = frameIndexRef.current + 1;
+      if (next >= frames.length && !looping) {
+        setPlaying(false);
+        return;
+      }
+      frameIndexRef.current = next % frames.length;
       setFrameIndex(frameIndexRef.current);
       timerRef.current = window.setTimeout(tick, 1000 / Math.max(0.01, fpsRef.current));
     };
@@ -145,7 +155,7 @@ export function SequencePreviewDialog({
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
-  }, [playing, frames.length]);
+  }, [playing, frames.length, looping]);
 
   // 预取相邻帧图。
   useEffect(() => {
@@ -244,30 +254,56 @@ export function SequencePreviewDialog({
     }
   };
 
+  usePreviewTransportRegistration({
+    kind: "sequence",
+    playing,
+    position: frames.length > 1 ? frameIndex / (frames.length - 1) : 0,
+    durationSeconds: frames.length / Math.max(0.01, fps),
+    frameIndex,
+    frameCount: frames.length,
+    fps,
+    playbackRate: 1,
+    looping,
+    muted: true,
+    volume: 0,
+  }, {
+    togglePlaying: () => setPlaying((value) => !value),
+    seek: (position) => setFrameIndex(Math.min(frames.length - 1, Math.max(0, Math.round(position * (frames.length - 1))))),
+    stepFrames: (delta) => setFrameIndex((current) => {
+      if (!frames.length) return 0;
+      return (current + delta + frames.length) % frames.length;
+    }),
+    setLooping,
+    setPlaybackRate: (value) => setFps(Math.max(1, Math.round((sequence.fps || 24) * value))),
+    setMuted: () => undefined,
+    setVolume: () => undefined,
+    exportGif: () => void exportGif(),
+  });
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (!embedded && event.key === "Escape") {
         event.preventDefault();
         onClose();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [embedded, onClose]);
 
   return (
     <div
-      className="quick-preview-backdrop"
-      role="dialog"
-      aria-modal="true"
+      className={embedded ? "sequence-inline-preview" : "quick-preview-backdrop"}
+      role={embedded ? undefined : "dialog"}
+      aria-modal={embedded ? undefined : "true"}
       aria-label={translate("sequence.previewNamed").replace("{name}", sequence.baseName)}
-      onMouseDown={onClose}
+      onMouseDown={embedded ? undefined : onClose}
     >
       <section
-        className="quick-preview-shell sequence-preview-shell"
+        className={`quick-preview-shell sequence-preview-shell${embedded ? " embedded" : ""}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <header className="quick-preview-header">
+        {!embedded && <header className="quick-preview-header">
           <div className="quick-preview-title">
             <h2>
               <Film size={16} />
@@ -294,7 +330,7 @@ export function SequencePreviewDialog({
               <X size={18} />
             </button>
           </div>
-        </header>
+        </header>}
         {exportState === "running" && (
           <div className="sequence-export-banner">{translate("sequence.exportingMp4")}</div>
         )}
@@ -410,6 +446,7 @@ export function SequencePreviewDialog({
               compact
               source={() => displayedImageRef.current}
               revision={displayedSource ?? frameIndex}
+              onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
             />
             <div className="sequence-export-summary">
               <span>{translate("sequence.exportPreset")}</span>

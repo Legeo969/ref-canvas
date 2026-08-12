@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
 import { browserImageExtensions } from "../../shared/asset-kind";
-import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
 import { AudioPreview } from "./AudioPreview";
 import { FontPreview } from "./FontPreview";
 import { GIFPreview } from "./GIFPreview";
@@ -21,6 +20,9 @@ interface AssetPreviewProps {
   onOpenTool?: (tool: "gif" | "frames" | "color" | "fps", timeSeconds: number, color?: PaletteColor) => void;
   onTimeChange?: (timeSeconds: number) => void;
   playbackFps?: number | null;
+  onPaletteChange?: (colors: string[]) => void;
+  managed?: boolean;
+  controlsTarget?: HTMLElement | null;
 }
 
 function SystemThumbnail({ asset }: { asset: AssetRecord }) {
@@ -42,8 +44,7 @@ function SystemThumbnail({ asset }: { asset: AssetRecord }) {
   );
 }
 
-export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps }: AssetPreviewProps) {
-  const foundSettings = useFoundSettings();
+export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps, onPaletteChange, managed = false, controlsTarget }: AssetPreviewProps) {
   const runtimeApi = (window as unknown as {
     refCanvas?: { media?: { probe?: unknown } };
   }).refCanvas;
@@ -89,8 +90,8 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
     case "image":
       if (asset.extension === "gif") {
         return (
-          <div style={{ background: alphaBackgroundStyle(foundSettings) }}>
-            <GIFPreview asset={asset} />
+          <div className="found-managed-media-surface">
+            <GIFPreview asset={asset} managed={Boolean(onOpenTool)} onPaletteChange={onPaletteChange} />
           </div>
         );
       }
@@ -104,6 +105,8 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
               source={`${asset.thumbnailUrl}?priority=preview`}
               extension={asset.extension}
               path={asset.path}
+              managed={managed}
+              controlsTarget={controlsTarget}
             />
           </MediaNotesOverlay>
         );
@@ -122,11 +125,14 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
         ? (
             <ImageReviewPreview
               asset={asset}
+              onPaletteChange={onPaletteChange}
+              managed={managed}
+              controlsTarget={controlsTarget}
             />
           )
         : <SystemThumbnail asset={asset} />;
     case "video":
-      return <VideoPreview asset={asset} onOpenTool={onOpenTool} onTimeChange={onTimeChange} playbackFps={playbackFps} />;
+      return <VideoPreview asset={asset} onOpenTool={onOpenTool} onTimeChange={onTimeChange} playbackFps={playbackFps} onPaletteChange={onPaletteChange} />;
     case "audio":
       return <AudioPreview asset={asset} />;
     case "pdf":
@@ -143,7 +149,7 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
         </MediaNotesOverlay>
       );
     case "model3d":
-      return <ModelPreview asset={asset} />;
+      return <ModelPreview asset={asset} managed={managed} controlsTarget={controlsTarget} />;
     case "font":
       return <FontPreview asset={asset} />;
     case "dcc":

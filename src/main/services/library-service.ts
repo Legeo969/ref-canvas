@@ -332,6 +332,12 @@ export class LibraryService {
     this.events.emit("library-changed", structuredClone(event));
   }
 
+  setCustomThumbnail(id: string, thumbnailPath: string | null): AssetRecord {
+    const asset = this.database.setCustomThumbnail(id, thumbnailPath);
+    this.emitLibraryChanged({ reason: "thumbnail", paths: [asset.path] });
+    return asset;
+  }
+
   onSimilarityProgress(
     listener: (snapshot: SimilarityIndexSnapshot) => void,
   ): () => void {

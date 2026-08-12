@@ -404,7 +404,7 @@ export function AiDesignSupervisorPanel({
         </header>}
 
         <div className="ai-panel-body">
-          <section className="ai-form-section">
+          <section className={`ai-form-section${embedded ? " found-ai-source-region" : ""}`}>
             <div className="ai-section-label">
               <span>{translate("ai.input")}</span>
               <button
@@ -491,7 +491,7 @@ export function AiDesignSupervisorPanel({
             </button>
           </section>
 
-          <section className="ai-form-section">
+          <section className={`ai-form-section${embedded ? " found-ai-feedback-region" : ""}`}>
             <label className="ai-field-label" htmlFor="ai-prompt">
               {translate("ai.prompt")}
             </label>
@@ -506,7 +506,7 @@ export function AiDesignSupervisorPanel({
             />
           </section>
 
-          <section className="ai-form-section ai-options-row">
+          <section className={`ai-form-section ai-options-row${embedded ? " found-ai-config-region" : ""}`}>
             <label className="ai-toggle">
               <input
                 type="checkbox"
@@ -573,7 +573,7 @@ export function AiDesignSupervisorPanel({
 
           {fieldError && <p className="ai-field-error">{fieldError}</p>}
 
-          <footer className="ai-panel-footer">
+          <footer className={`ai-panel-footer${embedded ? " found-ai-bottom-bar" : ""}`}>
             <button
               className="primary-button"
               onClick={() => void run()}

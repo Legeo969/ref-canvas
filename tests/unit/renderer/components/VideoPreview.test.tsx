@@ -100,6 +100,45 @@ describe("VideoPreview frame stepping", () => {
     );
   });
 
+  it("ignores an extracted frame after switching to another video", async () => {
+    let resolveFrame!: (value: { source: string; path: string; timeMs: number; jobId: string }) => void;
+    const frame = vi.fn(() => new Promise((resolve) => { resolveFrame = resolve; }));
+    Object.assign(window, {
+      refCanvas: {
+        media: {
+          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
+          frame,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const first = { id: "video-1", path: "D:\\refs\\first.mp4", previewUrl: "refbrowse://preview/first" };
+    const second = { id: "video-2", path: "D:\\refs\\second.mp4", previewUrl: "refbrowse://preview/second" };
+    await act(async () => {
+      root.render(<VideoPreview asset={first} persistNotes={false} />);
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    Object.defineProperty(video, "currentTime", { configurable: true, writable: true, value: 0 });
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="下一帧"]')?.click());
+    expect(frame).toHaveBeenCalledOnce();
+    await act(async () => {
+      root.render(<VideoPreview asset={second} persistNotes={false} />);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveFrame({ source: "refbrowse://preview/stale-frame", path: "stale.png", timeMs: 42, jobId: "old" });
+      await Promise.resolve();
+    });
+    expect(host.querySelector<HTMLImageElement>(".video-frame-step")).toBeNull();
+  });
+
   it("opens the configurable GIF studio and exports the selected range", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const exportGif = vi.fn(async () => ({

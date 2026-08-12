@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   alphaBackgroundStyle,
   useFoundSettings,
@@ -18,6 +19,10 @@ interface DisplayLayer {
   components: DisplayComponent[];
 }
 
+function ControlsMount({ target, children }: { target?: HTMLElement | null; children: React.ReactNode }) {
+  return target ? createPortal(children, target) : children;
+}
+
 const AUTO_LAYER = "__auto__";
 const MAIN_LAYER = "__main__";
 
@@ -31,10 +36,14 @@ export function HdrPreview({
   source,
   extension,
   path,
+  managed = false,
+  controlsTarget,
 }: {
   source: string;
   extension: string;
   path?: string;
+  managed?: boolean;
+  controlsTarget?: HTMLElement | null;
 }) {
   const foundSettings = useFoundSettings();
   const hostRef = useRef<HTMLDivElement>(null);
@@ -242,10 +251,12 @@ export function HdrPreview({
   }, [exposure, toneMapping]);
 
   return (
-    <div className="hdr-preview">
+    <div className={`hdr-preview${managed ? " found-managed-preview" : ""}`}>
       <ImagePreviewViewport
         assetKey={displaySource}
         checkerBackground={alphaBackgroundStyle(foundSettings)}
+        canvasBackground={managed ? "var(--surface-1, #1d201f)" : undefined}
+        controlsTarget={controlsTarget}
         toolbarEnd={
           <PreviewColorBar
             compact
@@ -287,7 +298,8 @@ export function HdrPreview({
           </div>
         )}
       </ImagePreviewViewport>
-      <div className="hdr-preview-controls">
+      <ControlsMount target={controlsTarget}>
+        <div className="hdr-preview-controls">
         {layers.length > 0 && (
           <div className="hdr-channel-control" role="group" aria-label={translate("hdr.channelsGroup")}>
             <label className="hdr-layer-select">
@@ -388,7 +400,8 @@ export function HdrPreview({
           </button>
         )}
         {exportError && <span className="preview-color-error">{exportError}</span>}
-      </div>
+        </div>
+      </ControlsMount>
     </div>
   );
 }

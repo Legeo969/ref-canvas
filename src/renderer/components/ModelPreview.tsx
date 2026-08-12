@@ -15,6 +15,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AssetRecord } from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
 import {
@@ -39,6 +40,8 @@ interface ModelPreviewProps {
   asset: ModelPreviewSource;
   initialView?: ModelView | null;
   allowCustomThumbnail?: boolean;
+  managed?: boolean;
+  controlsTarget?: HTMLElement | null;
   onCameraChange?(view: ModelView): void;
 }
 
@@ -71,6 +74,8 @@ export function ModelPreview({
   asset,
   initialView,
   allowCustomThumbnail = true,
+  managed = false,
+  controlsTarget,
   onCameraChange,
 }: ModelPreviewProps) {
   const foundSettings = useFoundSettings();
@@ -99,7 +104,7 @@ export function ModelPreview({
     setCameraSelection(initialView ? "custom" : "default");
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x222423);
+    scene.background = new THREE.Color(managed ? 0x1d201f : 0x222423);
     const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 10_000);
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -317,7 +322,7 @@ export function ModelPreview({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [asset.id, asset.linkState, asset.previewUrl, asset.extension]);
+  }, [asset.id, asset.linkState, asset.previewUrl, asset.extension, managed]);
 
   useEffect(() => {
     displayModeRef.current = displayMode;
@@ -342,12 +347,12 @@ export function ModelPreview({
     if (!dataUrl) return;
     setFeedback(mode === "export" ? "正在保存…" : "正在设置缩略图…");
     try {
-      const filename = await window.refCanvas.system.saveRenderedImage(dataUrl, {
+      const result = await window.refCanvas.system.saveRenderedImage(dataUrl, {
         mode,
         assetId: mode === "thumbnail" ? asset.id : undefined,
         defaultName: `RefCanvas-3D-${asset.id.slice(0, 8)}`,
       });
-      setFeedback(filename ? (mode === "export" ? "视图已保存" : "缩略图已更新") : null);
+      setFeedback(result ? (mode === "export" ? "视图已保存" : "缩略图已更新") : null);
     } catch {
       setFeedback(mode === "export" ? "视图保存失败" : "缩略图设置失败");
     }
@@ -361,99 +366,25 @@ export function ModelPreview({
     { id: "right", label: "右视" },
   ];
 
+  const controls = <div className="model-managed-controls"><div className="model-camera-panel" aria-label="相机视角">
+    <span>Camera (5)</span>
+    {presets.map((preset) => <button key={preset.id} type="button" className={cameraSelection === preset.id ? "active" : ""} aria-pressed={cameraSelection === preset.id} onClick={() => setPresetRef.current(preset.id)}>{preset.label}</button>)}
+  </div><div className="model-preview-toolbar" role="group" aria-label="3D 显示模式">
+    <button type="button" className={displayMode === "wireframe" ? "active" : ""} aria-label="线框模式" aria-pressed={displayMode === "wireframe"} title="显示线框" onClick={() => setDisplayMode("wireframe")}><ScanLine size={16} /></button>
+    <button type="button" className={displayMode === "solid" ? "active" : ""} aria-label="实体模式" aria-pressed={displayMode === "solid"} title="实体材质" onClick={() => setDisplayMode("solid")}><Box size={16} /></button>
+    <button type="button" className={displayMode === "uv" ? "active" : ""} aria-label="UV 检查模式" aria-pressed={displayMode === "uv"} title="显示 UV Checker" disabled={!uvReady} onClick={() => setDisplayMode("uv")}><Grid3X3 size={16} /></button>
+    <span className="model-toolbar-separator" />
+    <button type="button" aria-label="恢复默认视角" title="默认视角" onClick={() => setPresetRef.current("default")}><Rotate3D size={16} /></button>
+  </div><div className="model-preview-actions" role="group" aria-label="3D 视图操作">
+    <button type="button" aria-label="保存 3D 视图" title="保存当前视图" onClick={() => void saveRenderedImage("export")}><Camera size={16} /></button>
+    {allowCustomThumbnail && <button type="button" aria-label="设为缩略图" title="设为素材缩略图" onClick={() => void saveRenderedImage("thumbnail")}><ImageDown size={16} /></button>}
+    <button type="button" aria-label={fullscreen ? "退出全屏" : "全屏查看"} title={fullscreen ? "退出全屏" : "全屏查看"} onClick={() => { if (document.fullscreenElement === rootRef.current) void document.exitFullscreen().catch(() => setFeedback("无法退出全屏")); else void rootRef.current?.requestFullscreen().catch(() => setFeedback("无法进入全屏")); }}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+  </div></div>;
+
   return (
-    <div className="model-preview" ref={rootRef}>
+    <div className={`model-preview${managed ? " found-managed-preview" : ""}`} ref={rootRef}>
       <div className="model-preview-canvas" ref={hostRef} />
-      <div className="model-camera-panel" aria-label="相机视角">
-        <span>Camera (5)</span>
-        {presets.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            className={cameraSelection === preset.id ? "active" : ""}
-            aria-pressed={cameraSelection === preset.id}
-            onClick={() => setPresetRef.current(preset.id)}
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-      <div className="model-preview-toolbar" role="group" aria-label="3D 显示模式">
-        <button
-          type="button"
-          className={displayMode === "wireframe" ? "active" : ""}
-          aria-label="线框模式"
-          aria-pressed={displayMode === "wireframe"}
-          title="显示线框"
-          onClick={() => setDisplayMode("wireframe")}
-        >
-          <ScanLine size={16} />
-        </button>
-        <button
-          type="button"
-          className={displayMode === "solid" ? "active" : ""}
-          aria-label="实体模式"
-          aria-pressed={displayMode === "solid"}
-          title="实体材质"
-          onClick={() => setDisplayMode("solid")}
-        >
-          <Box size={16} />
-        </button>
-        <button
-          type="button"
-          className={displayMode === "uv" ? "active" : ""}
-          aria-label="UV 检查模式"
-          aria-pressed={displayMode === "uv"}
-          title="显示 UV Checker"
-          disabled={!uvReady}
-          onClick={() => setDisplayMode("uv")}
-        >
-          <Grid3X3 size={16} />
-        </button>
-        <span className="model-toolbar-separator" />
-        <button
-          type="button"
-          aria-label="恢复默认视角"
-          title="默认视角"
-          onClick={() => setPresetRef.current("default")}
-        >
-          <Rotate3D size={16} />
-        </button>
-      </div>
-      <div className="model-preview-actions" role="group" aria-label="3D 视图操作">
-        <button
-          type="button"
-          aria-label="保存 3D 视图"
-          title="保存当前视图"
-          onClick={() => void saveRenderedImage("export")}
-        >
-          <Camera size={16} />
-        </button>
-        {allowCustomThumbnail && (
-          <button
-            type="button"
-            aria-label="设为缩略图"
-            title="设为素材缩略图"
-            onClick={() => void saveRenderedImage("thumbnail")}
-          >
-            <ImageDown size={16} />
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label={fullscreen ? "退出全屏" : "全屏查看"}
-          title={fullscreen ? "退出全屏" : "全屏查看"}
-          onClick={() => {
-            if (document.fullscreenElement === rootRef.current) {
-              void document.exitFullscreen().catch(() => setFeedback("无法退出全屏"));
-            } else {
-              void rootRef.current?.requestFullscreen().catch(() => setFeedback("无法进入全屏"));
-            }
-          }}
-        >
-          {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-        </button>
-      </div>
+      {controlsTarget ? createPortal(controls, controlsTarget) : controls}
       {feedback && <span className="model-preview-feedback">{feedback}</span>}
       {failed && (
         <span className="preview-message">

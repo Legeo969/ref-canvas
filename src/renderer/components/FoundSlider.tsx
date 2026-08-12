@@ -43,6 +43,20 @@ export function FoundSlider({ value, fillColor, onChange }: FoundSliderProps) {
     [commit],
   );
 
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      let next: number | null = null;
+      if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = 1;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowDown") next = value - 0.01;
+      else if (event.key === "ArrowRight" || event.key === "ArrowUp") next = value + 0.01;
+      if (next === null) return;
+      event.preventDefault();
+      onChange(Math.max(0, Math.min(1, next)));
+    },
+    [onChange, value],
+  );
+
   const pct = `${Math.max(0, Math.min(100, value * 100))}%`;
 
   return (
@@ -50,7 +64,9 @@ export function FoundSlider({ value, fillColor, onChange }: FoundSliderProps) {
       className="found-slider"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
+      onKeyDown={onKeyDown}
       role="slider"
+      aria-label="预览时间线"
       aria-valuenow={Math.round(value * 100)}
       aria-valuemin={0}
       aria-valuemax={100}

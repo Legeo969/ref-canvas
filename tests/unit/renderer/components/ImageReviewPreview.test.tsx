@@ -82,6 +82,29 @@ describe("ImageReviewPreview (FND-005)", () => {
       .toBe("false");
   });
 
+  it("uses the neutral application canvas in a managed right-panel session", async () => {
+    installRefCanvas();
+    const { host, root, asset } = render();
+    await act(async () => {
+      root.render(<ImageReviewPreview asset={asset} managed />);
+    });
+    expect(host.querySelector<HTMLElement>(".image-preview-viewport-stage")?.style.background)
+      .toBe("var(--surface-1, #1d201f)");
+  });
+
+  it("portals managed controls out of the media viewport", async () => {
+    installRefCanvas();
+    const { host, root, asset } = render();
+    const controls = document.createElement("div");
+    controls.className = "external-controls";
+    document.body.append(controls);
+    await act(async () => {
+      root.render(<ImageReviewPreview asset={asset} managed controlsTarget={controls} />);
+    });
+    expect(host.querySelector(".image-preview-toolbar")).toBeNull();
+    expect(controls.querySelector(".image-preview-toolbar")).toBeTruthy();
+  });
+
   it("enables the eyedropper mode on click", async () => {
     installRefCanvas();
     const { host, root, asset } = render();

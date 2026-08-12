@@ -10,6 +10,12 @@ import {
 } from "../../../../src/shared/contracts";
 import { FoundPreviewPanel } from "../../../../src/renderer/components/FoundPreviewPanel";
 
+vi.mock("../../../../src/renderer/components/SequencePreview", () => ({
+  SequencePreviewDialog: ({ sequence }: { sequence: { id: string } }) => (
+    <div data-testid="sequence-session" data-sequence-id={sequence.id} />
+  ),
+}));
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const entry: DirectoryEntry = {
@@ -127,5 +133,127 @@ describe("FoundPreviewPanel smoke", () => {
     expect(panel?.classList.contains("preview-session-focused")).toBe(true);
     expect(panel?.querySelector(".found-tab-bar [role='tab']")).toBeTruthy();
     expect(panel?.querySelector('[aria-label="退出聚焦预览"]')).toBeTruthy();
+  });
+
+  it("renders SVG Layers and the image toolbar variant", async () => {
+    const svgEntry = { ...entry, path: "D:\\refs\\mark.svg", name: "mark.svg", extension: "svg" };
+    Object.assign(window, {
+      refCanvas: {
+        metadata: { ensure: vi.fn(async () => ({ asset: {
+          id: "svg-1", kind: "image", extension: "svg", path: svgEntry.path,
+          previewUrl: "refasset://svg", title: "mark.svg", linkState: "online",
+        } })) },
+        media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={svgEntry} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    expect(host.querySelector(".found-layers-panel")?.textContent).toContain("Layers (0)");
+    expect(host.querySelector(".found-toolbar")).toBeNull();
+    expect(host.querySelector(".found-preview-controls-slot .image-preview-toolbar")).toBeTruthy();
+  });
+
+  it("keeps the filename and controls below an unobstructed shared viewport", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        metadata: { ensure: vi.fn(async () => ({ asset: {
+          id: "image-1", kind: "image", extension: "png", path: entry.path,
+          previewUrl: "refasset://image", thumbnailUrl: "refasset://thumb",
+          title: entry.name, linkState: "online",
+        } })) },
+        media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
+        system: {
+          writeClipboard: vi.fn(),
+          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={entry} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+
+    const viewport = host.querySelector(".found-preview-viewport");
+    const workspace = host.querySelector(".found-preview-workspace");
+    expect(viewport).toBeTruthy();
+    expect(viewport?.querySelector(".workbench-asset-label")).toBeNull();
+    expect(workspace?.querySelector(".found-preview-filename")?.textContent).toContain(entry.name);
+    expect(workspace?.querySelector(".found-preview-controls-slot")).toBeTruthy();
+    expect(workspace?.querySelector(".image-preview-toolbar")).toBeTruthy();
+    expect(workspace?.querySelector(".found-toolbar")).toBeNull();
+  });
+
+  it("keeps the panel DOM stable while switching selected entries", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        metadata: { ensure: vi.fn(async (path: string) => ({ asset: {
+          id: path, kind: "generic", extension: "txt", path,
+          previewUrl: "refasset://text", thumbnailUrl: "refasset://thumb",
+          title: path.split("\\").at(-1), linkState: "online",
+        } })) },
+        media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(<FoundPreviewPanel entry={null} />));
+    const panel = host.querySelector(".found-preview-panel");
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={{ ...entry, path: "D:\\refs\\runtime-smoke.txt", name: "runtime-smoke.txt", extension: "txt" }} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    expect(host.querySelector(".found-preview-panel")).toBe(panel);
+    expect(panel?.querySelector(".directory-inspector-title")?.textContent).toContain("runtime-smoke.txt");
+  });
+
+  it("restarts the inner preview session when switching sequences", async () => {
+    const firstGroup = {
+      id: "sequence-a", directory: "D:\\refs", baseName: "a", extension: "png",
+      pattern: "standard" as const, files: ["D:\\refs\\a.0001.png"], frames: [1],
+      start: 1, end: 1, missingFrames: [], width: 4, fps: 24,
+    };
+    const secondGroup = { ...firstGroup, id: "sequence-b", baseName: "b", files: ["D:\\refs\\b.0001.png"] };
+    Object.assign(window, {
+      refCanvas: {
+        metadata: { ensure: vi.fn(async (path: string) => ({ asset: {
+          id: path, kind: "image", extension: "png", path,
+          previewUrl: `refasset://${path}`, title: path, linkState: "online",
+        } })) },
+        media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const firstEntry = { ...entry, path: firstGroup.files[0], sequenceGroup: firstGroup };
+    const secondEntry = { ...entry, path: secondGroup.files[0], sequenceGroup: secondGroup };
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={firstEntry} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    const firstSession = host.querySelector('[data-testid="sequence-session"]');
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={secondEntry} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    const secondSession = host.querySelector('[data-testid="sequence-session"]');
+    expect(secondSession).not.toBe(firstSession);
+    expect(secondSession?.getAttribute("data-sequence-id")).toBe("sequence-b");
   });
 });
