@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
+import { DATABASE_SCHEMA_VERSION } from "../../../src/main/persistence/repositories/migration-repository";
 import {
   LibraryManager,
   databasePathFor,
@@ -53,7 +54,7 @@ describe("LibraryManager (single active library)", () => {
 
     const db = new RefCanvasDatabase(databasePathFor(entry));
     try {
-      expect(db.getSchemaVersion()).toBe(17);
+      expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
     } finally {
       db.close();
     }

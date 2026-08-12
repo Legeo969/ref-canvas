@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
+import { DATABASE_SCHEMA_VERSION } from "../../../src/main/persistence/repositories/migration-repository";
 import { quickFingerprint } from "../../../src/main/services/library-service";
 
 const temporaryDirectories: string[] = [];
@@ -30,7 +31,7 @@ async function openDb(): Promise<{ db: RefCanvasDatabase; root: string }> {
   temporaryDirectories.push(directory);
   const filename = path.join(directory, "app.db");
   const db = new RefCanvasDatabase(filename);
-  expect(db.getSchemaVersion()).toBe(17);
+  expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
   return { db, root: directory };
 }
 

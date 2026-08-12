@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
 import {
+  DATABASE_SCHEMA_VERSION,
   MIGRATIONS,
   runMigrationSteps,
 } from "../../../src/main/persistence/repositories/migration-repository";
@@ -67,7 +68,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
 
     const db = new RefCanvasDatabase(filename);
     try {
-      expect(db.getSchemaVersion()).toBe(17);
+      expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const raw = new Sqlite(filename, { readonly: true });
       try {
         const tables = raw
@@ -112,7 +113,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
 
     const db = new RefCanvasDatabase(filename);
     try {
-      expect(db.getSchemaVersion()).toBe(17);
+      expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const raw = new Sqlite(filename, { readonly: true });
       try {
         const collections = raw
@@ -155,7 +156,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
     // 幂等：再次打开不新增行。
     const reopen = new RefCanvasDatabase(filename);
     try {
-      expect(reopen.getSchemaVersion()).toBe(17);
+      expect(reopen.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const raw = new Sqlite(filename, { readonly: true });
       try {
         expect(
@@ -189,7 +190,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
 
     const repaired = new RefCanvasDatabase(filename);
     try {
-      expect(repaired.getSchemaVersion()).toBe(17);
+      expect(repaired.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       expect(repaired.collections().get(collection.id)?.name).toBe("保留我");
       expect(repaired.collections().listItems(collection.id)).toHaveLength(1);
     } finally {
@@ -260,7 +261,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
 
     const db = new RefCanvasDatabase(filename, { migrationBackupDirectory: backups });
     try {
-      expect(db.getSchemaVersion()).toBe(17);
+      expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const raw = new Sqlite(filename, { readonly: true });
       try {
         const collections = raw
@@ -304,7 +305,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
 
     const db = new RefCanvasDatabase(filename);
     try {
-      expect(db.getSchemaVersion()).toBe(17);
+      expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const raw = new Sqlite(filename, { readonly: true });
       try {
         expect(
@@ -381,7 +382,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
     repaired.close();
     const recovered = new RefCanvasDatabase(filename);
     try {
-      expect(recovered.getSchemaVersion()).toBe(17);
+      expect(recovered.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       expect(
         (recovered.getSetting("collections.v16.dataLossNotice", null) ? 1 : 0),
       ).toBe(0);

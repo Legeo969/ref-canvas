@@ -11,6 +11,7 @@ import {
 import { LibraryManager, databasePathFor, managedStorePath } from "../../../src/main/services/library-manager";
 import { LibraryService } from "../../../src/main/services/library-service";
 import { z } from "zod";
+import { DATABASE_SCHEMA_VERSION } from "../../../src/main/persistence/repositories/migration-repository";
 
 const temporaryDirectories: string[] = [];
 
@@ -55,7 +56,7 @@ describe("hardening", () => {
       // 全新数据库文件可正常迁移到最新版本（恢复路径）。
       const recovered = new RefCanvasDatabase(path.join(directory, "recovered.db"));
       try {
-        expect(recovered.getSchemaVersion()).toBe(17);
+        expect(recovered.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       } finally {
         recovered.close();
       }
@@ -152,7 +153,7 @@ describe("hardening", () => {
 
     const db = new RefCanvasDatabase(filename, { migrationBackupDirectory: backups });
     try {
-      expect(db.getSchemaVersion()).toBe(17);
+      expect(db.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       // 迁移前快照已写入 backups 目录。
       const { readdir } = await import("node:fs/promises");
       const files = await readdir(backups);

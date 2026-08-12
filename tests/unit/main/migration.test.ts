@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
 import {
+  DATABASE_SCHEMA_VERSION,
   MIGRATIONS,
   runMigrationSteps,
 } from "../../../src/main/persistence/repositories/migration-repository";
@@ -73,7 +74,7 @@ describe("database migration", () => {
 
       const result = runMigrationSteps(database, MIGRATIONS);
 
-      expect(result).toMatchObject({ completed: true, finalVersion: 17 });
+      expect(result).toMatchObject({ completed: true, finalVersion: DATABASE_SCHEMA_VERSION });
       // v16（修订）把含数据的旧表改名归档，绝不无条件删除。
       const retiredTables = database
         .prepare(`
@@ -126,7 +127,7 @@ describe("database migration", () => {
       // 重复执行迁移入口不产生重复行。
       const rerun = runMigrationSteps(database, MIGRATIONS);
       expect(rerun.completed).toBe(true);
-      expect(rerun.finalVersion).toBe(17);
+      expect(rerun.finalVersion).toBe(DATABASE_SCHEMA_VERSION);
       expect(
         database.prepare("SELECT COUNT(*) AS count FROM collections").get(),
       ).toEqual({ count: 2 });
@@ -180,7 +181,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(17);
+      expect(migrated.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       expect(migrated.searchAssets().items[0]).toMatchObject({
         title: "Legacy",
         lifecycle: "active",
@@ -267,7 +268,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(17);
+      expect(migrated.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const v1 = migrated.loadBoard("00000000-0000-4000-8000-000000000001")!;
       expect(v1.document.schemaVersion).toBe(3);
       expect(v1.document.windowMode).toBe("normal");
@@ -319,7 +320,7 @@ describe("database migration", () => {
 
     const migrated = new RefCanvasDatabase(filename);
     try {
-      expect(migrated.getSchemaVersion()).toBe(17);
+      expect(migrated.getSchemaVersion()).toBe(DATABASE_SCHEMA_VERSION);
       const verification = new Sqlite(filename, { readonly: true });
       try {
         const tables = verification
@@ -398,7 +399,7 @@ describe("database migration", () => {
         rerun.pragma("user_version = 15");
         const result = runMigrationSteps(rerun, MIGRATIONS, {});
         expect(result.completed).toBe(true);
-        expect(result.finalVersion).toBe(17);
+        expect(result.finalVersion).toBe(DATABASE_SCHEMA_VERSION);
       } finally {
         rerun.close();
       }
