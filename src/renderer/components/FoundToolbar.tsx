@@ -13,6 +13,9 @@ import {
   Grid3x3,
   Paintbrush,
   Camera,
+  Layers3,
+  NotebookPen,
+  Palette,
 } from "lucide-react";
 import { FoundSlider } from "./FoundSlider";
 import {
@@ -57,6 +60,10 @@ export interface FoundToolbarProps {
   lutActive?: boolean;
   /** LUT toggle handler. */
   onLutToggle?: () => void;
+  onPaletteToggle?: () => void;
+  multichannel?: boolean;
+  onMultichannelToggle?: () => void;
+  onNotesToggle?: () => void;
   /** Color swatches for quick palette. */
   colorSwatches?: string[];
   /** Whether to show the full upper row (video/GIF/sequence). */
@@ -88,6 +95,10 @@ export function FoundToolbar({
   onGridToggle,
   lutActive = false,
   onLutToggle,
+  onPaletteToggle,
+  multichannel = false,
+  onMultichannelToggle,
+  onNotesToggle,
   colorSwatches = [],
   showUpperRow = true,
   showLowerRow = true,
@@ -166,15 +177,27 @@ export function FoundToolbar({
           >
             <Grid3x3 size={13} />
           </button>
-          <button className="found-tool-label" title="尚未确认 Found 颜色模式语义" aria-label="颜色模式（尚不可用）" disabled>C</button>
+          {multichannel && <button
+            className="found-tool-label"
+            title="提取多通道"
+            aria-label="提取多通道"
+            onClick={onMultichannelToggle}
+            disabled={!onMultichannelToggle}
+          ><Layers3 size={13} /></button>}
           <button
             className={`found-tool-label${lutActive ? " active" : ""}`}
             onClick={onLutToggle}
-            aria-label="LUT（尚不可用）"
-            title="LUT/ACES 色彩管线将在后续版本提供"
-            disabled
+            aria-label="LUT"
+            title="LUT"
+            disabled={!onLutToggle}
           >
             LUT
+          </button>
+          <button className="found-tool-btn" title="色彩栏" aria-label="色彩栏" onClick={onPaletteToggle} disabled={!onPaletteToggle}>
+            <Palette size={13} />
+          </button>
+          <button className="found-tool-btn" title="资产备注" aria-label="资产备注" onClick={onNotesToggle} disabled={!onNotesToggle}>
+            <NotebookPen size={13} />
           </button>
           <button className="found-tool-btn" title="画笔（尚不可用）" aria-label="画笔" disabled>
             <Paintbrush size={13} />

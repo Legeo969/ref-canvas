@@ -169,6 +169,11 @@
   display: none;
 }
 
+.found-preview-panel .media-notes-floating,
+.found-preview-panel .media-notes-overlay {
+  display: none;
+}
+
 .found-preview-workspace {
   z-index: 2;
   flex: 0 0 auto;
@@ -241,6 +246,54 @@
   white-space: nowrap;
 }
 
+.found-preview-notes-action,
+.asset-notes-panel button {
+  display: inline-grid;
+  min-width: 40px;
+  min-height: 40px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--found-text-secondary);
+  cursor: pointer;
+}
+
+.found-preview-notes-action { margin-left: auto; }
+
+.asset-notes-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--found-toolbar);
+}
+
+.asset-notes-compose,
+.asset-note-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.asset-notes-panel input {
+  min-width: 0;
+  min-height: 36px;
+  flex: 1 1 auto;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--surface-1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.asset-notes-list { display: grid; gap: 4px; }
+.asset-note-row > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.asset-note-position { width: auto; padding: 0 8px; font-variant-numeric: tabular-nums; }
+
+.found-preview-notes-action:active,
+.asset-notes-panel button:active { scale: 0.96; }
+
 .found-preview-frame-label {
   margin-left: auto;
   color: var(--found-text-secondary);
@@ -249,9 +302,12 @@
   white-space: nowrap;
 }
 
-/* Focus and fullscreen keep only the shared session controls and renderer.
-   The tab bar becomes a compact control island instead of application chrome. */
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-tab-bar {
+/* Focus keeps the application chrome. Fullscreen reduces the header to mode controls. */
+.found-preview-panel.preview-session-focused .found-tab-bar [role="tab"] {
+  display: flex;
+}
+
+.found-preview-panel:fullscreen .found-tab-bar {
   position: absolute;
   z-index: 30;
   top: 8px;
@@ -266,14 +322,13 @@
   backdrop-filter: blur(10px);
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-tab-bar [role="tab"],
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-toolbar,
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .workbench-external-action,
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .workbench-tool-content {
+.found-preview-panel:fullscreen .found-tab-bar [role="tab"],
+.found-preview-panel:fullscreen .workbench-external-action,
+.found-preview-panel:fullscreen .workbench-tool-content {
   display: none;
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-toolbar-spacer {
+.found-preview-panel:fullscreen .found-toolbar-spacer {
   display: none;
 }
 

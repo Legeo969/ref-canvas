@@ -105,9 +105,31 @@ describe("FoundToolbar variants", () => {
     expect(seek.mock.calls).toEqual([[0.51], [0], [1]]);
   });
 
-  it("marks unimplemented LUT and C commands as disabled placeholders", async () => {
-    const host = await render("gif");
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="颜色模式（尚不可用）"]')?.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="LUT（尚不可用）"]')?.disabled).toBe(true);
+  it("routes LUT, color palette, multichannel and notes actions by capability", async () => {
+    const onLut = vi.fn();
+    const onPalette = vi.fn();
+    const onChannels = vi.fn();
+    const onNotes = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar
+        variant="sequence"
+        multichannel
+        onLutToggle={onLut}
+        onPaletteToggle={onPalette}
+        onMultichannelToggle={onChannels}
+        onNotesToggle={onNotes}
+      />,
+    ));
+    for (const label of ["LUT", "色彩栏", "提取多通道", "资产备注"]) {
+      await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.click());
+    }
+    expect(onLut).toHaveBeenCalledOnce();
+    expect(onPalette).toHaveBeenCalledOnce();
+    expect(onChannels).toHaveBeenCalledOnce();
+    expect(onNotes).toHaveBeenCalledOnce();
   });
 });

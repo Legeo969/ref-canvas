@@ -15,7 +15,9 @@ export function registerMediaNotesIpc(
       idSchema.parse(assetId),
       z
         .object({
-          timeMs: z.number().int().min(0).max(315_360_000_000),
+          timeMs: z.number().int().min(0).max(315_360_000_000).optional(),
+          positionKind: z.enum(["general", "time", "frame"]).optional(),
+          position: z.number().int().min(0).max(315_360_000_000).optional(),
           text: z.string().trim().min(1).max(2_000),
         })
         .parse(input),
@@ -27,6 +29,8 @@ export function registerMediaNotesIpc(
       z
         .object({
           timeMs: z.number().int().min(0).max(315_360_000_000).optional(),
+          positionKind: z.enum(["general", "time", "frame"]).optional(),
+          position: z.number().int().min(0).max(315_360_000_000).optional(),
           text: z.string().trim().min(1).max(2_000).optional(),
         })
         .parse(patch),

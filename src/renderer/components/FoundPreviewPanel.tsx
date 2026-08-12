@@ -8,6 +8,7 @@ import {
   SquareArrowOutUpRight,
   X,
   Gauge,
+  NotebookPen,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
@@ -22,6 +23,7 @@ import {
 } from "./PreviewSessionMode";
 import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
 import { FoundToolbar } from "./FoundToolbar";
+import { AssetNotesPanel } from "./AssetNotesPanel";
 import { FoundEmptyState } from "./FoundEmptyState";
 import { FoundLayersPanel } from "./FoundLayersPanel";
 import { SequencePreviewDialog } from "./SequencePreview";
@@ -41,7 +43,7 @@ import {
   previewRendererKind,
 } from "./PreviewSessionShell";
 
-type WorkbenchTool = "preview" | "gif" | "frames" | "fps";
+type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "notes";
 type WorkbenchCommand = WorkbenchTool | "color";
 type PreviewTab = "preview" | "ai";
 
@@ -347,6 +349,22 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         </div>
                       </section>
                     )}
+                    {tool === "notes" && (
+                      <AssetNotesPanel
+                        assetId={asset.id}
+                        position={transport.snapshot
+                          ? transport.snapshot.kind === "sequence"
+                            ? { kind: "frame", value: (entry.sequenceGroup?.start ?? 0) + transport.snapshot.frameIndex }
+                            : { kind: "time", value: Math.round(transport.snapshot.position * transport.snapshot.durationSeconds * 1000) }
+                          : null}
+                        onSeekTime={(milliseconds) => transport.actions?.seek(transport.snapshot?.durationSeconds ? milliseconds / (transport.snapshot.durationSeconds * 1000) : 0)}
+                        onSeekFrame={(frame) => {
+                          const start = entry.sequenceGroup?.start ?? 0;
+                          const count = transport.snapshot?.frameCount ?? 1;
+                          transport.actions?.seek(Math.max(0, Math.min(1, (frame - start) / Math.max(1, count - 1))));
+                        }}
+                      />
+                    )}
                   </div>
                 )}
 
@@ -356,6 +374,9 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       <span className="found-preview-filename directory-inspector-title" title={entry.path}>
                         {entry.name}
                       </span>
+                      <button className="found-preview-notes-action" type="button" aria-label="资产备注" title="资产备注" onClick={() => setTool("notes")}>
+                        <NotebookPen size={14} />
+                      </button>
                       {transport.snapshot?.kind === "video" && (
                         <span className="found-preview-frame-label">
                           FRAME {String(transport.snapshot.frameIndex).padStart(3, "0")}
@@ -396,6 +417,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       if (transport.actions?.exportGif) transport.actions.exportGif();
                       else if (isVideo) setTool("gif");
                     }}
+                    onNotesToggle={() => setTool("notes")}
                     />}
                     <div className="found-preview-controls-slot" ref={setControlsTarget} />
                   </div>

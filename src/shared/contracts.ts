@@ -777,12 +777,17 @@ export interface AssetReference {
 
 // --- Media preview & local actions (phase 3) ---
 
-/** Time-point note attached to a video/audio asset. */
+export type AssetNotePositionKind = "general" | "time" | "frame";
+
+/** Persistent note attached to any asset, optionally linked to time or frame. */
 export interface MediaNote {
   id: string;
   assetId: string;
   /** Time in milliseconds from the start of the media. */
   timeMs: number;
+  positionKind: AssetNotePositionKind;
+  /** Milliseconds for `time`, frame index for `frame`, zero for `general`. */
+  position: number;
   text: string;
   createdAt: string;
   updatedAt: string;
@@ -1925,8 +1930,8 @@ export interface RefCanvasApi {
   };
   mediaNotes: {
     list(assetId: string): Promise<MediaNote[]>;
-    create(assetId: string, input: { timeMs: number; text: string }): Promise<MediaNote>;
-    update(id: string, patch: { timeMs?: number; text?: string }): Promise<MediaNote>;
+    create(assetId: string, input: { timeMs?: number; positionKind?: AssetNotePositionKind; position?: number; text: string }): Promise<MediaNote>;
+    update(id: string, patch: { timeMs?: number; positionKind?: AssetNotePositionKind; position?: number; text?: string }): Promise<MediaNote>;
     delete(id: string): Promise<void>;
     /** Persistent playback state for the given asset. */
     getPlaybackState(assetId: string): Promise<PlaybackState | null>;

@@ -35,10 +35,17 @@ describe("preview session controls", () => {
       /\.directory-preview:is\(\.preview-session-focused, :fullscreen\) \.directory-preview-info,[^{]*\.preview-nav\s*{\s*display:\s*none;/s,
     );
     expect(found).toMatch(
-      /\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar \[role="tab"\],[^{]*{\s*display:\s*none;/s,
+      /\.found-preview-panel:fullscreen \.found-tab-bar \[role="tab"\],[^{]*{\s*display:\s*none;/s,
     );
     expect(found).toMatch(
-      /\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar\s*{[^}]*position:\s*absolute;[^}]*height:\s*40px;/s,
+      /\.found-preview-panel:fullscreen \.found-tab-bar\s*{[^}]*position:\s*absolute;[^}]*height:\s*40px;/s,
     );
+  });
+
+  it("keeps focus chrome while fullscreen hides nonessential chrome", async () => {
+    const found = await readFile(path.resolve("src/renderer/styles/found-preview.css"), "utf8");
+    expect(found).toMatch(/\.found-preview-panel\.preview-session-focused \.found-tab-bar \[role="tab"\][^{]*{[^}]*display:\s*flex/s);
+    expect(found).toMatch(/\.found-preview-panel:fullscreen \.found-tab-bar \[role="tab"\][^{]*{[^}]*display:\s*none/s);
+    expect(found).toMatch(/\.found-preview-viewport[^}]*min-height:\s*0/s);
   });
 });

@@ -8,7 +8,7 @@ import {
   restoreCollectionsV17,
 } from "./collection-restore-migrations";
 
-export const DATABASE_SCHEMA_VERSION = 17;
+export const DATABASE_SCHEMA_VERSION = 18;
 
 /**
  * Ordered migration model.
@@ -220,6 +220,27 @@ export const MIGRATIONS: readonly MigrationStep[] = [
       restoreCollectionsV17(db, {
         migrationBackupDirectory: context.migrationBackupDirectory,
       });
+    },
+  },
+  {
+    version: 18,
+    id: "v18-capability-preview-notes",
+    description: "Adds general, timecode, and frame-linked positions to asset notes while preserving legacy media-note timecodes.",
+    apply(db) {
+      const columns = new Set(
+        (db.pragma("table_info(media_notes)") as Array<{ name: string }>).map((column) => column.name),
+      );
+      if (!columns.has("position_kind")) {
+        db.exec("ALTER TABLE media_notes ADD COLUMN position_kind TEXT NOT NULL DEFAULT 'time'");
+      }
+      if (!columns.has("position")) {
+        db.exec("ALTER TABLE media_notes ADD COLUMN position INTEGER NOT NULL DEFAULT 0");
+        db.exec("UPDATE media_notes SET position = time_ms");
+      }
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS media_notes_asset_position
+          ON media_notes(asset_id, position_kind, position, created_at);
+      `);
     },
   },
 ];

@@ -680,25 +680,32 @@ export class RefCanvasDatabase {
 
   listMediaNotes(assetId: string): MediaNote[] {
     return this.db.prepare(`
-      SELECT id, asset_id AS assetId, time_ms AS timeMs, text,
+      SELECT id, asset_id AS assetId, time_ms AS timeMs,
+        position_kind AS positionKind, position, text,
         created_at AS createdAt, updated_at AS updatedAt
-      FROM media_notes WHERE asset_id = ? ORDER BY time_ms, created_at
+      FROM media_notes WHERE asset_id = ?
+      ORDER BY CASE position_kind WHEN 'general' THEN 0 WHEN 'time' THEN 1 ELSE 2 END,
+        position, created_at
     `).all(assetId) as MediaNote[];
   }
 
   createMediaNote(
     assetId: string,
-    input: { timeMs: number; text: string },
+    input: { timeMs?: number; positionKind?: MediaNote["positionKind"]; position?: number; text: string },
   ): MediaNote {
     if (!this.getAsset(assetId)) throw new Error("ASSET_NOT_FOUND");
     const id = randomUUID();
     const now = new Date().toISOString();
+    const positionKind = input.positionKind ?? "time";
+    const position = input.position ?? input.timeMs ?? 0;
+    const timeMs = positionKind === "time" ? position : (input.timeMs ?? 0);
     this.db.prepare(`
-      INSERT INTO media_notes (id, asset_id, time_ms, text, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, assetId, input.timeMs, input.text, now, now);
+      INSERT INTO media_notes (id, asset_id, time_ms, position_kind, position, text, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, assetId, timeMs, positionKind, position, input.text, now, now);
     return this.db.prepare(`
-      SELECT id, asset_id AS assetId, time_ms AS timeMs, text,
+      SELECT id, asset_id AS assetId, time_ms AS timeMs,
+        position_kind AS positionKind, position, text,
         created_at AS createdAt, updated_at AS updatedAt
       FROM media_notes WHERE id = ?
     `).get(id) as MediaNote;
@@ -706,23 +713,29 @@ export class RefCanvasDatabase {
 
   updateMediaNote(
     id: string,
-    patch: { timeMs?: number; text?: string },
+    patch: { timeMs?: number; positionKind?: MediaNote["positionKind"]; position?: number; text?: string },
   ): MediaNote {
-    const current = this.db.prepare(
-      "SELECT * FROM media_notes WHERE id = ?",
-    ).get(id) as MediaNote | undefined;
+    const current = this.db.prepare(`
+      SELECT id, asset_id AS assetId, time_ms AS timeMs,
+        position_kind AS positionKind, position, text,
+        created_at AS createdAt, updated_at AS updatedAt
+      FROM media_notes WHERE id = ?
+    `).get(id) as MediaNote | undefined;
     if (!current) throw new Error("MEDIA_NOTE_NOT_FOUND");
     const now = new Date().toISOString();
     this.db.prepare(`
-      UPDATE media_notes SET time_ms = ?, text = ?, updated_at = ? WHERE id = ?
+      UPDATE media_notes SET time_ms = ?, position_kind = ?, position = ?, text = ?, updated_at = ? WHERE id = ?
     `).run(
       patch.timeMs ?? current.timeMs,
+      patch.positionKind ?? current.positionKind,
+      patch.position ?? patch.timeMs ?? current.position,
       patch.text ?? current.text,
       now,
       id,
     );
     return this.db.prepare(`
-      SELECT id, asset_id AS assetId, time_ms AS timeMs, text,
+      SELECT id, asset_id AS assetId, time_ms AS timeMs,
+        position_kind AS positionKind, position, text,
         created_at AS createdAt, updated_at AS updatedAt
       FROM media_notes WHERE id = ?
     `).get(id) as MediaNote;

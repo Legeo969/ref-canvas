@@ -29,6 +29,28 @@ function createAsset(overrides: Partial<NewAsset> = {}): NewAsset {
 }
 
 describe("RefCanvasDatabase", () => {
+  it("stores general, timecode, and frame-linked notes for every asset", () => {
+    database = new RefCanvasDatabase(":memory:");
+    const asset = database.upsertAsset(createAsset()).asset;
+    const general = database.createMediaNote(asset.id, {
+      positionKind: "general",
+      position: 0,
+      text: "General review",
+    });
+    const frame = database.createMediaNote(asset.id, {
+      positionKind: "frame",
+      position: 120,
+      text: "Fix edge",
+    });
+
+    expect(general).toMatchObject({ positionKind: "general", position: 0 });
+    expect(frame).toMatchObject({ positionKind: "frame", position: 120 });
+    expect(database.listMediaNotes(asset.id)).toEqual([
+      expect.objectContaining({ id: general.id, positionKind: "general" }),
+      expect.objectContaining({ id: frame.id, positionKind: "frame", position: 120 }),
+    ]);
+  });
+
   describe("visual signature identity", () => {
     const signature = {
       visualHash: "0123456789abcdef",
