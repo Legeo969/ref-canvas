@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExportGifResult } from "../../shared/contracts";
 import { formatBytes } from "../app/format-bytes";
+import { centeredGifRange } from "../app/gif-export-range";
 
 interface GifClipDraft {
   id: string;
@@ -86,15 +87,12 @@ export function GifExportStudio({
       void window.refCanvas.media.probe(clip.inputPath).then((probe) => {
         const durationMs = Math.max(0, (probe.duration ?? 0) * 1000);
         const useFocusedRange = clips.length === 1;
-        const startMs = useFocusedRange
-          ? Math.min(Math.max(0, durationMs - 100), initialTimeMs)
-          : 0;
-        const endMs = useFocusedRange
-          ? Math.min(durationMs, startMs + 5_000)
-          : durationMs;
+        const range = useFocusedRange
+          ? centeredGifRange(initialTimeMs, durationMs)
+          : { startMs: 0, endMs: durationMs };
         setClips((current) => current.map((item) =>
           item.id === clip.id
-            ? { ...item, durationMs, startMs, endMs, loading: false, error: durationMs <= 0 }
+            ? { ...item, durationMs, ...range, loading: false, error: durationMs <= 0 }
             : item,
         ));
       }).catch(() => {

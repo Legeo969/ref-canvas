@@ -128,7 +128,7 @@ export function directoryThumbnailSource(
 }
 
 /** 未索引文件的预览/操作卡片（目录模式下复用虚拟网格布局）。 */
-function DirectoryCard({
+export function DirectoryCard({
   entry,
   tags,
   selected,
@@ -193,7 +193,7 @@ function DirectoryCard({
       }}
     >
       <span className="asset-preview">
-        {canPreview ? (
+        {canPreview && (
           <img
             className={preview.status === "ready" ? "" : "preview-image-pending"}
             src={preview.url!}
@@ -202,25 +202,15 @@ function DirectoryCard({
             onLoad={preview.markReady}
             onError={preview.markError}
           />
-        ) : entry.isDirectory ? (
+        )}
+        {entry.isDirectory ? (
           <span className="asset-placeholder">
             <FolderOpen size={28} strokeWidth={1.35} />
             <span>文件夹</span>
           </span>
-        ) : (
+        ) : preview.status !== "ready" && (
           <span className="asset-placeholder">
-            {preview.status === "failed" ? <RefreshCw size={24} /> : null}
-            <span>
-              {preview.status === "failed"
-                ? "点击重试预览"
-                : entry.extension.toUpperCase() || "FILE"}
-            </span>
-          </span>
-        )}
-        {(preview.status === "loading" || preview.status === "waiting") && (
-          <span className="preview-cache-loading" role="status">
-            <RefreshCw size={15} />
-            {preview.status === "waiting" ? "正在等待预览…" : "正在生成预览…"}
+            <span>{entry.extension.toUpperCase() || "FILE"}</span>
           </span>
         )}
         {selected && !entry.isDirectory && (

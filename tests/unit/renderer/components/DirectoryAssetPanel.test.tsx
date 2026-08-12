@@ -68,7 +68,8 @@ describe("DirectoryAssetPanel", () => {
     const initial = host.querySelector<HTMLImageElement>(".directory-card img");
     expect(initial?.src).toContain("refbrowse://thumbnail/retry-token");
     await act(async () => initial?.dispatchEvent(new Event("error")));
-    expect(host.querySelector('[role="status"]')?.textContent).toContain("正在等待预览");
+    expect(host.querySelector(".asset-placeholder")?.textContent).toContain("EXR");
+    expect(host.querySelector('[role="status"]')).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(600));
     const retried = host.querySelector<HTMLImageElement>(".directory-card img");
     expect(retried?.src).toContain("previewRetry=1");
