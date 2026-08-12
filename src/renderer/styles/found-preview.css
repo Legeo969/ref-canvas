@@ -176,10 +176,112 @@
 
 .found-preview-workspace {
   z-index: 2;
+  display: flex;
   flex: 0 0 auto;
   min-width: 0;
+  max-height: min(52vh, 430px);
+  flex-direction: column;
   background: var(--found-toolbar);
   border-top: 1px solid var(--found-divider);
+}
+
+.found-context-tray {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(38vh, 320px);
+  overflow: auto;
+  border-bottom: 1px solid var(--found-divider);
+  background: var(--found-toolbar);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.found-context-tray-header {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: flex;
+  height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  background: var(--found-toolbar);
+  box-shadow: 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.found-context-tray-header strong {
+  color: #d0d6d3;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.found-context-tray-header button {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--found-text-secondary);
+}
+
+.found-context-tray-header button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e7e4;
+}
+
+.found-context-tray .gif-export-studio.embedded > header,
+.found-context-tray .video-frames-dialog.embedded > header {
+  display: none;
+}
+
+.found-context-tray .gif-export-studio.embedded .gif-studio-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.15fr) minmax(260px, 0.85fr);
+  min-height: 0;
+}
+
+.found-context-tray .gif-export-studio.embedded .gif-clip-list,
+.found-context-tray .gif-export-studio.embedded .gif-export-options,
+.found-context-tray .video-frames-dialog.embedded .video-frames-form {
+  padding: 10px 12px;
+}
+
+.found-context-tray .gif-export-studio.embedded .gif-clip-list {
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 0;
+}
+
+.found-context-tray .gif-export-studio.embedded .gif-option-grid,
+.found-context-tray .video-frames-dialog.embedded .video-frames-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.found-context-tray .workbench-fps-tool {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.found-context-tray .workbench-fps-grid {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.found-context-tray .workbench-fps-grid > button {
+  min-width: 72px;
+  min-height: 40px;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .found-preview-controls-slot:empty { display: none; }
@@ -246,7 +348,6 @@
   white-space: nowrap;
 }
 
-.found-preview-notes-action,
 .asset-notes-panel button {
   display: inline-grid;
   min-width: 40px;
@@ -257,8 +358,6 @@
   color: var(--found-text-secondary);
   cursor: pointer;
 }
-
-.found-preview-notes-action { margin-left: auto; }
 
 .asset-notes-panel {
   display: grid;
@@ -291,7 +390,6 @@
 .asset-note-row > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .asset-note-position { width: auto; padding: 0 8px; font-variant-numeric: tabular-nums; }
 
-.found-preview-notes-action:active,
 .asset-notes-panel button:active { scale: 0.96; }
 
 .preview-color-tools { display: grid; gap: 10px; padding: 12px; background: var(--found-toolbar); }
@@ -309,29 +407,24 @@
   white-space: nowrap;
 }
 
-/* Focus keeps the application chrome. Fullscreen reduces the header to mode controls. */
+/* Focus and fullscreen keep controls in layout so no chrome covers the media. */
 .found-preview-panel.preview-session-focused .found-tab-bar [role="tab"] {
   display: flex;
 }
 
 .found-preview-panel:fullscreen .found-tab-bar {
-  position: absolute;
-  z-index: 30;
-  top: 8px;
-  right: 8px;
-  width: auto;
+  position: static;
+  width: 100%;
   height: 40px;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: rgba(12, 15, 14, 0.72);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
+  padding: 0 4px;
+  border-bottom: 1px solid var(--found-divider);
+  border-radius: 0;
+  background: var(--found-panel);
+  box-shadow: none;
 }
 
 .found-preview-panel:fullscreen .found-tab-bar [role="tab"],
-.found-preview-panel:fullscreen .workbench-external-action,
-.found-preview-panel:fullscreen .workbench-tool-content {
+.found-preview-panel:fullscreen .workbench-external-action {
   display: none;
 }
 
@@ -427,12 +520,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  padding: 0 8px;
+  min-height: 40px;
+  padding: 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .found-toolbar-row.secondary {
-  height: 24px;
+  min-height: 40px;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
@@ -442,8 +537,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
+  min-width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   padding: 0 3px;
   border: 0;
   border-radius: 3px;
@@ -475,7 +571,7 @@
 }
 
 .found-tool-btn.circle {
-  width: 20px;
+  width: 40px;
   border-radius: 50%;
 }
 
@@ -484,7 +580,9 @@
 .found-tool-label {
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  min-width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
   padding: 0 6px;
   border: 1px solid var(--found-divider);
   border-radius: 3px;
@@ -512,7 +610,8 @@
   display: flex;
   align-items: center;
   flex: 1 1 auto;
-  height: 20px;
+  min-width: 96px;
+  height: 40px;
   cursor: pointer;
   touch-action: none;
 }
@@ -561,6 +660,7 @@
   display: inline-flex;
   gap: 3px;
   margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .found-color-swatch {

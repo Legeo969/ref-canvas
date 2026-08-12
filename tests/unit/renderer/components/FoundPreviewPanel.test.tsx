@@ -156,7 +156,8 @@ describe("FoundPreviewPanel smoke", () => {
       await Promise.resolve(); await Promise.resolve();
     });
     expect(host.querySelector(".found-layers-panel")?.textContent).toContain("Layers (0)");
-    expect(host.querySelector(".found-toolbar")).toBeNull();
+    expect(host.querySelector(".found-toolbar-svg")).toBeTruthy();
+    expect(host.querySelectorAll('[aria-label="资产备注"]')).toHaveLength(1);
     expect(host.querySelector(".found-preview-controls-slot .image-preview-toolbar")).toBeTruthy();
   });
 
@@ -191,7 +192,50 @@ describe("FoundPreviewPanel smoke", () => {
     expect(workspace?.querySelector(".found-preview-filename")?.textContent).toContain(entry.name);
     expect(workspace?.querySelector(".found-preview-controls-slot")).toBeTruthy();
     expect(workspace?.querySelector(".image-preview-toolbar")).toBeTruthy();
-    expect(workspace?.querySelector(".found-toolbar")).toBeNull();
+    expect(workspace?.querySelector(".found-toolbar-image")).toBeTruthy();
+    expect(workspace?.querySelectorAll('[aria-label="资产备注"]')).toHaveLength(1);
+  });
+
+  it("keeps media mounted and toggles compact tools from the shared bottom row", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        metadata: { ensure: vi.fn(async () => ({ asset: {
+          id: "image-1", kind: "image", extension: "png", path: entry.path,
+          previewUrl: "refasset://image", thumbnailUrl: "refasset://thumb",
+          title: entry.name, linkState: "online",
+        } })) },
+        media: { probe: vi.fn() },
+        mediaNotes: { list: vi.fn(async () => []), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+        filesystem: { open: vi.fn(), reveal: vi.fn() },
+        system: {
+          writeClipboard: vi.fn(),
+          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          setPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          pickFile: vi.fn(async () => []),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={entry} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    const viewport = host.querySelector(".found-preview-viewport");
+    const notesButton = host.querySelector<HTMLButtonElement>('[aria-label="资产备注"]')!;
+    await act(async () => notesButton.click());
+    expect(host.querySelector(".found-preview-viewport")).toBe(viewport);
+    expect(host.querySelector(".found-context-tray-notes .asset-notes-panel")).toBeTruthy();
+    expect(notesButton.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => notesButton.click());
+    expect(host.querySelector(".found-context-tray")).toBeNull();
+
+    const lutButton = host.querySelector<HTMLButtonElement>('[aria-label="LUT"]')!;
+    await act(async () => lutButton.click());
+    expect(host.querySelector(".found-preview-viewport")).toBe(viewport);
+    expect(host.querySelector(".found-context-tray-lut .preview-color-tools")).toBeTruthy();
   });
 
   it("keeps the panel DOM stable while switching selected entries", async () => {

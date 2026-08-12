@@ -1,14 +1,11 @@
 import {
   Eye,
-  Film,
   FolderOpen,
-  Images,
   LoaderCircle,
   Sparkles,
   SquareArrowOutUpRight,
   X,
   Gauge,
-  NotebookPen,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
@@ -142,7 +139,9 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     ? previewKind as FoundToolbarVariant
     : null;
   const isPreview = mode === "preview";
-  const selectTool = (next: WorkbenchTool) => setTool(next);
+  const toggleTool = (next: WorkbenchTool) => {
+    setTool((current) => current === next ? "preview" : next);
+  };
 
   const fpsLabel = playbackFps !== null
     ? `${playbackFps} fps`
@@ -300,85 +299,70 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                   )}
                 </PreviewSurface>
 
-                {/* Tool drawer (existing) */}
-                {tool !== "preview" && (
-                  <div className="workbench-tool-content">
-                    <div className="workbench-tool-drawer-header">
-                      <div className="workbench-tool-switcher">
-                        {isVideo && <button className={tool === "gif" ? "active" : ""} onClick={() => selectTool("gif")}><Film size={14} />GIF</button>}
-                        {isVideo && <button className={tool === "frames" ? "active" : ""} onClick={() => selectTool("frames")}><Images size={14} />序列帧</button>}
-                        {isVideo && <button className={tool === "fps" ? "active" : ""} onClick={() => selectTool("fps")}><Gauge size={14} />FPS</button>}
-                      </div>
-                      <button className="workbench-drawer-close" aria-label="关闭工具" title="关闭工具" onClick={() => setTool("preview")}><X size={15} /></button>
-                    </div>
-                    {tool === "gif" && isVideo && (
-                      <GifExportStudio
-                        key={gifPaths.join("|")}
-                        initialPaths={gifPaths.length ? gifPaths : [asset.path]}
-                        initialTimeMs={gifPaths.length <= 1 ? timeSeconds * 1000 : 0}
-                        variant="panel"
-                        onClose={() => setTool("preview")}
-                      />
-                    )}
-                    {tool === "frames" && isVideo && (
-                      <VideoFramesExportDialog
-                        inputPath={asset.path}
-                        durationSeconds={duration}
-                        sourceFps={frameRate}
-                        initialTimeSeconds={timeSeconds}
-                        variant="panel"
-                        onClose={() => setTool("preview")}
-                      />
-                    )}
-                    {tool === "fps" && isVideo && (
-                      <section className="workbench-fps-tool" aria-label="FPS 预设抽屉">
-                        <div className="workbench-color-heading">
-                          <Gauge size={17} />
-                          <div><strong>帧率基准</strong><p>控制逐帧步进与时间线刻度；视频播放速度不变</p></div>
-                        </div>
-                        <div className="workbench-fps-grid">
-                          <button className={playbackFps === null ? "active" : ""} onClick={() => setPlaybackFps(null)}>
-                            <span>自动</span>
-                            <strong>{frameRate ? frameRate.toFixed(frameRate % 1 ? 2 : 0) : "—"} FPS</strong>
-                          </button>
-                          {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
-                            <button key={fps} className={playbackFps === fps ? "active" : ""} onClick={() => setPlaybackFps(fps)}>
-                              <span>预设</span>
-                              <strong>{fps} FPS</strong>
-                            </button>
-                          ))}
-                        </div>
+                <div className="found-preview-workspace">
+                    {tool !== "preview" && (
+                      <section className={`found-context-tray found-context-tray-${tool}`} aria-label="上下文工具托盘">
+                        <header className="found-context-tray-header">
+                          <strong>{tool === "gif" ? "导出 GIF" : tool === "frames" ? "导出序列帧" : tool === "fps" ? "FPS" : tool === "notes" ? "资产备注" : "LUT"}</strong>
+                          <button type="button" aria-label="关闭工具" title="关闭工具" onClick={() => setTool("preview")}><X size={15} /></button>
+                        </header>
+                        {tool === "gif" && isVideo && (
+                          <GifExportStudio
+                            key={gifPaths.join("|")}
+                            initialPaths={gifPaths.length ? gifPaths : [asset.path]}
+                            initialTimeMs={gifPaths.length <= 1 ? timeSeconds * 1000 : 0}
+                            variant="panel"
+                            onClose={() => setTool("preview")}
+                          />
+                        )}
+                        {tool === "frames" && isVideo && (
+                          <VideoFramesExportDialog
+                            inputPath={asset.path}
+                            durationSeconds={duration}
+                            sourceFps={frameRate}
+                            initialTimeSeconds={timeSeconds}
+                            variant="panel"
+                            onClose={() => setTool("preview")}
+                          />
+                        )}
+                        {tool === "fps" && isVideo && (
+                          <section className="workbench-fps-tool" aria-label="FPS 预设">
+                            <Gauge size={16} />
+                            <div className="workbench-fps-grid">
+                              <button className={playbackFps === null ? "active" : ""} onClick={() => setPlaybackFps(null)}>
+                                自动 {frameRate ? frameRate.toFixed(frameRate % 1 ? 2 : 0) : "—"} FPS
+                              </button>
+                              {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
+                                <button key={fps} className={playbackFps === fps ? "active" : ""} onClick={() => setPlaybackFps(fps)}>
+                                  {fps} FPS
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+                        )}
+                        {tool === "notes" && (
+                          <AssetNotesPanel
+                            assetId={asset.id}
+                            position={transport.snapshot
+                              ? transport.snapshot.kind === "sequence"
+                                ? { kind: "frame", value: (entry.sequenceGroup?.start ?? 0) + transport.snapshot.frameIndex }
+                                : { kind: "time", value: Math.round(transport.snapshot.position * transport.snapshot.durationSeconds * 1000) }
+                              : null}
+                            onSeekTime={(milliseconds) => transport.actions?.seek(transport.snapshot?.durationSeconds ? milliseconds / (transport.snapshot.durationSeconds * 1000) : 0)}
+                            onSeekFrame={(frame) => {
+                              const start = entry.sequenceGroup?.start ?? 0;
+                              const count = transport.snapshot?.frameCount ?? 1;
+                              transport.actions?.seek(Math.max(0, Math.min(1, (frame - start) / Math.max(1, count - 1))));
+                            }}
+                          />
+                        )}
+                        {tool === "lut" && <PreviewColorTools settings={foundSettings} />}
                       </section>
                     )}
-                    {tool === "notes" && (
-                      <AssetNotesPanel
-                        assetId={asset.id}
-                        position={transport.snapshot
-                          ? transport.snapshot.kind === "sequence"
-                            ? { kind: "frame", value: (entry.sequenceGroup?.start ?? 0) + transport.snapshot.frameIndex }
-                            : { kind: "time", value: Math.round(transport.snapshot.position * transport.snapshot.durationSeconds * 1000) }
-                          : null}
-                        onSeekTime={(milliseconds) => transport.actions?.seek(transport.snapshot?.durationSeconds ? milliseconds / (transport.snapshot.durationSeconds * 1000) : 0)}
-                        onSeekFrame={(frame) => {
-                          const start = entry.sequenceGroup?.start ?? 0;
-                          const count = transport.snapshot?.frameCount ?? 1;
-                          transport.actions?.seek(Math.max(0, Math.min(1, (frame - start) / Math.max(1, count - 1))));
-                        }}
-                      />
-                    )}
-                    {tool === "lut" && <PreviewColorTools settings={foundSettings} />}
-                  </div>
-                )}
-
-                {tool === "preview" && (
-                  <div className="found-preview-workspace">
                     <div className="found-preview-file-row">
                       <span className="found-preview-filename directory-inspector-title" title={entry.path}>
                         {entry.name}
                       </span>
-                      <button className="found-preview-notes-action" type="button" aria-label="资产备注" title="资产备注" onClick={() => setTool("notes")}>
-                        <NotebookPen size={14} />
-                      </button>
                       {transport.snapshot?.kind === "video" && (
                         <span className="found-preview-frame-label">
                           FRAME {String(transport.snapshot.frameIndex).padStart(3, "0")}
@@ -390,8 +374,8 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         </span>
                       )}
                     </div>
-                    {toolbarVariant && ["gif", "video", "sequence"].includes(toolbarVariant) && <FoundToolbar
-                    variant={toolbarVariant}
+                    <FoundToolbar
+                    variant={toolbarVariant ?? "image"}
                     seekPosition={transport.snapshot?.position ?? 0}
                     onSeekChange={(position) => transport.actions?.seek(position)}
                     timecode={transport.snapshot?.kind === "sequence"
@@ -410,23 +394,25 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     fpsLabel={transport.snapshot?.fps
                       ? `${Number(transport.snapshot.fps.toFixed(2))} fps`
                       : fpsLabel}
+                    fpsActive={tool === "fps"}
+                    onFpsToggle={isVideo ? () => toggleTool("fps") : undefined}
                     showUpperRow
                     showLowerRow
-                    progressColor={foundToolbarProgressColor(toolbarVariant)}
+                    progressColor={foundToolbarProgressColor(toolbarVariant ?? "image")}
                     colorSwatches={colorSwatches}
-                    onTrim={isVideo ? () => setTool("frames") : undefined}
-                    onGifExport={() => {
-                      if (transport.actions?.exportGif) transport.actions.exportGif();
-                      else if (isVideo) setTool("gif");
-                    }}
-                    onNotesToggle={() => setTool("notes")}
-                    onLutToggle={() => setTool("lut")}
+                    trimActive={tool === "frames"}
+                    onTrim={isVideo ? () => toggleTool("frames") : undefined}
+                    gifActive={tool === "gif"}
+                    onGifExport={isVideo ? () => toggleTool("gif") : undefined}
+                    notesActive={tool === "notes"}
+                    onNotesToggle={() => toggleTool("notes")}
+                    lutActive={tool === "lut"}
+                    onLutToggle={() => toggleTool("lut")}
                     multichannel={entry.extension.toLowerCase() === "exr"}
                     onMultichannelToggle={() => setTool("preview")}
-                    />}
+                    />
                     <div className="found-preview-controls-slot" ref={setControlsTarget} />
                   </div>
-                )}
               </>
             )}
 

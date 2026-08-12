@@ -132,4 +132,30 @@ describe("FoundToolbar variants", () => {
     expect(onChannels).toHaveBeenCalledOnce();
     expect(onNotes).toHaveBeenCalledOnce();
   });
+
+  it("routes FPS and shows active contextual tools as pressed", async () => {
+    const onFps = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar
+        variant="video"
+        fpsActive
+        notesActive
+        lutActive
+        gifActive
+        onFpsToggle={onFps}
+        onNotesToggle={() => undefined}
+        onLutToggle={() => undefined}
+        onGifExport={() => undefined}
+      />,
+    ));
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="FPS"]')?.click());
+    expect(onFps).toHaveBeenCalledOnce();
+    for (const label of ["FPS", "资产备注", "LUT", "导出 GIF"]) {
+      expect(host.querySelector(`[aria-label="${label}"]`)?.getAttribute("aria-pressed")).toBe("true");
+    }
+  });
 });

@@ -48,6 +48,8 @@ export interface FoundToolbarProps {
   onLoopToggle?: () => void;
   /** FPS / speed label, e.g. "25 fps" or "8.333". */
   fpsLabel?: string;
+  fpsActive?: boolean;
+  onFpsToggle?: () => void;
   /** Auto-play active. */
   autoActive?: boolean;
   /** Auto-play toggle handler. */
@@ -64,6 +66,7 @@ export interface FoundToolbarProps {
   multichannel?: boolean;
   onMultichannelToggle?: () => void;
   onNotesToggle?: () => void;
+  notesActive?: boolean;
   /** Color swatches for quick palette. */
   colorSwatches?: string[];
   /** Whether to show the full upper row (video/GIF/sequence). */
@@ -75,7 +78,9 @@ export interface FoundToolbarProps {
   muted?: boolean;
   onMutedToggle?: () => void;
   onTrim?: () => void;
+  trimActive?: boolean;
   onGifExport?: () => void;
+  gifActive?: boolean;
   playing?: boolean;
   onPlayingToggle?: () => void;
   onStepFrames?: (delta: number) => void;
@@ -89,6 +94,8 @@ export function FoundToolbar({
   loopActive = false,
   onLoopToggle,
   fpsLabel = "25 fps",
+  fpsActive = false,
+  onFpsToggle,
   autoActive = true,
   onAutoToggle,
   gridActive = false,
@@ -99,6 +106,7 @@ export function FoundToolbar({
   multichannel = false,
   onMultichannelToggle,
   onNotesToggle,
+  notesActive = false,
   colorSwatches = [],
   showUpperRow = true,
   showLowerRow = true,
@@ -106,7 +114,9 @@ export function FoundToolbar({
   muted = false,
   onMutedToggle,
   onTrim,
+  trimActive = false,
   onGifExport,
+  gifActive = false,
   playing = false,
   onPlayingToggle,
   onStepFrames,
@@ -143,7 +153,7 @@ export function FoundToolbar({
               onChange={onSeekChange ?? (() => {})}
               fillColor={progressColor ?? foundToolbarProgressColor(variant)}
             />}
-          {capabilities.trim && <button className="found-tool-btn" title="裁剪或分割" aria-label="裁剪或分割" onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
+          {capabilities.trim && <button className={`found-tool-btn${trimActive ? " active" : ""}`} title="裁剪或分割" aria-label="裁剪或分割" aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
           {capabilities.trim && <button className="found-tool-btn" title="更多选项（尚不可用）" aria-label="更多选项" disabled><ChevronRight size={13} /></button>}
           {capabilities.volume && <button
               className="found-tool-btn circle"
@@ -165,9 +175,15 @@ export function FoundToolbar({
           >
             自动
           </button>
-          <span className="found-timecode" style={{ fontSize: 9 }}>
-            {fpsLabel}
-          </span>
+          <button
+            className={`found-tool-label found-fps-trigger${fpsActive ? " active" : ""}`}
+            type="button"
+            aria-label="FPS"
+            aria-pressed={fpsActive}
+            title="FPS"
+            onClick={onFpsToggle}
+            disabled={!onFpsToggle}
+          >{fpsLabel}</button>
           <button
             className={`found-tool-btn${gridActive ? " active" : ""}`}
             title="网格"
@@ -188,6 +204,7 @@ export function FoundToolbar({
             className={`found-tool-label${lutActive ? " active" : ""}`}
             onClick={onLutToggle}
             aria-label="LUT"
+            aria-pressed={lutActive}
             title="LUT"
             disabled={!onLutToggle}
           >
@@ -196,7 +213,7 @@ export function FoundToolbar({
           <button className="found-tool-btn" title="色彩栏" aria-label="色彩栏" onClick={onPaletteToggle} disabled={!onPaletteToggle}>
             <Palette size={13} />
           </button>
-          <button className="found-tool-btn" title="资产备注" aria-label="资产备注" onClick={onNotesToggle} disabled={!onNotesToggle}>
+          <button className={`found-tool-btn${notesActive ? " active" : ""}`} title="资产备注" aria-label="资产备注" aria-pressed={notesActive} onClick={onNotesToggle} disabled={!onNotesToggle}>
             <NotebookPen size={13} />
           </button>
           <button className="found-tool-btn" title="画笔（尚不可用）" aria-label="画笔" disabled>
@@ -205,7 +222,7 @@ export function FoundToolbar({
           <button className="found-tool-btn" title="截图（尚不可用）" aria-label="截图" disabled>
             <Camera size={13} />
           </button>
-          {capabilities.gifExport && <button className="found-tool-btn" title="导出 GIF" aria-label="导出 GIF" onClick={onGifExport} disabled={!onGifExport}>
+          {capabilities.gifExport && <button className={`found-tool-btn${gifActive ? " active" : ""}`} title="导出 GIF" aria-label="导出 GIF" aria-pressed={gifActive} onClick={onGifExport} disabled={!onGifExport}>
             <Film size={13} />
           </button>}
           <span className="found-toolbar-spacer" />

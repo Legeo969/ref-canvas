@@ -1,9 +1,10 @@
-const { spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const Sqlite = require("better-sqlite3");
+const ffmpegStatic = require("ffmpeg-static");
 const {
   connectCdp,
   delay,
@@ -24,6 +25,7 @@ const qaRoot = path.join(os.tmpdir(), "RefCanvas-QA", runId);
 const profile = path.join(qaRoot, "profile");
 const browseRoot = path.join(qaRoot, "mounted-files");
 const reportPath = path.join(qaRoot, "runtime-report.json");
+const screenshotRoot = path.join(qaRoot, "screenshots");
 
 function reservePort() {
   return new Promise((resolve, reject) => {
@@ -62,7 +64,7 @@ async function launchOnce(label) {
   let client;
   try {
     client = await connectCdp(port);
-    const result = await runPackagedSmoke(client, browseRoot);
+    const result = await runPackagedSmoke(client, browseRoot, screenshotRoot, label);
     await client.send("Browser.close").catch(() => undefined);
     const exited = await waitForExit(child, 10_000);
     if (!exited) {
@@ -125,7 +127,14 @@ async function main() {
   }
   fs.mkdirSync(profile, { recursive: true });
   fs.mkdirSync(browseRoot, { recursive: true });
+  fs.mkdirSync(screenshotRoot, { recursive: true });
   fs.writeFileSync(path.join(browseRoot, "runtime-smoke.txt"), "RefCanvas");
+  execFileSync(ffmpegStatic, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", "testsrc=size=640x360:rate=24",
+    "-t", "2", "-pix_fmt", "yuv420p",
+    path.join(browseRoot, "runtime-preview.mp4"),
+  ]);
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
   const migrated = await launchOnce("schema-12-to-18");
