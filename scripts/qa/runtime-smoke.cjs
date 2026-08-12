@@ -128,14 +128,14 @@ async function main() {
   fs.writeFileSync(path.join(browseRoot, "runtime-smoke.txt"), "RefCanvas");
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
-  const migrated = await launchOnce("schema-12-to-17");
+  const migrated = await launchOnce("schema-12-to-18");
   const verification = new Sqlite(path.join(profile, "refcanvas.db"), {
     readonly: true,
   });
   const schemaVersion = verification.pragma("user_version", { simple: true });
   const columns = verification.pragma("table_info(assets)").map((row) => row.name);
   verification.close();
-  if (schemaVersion !== 17 || !columns.includes("metadata_status")) {
+  if (schemaVersion !== 18 || !columns.includes("metadata_status")) {
     throw new Error("PACKAGED_MIGRATION_VERIFICATION_FAILED");
   }
   const report = {

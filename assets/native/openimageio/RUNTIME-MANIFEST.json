@@ -5,23 +5,23 @@
   "files": [
     {
       "path": "LICENSE.md",
-      "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
-      "bytes": 11558
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357
     },
     {
       "path": "THIRD-PARTY.md",
-      "sha256": "6b843ba0be1e89cfbb04bda949ff5dc64d9fc932f8c18397eced49a407dd262e",
-      "bytes": 13728
+      "sha256": "1e86c485c25256a807b11c6f56014acac43bdc297944c2d6b4af16fd65188c2b",
+      "bytes": 13418
     },
     {
       "path": "licenses/FREETYPE-FTL.txt",
-      "sha256": "5a5ee54c5001bbad1cdc1a57cc3dd4c42199b2da09d39c7ee41fab002d02967f",
-      "bytes": 6743
+      "sha256": "308dca54b5aaa4a6ba0880621fe3bcf287956821aa948430263062a8333625c0",
+      "bytes": 6912
     },
     {
       "path": "licenses/GIFLIB-COPYING",
-      "sha256": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e",
-      "bytes": 1088
+      "sha256": "d1c9e11eca6d15fbf718346bb585d72bba7b5f76113bc78d6f01c3d2ff6d391a",
+      "bytes": 1107
     },
     {
       "path": "licenses/IMATH-LICENSE.md",
@@ -35,8 +35,8 @@
     },
     {
       "path": "licenses/MSVC-RUNTIME-NOTICE.txt",
-      "sha256": "211a55d558a3cd7e353eb6b09e7962bbdbaa0d6b0e1904b43c7737d80681621b",
-      "bytes": 483
+      "sha256": "e724e460677d1f7a23c8a0c2f9b597ab5a781e2af92868ec53efb94d0505e0b7",
+      "bytes": 492
     },
     {
       "path": "licenses/OPENEXR-LICENSE.md",
@@ -45,13 +45,13 @@
     },
     {
       "path": "licenses/OPENJPEG-LICENSE",
-      "sha256": "a6af136f3e15038a666b61f376612a07d9a4e48cb7c01adbf3e33b3f14ab49b6",
-      "bytes": 2112
+      "sha256": "1203c08d905d7ea23de2efc40fbfb147d593c327cf72f0d55c1e13081798d48d",
+      "bytes": 2151
     },
     {
       "path": "licenses/ZLIB-LICENSE",
-      "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243",
-      "bytes": 1002
+      "sha256": "18dbd37f0ab175c37877e9053ff870a7de2809a3e9b9673b2696aa5009264638",
+      "bytes": 1024
     },
     {
       "path": "win32-x64/GIF.dll",

@@ -181,7 +181,7 @@ async function runPackagedSmoke(client, browseRoot) {
   if (result.appVersion !== expectedVersion) {
     throw new Error(`APP_VERSION_MISMATCH:${result.appVersion}`);
   }
-  if (result.databaseSchemaVersion !== 17) {
+  if (result.databaseSchemaVersion !== 18) {
     throw new Error(`SCHEMA_VERSION_MISMATCH:${result.databaseSchemaVersion}`);
   }
   if (result.activeWorkspaceMode !== "磁盘") {
