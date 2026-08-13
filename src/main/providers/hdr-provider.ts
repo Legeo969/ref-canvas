@@ -298,6 +298,29 @@ export class HdrProvider implements ResourceProvider {
     // display transform，再量化 8bit PNG。EXR/HDR 不依赖 sharp
     // 的 libvips loader（prebuilt 不含 EXR）。
     const extension = input.extension.toLowerCase();
+    const ocioExecutable = input.ocioConfigPath || input.displayTransform
+      ? await packagedOiiotoolPath()
+      : null;
+    if (extension === "hdr" && ocioExecutable) {
+      const header = await parseHdrHeader(input.path);
+      if (!header.valid || !header.width || !header.height) {
+        throw new Error(`HDR_DECODE_FAILED:${header.error ?? "INVALID_HEADER"}`);
+      }
+      return decodeExrWithOpenImageIo({
+        inputPath: input.path,
+        outputPath: input.outputPath,
+        channels: ["R", "G", "B"],
+        sourceWidth: header.width,
+        sourceHeight: header.height,
+        maximumWidth: input.width,
+        maximumHeight: input.height,
+        inputColorSpace: input.inputColorSpace || header.colorSpace || "linear",
+        displayTransform: input.displayTransform,
+        ocioConfigPath: input.ocioConfigPath,
+        signal: input.signal,
+        executable: ocioExecutable,
+      });
+    }
     if (extension === "exr") {
       const selection = await this.resolveExrSelection(input.path, input.channel);
       const executable = await packagedOiiotoolPath();
@@ -314,9 +337,11 @@ export class HdrProvider implements ResourceProvider {
             sourceHeight: selection.sourceHeight,
             maximumWidth: input.width,
             maximumHeight: input.height,
-            inputColorSpace: /acescg/i.test(selection.colorSpace ?? "")
+            inputColorSpace: input.inputColorSpace || (/acescg/i.test(selection.colorSpace ?? "")
               ? "ACEScg"
-              : "linear",
+              : "linear"),
+            displayTransform: input.displayTransform,
+            ocioConfigPath: input.ocioConfigPath,
             signal: input.signal,
             executable,
             subimage: selection.subimage,

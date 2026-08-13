@@ -62,4 +62,16 @@ describe("preview session controls", () => {
     const css = await readFile(path.resolve("src/renderer/styles/image-review.css"), "utf8");
     expect(css).toMatch(/\.image-review-img\s*{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*contain;/s);
   });
+
+  it("uses one borderless button treatment for every Found preview renderer", async () => {
+    const css = await readFile(path.resolve("src/renderer/styles/found-preview.css"), "utf8");
+    expect(css).toMatch(/\.found-tool-btn,\s*\.found-tool-label\s*{[^}]*border:\s*0;[^}]*border-radius:\s*3px;/s);
+    expect(css).toMatch(/\.found-toolbar-renderer-controls \.image-preview-toolbar-start > button,[^{]*\.found-toolbar-renderer-controls \.model-preview-actions > button\s*{[^}]*min-width:\s*40px;[^}]*height:\s*40px;[^}]*border:\s*0;/s);
+    expect(css).toMatch(/\.found-toolbar :is\(\.found-tool-btn, \.found-tool-label\)\.active,[^{]*\.found-toolbar-renderer-controls \.model-preview-toolbar > button\.active\s*{[^}]*background:\s*rgba\(53, 198, 160, 0\.12\);/s);
+  });
+
+  it("keeps MP4 preset names readable instead of shrinking them to one character", async () => {
+    const css = await readFile(path.resolve("src/renderer/styles/dialogs.css"), "utf8");
+    expect(css).toMatch(/\.mp4-preset-row > input\[type="text"\]\s*{[^}]*min-width:\s*120px;[^}]*flex:\s*1 1 140px;/s);
+  });
 });

@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, type MutableRefObject } from "react";
-import type { AssetRecord } from "../../../shared/contracts";
+import type { AssetRecord, BoardDocumentV3, BoardSummary } from "../../../shared/contracts";
 
 export interface BoardEventBindings {
   assets: AssetRecord[];
   onSelectAsset(asset: AssetRecord | null): void;
   onLocateAsset?(asset: AssetRecord): void;
-  onSaveDocument(document: import("../../../shared/contracts").BoardDocumentV3): Promise<void>;
+  onSaveDocument(document: BoardDocumentV3, revision: number): Promise<BoardSummary>;
   onReferencesChanged?(): Promise<void>;
 }
 

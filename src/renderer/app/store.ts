@@ -7,6 +7,7 @@ import type {
   AssetSortKey,
   BatchAssetPatch,
   BoardDocumentV3,
+  BoardSummary,
   DirectoryEntry,
   LibraryPreferences,
   ReferenceCollection,
@@ -146,7 +147,7 @@ interface AppState
   ): Promise<void>;
   refreshDuplicates(): Promise<void>;
   mergeDuplicates(keepId: string, removeIds: string[]): Promise<void>;
-  saveBoard(document: BoardDocumentV3): Promise<void>;
+  saveBoard(document: BoardDocumentV3, revision: number): Promise<BoardSummary>;
   createBoard(title: string): Promise<void>;
   renameBoard(id: string, title: string): Promise<void>;
   deleteBoard(id: string): Promise<void>;
@@ -982,17 +983,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     await Promise.all([get().reloadAssets(), get().refreshDuplicates()]);
   },
 
-  saveBoard: async (document) => {
+  saveBoard: async (document, revision) => {
     const board = get().activeBoard;
-    if (!board) return;
-    const summary = await window.refCanvas.boards.save(board.id, document);
+    if (!board) throw new Error("BOARD_NOT_FOUND");
+    const summary = await window.refCanvas.boards.save(
+      board.id,
+      document,
+      revision,
+    );
     set((state) => savedBoardState(state.boards, summary, document));
+    return summary;
   },
 
   createBoard: async (title) => {
     const current = get();
     if (current.activeBoard && current.boardDocument) {
-      await window.refCanvas.boards.save(current.activeBoard.id, current.boardDocument);
+      await window.refCanvas.boards.save(
+        current.activeBoard.id,
+        current.boardDocument,
+        current.activeBoard.revision,
+      );
     }
     const summary = await window.refCanvas.boards.create(title);
     const loaded = await window.refCanvas.boards.load(summary.id);
@@ -1035,7 +1045,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     if (current.activeBoard && current.boardDocument) {
-      await window.refCanvas.boards.save(current.activeBoard.id, current.boardDocument);
+      await window.refCanvas.boards.save(
+        current.activeBoard.id,
+        current.boardDocument,
+        current.activeBoard.revision,
+      );
     }
     const loaded = await window.refCanvas.boards.load(id);
     if (!loaded) return;
@@ -1196,6 +1210,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       (tab) => tab.kind === "directory" && normalizeDirectoryPath(tab.targetId) === normalized,
     );
     if (existing) {
+      // A collection can be shown over the directory tab that was active when
+      // it opened. Clicking that directory again must still leave collection mode.
+      if (get().activeCollectionId !== null && existing.id === get().activeTabId) {
+        set({ activeCollectionId: null, selectedDirectoryEntry: null });
+        return;
+      }
       await get().switchBrowserTab(existing.id);
       return;
     }

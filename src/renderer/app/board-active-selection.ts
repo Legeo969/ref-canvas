@@ -1,6 +1,7 @@
 import {
   ActiveSelection,
   Group,
+  classRegistry,
   util,
   type Canvas,
   type FabricObject,
@@ -75,11 +76,31 @@ export class BoardActiveSelection extends ActiveSelection {
   }
 }
 
+/** Make every Fabric-created selection (marquee and modifier-click) board-safe. */
+export function installBoardActiveSelection(): void {
+  classRegistry.setClass(BoardActiveSelection, "ActiveSelection");
+  classRegistry.setClass(BoardActiveSelection, "activeSelection");
+}
+
 export function createBoardActiveSelection(
   objects: FabricObject[],
   canvas: Canvas,
 ): BoardActiveSelection {
   return new BoardActiveSelection(objects, { canvas });
+}
+
+/**
+ * Fabric creates its own ActiveSelection for a mouse marquee. Rebuilding that
+ * temporary group just to use the board renderer repeats layout work for every
+ * selected object, so upgrade the instance in place before the next paint.
+ */
+export function optimizeBoardActiveSelection(
+  selection: ActiveSelection,
+): BoardActiveSelection {
+  if (!(selection instanceof BoardActiveSelection)) {
+    Object.setPrototypeOf(selection, BoardActiveSelection.prototype);
+  }
+  return selection as BoardActiveSelection;
 }
 
 /** Selects all selectable board objects and schedules exactly one repaint. */

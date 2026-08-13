@@ -21,6 +21,7 @@ const board: BoardSummary = {
   title: "Reference board",
   createdAt: "2026-08-11T00:00:00.000Z",
   updatedAt: "2026-08-11T00:00:00.000Z",
+  revision: 1,
 };
 
 const boardDocument: BoardDocumentV3 = {
@@ -121,7 +122,7 @@ describe("BoardCanvas selection persistence", () => {
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
-    const onSave = vi.fn(async () => undefined);
+    const onSave = vi.fn(async () => ({ ...board, revision: board.revision + 1 }));
     const historyPush = vi.spyOn(BoardHistoryController.prototype, "push");
     const loadFromJSON = vi.spyOn(FabricCanvas.prototype, "loadFromJSON");
     vi.spyOn(FabricCanvas.prototype, "requestRenderAll").mockImplementation(() => undefined);
@@ -168,5 +169,63 @@ describe("BoardCanvas selection persistence", () => {
     expect(setActiveObject).toHaveBeenCalledWith(expect.any(BoardActiveSelection));
     expect(historyPush).toHaveBeenCalledTimes(pushesBeforeSelection);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("upgrades a mouse marquee selection to the bulk-optimized board selection", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const loadFromJSON = vi.spyOn(FabricCanvas.prototype, "loadFromJSON");
+    vi.spyOn(FabricCanvas.prototype, "requestRenderAll").mockImplementation(() => undefined);
+
+    await act(async () => {
+      root?.render(
+        <DialogProvider>
+          <BoardCanvas
+            board={board}
+            document={boardDocument}
+            assets={[]}
+            boards={[board]}
+            onSelectAsset={vi.fn()}
+            onSave={vi.fn(async () => ({ ...board, revision: board.revision + 1 }))}
+            onSwitchBoard={async () => undefined}
+            onCreateBoard={async () => undefined}
+            onRenameBoard={async () => undefined}
+            onDeleteBoard={async () => undefined}
+            onLibraryChanged={async () => undefined}
+          />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const initialLoad = loadFromJSON.mock.results[0]?.value;
+    await act(async () => {
+      await initialLoad;
+      await Promise.resolve();
+    });
+
+    const canvas = loadFromJSON.mock.instances[0] as FabricCanvas;
+    const marqueeCanvas = canvas as FabricCanvas & {
+      _groupSelector: {
+        x: number;
+        y: number;
+        deltaX: number;
+        deltaY: number;
+      } | null;
+      handleSelection(event: MouseEvent): boolean;
+    };
+    await act(async () => {
+      marqueeCanvas._groupSelector = {
+        x: 0,
+        y: 0,
+        deltaX: 200,
+        deltaY: 100,
+      };
+      marqueeCanvas.handleSelection(new MouseEvent("mouseup"));
+    });
+
+    expect(canvas.getActiveObject()).toBeInstanceOf(BoardActiveSelection);
+    expect(canvas.getActiveObjects()).toHaveLength(2);
   });
 });

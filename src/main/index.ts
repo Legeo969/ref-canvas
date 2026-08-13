@@ -147,6 +147,9 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 /** 独立白板窗口：boardId → BrowserWindow（同一白板同时只允许一个窗口）。 */
 const boardWindows = new Map<string, BrowserWindow>();
+const boardFlushResolvers = new Map<number, (saved: boolean) => void>();
+const boardWindowsClosingAfterFlush = new Set<number>();
+const mainWindowsClosingAfterFlush = new Set<number>();
 const trustedWindows = new TrustedWindowRegistry();
 const writeAccess = new WriteAccessController(() => [app.getPath("userData")]);
 let database: RefCanvasDatabase;
@@ -499,7 +502,9 @@ async function importCommandLineEntries(entries: string[]): Promise<boolean> {
 const validateSender = trustedWindows.validateSender.bind(trustedWindows);
 
 /** IPC 对话框/窗口操作只允许已登记且仍存活的发送窗口。 */
-function windowForSender(event: Electron.IpcMainInvokeEvent): BrowserWindow {
+function windowForSender(
+  event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent,
+): BrowserWindow {
   return trustedWindows.windowForSender(event);
 }
 
@@ -855,6 +860,10 @@ function registerIpc(): void {
     getBoardReferences: () => boardReferences,
     getDatabase: () => database,
     getMainWindow: () => mainWindow,
+    notifyBoardFlushComplete: (event, saved) => {
+      const window = windowForSender(event);
+      boardFlushResolvers.get(window.id)?.(saved);
+    },
     openBoardWindow,
     pngDataUrlToBuffer,
     relinkBoardAsset: (assetId, filename) =>
@@ -1072,8 +1081,12 @@ function createWindow(): void {
       closeAllBoardWindows();
       return;
     }
+    if (mainWindowsClosingAfterFlush.has(mainWindow.id)) return;
+    event.preventDefault();
+    void closeWindowAfterBoardFlush(mainWindow, mainWindowsClosingAfterFlush);
   });
   mainWindow.on("closed", () => {
+    if (mainWindow) mainWindowsClosingAfterFlush.delete(mainWindow.id);
     mainWindow = null;
     // 窗口关闭即会话结束：清空 refbrowse 预览 token，防止复用。
     previewTokens.clear();
@@ -1129,7 +1142,14 @@ function openBoardWindow(boardId: string): void {
   trustedWindows.register(window);
   hardenWindowNavigation(window.webContents);
   window.once("ready-to-show", () => window.show());
+  window.on("close", (event) => {
+    if (quitting || !window.webContents || boardWindowsClosingAfterFlush.has(window.id)) return;
+    event.preventDefault();
+    void closeWindowAfterBoardFlush(window, boardWindowsClosingAfterFlush);
+  });
   window.on("closed", () => {
+    boardFlushResolvers.delete(window.id);
+    boardWindowsClosingAfterFlush.delete(window.id);
     if (boardWindows.get(boardId) === window) boardWindows.delete(boardId);
   });
   boardWindows.set(boardId, window);
@@ -1151,6 +1171,31 @@ function closeAllBoardWindows(): void {
     if (!window.isDestroyed()) window.close();
   }
   boardWindows.clear();
+}
+
+async function flushBoardRenderer(window: BrowserWindow): Promise<boolean> {
+  if (window.isDestroyed()) return true;
+  const saved = await new Promise<boolean>((resolve) => {
+    const timeout = setTimeout(() => resolve(false), 2_000);
+    boardFlushResolvers.set(window.id, (result) => {
+      clearTimeout(timeout);
+      resolve(result);
+    });
+    window.webContents.send("boards:flush-request");
+  });
+  boardFlushResolvers.delete(window.id);
+  return saved;
+}
+
+async function closeWindowAfterBoardFlush(
+  window: BrowserWindow,
+  closingWindows: Set<number>,
+): Promise<void> {
+  const saved = await flushBoardRenderer(window);
+  if (saved && !window.isDestroyed()) {
+    closingWindows.add(window.id);
+    window.close();
+  }
 }
 
 const previewWindows = new Set<BrowserWindow>();
@@ -1427,6 +1472,13 @@ app.on("before-quit", () => {
 async function shutdownServices(): Promise<void> {
   writeAccess.clear();
   saveMainWindowBounds();
+  const flushed = await Promise.all([
+    ...[...boardWindows.values()].map(flushBoardRenderer),
+    ...(mainWindow ? [flushBoardRenderer(mainWindow)] : []),
+  ]);
+  if (flushed.some((saved) => !saved)) {
+    throw new Error("BOARD_FLUSH_FAILED");
+  }
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();
   closeAllPreviewWindows();

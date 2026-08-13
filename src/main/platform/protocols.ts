@@ -12,6 +12,7 @@ import {
 import path from "node:path";
 import { z } from "zod";
 import { assetKindForExtension } from "../../shared/asset-kind";
+import type { FoundSettings } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import { fileProtocolResponse } from "./protocol-file-response";
 import { previewCacheKey, type PreviewCacheIdentity } from "./preview-cache-key";
@@ -40,6 +41,31 @@ interface ProtocolDependencies {
   previewTokens: PreviewTokenRegistry;
   thumbnailQueue: PreviewQueue<Buffer>;
   originPolicy: ProtocolOriginPolicyOptions;
+}
+
+const TRANSIENT_PREVIEW_FAILURES = [
+  /PREVIEW_QUEUE_(?:ABORTED|FULL|CLEARED)/,
+  /THUMBNAIL_CACHE_REBUILD/,
+  /THUMBNAIL_WORKER_(?:ABORTED|CLOSED|EXITED|UNAVAILABLE|FAILED)/,
+  /WORKER_JOB_(?:CANCELLED|TIMEOUT)/,
+  /WORKER_(?:CRASHED|RESTART_EXHAUSTED|SUPERVISOR_CLOSED)/,
+  /PROVIDER_(?:TIMEOUT|UNAVAILABLE)/,
+];
+
+/** Infrastructure failures can recover in the same session and must never become a disk negative-cache entry. */
+export function shouldCachePreviewFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return !TRANSIENT_PREVIEW_FAILURES.some((pattern) => pattern.test(message));
+}
+
+export function recordPreviewFailure(
+  index: PreviewCacheIndex | null,
+  key: string,
+  error: unknown,
+): void {
+  if (!index) return;
+  if (shouldCachePreviewFailure(error)) index.recordFailure(key);
+  else index.clearFailure(key);
 }
 
 function thumbnailPriority(url: URL): number {
@@ -85,6 +111,9 @@ async function generateThumbnail(
   signal: AbortSignal,
   size: { width: number; height: number } = { width: 480, height: 320 },
   channel?: string,
+  ocioConfigPath?: string,
+  inputColorSpace?: string,
+  displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw",
 ): Promise<Buffer> {
   const extension = path.extname(source).replace(/^\./, "").toLowerCase();
   const kind = assetKindForExtension(extension);
@@ -139,6 +168,9 @@ async function generateThumbnail(
         height: size.height,
         outputPath: cacheFile,
         channel,
+        ocioConfigPath,
+        inputColorSpace,
+        displayTransform,
         signal,
       });
       return readFile(result.path);
@@ -160,6 +192,27 @@ async function generateThumbnail(
   const png = thumbnail.toPNG();
   await writeCacheAtomically(cacheFile, png);
   return png;
+}
+
+const HDR_DISPLAY_TRANSFORMS = new Set(["linear-srgb", "aces-1.3", "aces-2.0", "raw"] as const);
+
+function hdrDisplayTransform(url: URL): "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw" | undefined {
+  const value = url.searchParams.get("displayTransform");
+  return value && HDR_DISPLAY_TRANSFORMS.has(value as "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw")
+    ? value as "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw"
+    : undefined;
+}
+
+function hdrInputColorSpace(url: URL): string | undefined {
+  const value = url.searchParams.get("inputColorSpace")?.trim();
+  return value && value.length <= 128 ? value : undefined;
+}
+
+function hdrColorVariant(url: URL): string {
+  const transform = hdrDisplayTransform(url);
+  const inputColorSpace = hdrInputColorSpace(url);
+  const ocioSignature = url.searchParams.get("ocio")?.toLowerCase().replace(/[^a-z0-9_-]+/g, "-") ?? "";
+  return `${transform ? `-display-${transform}` : ""}${inputColorSpace ? `-input-${inputColorSpace.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}` : ""}${ocioSignature ? `-ocio-${ocioSignature}` : ""}`;
 }
 
 function registerAssetProtocol(dependencies: ProtocolDependencies): void {
@@ -221,7 +274,14 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
             `${identity}.png`,
           );
         } else {
-          const cacheFilename = thumbnailCacheFilename(asset);
+          const channel = url.searchParams.get("channel")?.trim() || null;
+          const colorVariant = hdrColorVariant(url);
+          const cacheFilename = thumbnailCacheFilename(
+            asset,
+            channel || colorVariant
+              ? `${channel ? `channel:${channel}` : "default"}${colorVariant}`
+              : undefined,
+          );
           cacheKey = `asset:${cacheFilename}`;
           cacheFile = path.join(dependencies.getThumbnailCacheDirectory(), cacheFilename);
         }
@@ -253,6 +313,10 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
             proxySize
               ? { width: proxySize, height: proxySize }
               : undefined,
+            url.searchParams.get("channel") ?? undefined,
+            dependencies.getDatabase().getSetting<Partial<FoundSettings>>("foundSettings", {}).ocioConfigPath ?? undefined,
+            hdrInputColorSpace(url),
+            hdrDisplayTransform(url),
           );
           dependencies.getPreviewCacheIndex()?.recordSuccess(
             cacheKey,
@@ -267,11 +331,13 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         return new Response(new Uint8Array(png), {
           headers: protocolResponseHeaders(access, "image/png"),
         });
-      } catch {
+      } catch (error) {
         if (request.signal.aborted) {
           return new Response("Cancelled", { status: 499 });
         }
-        if (failedCacheKey) dependencies.getPreviewCacheIndex()?.recordFailure(failedCacheKey);
+        if (failedCacheKey) {
+          recordPreviewFailure(dependencies.getPreviewCacheIndex(), failedCacheKey, error);
+        }
         return new Response("No thumbnail", { status: 404 });
       }
     }
@@ -340,10 +406,11 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
         const info = await stat(real);
         const imageVariant = assetKindForExtension(path.extname(real)) === "image";
         const channel = url.searchParams.get("channel")?.toLowerCase() ?? "";
+        const colorVariant = hdrColorVariant(url);
         const thumbnailSize = directoryThumbnailSize(url);
         const variant = `${imageVariant
           ? `thumbnail-${thumbnailSize}x${thumbnailSize}-png`
-          : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-png`}${channel ? `-${channel}` : ""}` as PreviewCacheIdentity["variant"];
+          : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-png`}${channel ? `-${channel}` : ""}${colorVariant}` as PreviewCacheIdentity["variant"];
         const key = previewCacheKey({
           realPath: real,
           size: info.size,
@@ -377,6 +444,9 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
             signal,
             { width: thumbnailSize, height: thumbnailSize },
             url.searchParams.get("channel") ?? undefined,
+            dependencies.getDatabase().getSetting<Partial<FoundSettings>>("foundSettings", {}).ocioConfigPath ?? undefined,
+            hdrInputColorSpace(url),
+            hdrDisplayTransform(url),
           );
           dependencies.getPreviewCacheIndex()?.recordSuccess(key, cacheFile, generated.byteLength);
           return generated;
@@ -387,7 +457,7 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
         return new Response(Uint8Array.from(png), {
           headers: protocolResponseHeaders(access, "image/png"),
         });
-      } catch {
+      } catch (error) {
         if (request.signal.aborted) {
           return new Response("Cancelled", { status: 499 });
         }
@@ -395,16 +465,18 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
           const info = await stat(real);
           const imageVariant = assetKindForExtension(path.extname(real)) === "image";
           const channel = url.searchParams.get("channel")?.toLowerCase() ?? "";
+          const colorVariant = hdrColorVariant(url);
           const thumbnailSize = directoryThumbnailSize(url);
           const variant = `${imageVariant
             ? `thumbnail-${thumbnailSize}x${thumbnailSize}-png`
-            : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-png`}${channel ? `-${channel}` : ""}` as PreviewCacheIdentity["variant"];
-          dependencies.getPreviewCacheIndex()?.recordFailure(previewCacheKey({
+            : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-png`}${channel ? `-${channel}` : ""}${colorVariant}` as PreviewCacheIdentity["variant"];
+          const failedKey = previewCacheKey({
             realPath: real,
             size: info.size,
             mtimeMs: info.mtimeMs,
             variant,
-          }));
+          });
+          recordPreviewFailure(dependencies.getPreviewCacheIndex(), failedKey, error);
         } catch {
           // File disappeared while the thumbnail was being generated.
         }

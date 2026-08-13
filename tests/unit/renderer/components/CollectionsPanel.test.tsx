@@ -146,11 +146,11 @@ describe("CollectionsPanel", () => {
         </DialogProvider>,
       );
     });
-    expect(host.textContent).toContain("还没有集合");
+    expect(host.textContent).toContain("还没有收藏夹");
     expect(host.textContent).toContain("不复制或移动源文件");
 
     await act(async () => {
-      host.querySelector('[aria-label="新建集合"]')?.dispatchEvent(
+      host.querySelector('[aria-label="新建收藏夹"]')?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
     });
@@ -160,7 +160,7 @@ describe("CollectionsPanel", () => {
     expect(
       dismiss?.compareDocumentPosition(menu as Node) ?? 0,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(host.textContent).toContain("用文件新建集合");
+    expect(host.textContent).toContain("选文件并新建收藏夹");
     await act(async () => {
       host.querySelector('.collection-menu button[role="menuitem"]')?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
@@ -232,6 +232,8 @@ describe("CollectionsPanel", () => {
 
     expect(host.textContent).toContain("灵感");
     expect(host.textContent).toContain("子集");
+    expect(host.textContent).toContain("跨文件夹收藏素材");
+    expect(host.querySelector('[aria-label="添加素材到 灵感"]')).toBeTruthy();
 
     await act(async () => {
       host
@@ -257,7 +259,7 @@ describe("CollectionsPanel", () => {
       );
     });
     expect(detailsHost.textContent).toContain("灵感");
-    expect(detailsHost.textContent).toContain("可解析");
+    expect(detailsHost.textContent).toContain("可用");
     expect(detailsHost.textContent).toContain("离线");
     expect(detailsHost.textContent).toContain("缺失");
     expect(detailsHost.textContent).toContain("歧义");

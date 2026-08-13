@@ -67,17 +67,37 @@
 
 .collection-row .nav-count {
   padding-right: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.collection-row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .collection-node-add {
   width: 22px;
   height: 22px;
-  opacity: 0;
+  opacity: 0.68;
+  transition-property: opacity, scale;
+  transition-duration: 120ms;
 }
 
 .collection-row:hover .collection-node-add,
-.collection-row.active .collection-node-add {
+.collection-row.active .collection-node-add,
+.collection-node-add:focus-visible {
   opacity: 1;
+}
+
+.collection-node-add:active { scale: 0.96; }
+
+.collections-section-hint {
+  margin: -1px 16px 7px;
+  color: #69736f;
+  font-size: 10px;
+  line-height: 1.45;
+  text-wrap: pretty;
 }
 
 .collection-row-actions {

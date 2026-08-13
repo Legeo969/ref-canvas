@@ -9,10 +9,10 @@ import {
   RefreshCw,
   SkipBack,
   SkipForward,
-  SlidersHorizontal,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   ExportGifResult,
   ExportMp4Result,
@@ -21,6 +21,8 @@ import type {
 import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
+import { FoundSlider } from "./FoundSlider";
+import { HdrPreview } from "./HdrPreview";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
 import { usePreviewTransportRegistration } from "./PreviewTransport";
 
@@ -65,16 +67,43 @@ export function sequenceFrameSourceUrl(extension: string, token: string): string
     : `refbrowse://preview/${token}`;
 }
 
+export function sequenceGifFrameSlice(
+  files: string[],
+  range: { start: number; end: number },
+): string[] {
+  if (files.length <= 1) return files;
+  const lastIndex = files.length - 1;
+  const startIndex = Math.round(Math.max(0, Math.min(1, range.start)) * lastIndex);
+  const endIndex = Math.round(Math.max(0, Math.min(1, range.end)) * lastIndex);
+  return files.slice(Math.min(startIndex, endIndex), Math.max(startIndex, endIndex) + 1);
+}
+
 export function SequencePreviewDialog({
   sequence,
   onClose,
   embedded = false,
   onPaletteChange,
+  controlsTarget,
+  multichannelOpen = false,
+  multichannelAnchor,
+  gifRange,
+  gifRangeActive,
+  onGifRangeChange,
+  onGifRangeActiveChange,
+  onGifExportToggle,
 }: {
   sequence: SequenceGroupInfo;
   onClose(): void;
   embedded?: boolean;
   onPaletteChange?: (colors: string[]) => void;
+  controlsTarget?: HTMLElement | null;
+  multichannelOpen?: boolean;
+  multichannelAnchor?: HTMLElement | null;
+  gifRange?: { start: number; end: number };
+  gifRangeActive?: boolean;
+  onGifRangeChange?: (start: number, end: number) => void;
+  onGifRangeActiveChange?: (active: boolean) => void;
+  onGifExportToggle?: () => void;
 }) {
   const frames = useMemo(() => sequence.files, [sequence.files]);
   const foundSettings = useFoundSettings();
@@ -88,7 +117,9 @@ export function SequencePreviewDialog({
       ? foundSettings.defaultSequenceFps
       : (sequence.fps || 24),
   );
-  const [optionsDrawer, setOptionsDrawer] = useState<"fps" | "mp4" | null>(null);
+  const [optionsDrawer, setOptionsDrawer] = useState<"fps" | "mp4" | "gif" | null>(null);
+  const [localGifRange, setLocalGifRange] = useState({ start: 0, end: 1 });
+  const [localGifRangeActive, setLocalGifRangeActive] = useState(false);
   const [failed, setFailed] = useState(false);
   const tokens = useFrameTokens(frames);
   const fpsPresets = foundSettings.sequenceFpsPresets.length
@@ -120,6 +151,67 @@ export function SequencePreviewDialog({
   const displayedSourceRef = useRef<string | null>(null);
   const displayedImageRef = useRef<HTMLImageElement | null>(null);
   const [displayedSource, setDisplayedSource] = useState<string | null>(null);
+  const [displayedFrameIndex, setDisplayedFrameIndex] = useState(0);
+  const mp4ButtonRef = useRef<HTMLButtonElement>(null);
+  const gifButtonRef = useRef<HTMLButtonElement>(null);
+  const [presetMenuPosition, setPresetMenuPosition] = useState({ left: 0, bottom: 0 });
+  const positionPresetMenu = useCallback(() => {
+    const rect = (optionsDrawer === "gif" ? gifButtonRef : mp4ButtonRef).current?.getBoundingClientRect();
+    if (!rect) return;
+    setPresetMenuPosition({
+      left: Math.max(6, Math.min(rect.left, window.innerWidth - 286)),
+      bottom: Math.max(6, window.innerHeight - rect.top + 6),
+    });
+  }, [optionsDrawer]);
+  const resolvedGifRange = gifRange ?? localGifRange;
+  const resolvedGifRangeActive = gifRangeActive ?? localGifRangeActive;
+  const setGifRange = useCallback((start: number, end: number) => {
+    onGifRangeChange?.(start, end);
+    if (!onGifRangeChange) setLocalGifRange({ start, end });
+  }, [onGifRangeChange]);
+  const setGifRangeActive = useCallback((active: boolean) => {
+    onGifRangeActiveChange?.(active);
+    if (!onGifRangeActiveChange) setLocalGifRangeActive(active);
+  }, [onGifRangeActiveChange]);
+  const closeExportPopover = useCallback(() => {
+    setOptionsDrawer((current) => current === "fps" ? current : null);
+    setGifRangeActive(false);
+  }, [setGifRangeActive]);
+  useLayoutEffect(() => {
+    if (optionsDrawer === "mp4" || optionsDrawer === "gif") positionPresetMenu();
+  }, [optionsDrawer, positionPresetMenu]);
+  useEffect(() => {
+    const closeMenu = () => closeExportPopover();
+    window.addEventListener("refcanvas:close-preview-popovers", closeMenu);
+    return () => window.removeEventListener("refcanvas:close-preview-popovers", closeMenu);
+  }, [closeExportPopover]);
+  useEffect(() => {
+    if (optionsDrawer !== "mp4" && optionsDrawer !== "gif") return;
+    window.addEventListener("resize", positionPresetMenu);
+    window.addEventListener("scroll", positionPresetMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionPresetMenu);
+      window.removeEventListener("scroll", positionPresetMenu, true);
+    };
+  }, [optionsDrawer, positionPresetMenu]);
+  useEffect(() => {
+    if (optionsDrawer !== "mp4" && optionsDrawer !== "gif") return;
+    const closeOnPointerAway = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".sequence-export-popover")) return;
+      if (target && (mp4ButtonRef.current?.contains(target) || gifButtonRef.current?.contains(target))) return;
+      closeExportPopover();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeExportPopover();
+    };
+    document.addEventListener("pointerdown", closeOnPointerAway);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerAway);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [closeExportPopover, optionsDrawer]);
 
   useEffect(() => {
     frameIndexRef.current = frameIndex;
@@ -180,10 +272,17 @@ export function SequencePreviewDialog({
     if (source === displayedSourceRef.current) return;
     let cancelled = false;
     const image = new Image();
-    image.onload = () => {
+    image.onload = async () => {
+      if (cancelled) return;
+      try {
+        await image.decode?.();
+      } catch {
+        // A completed load is still usable when decode() is unsupported.
+      }
       if (cancelled) return;
       displayedSourceRef.current = source;
       setDisplayedSource(source);
+      setDisplayedFrameIndex(frameIndex);
       setFailed(false);
     };
     image.onerror = () => {
@@ -193,7 +292,7 @@ export function SequencePreviewDialog({
     return () => {
       cancelled = true;
     };
-  }, [source]);
+  }, [frameIndex, source]);
   useEffect(() => {
     if (!availableMp4Presets.some((preset) => preset.id === exportPresetId)) {
       setExportPresetId(
@@ -204,6 +303,7 @@ export function SequencePreviewDialog({
   const missing = sequence.missingFrames;
   const frameLabel = (index: number) =>
     String(sequence.start + index).padStart(sequence.width, "0");
+  const activePresetLabel = availableMp4Presets.find((preset) => preset.id === exportPresetId)?.label ?? "MP4";
 
   // 阶段 5：MP4 导出（预设来自 FoundSettings.mp4Presets）。
   const exportMp4 = async () => {
@@ -224,6 +324,7 @@ export function SequencePreviewDialog({
       });
       setExportResult(result);
       setExportState("done");
+      closeExportPopover();
     } catch (error) {
       setExportError(error instanceof Error ? error.message : translate("sequence.exportFailed"));
       setExportState("idle");
@@ -240,7 +341,7 @@ export function SequencePreviewDialog({
     setGifState("running");
     try {
       const result = await window.refCanvas.sequences.exportGif({
-        files: frames,
+        files: sequenceGifFrameSlice(frames, resolvedGifRange),
         fps,
         outputDirectory,
         baseName: sequence.baseName,
@@ -248,11 +349,60 @@ export function SequencePreviewDialog({
       });
       setGifResult(result);
       setGifState("done");
+      closeExportPopover();
     } catch (error) {
       setGifError(error instanceof Error ? error.message : translate("sequence.exportFailed"));
       setGifState("idle");
     }
   };
+
+  const toggleExportPopover = (next: "mp4" | "gif") => {
+    const opening = optionsDrawer !== next;
+    window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+    setOptionsDrawer(opening ? next : null);
+    setGifRangeActive(opening && next === "gif");
+  };
+
+  const exportPopover = (optionsDrawer === "mp4" || optionsDrawer === "gif") && typeof document !== "undefined" ? createPortal(
+    <section
+      className="sequence-inline-menu sequence-export-popover anchored"
+      data-placement="top-start"
+      style={{ left: presetMenuPosition.left, bottom: presetMenuPosition.bottom }}
+      aria-label={optionsDrawer === "mp4" ? "MP4 导出设置" : "GIF 导出设置"}
+    >
+      {optionsDrawer === "mp4" ? <>
+        <header className="sequence-export-popover-header">
+          <div><strong>导出 MP4</strong><span>选择转换预设</span></div>
+          <button type="button" aria-label="关闭 MP4 导出设置" onClick={closeExportPopover}><X size={14} /></button>
+        </header>
+        <div className="sequence-export-preset-list" role="radiogroup" aria-label="MP4 转换预设">
+          {availableMp4Presets.map((preset) => (
+            <button key={preset.id} role="radio" aria-checked={preset.id === exportPresetId} className={preset.id === exportPresetId ? "active" : ""} onClick={() => setExportPresetId(preset.id)}>
+              <span><strong>{preset.label}</strong><small>{preset.codec === "h265" ? "H.265" : "H.264"} · {preset.resolution === "original" ? "原始" : preset.resolution === "half" ? "1/2" : "1/4"}</small></span>
+              {preset.id === exportPresetId && <span aria-hidden="true">✓</span>}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="sequence-export-confirm" aria-label="确认导出 MP4" disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => void exportMp4()}>
+          <Download size={14} /> {exportState === "running" ? translate("sequence.exporting") : `导出 · ${activePresetLabel}`}
+        </button>
+      </> : <>
+        <header className="sequence-export-popover-header">
+          <div><strong>导出 GIF</strong><span>拖动原进度条两端选择帧</span></div>
+          <button type="button" aria-label="关闭 GIF 导出设置" onClick={closeExportPopover}><X size={14} /></button>
+        </header>
+        <div className="sequence-gif-range-summary">
+          <span>起始帧 <strong>{frameLabel(Math.round(resolvedGifRange.start * Math.max(0, frames.length - 1)))}</strong></span>
+          <span>结束帧 <strong>{frameLabel(Math.round(resolvedGifRange.end * Math.max(0, frames.length - 1)))}</strong></span>
+          <small>{sequenceGifFrameSlice(frames, resolvedGifRange).length} 帧 · {fps} FPS</small>
+        </div>
+        <button type="button" className="sequence-export-confirm" aria-label="导出所选 GIF 帧" disabled={gifState === "running" || frames.length === 0} onClick={() => void exportGif()}>
+          <Film size={14} /> {gifState === "running" ? translate("sequence.exporting") : "导出所选帧"}
+        </button>
+      </>}
+    </section>,
+    document.body,
+  ) : null;
 
   usePreviewTransportRegistration({
     kind: "sequence",
@@ -291,6 +441,19 @@ export function SequencePreviewDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [embedded, onClose]);
 
+  const embeddedExportControls = embedded && controlsTarget ? createPortal(
+    <div className="sequence-inline-export-controls">
+      <button ref={mp4ButtonRef} type="button" className={`found-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label="导出 MP4" aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")} title={translate("sequence.exportMp4Title")}>
+        <Download size={13} /> {exportState === "running" ? translate("sequence.exporting") : "MP4"}
+      </button>
+      <button ref={gifButtonRef} type="button" className={`found-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label="选择 GIF 帧范围" aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")} title="在进度条上选择 GIF 帧范围">
+        <Film size={13} /> {gifState === "running" ? translate("sequence.exporting") : "GIF"}
+      </button>
+      {exportPopover}
+    </div>,
+    controlsTarget,
+  ) : null;
+
   return (
     <div
       className={embedded ? "sequence-inline-preview" : "quick-preview-backdrop"}
@@ -303,6 +466,7 @@ export function SequencePreviewDialog({
         className={`quick-preview-shell sequence-preview-shell${embedded ? " embedded" : ""}`}
         onMouseDown={(event) => event.stopPropagation()}
       >
+        {embeddedExportControls}
         {!embedded && <header className="quick-preview-header">
           <div className="quick-preview-title">
             <h2>
@@ -377,12 +541,20 @@ export function SequencePreviewDialog({
 
         <div className="quick-preview-stage sequence-preview-stage">
           {displayedSource && !failed ? (
-            <img
+            /^(exr|hdr)$/i.test(sequence.extension) ? <HdrPreview
+              source={displayedSource}
+              extension={sequence.extension}
+              path={frames[displayedFrameIndex]}
+              managed={embedded}
+              controlsTarget={controlsTarget}
+              multichannelOpen={multichannelOpen}
+              multichannelAnchor={multichannelAnchor}
+            /> : <img
               ref={displayedImageRef}
               src={displayedSource}
               alt={translate("sequence.frameAlt")
                 .replace("{name}", sequence.baseName)
-                .replace("{frame}", frameLabel(frameIndex))}
+                .replace("{frame}", frameLabel(displayedFrameIndex))}
               draggable={false}
               onError={() => setFailed(true)}
             />
@@ -393,7 +565,15 @@ export function SequencePreviewDialog({
           )}
         </div>
 
-        <footer className="sequence-controls">
+        {embedded && frames[frameIndex] && <PreviewColorBar
+          headless
+          autoRefresh
+          assetPath={frames[frameIndex]}
+          revision={`${frames[frameIndex]}:${frameIndex}`}
+          onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
+        />}
+
+        {!embedded && <footer className="sequence-controls">
           <div className="sequence-transport-row">
             <button
               aria-label={playing ? translate("sequence.pause") : translate("sequence.play")}
@@ -428,15 +608,13 @@ export function SequencePreviewDialog({
               <Gauge size={14} />
               {fps} FPS
             </button>
-            <input
-              className="sequence-timeline"
-              type="range"
-              min={0}
-              max={Math.max(0, frames.length - 1)}
-              value={frameIndex}
-              aria-label={translate("sequence.timeline")}
-              onChange={(event) => setFrameIndex(Number(event.target.value))}
-            />
+            <div className="sequence-timeline">
+              <FoundSlider
+                value={frames.length > 1 ? frameIndex / (frames.length - 1) : 0}
+                onChange={(position) => setFrameIndex(Math.round(position * Math.max(0, frames.length - 1)))}
+                range={resolvedGifRangeActive ? { ...resolvedGifRange, onChange: setGifRange } : undefined}
+              />
+            </div>
             <span className="sequence-frame-count">
               {frameLabel(frameIndex)} / {frameLabel(frames.length - 1)}
             </span>
@@ -448,37 +626,33 @@ export function SequencePreviewDialog({
               revision={displayedSource ?? frameIndex}
               onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
             />
-            <div className="sequence-export-summary">
-              <span>{translate("sequence.exportPreset")}</span>
-              <button
-                className={`sequence-preset-trigger ${optionsDrawer === "mp4" ? "active" : ""}`}
-                aria-label={translate("sequence.exportPreset")}
-                aria-expanded={optionsDrawer === "mp4"}
-                onClick={() => setOptionsDrawer((current) => current === "mp4" ? null : "mp4")}
-              >
-                <SlidersHorizontal size={14} />
-                {availableMp4Presets.find((preset) => preset.id === exportPresetId)?.label ?? "MP4"}
-              </button>
-            </div>
             <button
-              className="secondary-button sequence-export-button"
+              ref={mp4ButtonRef}
+              className={`secondary-button sequence-export-button${optionsDrawer === "mp4" ? " active" : ""}`}
+              aria-label="导出 MP4"
+              aria-expanded={optionsDrawer === "mp4"}
               disabled={exportState === "running" || availableMp4Presets.length === 0}
-              onClick={() => void exportMp4()}
+              onClick={() => toggleExportPopover("mp4")}
               title={translate("sequence.exportMp4Title")}
             >
               <Download size={14} />
               {exportState === "running" ? translate("sequence.exporting") : translate("sequence.exportMp4")}
             </button>
             <button
-              className="secondary-button sequence-export-button sequence-gif-button"
+              ref={gifButtonRef}
+              className={`secondary-button sequence-export-button sequence-gif-button${resolvedGifRangeActive ? " active" : ""}`}
+              aria-label="选择 GIF 帧范围"
+              aria-expanded={optionsDrawer === "gif"}
+              aria-pressed={resolvedGifRangeActive}
               disabled={gifState === "running" || frames.length === 0}
-              onClick={() => void exportGif()}
-              title={translate("sequence.exportGifTitle")}
+              onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")}
+              title="在进度条上选择 GIF 帧范围"
             >
               <Film size={14} />
               {gifState === "running" ? translate("sequence.exporting") : translate("sequence.exportGif")}
             </button>
           </div>
+          {exportPopover}
           {optionsDrawer === "fps" && (
             <div className="sequence-options-drawer" aria-label="FPS 预设抽屉">
               <div className="sequence-drawer-title"><Gauge size={15} /><strong>播放 FPS</strong><span>来自设置中的图片序列预设</span></div>
@@ -492,20 +666,7 @@ export function SequencePreviewDialog({
               </div>
             </div>
           )}
-          {optionsDrawer === "mp4" && (
-            <div className="sequence-options-drawer" aria-label="MP4 转换预设抽屉">
-              <div className="sequence-drawer-title"><SlidersHorizontal size={15} /><strong>MP4 转换预设</strong><span>仅显示设置中已启用的预设</span></div>
-              <div className="sequence-drawer-grid mp4">
-                {availableMp4Presets.map((preset) => (
-                  <button key={preset.id} className={preset.id === exportPresetId ? "active" : ""} onClick={() => setExportPresetId(preset.id)}>
-                    <span>{preset.label}</span>
-                    <strong>{preset.codec === "h265" ? "H.265" : "H.264"} · {preset.quality === "best" ? "最佳" : preset.quality === "high" ? "高" : "中"} · {preset.resolution === "original" ? "原始" : preset.resolution === "half" ? "1/2" : "1/4"}</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </footer>
+        </footer>}
 
         {missing.length > 0 && (
           <div className="sequence-missing">

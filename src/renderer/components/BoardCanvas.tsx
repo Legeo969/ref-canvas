@@ -65,6 +65,8 @@ import {
 import { BoardObjectComment } from "./BoardObjectComment";
 import {
   createBoardActiveSelection,
+  installBoardActiveSelection,
+  optimizeBoardActiveSelection,
   selectAllBoardObjects,
 } from "../app/board-active-selection";
 import type {
@@ -200,7 +202,7 @@ interface BoardCanvasProps {
   boards: BoardSummary[];
   onSelectAsset(asset: AssetRecord | null): void;
   onLocateAsset?(asset: AssetRecord): void;
-  onSave(document: BoardDocumentV3): Promise<void>;
+  onSave(document: BoardDocumentV3, revision: number): Promise<BoardSummary>;
   onSwitchBoard(id: string): Promise<void>;
   onCreateBoard(): Promise<void>;
   onRenameBoard(board: BoardSummary): Promise<void>;
@@ -244,34 +246,76 @@ export function BoardCanvas({
   const canvasElementRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<FabricCanvas | null>(null);
+  const boardRevisionRef = useRef(board.revision);
   const pendingBatchKeyRef = useRef<string | null>(null);
   const addDroppedAssetsRef = useRef<(
     assetIds: string[],
     position: { x: number; y: number },
     centered?: boolean,
   ) => Promise<number>>(async () => 0);
+  const [boardAssets, setBoardAssets] = useState<AssetRecord[]>(assets);
   const eventBindingsRef = useBoardEventBindings(useMemo(() => ({
-    assets,
+    assets: boardAssets,
     onSelectAsset,
     onLocateAsset,
     onSaveDocument: onSave,
     onReferencesChanged,
-  }), [assets, onLocateAsset, onReferencesChanged, onSave, onSelectAsset]));
+  }), [boardAssets, onLocateAsset, onReferencesChanged, onSave, onSelectAsset]));
   const [runtime] = useState(() => new BoardRuntimeController(document));
   const [controller] = useState(() => new BoardCanvasController());
   const [importController] = useState(() => new BoardImportController());
-  const saveLocalDocument = (nextDocument: BoardDocumentV3) => {
+  const handleSaveError = async (
+    error: unknown,
+    snapshot?: Record<string, unknown>,
+  ) => {
+    if (error instanceof Error && error.message === "BOARD_CONFLICT") {
+      const saveCopy = await dialog.requestConfirm({
+        title: "白板已在其他窗口更新",
+        description:
+          "此窗口的未保存修改仍保留在画布上。可将本地版本另存为新白板；取消则继续保留当前画布。",
+        confirmLabel: "另存本地副本",
+      });
+      if (saveCopy && snapshot) {
+        const copy = await window.refCanvas.boards.create(
+          `${board.title}（冲突副本）`.slice(0, 120),
+        );
+        await window.refCanvas.boards.save(
+          copy.id,
+          makeDocument(canvasRef.current!, snapshot),
+          copy.revision,
+        );
+      }
+      return;
+    }
+    console.error("BOARD_SAVE_FAILED", error);
+  };
+  const saveLocalDocument = async (nextDocument: BoardDocumentV3) => {
     const revision = controller.markLocalSave(nextDocument);
-    return eventBindingsRef.current.onSaveDocument(nextDocument).catch((error) => {
+    try {
+      const summary = await eventBindingsRef.current.onSaveDocument(
+        nextDocument,
+        boardRevisionRef.current,
+      );
+      boardRevisionRef.current = summary.revision;
+      return summary;
+    } catch (error) {
       controller.cancelLocalSave(revision);
       throw error;
-    });
+    }
+  };
+  const saveImmediately = (nextDocument: BoardDocumentV3) => {
+    void saveLocalDocument(nextDocument)
+      .then(() => controller.setSaved(true))
+      .catch((error) => void handleSaveError(error, nextDocument.canvas));
   };
   const boardSnapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
     controller.getSnapshot,
   );
+  useEffect(() => {
+    boardRevisionRef.current = board.revision;
+  }, [board.id, board.revision]);
   const boardStructure = useSyncExternalStore(
     controller.subscribeStructure,
     controller.getStructureSnapshot,
@@ -299,13 +343,6 @@ export function BoardCanvas({
   } = controller.gestureResources;
   const [hudMessage, setHudMessage] = useState<string | null>(null);
   const hudTimerRef = useRef<number | null>(null);
-  const [firstUseHint, setFirstUseHint] = useState(() => {
-    try {
-      return window.localStorage.getItem("refcanvas.board.hint") !== "1";
-    } catch {
-      return true;
-    }
-  });
   const [boardContextMenu, setBoardContextMenu] = useState<{
     x: number;
     y: number;
@@ -474,6 +511,41 @@ export function BoardCanvas({
   // 阶段 6 §11：双击进入完整 preview（视频/音频/高位深图片）。
   const [previewAsset, setPreviewAsset] = useState<AssetRecord | null>(null);
   const [readyBoardId, setReadyBoardId] = useState<string | null>(null);
+  useEffect(() => {
+    setBoardAssets((current) => {
+      const merged = new Map(current.map((asset) => [asset.id, asset]));
+      for (const asset of assets) merged.set(asset.id, asset);
+      return [...merged.values()];
+    });
+  }, [assets]);
+
+  useEffect(() => {
+    if (readyBoardId !== board.id) return;
+    const ids = new Set(
+      (canvasRef.current?.getObjects() as CanvasObjectWithData[] | undefined)
+        ?.map((object) => object.data?.assetId)
+        .filter((id): id is string => Boolean(id)) ?? [],
+    );
+    const known = new Set(boardAssets.map((asset) => asset.id));
+    const missing = [...ids].filter((id) => !known.has(id));
+    if (!missing.length) return;
+    let cancelled = false;
+    void Promise.all(
+      missing.map((id) => window.refCanvas.library.get(id).catch(() => null)),
+    ).then((resolved) => {
+      if (cancelled) return;
+      const available = resolved.filter((asset): asset is AssetRecord => Boolean(asset));
+      if (!available.length) return;
+      setBoardAssets((current) => {
+        const merged = new Map(current.map((asset) => [asset.id, asset]));
+        for (const asset of available) merged.set(asset.id, asset);
+        return [...merged.values()];
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [board.id, boardAssets, readyBoardId]);
   // assets 解析完成后应用引用状态：missing/offline 对象显示半透明占位
   // （保留位置/尺寸/变换，不破坏 Board document）。
   useEffect(() => {
@@ -482,7 +554,7 @@ export function BoardCanvas({
     for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
       if (!(object instanceof FabricImage)) continue;
       const image = object as CanvasObjectWithData & FabricImage;
-      const asset = assets.find((item) => item.id === image.data?.assetId);
+      const asset = boardAssets.find((item) => item.id === image.data?.assetId);
       if (!asset || asset.extension === "gif") continue;
       if (asset.linkState !== "online") {
         const missing = asset.linkState !== "offline";
@@ -497,7 +569,7 @@ export function BoardCanvas({
       }
     }
     canvas.requestRenderAll();
-  }, [assets]);
+  }, [boardAssets]);
 
   // Older builds persisted a format card when the board proxy failed even if the
   // original browser-decodable image was healthy. Restore those cards in place.
@@ -510,7 +582,7 @@ export function BoardCanvas({
       for (const object of [...canvas.getObjects()] as CanvasObjectWithData[]) {
         if (cancelled || object instanceof FabricImage || !(object instanceof Group)) continue;
         const card = object as CanvasObjectWithData & Group;
-        const asset = assets.find((item) => item.id === card.data?.assetId);
+        const asset = boardAssets.find((item) => item.id === card.data?.assetId);
         if (
           !asset ||
           asset.kind !== "image" ||
@@ -524,7 +596,7 @@ export function BoardCanvas({
           const loaded = await loadBoardImageWithFallback(
             boardProxyUrl(asset.thumbnailUrl, initialProxySize),
             asset.previewUrl,
-            (url) => FabricImage.fromURL(url, { crossOrigin: "anonymous" }),
+            (url) => FabricImage.fromURL(url),
           );
           if (cancelled || !canvas.getObjects().includes(object)) continue;
           const image = loaded.image as CanvasObjectWithData & FabricImage;
@@ -568,14 +640,14 @@ export function BoardCanvas({
       }
       if (!changed || cancelled) return;
       canvas.requestRenderAll();
-      controller.refreshSnapshot();
+      controller.refreshSelectionSnapshot();
       scheduleSaveRef.current?.();
     };
     void restore();
     return () => {
       cancelled = true;
     };
-  }, [assets, board.id, readyBoardId]);
+  }, [boardAssets, board.id, readyBoardId]);
   // GIF 动画播放器，按对象 objectId 索引；随画布生命周期创建/销毁。
   const gifAnimatorsRef = useRef(new Map<string, GifAnimator>());
   const [cropTarget, setCropTarget] = useState<BoardCropTargetSnapshot | null>(null);
@@ -767,6 +839,7 @@ export function BoardCanvas({
     const nextAppearance = document.appearance ?? defaultBoardAppearance;
     runtime.appearance = nextAppearance;
     setAppearance(nextAppearance);
+    installBoardActiveSelection();
     const canvas = controller.createCanvas(canvasElementRef.current, {
       backgroundColor: "transparent",
       preserveObjectStacking: true,
@@ -921,10 +994,12 @@ export function BoardCanvas({
           bulkMutationRef.current ||
           gestureRef.current.suppressSave,
         capture: () => canvas.toObject(["data"]) as Record<string, unknown>,
-        save: (snapshot) =>
-          saveLocalDocument(makeDocument(canvas, snapshot)),
+        save: async (snapshot) => {
+          await saveLocalDocument(makeDocument(canvas, snapshot));
+        },
         setSaved: (value) => controller.setSaved(value),
         onSnapshot: () => controller.refreshSnapshot(),
+        onSaveError: (error, snapshot) => handleSaveError(error, snapshot),
       },
     );
     persistenceRef.current = persistence;
@@ -1007,7 +1082,10 @@ export function BoardCanvas({
         .then((loaded) => eventBindingsRef.current.onSelectAsset(loaded));
     };
     controller.onCanvas(canvas, "selection:created", () => {
-      const selection = canvas.getActiveObject();
+      const currentSelection = canvas.getActiveObject();
+      const selection = currentSelection instanceof ActiveSelection
+        ? optimizeBoardActiveSelection(currentSelection)
+        : currentSelection;
       if (selection) applyBoardControls(selection);
       const target =
         selection && !(selection instanceof ActiveSelection)
@@ -1023,21 +1101,21 @@ export function BoardCanvas({
         canvas.requestRenderAll();
       }
       selectTargetAsset(target);
-      controller.refreshSnapshot();
     });
     controller.onCanvas(canvas, "selection:updated", () => {
-      const selection = canvas.getActiveObject();
+      const currentSelection = canvas.getActiveObject();
+      const selection = currentSelection instanceof ActiveSelection
+        ? optimizeBoardActiveSelection(currentSelection)
+        : currentSelection;
       if (selection) applyBoardControls(selection);
       const target =
         selection && !(selection instanceof ActiveSelection)
           ? (selection as CanvasObjectWithData)
           : undefined;
       selectTargetAsset(target);
-      controller.refreshSnapshot();
     });
     controller.onCanvas(canvas, "selection:cleared", () => {
       eventBindingsRef.current.onSelectAsset(null);
-      controller.refreshSnapshot();
     });
     let snapGestureTarget: CanvasObjectWithData | null = null;
     let snapCandidates: CanvasObjectWithData[] = [];
@@ -1267,14 +1345,6 @@ export function BoardCanvas({
       if (hudTimerRef.current) window.clearTimeout(hudTimerRef.current);
       hudTimerRef.current = window.setTimeout(() => setHudMessage(null), 1400);
     };
-    const dismissHint = () => {
-      setFirstUseHint(false);
-      try {
-        window.localStorage.setItem("refcanvas.board.hint", "1");
-      } catch {
-        // 首次提示是本地便利项，失败不影响白板。
-      }
-    };
     const finishPanning = () => {
       if (!panning) return false;
       nativeMiddlePan.cancel();
@@ -1305,7 +1375,6 @@ export function BoardCanvas({
       canvas.selection = false;
       canvas.defaultCursor = "grabbing";
       canvas.setCursor("grabbing");
-      dismissHint();
     };
     const moveNativeMiddlePan = (event: MouseEvent) => {
       const update = nativeMiddlePan.move(event);
@@ -1433,7 +1502,6 @@ export function BoardCanvas({
         canvas.selection = false;
         canvas.defaultCursor = "grabbing";
         canvas.setCursor("grabbing");
-        dismissHint();
         return;
       }
       if (runtime.canvasMode.locked) return;
@@ -1443,7 +1511,6 @@ export function BoardCanvas({
         return;
       }
       if (pointerEvent.button !== 0) return;
-      dismissHint();
 
       const heldKeys = heldKeysRef.current;
       const scenePoint = canvas.getScenePoint(pointerEvent);
@@ -2243,13 +2310,14 @@ export function BoardCanvas({
       scheduleProxyRefresh();
       if (migratedIdentity) {
         controller.setSaved(false);
-        void saveLocalDocument(makeDocument(canvas)).then(() => controller.setSaved(true));
+        saveImmediately(makeDocument(canvas));
       }
     });
 
     return () => {
       disposed = true;
       resizeObserver.disconnect();
+      void persistence.flush().catch(() => undefined);
       persistence.dispose();
       persistenceRef.current = null;
       if (renderFrame !== null) window.cancelAnimationFrame(renderFrame);
@@ -2268,8 +2336,8 @@ export function BoardCanvas({
   }, [board.id]);
 
   useEffect(() => {
-    controller.syncAssets(assets);
-  }, [assets, controller]);
+    controller.syncAssets(boardAssets);
+  }, [boardAssets, controller]);
 
   useEffect(() => {
     controller.syncCallbacks({
@@ -2308,6 +2376,19 @@ export function BoardCanvas({
     });
     void controller.syncDocument(board.id, document);
   }, [board.id, controller, document]);
+
+  useEffect(() => {
+    const completeFlush = (event: Event) => {
+      event.preventDefault();
+      const flush = persistenceRef.current?.flush() ?? Promise.resolve();
+      void flush.then(
+        () => window.refCanvas.boards.confirmFlush(true),
+        () => window.refCanvas.boards.confirmFlush(false),
+      );
+    };
+    window.addEventListener("refcanvas:board-flush-request", completeFlush);
+    return () => window.removeEventListener("refcanvas:board-flush-request", completeFlush);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -2373,7 +2454,7 @@ export function BoardCanvas({
       canvas.requestRenderAll();
       const nextDocument = makeDocument(canvas);
       controller.setSaved(false);
-      void saveLocalDocument(nextDocument).then(() => controller.setSaved(true));
+      saveImmediately(nextDocument);
     });
   };
 
@@ -3074,7 +3155,7 @@ export function BoardCanvas({
     setCanvasLocked(next.locked);
     applyCanvasMode(canvas, next);
     controller.setSaved(false);
-    void saveLocalDocument(makeDocument(canvas)).then(() => controller.setSaved(true));
+    saveImmediately(makeDocument(canvas));
   };
 
   /** 画布整体灰度：用 CSS filter 作用于 canvas 元素。 */
@@ -3636,7 +3717,11 @@ export function BoardCanvas({
   const switchBoard = async (id: string) => {
     const canvas = canvasRef.current;
     if (canvas) {
-      await saveLocalDocument(makeDocument(canvas));
+      try {
+        await persistenceRef.current?.flush();
+      } catch {
+        return;
+      }
     }
     await onSwitchBoard(id);
   };
@@ -3644,7 +3729,11 @@ export function BoardCanvas({
   const createBoard = async () => {
     const canvas = canvasRef.current;
     if (canvas) {
-      await saveLocalDocument(makeDocument(canvas));
+      try {
+        await persistenceRef.current?.flush();
+      } catch {
+        return;
+      }
     }
     await onCreateBoard();
   };
@@ -3947,9 +4036,7 @@ export function BoardCanvas({
             Math.min(asset.height ?? 230, 230),
           ) * window.devicePixelRatio,
         );
-        const loadImage = (url: string) => FabricImage.fromURL(url, {
-          crossOrigin: "anonymous",
-        });
+        const loadImage = (url: string) => FabricImage.fromURL(url);
         const loaded = asset.extension === "gif"
           ? { image: await loadImage(asset.previewUrl), source: "original" as const }
           : await loadBoardImageWithFallback(
@@ -5135,7 +5222,7 @@ export function BoardCanvas({
           return;
         }
         event.preventDefault();
-        const asset = assets.find((item) => item.id === assetId);
+        const asset = boardAssets.find((item) => item.id === assetId);
         if (!asset) return;
         const point = canvasRef.current.getScenePoint(event.nativeEvent);
         void addAsset(asset, { x: point.x, y: point.y });
@@ -5731,28 +5818,6 @@ export function BoardCanvas({
             }
             aria-hidden="true"
           />
-        )}
-        {firstUseHint && (
-          <div className="board-first-hint" aria-label="白板操作提示">
-            <strong>白板操作提示</strong>
-            <span>
-              Alt/中键平移 · Z+左/滚轮缩放 · Ctrl+左旋转（Shift 吸附） ·
-              Ctrl+Alt+左缩放 · C 裁切 · V 移动裁切 · Shift+V 裁切内缩放
-            </span>
-            <button
-              onClick={() => {
-                setFirstUseHint(false);
-                try {
-                  window.localStorage.setItem("refcanvas.board.hint", "1");
-                } catch {
-                  // 首次提示是本地便利项，失败不影响白板。
-                }
-              }}
-              aria-label="关闭操作提示"
-            >
-              <X size={14} />
-            </button>
-          </div>
         )}
         {boardContextMenu && (
           <div

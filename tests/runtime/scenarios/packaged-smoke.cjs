@@ -196,6 +196,12 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         selected: document.querySelector(".directory-card.selected, .directory-card.active")?.textContent?.trim() ?? null,
         panel: document.querySelector(".directory-details-panel")?.textContent?.slice(0, 500) ?? null,
       }));
+      if (document.querySelector(".directory-details-panel .found-preview-controls-slot")) {
+        throw new Error("DUPLICATE_PREVIEW_TOOLBAR_SLOT");
+      }
+      if (document.querySelectorAll(".directory-details-panel .found-toolbar").length !== 1) {
+        throw new Error("PREVIEW_TOOLBAR_COUNT_INVALID");
+      }
 
       const rect = (element) => {
         const box = element?.getBoundingClientRect();
@@ -304,14 +310,38 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
 
   const boardResult = await evaluate(client, `(async () => {
     document.querySelector('.found-preview-panel [aria-label="退出聚焦预览"]')?.click();
-    document.querySelector(".sidebar-board-section .nav-row")?.click();
     const deadline = Date.now() + 10000;
+    const pngCard = Array.from(document.querySelectorAll(".directory-card"))
+      .find((item) => item.textContent?.includes("runtime-board.png"));
+    if (!pngCard) throw new Error("BOARD_PNG_CARD_NOT_FOUND");
+    pngCard.click();
+    let pngSelected = false;
+    while (Date.now() < deadline && !pngSelected) {
+      pngSelected = pngCard.classList.contains("selected");
+      if (!pngSelected) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!pngSelected) throw new Error("BOARD_PNG_NOT_SELECTED");
+    let addToBoard = null;
+    while (Date.now() < deadline && !addToBoard) {
+      addToBoard = document.querySelector('[aria-label="加入参考板"]');
+      if (!addToBoard) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!addToBoard) throw new Error("BOARD_ADD_ACTION_NOT_FOUND");
+    addToBoard.click();
     let boardWorkspace = null;
     while (Date.now() < deadline && !boardWorkspace) { boardWorkspace = document.querySelector(".workspace.board-workspace"); if (!boardWorkspace) await new Promise((resolve) => setTimeout(resolve, 50)); }
     const boards = await window.refCanvas.boards.list();
     const board = boards[0];
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    const loaded = board ? await window.refCanvas.boards.load(board.id) : null;
+    const objects = loaded?.document?.canvas?.objects ?? [];
+    const boardPngIsImage = objects.some((item) =>
+      String(item?.data?.name ?? "").startsWith("runtime-board") &&
+      String(item.type).toLowerCase() === "image",
+    );
+    if (!boardPngIsImage) throw new Error("BOARD_PNG_FORMAT_CARD:" + JSON.stringify(objects));
     if (board) await window.refCanvas.boards.openWindow(board.id);
-    return { boardWorkspaceVisible: Boolean(boardWorkspace?.querySelector(".board-panel")), boardId: board?.id ?? null };
+    return { boardWorkspaceVisible: Boolean(boardWorkspace?.querySelector(".board-panel")), boardId: board?.id ?? null, boardPngIsImage };
   })()`);
   const result = { ...baseResult, ...boardResult, previewSmoke: { ...previewSmoke, focus: focusResult, fullscreen: fullscreenResult, screenshots: [...toolScreenshots, focusScreenshot, fullscreenScreenshot] } };
   const deadline = Date.now() + 10_000;
@@ -330,7 +360,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   if (result.appVersion !== expectedVersion) {
     throw new Error(`APP_VERSION_MISMATCH:${result.appVersion}`);
   }
-  if (result.databaseSchemaVersion !== 18) {
+  if (result.databaseSchemaVersion !== 19) {
     throw new Error(`SCHEMA_VERSION_MISMATCH:${result.databaseSchemaVersion}`);
   }
   if (result.activeWorkspaceMode !== "磁盘") {
@@ -350,6 +380,9 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   }
   if (!result.boardWorkspaceVisible) {
     throw new Error("BOARD_WORKSPACE_NOT_VISIBLE");
+  }
+  if (!result.boardPngIsImage) {
+    throw new Error("BOARD_PNG_NOT_RENDERED");
   }
   if (result.firstSidebarSection !== "快速访问") {
     throw new Error(`SIDEBAR_PRIMARY_MISMATCH:${result.firstSidebarSection}`);

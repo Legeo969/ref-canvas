@@ -45,6 +45,20 @@ function fakeCanvas(provided?: Array<Rect & { data?: { objectId?: string; name?:
 }
 
 describe("BoardCanvasController", () => {
+  it("does not rebuild the layer structure for selection-only events", () => {
+    const controller = new BoardCanvasController();
+    const { canvas } = fakeCanvas(Array.from({ length: 2_000 }, (_, index) => {
+      const object = new Rect({ width: 10, height: 10 }) as Rect & { data?: { objectId?: string; name?: string } };
+      object.data = { objectId: `object-${index}`, name: `Layer ${index}` };
+      return object;
+    }));
+    controller.attachCanvas(canvas as never);
+    const before = controller.diagnostics.structureBuilds;
+
+    canvas.fire("selection:created");
+
+    expect(controller.diagnostics.structureBuilds).toBe(before);
+  });
   it("publishes deeply serializable snapshots without Fabric instances", () => {
     const controller = new BoardCanvasController();
     const { canvas } = fakeCanvas();

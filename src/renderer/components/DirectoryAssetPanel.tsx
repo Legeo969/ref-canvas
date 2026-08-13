@@ -807,9 +807,14 @@ export function DirectoryAssetPanel() {
   }, [foundSettings.collapseImageSequences, sequenceGroups]);
   const collapseLoadedSequences = foundSettings.collapseImageSequences &&
     entries.some((entry) => hiddenSequencePaths.has(entry.path));
-  const visibleEntries = collapseLoadedSequences
+  const sequenceVisibleEntries = collapseLoadedSequences
     ? entries.filter((entry) => !hiddenSequencePaths.has(entry.path))
     : entries;
+  // Format chips filter assets, not navigation. Hide folders while a format is
+  // active so the result grid contains only matching media.
+  const visibleEntries = formatFilter === "all"
+    ? sequenceVisibleEntries
+    : sequenceVisibleEntries.filter((entry) => !entry.isDirectory);
   const files = visibleEntries.filter((entry) => !entry.isDirectory);
   const selectedCount = allMatchingSelected
     ? Math.max(

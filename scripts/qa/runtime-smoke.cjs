@@ -129,6 +129,13 @@ async function main() {
   fs.mkdirSync(browseRoot, { recursive: true });
   fs.mkdirSync(screenshotRoot, { recursive: true });
   fs.writeFileSync(path.join(browseRoot, "runtime-smoke.txt"), "RefCanvas");
+  fs.writeFileSync(
+    path.join(browseRoot, "runtime-board.png"),
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mNk+M/wHwIGgImBgeE/AA6mAwLWAo9SAAAAAElFTkSuQmCC",
+      "base64",
+    ),
+  );
   execFileSync(ffmpegStatic, [
     "-hide_banner", "-loglevel", "error", "-y",
     "-f", "lavfi", "-i", "testsrc=size=640x360:rate=24",
@@ -137,14 +144,19 @@ async function main() {
   ]);
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
-  const migrated = await launchOnce("schema-12-to-18");
+  const migrated = await launchOnce("schema-12-to-19");
   const verification = new Sqlite(path.join(profile, "refcanvas.db"), {
     readonly: true,
   });
   const schemaVersion = verification.pragma("user_version", { simple: true });
-  const columns = verification.pragma("table_info(assets)").map((row) => row.name);
+  const assetColumns = verification.pragma("table_info(assets)").map((row) => row.name);
+  const boardColumns = verification.pragma("table_info(boards)").map((row) => row.name);
   verification.close();
-  if (schemaVersion !== 18 || !columns.includes("metadata_status")) {
+  if (
+    schemaVersion !== 19 ||
+    !assetColumns.includes("metadata_status") ||
+    !boardColumns.includes("revision")
+  ) {
     throw new Error("PACKAGED_MIGRATION_VERIFICATION_FAILED");
   }
   const report = {

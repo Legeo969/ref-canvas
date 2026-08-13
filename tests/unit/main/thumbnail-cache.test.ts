@@ -40,6 +40,15 @@ describe("thumbnail cache identity", () => {
     ).not.toMatch(/[\\/]/);
   });
 
+  it("isolates EXR channel previews from the composite cache", () => {
+    expect(thumbnailCacheFilename(asset, "channel:Beauty.R")).not.toBe(
+      thumbnailCacheFilename(asset),
+    );
+    expect(thumbnailCacheFilename(asset, "channel:Beauty.R")).not.toBe(
+      thumbnailCacheFilename(asset, "channel:Beauty.G"),
+    );
+  });
+
   it("removes stale versions without touching another asset", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-thumb-"));
     try {

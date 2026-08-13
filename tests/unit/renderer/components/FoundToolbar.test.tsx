@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FoundToolbar } from "../../../../src/renderer/components/FoundToolbar";
@@ -29,11 +29,17 @@ describe("FoundToolbar variants", () => {
     const host = await render("image");
     expect(host.querySelector('[role="slider"]')).toBeNull();
     expect(host.querySelector('[aria-label="音量"]')).toBeNull();
-    expect(host.querySelector('[aria-label="网格"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label="网格"]')).toBeNull();
   });
 
   it("renders video timeline, trim, volume and GIF export", async () => {
-    const host = await render("video");
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar variant="video" onGifExport={() => undefined} />,
+    ));
     expect(host.querySelector('[role="slider"]')).toBeTruthy();
     expect(host.querySelector('[aria-label="裁剪或分割"]')).toBeTruthy();
     expect(host.querySelector('[aria-label="音量"]')).toBeTruthy();
@@ -71,7 +77,7 @@ describe("FoundToolbar variants", () => {
     ));
     expect(host.querySelector('[role="slider"]')).toBeTruthy();
     expect(host.querySelector('[aria-label="音量"]')).toBeNull();
-    expect(host.querySelector('[aria-label="导出 GIF"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label="导出 GIF"]')).toBeNull();
   });
 
   it("does not advertise audio controls for GIF files", async () => {
@@ -79,13 +85,11 @@ describe("FoundToolbar variants", () => {
     expect(host.querySelector('[aria-label="音量"]')).toBeNull();
   });
 
-  it("disables commands that have no implementation", async () => {
+  it("does not render commands that have no implementation", async () => {
     const host = await render("image");
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="添加"]')?.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="自动"]')?.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="网格"]')?.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="画笔"]')?.disabled).toBe(true);
-    expect(host.querySelector<HTMLButtonElement>('[aria-label="截图"]')?.disabled).toBe(true);
+    for (const label of ["添加", "自动", "FPS", "网格", "画笔", "截图"]) {
+      expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull();
+    }
   });
 
   it("supports keyboard seeking with an accessible timeline name", async () => {
@@ -133,6 +137,66 @@ describe("FoundToolbar variants", () => {
     expect(onNotes).toHaveBeenCalledOnce();
   });
 
+  it("opens color tools as a separate contextual toolbar and only collapses the fixed palette", async () => {
+    const onPalette = vi.fn();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar
+        variant="image"
+        colorSwatches={["#112233", "#445566"]}
+        sampledColorSwatches={["#abcdef"]}
+        paletteActive
+        onPaletteToggle={onPalette}
+        onSampleColor={() => undefined}
+        onClearSampledColors={() => undefined}
+        trailingActions={<button aria-label="全屏预览" />}
+      />,
+    ));
+
+    const row = host.querySelector(".found-toolbar-row.secondary")!;
+    const scroll = row.querySelector(".found-toolbar-scroll")!;
+    const tail = row.querySelector(".found-toolbar-tail")!;
+    const colorTools = host.querySelector(".found-color-context-toolbar")!;
+    expect(scroll.querySelector('[aria-label="色彩栏"]')).toBeTruthy();
+    expect(tail.querySelectorAll(".found-color-swatch")).toHaveLength(0);
+    expect(colorTools.querySelectorAll(".found-color-swatch.fixed")).toHaveLength(2);
+    expect(colorTools.querySelectorAll(".found-color-swatch.sampled")).toHaveLength(1);
+    expect(colorTools.querySelector('[aria-label="吸取颜色"]')).toBeTruthy();
+    expect(colorTools.querySelector('[aria-label="清除吸取颜色"]')).toBeTruthy();
+    expect(colorTools.querySelector('[aria-label="收起固定颜色板"]')).toBeTruthy();
+    expect(tail.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
+
+    await act(async () => colorTools.querySelector<HTMLButtonElement>('[aria-label="收起固定颜色板"]')?.click());
+    expect(colorTools.querySelectorAll(".found-color-swatch.fixed")).toHaveLength(0);
+    expect(colorTools.querySelectorAll(".found-color-swatch.sampled")).toHaveLength(1);
+    expect(colorTools.querySelector('[aria-label="展开固定颜色板"]')).toBeTruthy();
+  });
+
+  it("closes the entire color contextual toolbar when its main trigger is clicked again", async () => {
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <FoundToolbar
+          variant="image"
+          paletteActive={open}
+          colorSwatches={["#112233", "#445566", "#778899", "#aabbcc", "#ddeeff"]}
+          onPaletteToggle={() => setOpen((value) => !value)}
+        />
+      );
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(<Harness />));
+    expect(host.querySelector(".found-color-context-toolbar")).toBeTruthy();
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]')?.click());
+    expect(host.querySelector(".found-color-context-toolbar")).toBeNull();
+  });
+
   it("routes FPS and shows active contextual tools as pressed", async () => {
     const onFps = vi.fn();
     const host = document.createElement("div");
@@ -157,5 +221,24 @@ describe("FoundToolbar variants", () => {
     for (const label of ["FPS", "资产备注", "LUT", "导出 GIF"]) {
       expect(host.querySelector(`[aria-label="${label}"]`)?.getAttribute("aria-pressed")).toBe("true");
     }
+  });
+
+  it("anchors the LUT menu to the toolbar button instead of the content tray", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar
+        variant="image"
+        lutActive
+        onLutToggle={() => undefined}
+        lutMenu={<div data-testid="lut-menu-content">LUT options</div>}
+      />,
+    ));
+    const menu = document.body.querySelector(".found-lut-anchor-menu");
+    expect(menu?.querySelector('[data-testid="lut-menu-content"]')).toBeTruthy();
+    expect(host.querySelector(".found-toolbar-scroll .found-lut-anchor-menu")).toBeNull();
+    expect(menu?.getAttribute("data-placement")).toBe("top-start");
   });
 });

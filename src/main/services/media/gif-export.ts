@@ -24,6 +24,8 @@ export interface SequenceGifExportOptions {
   files: string[];
   fps: number;
   maxWidth: number;
+  colors?: number;
+  dither?: GifDither;
   outputPath: string;
 }
 
@@ -111,7 +113,7 @@ export async function exportSequenceToGif(
       "-f", "concat",
       "-safe", "0",
       "-i", listPath,
-      "-filter_complex", gifFilter(options.fps, options.maxWidth),
+      "-filter_complex", gifFilter(options.fps, options.maxWidth, options.colors, options.dither),
       "-loop", "0",
       options.outputPath,
     ], {

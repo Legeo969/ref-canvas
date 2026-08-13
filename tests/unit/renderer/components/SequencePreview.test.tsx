@@ -8,6 +8,20 @@ import { FOUND_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { SequencePreviewDialog } from "../../../../src/renderer/components/SequencePreview";
 
+vi.mock("../../../../src/renderer/components/HdrPreview", async () => {
+  const { createPortal } = await import("react-dom");
+  return {
+    HdrPreview: ({ path, controlsTarget, multichannelOpen }: { path?: string; controlsTarget?: HTMLElement | null; multichannelOpen?: boolean }) => (
+      <div data-testid="sequence-hdr-frame" data-path={path}>
+        {controlsTarget && createPortal(<div className="hdr-preview-controls">
+          <button aria-label="OCIO 色彩管理">OCIO</button>
+          {multichannelOpen && <div aria-label="提取多通道" />}
+        </div>, controlsTarget)}
+      </div>
+    ),
+  };
+});
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
@@ -16,6 +30,7 @@ class BufferedImageMock {
   static instances: BufferedImageMock[] = [];
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
+  decode = vi.fn(async () => undefined);
   private currentSource = "";
 
   constructor() {
@@ -82,7 +97,8 @@ describe("SequencePreviewDialog", () => {
     });
 
     const host = document.createElement("div");
-    document.body.append(host);
+    const controlsTarget = document.createElement("div");
+    document.body.append(host, controlsTarget);
     root = createRoot(host);
     await act(async () => {
       root?.render(<SequencePreviewDialog sequence={sequence} onClose={vi.fn()} />);
@@ -112,6 +128,7 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve();
     });
     expect(host.querySelector<HTMLImageElement>(".sequence-preview-stage img")?.src).toContain("token-b");
+    expect(BufferedImageMock.instances.some((image) => image.src.includes("token-b") && image.decode.mock.calls.length > 0)).toBe(true);
   });
 
   it("uses generated high-resolution previews for EXR sequences", async () => {
@@ -159,7 +176,38 @@ describe("SequencePreviewDialog", () => {
     )).toBe(true);
   });
 
-  it("exports the current sequence to GIF", async () => {
+  it("does not advance the HDR renderer path before the next frame is decoded", async () => {
+    vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = { ...FOUND_SETTINGS_DEFAULTS, autoplaySequence: false };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async (file: string) => file.includes("0001") ? "exr-a" : "exr-b") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={{ ...sequence, extension: "exr", files: ["D:\\refs\\shot.0001.exr", "D:\\refs\\shot.0002.exr"] }} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const load = async (token: string) => act(async () => {
+      [...BufferedImageMock.instances].reverse().find((image) => image.src.includes(token) && image.onload)?.onload?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await load("exr-a");
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-path")).toContain("0001");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="下一帧"]')?.click());
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-path")).toContain("0001");
+    await load("exr-b");
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-path")).toContain("0002");
+  });
+
+  it("exports only the frame range selected on the shared timeline to GIF", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
     const exportGif = vi.fn(async () => ({
       outputPath: "D:\\out\\shot.gif",
@@ -188,26 +236,111 @@ describe("SequencePreviewDialog", () => {
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
+    const rangedSequence = {
+      ...sequence,
+      files: [
+        "D:\\refs\\shot.0001.png",
+        "D:\\refs\\shot.0002.png",
+        "D:\\refs\\shot.0003.png",
+        "D:\\refs\\shot.0004.png",
+        "D:\\refs\\shot.0005.png",
+      ],
+      frames: [1, 2, 3, 4, 5],
+      end: 5,
+    };
     await act(async () => {
-      root?.render(<SequencePreviewDialog sequence={sequence} onClose={vi.fn()} />);
+      root?.render(
+        <SequencePreviewDialog
+          sequence={rangedSequence}
+          gifRange={{ start: 0.25, end: 0.75 }}
+          onClose={vi.fn()}
+        />,
+      );
       await Promise.resolve();
       await Promise.resolve();
     });
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[title="导出为 GIF"]')?.click();
+      host.querySelector<HTMLButtonElement>('button[aria-label="选择 GIF 帧范围"]')?.click();
+    });
+    expect(document.body.querySelector('[aria-label="GIF 导出设置"]')).toBeTruthy();
+    await act(async () => {
+      document.body.querySelector<HTMLButtonElement>('button[aria-label="导出所选 GIF 帧"]')?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(exportGif).toHaveBeenCalledWith(expect.objectContaining({
-      files: sequence.files,
+      files: rangedSequence.files.slice(1, 4),
       fps: FOUND_SETTINGS_DEFAULTS.defaultSequenceFps,
       outputDirectory: "D:\\out",
       baseName: "shot",
     }));
   });
 
-  it("selects FPS and enabled MP4 presets from drawers", async () => {
+  it("puts MP4 presets and the export action in one anchored popover when embedded", async () => {
+    vi.stubGlobal("Image", BufferedImageMock);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "token") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    const controlsTarget = document.createElement("div");
+    host.append(controlsTarget);
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={sequence} embedded controlsTarget={controlsTarget} onClose={vi.fn()} />);
+      await Promise.resolve(); await Promise.resolve();
+    });
+    expect(controlsTarget.querySelector('button[aria-label="导出 MP4"]')).toBeTruthy();
+    expect(controlsTarget.querySelector('button[aria-label="选择 GIF 帧范围"]')).toBeTruthy();
+    expect(host.querySelector(".sequence-export-row")).toBeNull();
+    expect(controlsTarget.querySelector('button[aria-label="导出预设"]')).toBeNull();
+    await act(async () => controlsTarget.querySelector<HTMLButtonElement>('button[aria-label="导出 MP4"]')?.click());
+    const presetMenu = document.body.querySelector('.sequence-export-popover[aria-label="MP4 导出设置"]');
+    expect(presetMenu).toBeTruthy();
+    expect(presetMenu?.getAttribute("data-placement")).toBe("top-start");
+    expect(presetMenu?.querySelector('[role="radiogroup"]')).toBeTruthy();
+    expect(presetMenu?.querySelector('button[aria-label="确认导出 MP4"]')).toBeTruthy();
+    expect(controlsTarget.querySelector(".sequence-inline-menu")).toBeNull();
+  });
+
+  it("composes HDR controls and palette extraction into an embedded EXR sequence", async () => {
+    vi.stubGlobal("Image", BufferedImageMock);
+    const palette = vi.fn(async () => [{ rgb: [1, 2, 3], hex: "#010203", count: 1 }]);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "exr-token") },
+        media: { palette },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    const controlsTarget = document.createElement("div");
+    host.append(controlsTarget);
+    document.body.append(host);
+    root = createRoot(host);
+    const onPaletteChange = vi.fn();
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={{ ...sequence, extension: "exr", files: ["D:\\refs\\shot.0001.exr"] }} embedded controlsTarget={controlsTarget} multichannelOpen onClose={vi.fn()} onPaletteChange={onPaletteChange} />);
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    });
+    await act(async () => {
+      BufferedImageMock.instances.at(-1)?.onload?.();
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-path")).toBe("D:\\refs\\shot.0001.exr");
+    expect(controlsTarget.querySelector('[aria-label="OCIO 色彩管理"]')).toBeTruthy();
+    expect(controlsTarget.querySelector('[aria-label="提取多通道"]')).toBeTruthy();
+    expect(palette).toHaveBeenCalledWith("D:\\refs\\shot.0001.exr", expect.objectContaining({ limit: 6 }));
+    expect(onPaletteChange).toHaveBeenCalled();
+  });
+
+  it("selects FPS from its drawer and MP4 presets from the export popover", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
     const foundSettings = {
       ...FOUND_SETTINGS_DEFAULTS,
@@ -219,14 +352,21 @@ describe("SequencePreviewDialog", () => {
         { ...FOUND_SETTINGS_DEFAULTS.mp4Presets[1], enabled: true, label: "轻量转换" },
       ],
     };
+    const exportMp4 = vi.fn(async () => ({
+      outputPath: "D:\\out\\shot.mp4",
+      durationSeconds: 0.2,
+      frameCount: 2,
+      width: 1920,
+      height: 1080,
+    }));
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
         system: {
           getPreferences: vi.fn(async () => ({ foundSettings })),
-          pickDirectory: vi.fn(async () => null),
+          pickDirectory: vi.fn(async () => "D:\\out"),
         },
-        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+        sequences: { exportMp4, exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
 
@@ -250,13 +390,25 @@ describe("SequencePreviewDialog", () => {
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="帧率"]')?.textContent).toContain("30 FPS");
 
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[aria-label="导出预设"]')?.click();
+      host.querySelector<HTMLButtonElement>('button[aria-label="导出 MP4"]')?.click();
     });
-    expect(host.querySelector('[aria-label="MP4 转换预设抽屉"]')).toBeTruthy();
+    const mp4Popover = document.body.querySelector('[aria-label="MP4 导出设置"]');
+    expect(mp4Popover).toBeTruthy();
     await act(async () => {
-      [...host.querySelectorAll<HTMLButtonElement>('.sequence-drawer-grid button')]
+      [...mp4Popover!.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
         .find((button) => button.textContent?.includes("轻量转换"))?.click();
     });
-    expect(host.querySelector<HTMLButtonElement>('button[aria-label="导出预设"]')?.textContent).toContain("轻量转换");
+    expect(mp4Popover?.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.textContent).toContain("轻量转换");
+    expect(mp4Popover?.querySelector<HTMLButtonElement>('[aria-label="确认导出 MP4"]')?.textContent).toContain("轻量转换");
+    await act(async () => {
+      mp4Popover?.querySelector<HTMLButtonElement>('[aria-label="确认导出 MP4"]')?.click();
+      await Promise.resolve(); await Promise.resolve();
+    });
+    expect(exportMp4).toHaveBeenCalledWith(expect.objectContaining({
+      files: sequence.files,
+      fps: 30,
+      presetId: foundSettings.mp4Presets[1].id,
+      outputDirectory: "D:\\out",
+    }));
   });
 });

@@ -1,5 +1,5 @@
 import { Film, Images, Pause, Play, Repeat2, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
 import { useFoundSettings } from "../app/found-settings";
@@ -35,6 +35,9 @@ export function VideoPreview({
   onTimeChange,
   playbackFps,
   onPaletteChange,
+  eyedropActive = false,
+  onEyedropActiveChange,
+  onColorSample,
 }: {
   asset: Pick<AssetRecord, "id" | "path" | "previewUrl">;
   persistNotes?: boolean;
@@ -42,6 +45,9 @@ export function VideoPreview({
   onTimeChange?: (timeSeconds: number) => void;
   playbackFps?: number | null;
   onPaletteChange?: (colors: string[]) => void;
+  eyedropActive?: boolean;
+  onEyedropActiveChange?: (active: boolean) => void;
+  onColorSample?: (color: string) => void;
 }) {
   const foundSettings = useFoundSettings();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,11 +70,36 @@ export function VideoPreview({
   const [volume, setVolume] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [paletteTimeMs, setPaletteTimeMs] = useState(0);
+  const [samplePoint, setSamplePoint] = useState<{ x: number; y: number; color: string } | null>(null);
   const lastFrameTimeRef = useRef(0);
   const paletteTimerRef = useRef<number | null>(null);
   const pendingPaletteTimeRef = useRef(0);
   const lastPaletteUpdateRef = useRef(0);
   const effectiveFrameRate = playbackFps ?? frameRate;
+
+  const sampleDisplayedPixel = (event: MouseEvent<HTMLDivElement>) => {
+    if (!eyedropActive) return;
+    const source = frameSource && !playing ? frameImageRef.current : videoRef.current;
+    if (!source) return;
+    const rect = source.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const width = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
+    const height = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+    if (!width || !height) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return;
+    context.drawImage(source, 0, 0, width, height);
+    const x = Math.max(0, Math.min(width - 1, Math.floor((event.clientX - rect.left) * width / rect.width)));
+    const y = Math.max(0, Math.min(height - 1, Math.floor((event.clientY - rect.top) * height / rect.height)));
+    const pixel = context.getImageData(x, y, 1, 1).data;
+    const color = `#${[pixel[0], pixel[1], pixel[2]].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+    setSamplePoint({ x: event.clientX - rect.left, y: event.clientY - rect.top, color });
+    onColorSample?.(color);
+    onEyedropActiveChange?.(false);
+  };
 
   const schedulePalette = (seconds: number, immediate = false) => {
     pendingPaletteTimeRef.current = Math.max(0, seconds * 1000);
@@ -201,7 +232,14 @@ export function VideoPreview({
   });
 
   const content = (
-    <div className="video-preview">
+    <div
+      className={`video-preview${eyedropActive ? " is-sampling" : ""}`}
+      onClick={(event) => {
+        if (event.target instanceof HTMLVideoElement || event.target instanceof HTMLImageElement) {
+          sampleDisplayedPixel(event);
+        }
+      }}
+    >
         <video
           ref={videoRef}
           src={asset.previewUrl}
@@ -244,6 +282,13 @@ export function VideoPreview({
             src={frameSource}
             alt={translate("video.frameAlt").replace("{timecode}", formatTimecode(timecode))}
             draggable={false}
+          />
+        )}
+        {samplePoint && (
+          <span
+            className="preview-sample-reticle"
+            aria-hidden="true"
+            style={{ left: samplePoint.x, top: samplePoint.y, "--sample-color": samplePoint.color } as React.CSSProperties}
           />
         )}
         {failed && (

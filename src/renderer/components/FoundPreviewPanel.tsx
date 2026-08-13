@@ -6,6 +6,7 @@ import {
   SquareArrowOutUpRight,
   X,
   Gauge,
+  Globe2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
@@ -66,7 +67,18 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const [gifPaths, setGifPaths] = useState<string[]>([]);
   const [playbackFps, setPlaybackFps] = useState<number | null>(null);
   const [colorSwatches, setColorSwatches] = useState<string[]>([]);
+  const [sampledColorSwatches, setSampledColorSwatches] = useState<string[]>([]);
   const [controlsTarget, setControlsTarget] = useState<HTMLDivElement | null>(null);
+  const [multichannelAnchor, setMultichannelAnchor] = useState<HTMLButtonElement | null>(null);
+  const [multichannelOpen, setMultichannelOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteLoading, setPaletteLoading] = useState(false);
+  const [paletteError, setPaletteError] = useState<string | null>(null);
+  const [eyedropActive, setEyedropActive] = useState(false);
+  const [gifRange, setGifRange] = useState({ start: 0, end: 1 });
+  const [sequenceGifRangeActive, setSequenceGifRangeActive] = useState(false);
+  const [panoramaCapable, setPanoramaCapable] = useState(false);
+  const [hdrViewMode, setHdrViewMode] = useState<"flat" | "reflection" | "panorama">("flat");
   const previewSession = usePreviewSessionMode(entry?.path ?? null);
   const transport = usePreviewTransport();
 
@@ -80,6 +92,16 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     setGifPaths(entry && !entry.isDirectory ? [entry.path] : []);
     setPlaybackFps(null);
     setColorSwatches([]);
+    setSampledColorSwatches([]);
+    setMultichannelOpen(false);
+    setPaletteOpen(false);
+    setPaletteLoading(false);
+    setPaletteError(null);
+    setEyedropActive(false);
+    setGifRange({ start: 0, end: 1 });
+    setSequenceGifRangeActive(false);
+    setPanoramaCapable(false);
+    setHdrViewMode("flat");
     if (!entry || entry.isDirectory) return;
     let cancelled = false;
     setLoading(true);
@@ -99,6 +121,42 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   }, [entry]);
 
   useEffect(() => {
+    const closePopovers = () => {
+      setMultichannelOpen(false);
+      setPaletteOpen(false);
+      setEyedropActive(false);
+      if (tool === "lut") setTool("preview");
+    };
+    window.addEventListener("refcanvas:close-preview-popovers", closePopovers);
+    window.addEventListener("blur", closePopovers);
+    return () => {
+      window.removeEventListener("refcanvas:close-preview-popovers", closePopovers);
+      window.removeEventListener("blur", closePopovers);
+    };
+  }, [tool]);
+
+  useEffect(() => {
+    const closeOnPointerAway = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".found-toolbar, .found-lut-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu")) return;
+      window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+    };
+    document.addEventListener("pointerdown", closeOnPointerAway);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnPointerAway);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+  }, [mode]);
+
+  useEffect(() => {
     if (!asset || asset.kind !== "video") return;
     let cancelled = false;
     void window.refCanvas.media.probe(asset.path)
@@ -112,6 +170,18 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     return () => {
       cancelled = true;
     };
+  }, [asset]);
+
+  useEffect(() => {
+    if (!asset || !/^(exr|hdr)$/i.test(asset.extension)) return;
+    let cancelled = false;
+    void window.refCanvas.media.probe(asset.path).then((probe) => {
+      if (!cancelled && probe.width && probe.height) {
+        const ratio = probe.width / probe.height;
+        setPanoramaCapable(ratio >= 1.8 && ratio <= 2.2);
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
   }, [asset]);
 
   useEffect(() => {
@@ -133,14 +203,62 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   }, []);
 
   const isVideo = entry ? videoPattern.test(entry.extension) : false;
+  const mediaExtension = (entry?.sequenceGroup?.extension ?? entry?.extension ?? "").toLowerCase();
+  const isHdrImage = /^(exr|hdr)$/i.test(mediaExtension);
+  const isExrMedia = mediaExtension === "exr";
   const hasContent = !!(entry && asset && !entry.isDirectory);
   const previewKind = entry && asset ? classifyFoundPreview(entry, asset) : null;
   const toolbarVariant = previewKind && ["image", "svg", "gif", "video", "sequence"].includes(previewKind)
     ? previewKind as FoundToolbarVariant
     : null;
   const isPreview = mode === "preview";
+
+  const loadCurrentPalette = async () => {
+    if (!asset) return;
+    const paletteApi = window.refCanvas.media.palette;
+    if (!paletteApi) {
+      setPaletteError("无法提取主色，点击重试");
+      return;
+    }
+    const currentPath = entry?.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
+    setPaletteLoading(true);
+    setPaletteError(null);
+    try {
+      const palette = await paletteApi(currentPath, {
+        timeMs: Math.round((transport.snapshot?.position ?? 0) * (transport.snapshot?.durationSeconds ?? 0) * 1000),
+        limit: 5,
+      });
+      setColorSwatches(palette.slice(0, 5).map((color) => color.hex));
+    } catch {
+      setPaletteError("无法提取主色，点击重试");
+    } finally {
+      setPaletteLoading(false);
+    }
+  };
+
+  const beginColorSample = async () => {
+    if (isHdrImage || isVideo || toolbarVariant === "image" || toolbarVariant === "svg") {
+      setEyedropActive(true);
+      return;
+    }
+    const EyeDropper = (window as unknown as {
+      EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
+    }).EyeDropper;
+    if (!EyeDropper) {
+      setPaletteError("当前环境不支持屏幕取色");
+      return;
+    }
+    try {
+      const { sRGBHex } = await new EyeDropper().open();
+      setSampledColorSwatches((colors) => [sRGBHex, ...colors.filter((color) => color !== sRGBHex)]);
+    } catch {
+      // Native eyedropper rejection means the user cancelled; keep the toolbar open.
+    }
+  };
   const toggleTool = (next: WorkbenchTool) => {
-    setTool((current) => current === next ? "preview" : next);
+    const target = tool === next ? "preview" : next;
+    window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+    setTool(target);
   };
 
   const fpsLabel = playbackFps !== null
@@ -180,14 +298,6 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
             {translate("found.tab.ai")}
           </button>
           <span className="found-toolbar-spacer" />
-          {mode === "preview" && (
-            <PreviewSessionModeButtons
-              focused={previewSession.focused}
-              fullscreen={previewSession.fullscreen}
-              onToggleFocus={previewSession.toggleFocus}
-              onToggleFullscreen={() => void previewSession.toggleFullscreen()}
-            />
-          )}
         </header>
 
         {mode === "ai" ? (
@@ -197,6 +307,16 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
             <div className="found-canvas-area">
               <FoundEmptyState />
             </div>
+          </div>
+        )}
+        {isPreview && (
+          <div className="found-preview-session-footer">
+            <PreviewSessionModeButtons
+              focused={previewSession.focused}
+              fullscreen={previewSession.fullscreen}
+              onToggleFocus={previewSession.toggleFocus}
+              onToggleFullscreen={() => void previewSession.toggleFullscreen()}
+            />
           </div>
         )}
       </PreviewSessionShell>
@@ -210,7 +330,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       elementRef={previewSession.rootRef}
       focused={previewSession.focused}
       fullscreen={previewSession.fullscreen}
-      className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" ? "tool-open" : ""} mode-${mode}`}
+      className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" ? "tool-open" : ""} mode-${mode}`}
     >
       {/* Found tab bar */}
       <header className="found-tab-bar" role="tablist" aria-label="右侧预览区">
@@ -234,14 +354,6 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         </button>
         <span className="found-toolbar-spacer" />
         <div className="workbench-file-actions">
-          {mode === "preview" && (
-            <PreviewSessionModeButtons
-              focused={previewSession.focused}
-              fullscreen={previewSession.fullscreen}
-              onToggleFocus={previewSession.toggleFocus}
-              onToggleFullscreen={() => void previewSession.toggleFullscreen()}
-            />
-          )}
           <button className="workbench-external-action" type="button" aria-label="打开素材" title="打开素材" onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
             <SquareArrowOutUpRight size={15} />
           </button>
@@ -281,7 +393,26 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                 >
                   {previewKind === "svg" && <FoundLayersPanel />}
                   {previewKind === "sequence" && entry.sequenceGroup ? (
-                    <SequencePreviewDialog key={entry.sequenceGroup.id} sequence={entry.sequenceGroup} embedded onClose={() => undefined} onPaletteChange={setColorSwatches} />
+                    <SequencePreviewDialog
+                      key={entry.sequenceGroup.id}
+                      sequence={entry.sequenceGroup}
+                      embedded
+                      controlsTarget={controlsTarget}
+                      multichannelOpen={multichannelOpen}
+                      multichannelAnchor={multichannelAnchor}
+                      gifRange={gifRange}
+                      gifRangeActive={sequenceGifRangeActive}
+                      onGifRangeChange={(start, end) => setGifRange({ start, end })}
+                      onGifRangeActiveChange={setSequenceGifRangeActive}
+                      onGifExportToggle={() => {
+                        const active = tool !== "gif";
+                        window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+                        setTool(active ? "gif" : "preview");
+                        setSequenceGifRangeActive(active);
+                      }}
+                      onClose={() => undefined}
+                      onPaletteChange={setColorSwatches}
+                    />
                   ) : (
                     <AssetPreview
                       key={asset.path}
@@ -295,24 +426,46 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       onPaletteChange={setColorSwatches}
                       managed
                       controlsTarget={controlsTarget}
+                      multichannelOpen={multichannelOpen}
+                      multichannelAnchor={multichannelAnchor}
+                      sharedColorControls
+                      eyedropActive={eyedropActive}
+                      onEyedropActiveChange={setEyedropActive}
+                      onColorSample={(color) => setSampledColorSwatches((colors) => [color, ...colors.filter((candidate) => candidate !== color)])}
                     />
                   )}
                 </PreviewSurface>
 
                 <div className="found-preview-workspace">
-                    {tool !== "preview" && (
+                    {tool !== "preview" && tool !== "lut" && (
                       <section className={`found-context-tray found-context-tray-${tool}`} aria-label="上下文工具托盘">
                         <header className="found-context-tray-header">
                           <strong>{tool === "gif" ? "导出 GIF" : tool === "frames" ? "导出序列帧" : tool === "fps" ? "FPS" : tool === "notes" ? "资产备注" : "LUT"}</strong>
-                          <button type="button" aria-label="关闭工具" title="关闭工具" onClick={() => setTool("preview")}><X size={15} /></button>
+                          <button type="button" aria-label="关闭工具" title="关闭工具" onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
                         </header>
                         {tool === "gif" && isVideo && (
                           <GifExportStudio
                             key={gifPaths.join("|")}
                             initialPaths={gifPaths.length ? gifPaths : [asset.path]}
                             initialTimeMs={gifPaths.length <= 1 ? timeSeconds * 1000 : 0}
+                            initialRange={gifPaths.length <= 1 ? gifRange : undefined}
                             variant="panel"
                             onClose={() => setTool("preview")}
+                          />
+                        )}
+                        {tool === "gif" && toolbarVariant === "sequence" && entry.sequenceGroup && (
+                          <GifExportStudio
+                            key={entry.sequenceGroup.id}
+                            initialPaths={[]}
+                            sequence={{
+                              files: entry.sequenceGroup.files,
+                              fps: transport.snapshot?.fps ?? entry.sequenceGroup.fps ?? foundSettings.defaultSequenceFps,
+                              baseName: entry.sequenceGroup.baseName,
+                              directory: entry.sequenceGroup.directory,
+                              range: gifRange,
+                            }}
+                            variant="panel"
+                            onClose={() => { setTool("preview"); setSequenceGifRangeActive(false); }}
                           />
                         )}
                         {tool === "frames" && isVideo && (
@@ -356,7 +509,6 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                             }}
                           />
                         )}
-                        {tool === "lut" && <PreviewColorTools settings={foundSettings} />}
                       </section>
                     )}
                     <div className="found-preview-file-row">
@@ -374,10 +526,13 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         </span>
                       )}
                     </div>
-                    <FoundToolbar
-                    variant={toolbarVariant ?? "image"}
+                    {toolbarVariant && <FoundToolbar
+                    variant={toolbarVariant}
                     seekPosition={transport.snapshot?.position ?? 0}
                     onSeekChange={(position) => transport.actions?.seek(position)}
+                    seekRange={(tool === "gif" && isVideo) || (toolbarVariant === "sequence" && sequenceGifRangeActive)
+                      ? { ...gifRange, onChange: (start, end) => setGifRange({ start, end }) }
+                      : undefined}
                     timecode={transport.snapshot?.kind === "sequence"
                       ? String((entry.sequenceGroup?.start ?? 0) + transport.snapshot.frameIndex)
                       : formatFoundTimecode(
@@ -396,10 +551,19 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       : fpsLabel}
                     fpsActive={tool === "fps"}
                     onFpsToggle={isVideo ? () => toggleTool("fps") : undefined}
-                    showUpperRow
+                    showUpperRow={toolbarVariant === "video" || toolbarVariant === "gif" || toolbarVariant === "sequence"}
                     showLowerRow
-                    progressColor={foundToolbarProgressColor(toolbarVariant ?? "image")}
+                    onFit={toolbarVariant === "image" || toolbarVariant === "svg"
+                      ? () => window.dispatchEvent(new Event("refcanvas:preview-fit"))
+                      : undefined}
+                    progressColor={foundToolbarProgressColor(toolbarVariant)}
                     colorSwatches={colorSwatches}
+                    sampledColorSwatches={sampledColorSwatches}
+                    paletteLoading={paletteLoading}
+                    paletteError={paletteError}
+                    onPaletteRetry={() => void loadCurrentPalette()}
+                    onSampleColor={() => void beginColorSample()}
+                    onClearSampledColors={() => setSampledColorSwatches([])}
                     trimActive={tool === "frames"}
                     onTrim={isVideo ? () => toggleTool("frames") : undefined}
                     gifActive={tool === "gif"}
@@ -408,10 +572,45 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onNotesToggle={() => toggleTool("notes")}
                     lutActive={tool === "lut"}
                     onLutToggle={() => toggleTool("lut")}
-                    multichannel={entry.extension.toLowerCase() === "exr"}
-                    onMultichannelToggle={() => setTool("preview")}
-                    />
-                    <div className="found-preview-controls-slot" ref={setControlsTarget} />
+                    lutMenu={tool === "lut" ? <PreviewColorTools settings={foundSettings} /> : undefined}
+                    paletteActive={paletteOpen}
+                    onPaletteToggle={() => {
+                      const next = !paletteOpen;
+                      window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+                      setPaletteOpen(next);
+                      if (next) void loadCurrentPalette();
+                      setEyedropActive(false);
+                    }}
+                    multichannel={isExrMedia}
+                    multichannelActive={multichannelOpen}
+                    onMultichannelToggle={isExrMedia
+                      ? () => { const next = !multichannelOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setMultichannelOpen(next); }
+                      : undefined}
+                    multichannelButtonRef={setMultichannelAnchor}
+                    rendererControlsRef={setControlsTarget}
+                    trailingActions={(
+                      <>{panoramaCapable && <>
+                        <button type="button" className={`found-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label="反射球" title="反射球" aria-pressed={hdrViewMode === "reflection"} onClick={() => {
+                          const next = hdrViewMode === "reflection" ? "flat" : "reflection";
+                          const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
+                          setHdrViewMode(next);
+                          window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", { detail: { path: currentPath, mode: next } }));
+                        }}><span className="found-reflection-ball-glyph" aria-hidden="true" /></button>
+                        <button type="button" className={`found-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label="全景模式" title="全景模式" aria-pressed={hdrViewMode === "panorama"} onClick={() => {
+                          const next = hdrViewMode === "panorama" ? "flat" : "panorama";
+                          const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
+                          setHdrViewMode(next);
+                          window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", { detail: { path: currentPath, mode: next } }));
+                        }}><Globe2 size={15} /></button>
+                      </>}
+                      <PreviewSessionModeButtons
+                        focused={previewSession.focused}
+                        fullscreen={previewSession.fullscreen}
+                        onToggleFocus={previewSession.toggleFocus}
+                        onToggleFullscreen={() => void previewSession.toggleFullscreen()}
+                      /></>
+                    )}
+                    />}
                   </div>
               </>
             )}
@@ -431,6 +630,16 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
           />
         )}
       </div>
+      {isPreview && !hasContent && (
+        <div className="found-preview-session-footer">
+          <PreviewSessionModeButtons
+            focused={previewSession.focused}
+            fullscreen={previewSession.fullscreen}
+            onToggleFocus={previewSession.toggleFocus}
+            onToggleFullscreen={() => void previewSession.toggleFullscreen()}
+          />
+        </div>
+      )}
     </PreviewSessionShell>
   );
 }

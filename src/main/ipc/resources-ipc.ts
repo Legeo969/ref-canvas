@@ -330,7 +330,24 @@ export function registerResourcesIpc(
     const kind = assetKindForExtension(extension);
     let samplePath = resolved;
     let removeSample = false;
-    if (kind === "video") {
+    if (extension === "exr" || extension === "hdr") {
+      const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+      if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      const signature = createHash("sha256")
+        .update(`${path.normalize(resolved)}:${randomUUID()}:palette-display`)
+        .digest("hex")
+        .slice(0, 20);
+      samplePath = path.join(cacheDirectory, `palette-${signature}.png`);
+      removeSample = true;
+      await invokeThumbnail(dependencies.getProviderRegistry(), {
+        path: resolved,
+        kind,
+        extension,
+        width: 320,
+        height: 320,
+        outputPath: samplePath,
+      });
+    } else if (kind === "video") {
       const cacheDirectory = dependencies.getThumbnailCacheDirectory();
       if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
       const signature = createHash("sha256")
@@ -664,6 +681,8 @@ export function registerResourcesIpc(
       outputDirectory: pathSchema,
       baseName: z.string().min(1).max(128),
       maxWidth: z.number().int().min(64).max(3840).optional(),
+      colors: z.number().int().min(16).max(256).optional(),
+      dither: z.enum(["none", "bayer", "floyd_steinberg", "sierra2_4a"]).optional(),
       jobId: z.string().min(1).max(128).optional(),
     }).parse(request);
     const files = parsed.files.map(assertAbsoluteLocalPath);
@@ -678,6 +697,8 @@ export function registerResourcesIpc(
         files,
         fps: parsed.fps,
         maxWidth: parsed.maxWidth ?? 960,
+        colors: parsed.colors ?? 256,
+        dither: parsed.dither ?? "sierra2_4a",
         outputPath,
       }, signal);
       return {

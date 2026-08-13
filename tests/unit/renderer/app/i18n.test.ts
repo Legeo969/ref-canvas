@@ -53,7 +53,7 @@ describe("i18n runtime (FND-011)", () => {
     expect(translate("tasks.empty")).toBe("No tasks yet.");
     setLanguage("zh-CN");
     expect(translate("workspace.disk")).toBe("磁盘");
-    expect(translate("collections.state.resolved")).toBe("可解析");
+    expect(translate("collections.state.resolved")).toBe("可用");
     setLanguage("ja");
     expect(translate("ai.generate")).toBe("生成");
     setLanguage("ko");

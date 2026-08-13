@@ -256,10 +256,9 @@ function CollectionNode({
     }
   };
 
-  const badge =
-    items && items.length > 0 ? (
-      <span className="nav-count">{items.length}</span>
-    ) : (
+  const badge = (
+    <span className="collection-row-meta">
+      {items && items.length > 0 && <span className="nav-count">{items.length}</span>}
       <button
         className="mini-icon-button collection-node-add"
         aria-label={translate("collections.addFilesNamed").replace("{name}", collection.name)}
@@ -272,7 +271,8 @@ function CollectionNode({
       >
         <Plus size={13} />
       </button>
-    );
+    </span>
+  );
 
   return (
     <div className="collection-node">
@@ -795,6 +795,7 @@ export function CollectionsPanel() {
     if (!picked.length) return;
     const added = await window.refCanvas.collections.addPaths(id, picked);
     await store.refreshCollections();
+    if (added.length > 0) store.openCollection(id);
     if (added.length === 0 && picked.length > 0) {
       void dialog.requestConfirm({
         title: translate("collections.addFailed"),
@@ -895,6 +896,7 @@ export function CollectionsPanel() {
           <Plus size={14} />
         </button>
       </div>
+      <p className="collections-section-hint">跨文件夹收藏素材，不复制或移动源文件</p>
       {menuOpen && (
         <>
           <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />

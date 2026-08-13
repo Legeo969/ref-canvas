@@ -1,5 +1,4 @@
 import type { BrowserWindow } from "electron";
-import { dialog } from "electron";
 import {
   canonicalizeLocalPath,
   driveForLocalPath,
@@ -30,28 +29,10 @@ export interface WriteGrantPrompt {
 
 export type WriteGrantPrompter = (request: WriteGrantPrompt) => Promise<boolean>;
 
-const operationLabels: Record<WriteOperation, string> = {
-  rename: "重命名",
-  trash: "移入回收站",
-  copy: "复制写入",
-  move: "移动",
-  "create-folder": "创建文件夹",
-  archive: "创建归档",
-  export: "导出文件",
-};
-
-async function defaultPrompt(request: WriteGrantPrompt): Promise<boolean> {
-  const result = await dialog.showMessageBox(request.window, {
-    type: "warning",
-    title: "允许本次会话写入磁盘？",
-    message: `RefCanvas 请求在 ${request.drive} 盘执行“${operationLabels[request.operation]}”。`,
-    detail: `代表性目标：${request.representativePath}\n\n允许后，本次应用运行期间可继续写入整个 ${request.drive} 盘；退出 RefCanvas 后授权自动失效。`,
-    buttons: ["取消", "允许本次会话"],
-    defaultId: 0,
-    cancelId: 0,
-    noLink: true,
-  });
-  return result.response === 1;
+async function defaultPrompt(): Promise<boolean> {
+  // Desktop file operations are already initiated explicitly by the user.
+  // Keep canonical path checks, but do not interrupt the first operation on a drive.
+  return true;
 }
 
 /** Main-process-only, per-drive, in-memory write capability manager. */

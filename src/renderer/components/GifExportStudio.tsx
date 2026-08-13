@@ -50,11 +50,21 @@ export function GifExportStudio({
   onClose,
   variant = "dialog",
   initialTimeMs = 0,
+  initialRange,
+  sequence,
 }: {
   initialPaths: string[];
   onClose(): void;
   variant?: "dialog" | "panel";
   initialTimeMs?: number;
+  initialRange?: { start: number; end: number };
+  sequence?: {
+    files: string[];
+    fps: number;
+    baseName: string;
+    directory: string;
+    range: { start: number; end: number };
+  };
 }) {
   const [clips, setClips] = useState<GifClipDraft[]>(() =>
     initialPaths.map((inputPath) => ({
@@ -67,18 +77,21 @@ export function GifExportStudio({
       error: false,
     })),
   );
-  const [fps, setFps] = useState(12);
+  const [fps, setFps] = useState(sequence?.fps ?? 12);
   const [maxWidth, setMaxWidth] = useState(640);
   const [colors, setColors] = useState(128);
   const [dither, setDither] = useState<"none" | "bayer" | "floyd_steinberg" | "sierra2_4a">("sierra2_4a");
-  const [baseName, setBaseName] = useState(stemOf(initialPaths[0] ?? "animation"));
+  const [baseName, setBaseName] = useState(sequence?.baseName ?? stemOf(initialPaths[0] ?? "animation"));
   const [outputDirectory, setOutputDirectory] = useState(
-    initialPaths[0]?.replace(/[\\/][^\\/]*$/, "") ?? "",
+    sequence?.directory ?? initialPaths[0]?.replace(/[\\/][^\\/]*$/, "") ?? "",
   );
   const [jobId, setJobId] = useState<string | null>(null);
   const [result, setResult] = useState<ExportGifResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const probedRef = useRef(new Set<string>());
+  const usesSharedTimelineRange = variant === "panel" && (
+    sequence !== undefined || (initialPaths.length === 1 && initialRange !== undefined)
+  );
 
   useEffect(() => {
     for (const clip of clips) {
@@ -88,7 +101,9 @@ export function GifExportStudio({
         const durationMs = Math.max(0, (probe.duration ?? 0) * 1000);
         const useFocusedRange = clips.length === 1;
         const range = useFocusedRange
-          ? centeredGifRange(initialTimeMs, durationMs)
+          ? initialRange
+            ? { startMs: initialRange.start * durationMs, endMs: initialRange.end * durationMs }
+            : centeredGifRange(initialTimeMs, durationMs)
           : { startMs: 0, endMs: durationMs };
         setClips((current) => current.map((item) =>
           item.id === clip.id
@@ -101,7 +116,18 @@ export function GifExportStudio({
         ));
       });
     }
-  }, [clips, initialTimeMs]);
+  }, [clips, initialRange, initialTimeMs]);
+
+  useEffect(() => {
+    if (!usesSharedTimelineRange || !initialRange) return;
+    setClips((current) => current.map((clip) => clip.loading || clip.error
+      ? clip
+      : {
+          ...clip,
+          startMs: initialRange.start * clip.durationMs,
+          endMs: initialRange.end * clip.durationMs,
+        }));
+  }, [initialRange, usesSharedTimelineRange]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -111,13 +137,24 @@ export function GifExportStudio({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [jobId, onClose, variant]);
 
+  const selectedSequenceFiles = useMemo(() => {
+    if (!sequence) return [];
+    if (sequence.files.length <= 1) return sequence.files;
+    const lastIndex = sequence.files.length - 1;
+    const start = Math.round(Math.max(0, Math.min(1, sequence.range.start)) * lastIndex);
+    const end = Math.round(Math.max(0, Math.min(1, sequence.range.end)) * lastIndex);
+    return sequence.files.slice(Math.min(start, end), Math.max(start, end) + 1);
+  }, [sequence]);
   const durationSeconds = useMemo(
-    () => clips.reduce((sum, clip) => sum + Math.max(0, clip.endMs - clip.startMs), 0) / 1000,
-    [clips],
+    () => sequence
+      ? selectedSequenceFiles.length / Math.max(1, fps)
+      : clips.reduce((sum, clip) => sum + Math.max(0, clip.endMs - clip.startMs), 0) / 1000,
+    [clips, fps, selectedSequenceFiles.length, sequence],
   );
   const estimatedBytes = estimatedGifBytes(durationSeconds, fps, maxWidth, colors);
-  const canExport = clips.length > 0 && clips.every((clip) =>
-    !clip.loading && !clip.error && clip.endMs > clip.startMs,
+  const canExport = (sequence
+    ? selectedSequenceFiles.length > 0
+    : clips.length > 0 && clips.every((clip) => !clip.loading && !clip.error && clip.endMs > clip.startMs)
   ) && Boolean(outputDirectory.trim()) && Boolean(baseName.trim()) && !jobId;
 
   const addPaths = (paths: string[]) => {
@@ -149,20 +186,31 @@ export function GifExportStudio({
     setError(null);
     setResult(null);
     try {
-      const exported = await window.refCanvas.media.exportGif({
-        clips: clips.map((clip) => ({
-          inputPath: clip.inputPath,
-          startMs: Math.round(clip.startMs),
-          endMs: Math.round(clip.endMs),
-        })),
-        outputDirectory,
-        baseName,
-        fps,
-        maxWidth,
-        colors,
-        dither,
-        jobId: nextJobId,
-      });
+      const exported = sequence
+        ? await window.refCanvas.sequences.exportGif({
+            files: selectedSequenceFiles,
+            outputDirectory,
+            baseName,
+            fps,
+            maxWidth,
+            colors,
+            dither,
+            jobId: nextJobId,
+          })
+        : await window.refCanvas.media.exportGif({
+            clips: clips.map((clip) => ({
+              inputPath: clip.inputPath,
+              startMs: Math.round(clip.startMs),
+              endMs: Math.round(clip.endMs),
+            })),
+            outputDirectory,
+            baseName,
+            fps,
+            maxWidth,
+            colors,
+            dither,
+            jobId: nextJobId,
+          });
       setResult(exported);
     } catch (value) {
       setError(value instanceof Error ? value.message : "GIF 导出失败");
@@ -193,11 +241,11 @@ export function GifExportStudio({
         aria-modal={variant === "dialog" ? "true" : undefined}
         aria-label="GIF 导出工作台"
         onMouseDown={(event) => event.stopPropagation()}
-        onDragOver={(event) => {
+        onDragOver={usesSharedTimelineRange ? undefined : (event) => {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
         }}
-        onDrop={(event) => {
+        onDrop={usesSharedTimelineRange ? undefined : (event) => {
           event.preventDefault();
           addPaths(window.refCanvas.library.pathsForFiles(Array.from(event.dataTransfer.files)));
         }}
@@ -208,7 +256,7 @@ export function GifExportStudio({
         </header>
 
         <div className="gif-studio-body">
-          <div className="gif-clip-list">
+          {!usesSharedTimelineRange && <div className="gif-clip-list">
             <div className="gif-clip-list-heading">
               <strong>片段 · {clips.length}</strong>
               <button className="secondary-button" onClick={() => void pickVideos()}><Plus size={14} />添加视频</button>
@@ -231,20 +279,12 @@ export function GifExportStudio({
                       const value = Math.max(clip.startMs + 10, Math.min(clip.durationMs, Number(event.target.value) * 1000));
                       setClips((current) => current.map((item) => item.id === clip.id ? { ...item, endMs: value } : item));
                     }} />s</label>
-                    <input className="gif-range-start" aria-label={`${nameOf(clip.inputPath)} 入点`} type="range" min={0} max={clip.durationMs} value={clip.startMs} onChange={(event) => {
-                      const value = Math.min(clip.endMs - 10, Number(event.target.value));
-                      setClips((current) => current.map((item) => item.id === clip.id ? { ...item, startMs: value } : item));
-                    }} />
-                    <input className="gif-range-end" aria-label={`${nameOf(clip.inputPath)} 出点`} type="range" min={0} max={clip.durationMs} value={clip.endMs} onChange={(event) => {
-                      const value = Math.max(clip.startMs + 10, Number(event.target.value));
-                      setClips((current) => current.map((item) => item.id === clip.id ? { ...item, endMs: value } : item));
-                    }} />
                   </div>
                 )}
               </article>
             ))}
             <button className="gif-drop-zone" type="button" onClick={() => void pickVideos()}><Plus size={16} />拖放视频到这里，或点击添加</button>
-          </div>
+          </div>}
 
           <div className="gif-export-options">
             <label>文件名<input value={baseName} onChange={(event) => setBaseName(event.target.value)} /></label>
@@ -253,7 +293,7 @@ export function GifExportStudio({
               if (selected) setOutputDirectory(selected);
             }}><FolderOpen size={14} /></button></div></label>
             <div className="gif-option-grid">
-              <label>帧率<select value={fps} onChange={(event) => setFps(Number(event.target.value))}>{[6, 8, 10, 12, 15, 20, 24, 30].map((value) => <option key={value} value={value}>{value} FPS</option>)}</select></label>
+              <label>帧率<select value={fps} onChange={(event) => setFps(Number(event.target.value))}>{Array.from(new Set([6, 8, 10, 12, 15, 20, 24, 25, 30, sequence?.fps].filter((value): value is number => typeof value === "number"))).sort((a, b) => a - b).map((value) => <option key={value} value={value}>{value} FPS</option>)}</select></label>
               <label>最大宽度<select value={maxWidth} onChange={(event) => setMaxWidth(Number(event.target.value))}>{[320, 480, 640, 800, 960, 1280].map((value) => <option key={value} value={value}>{value}px</option>)}</select></label>
               <label>色彩<select value={colors} onChange={(event) => setColors(Number(event.target.value))}>{[32, 64, 128, 256].map((value) => <option key={value} value={value}>{value} 色</option>)}</select></label>
               <label>抖动<select value={dither} onChange={(event) => setDither(event.target.value as typeof dither)}><option value="none">关闭（更小）</option><option value="bayer">Bayer</option><option value="floyd_steinberg">Floyd–Steinberg</option><option value="sierra2_4a">Sierra（推荐）</option></select></label>

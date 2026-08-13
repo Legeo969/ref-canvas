@@ -1,4 +1,4 @@
-import { Grid2X2, Maximize2, RotateCw } from "lucide-react";
+import { Grid2X2, RotateCw } from "lucide-react";
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -12,7 +12,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { translate } from "../app/i18n";
-import { SelectMenu, type SelectMenuOption } from "./SelectMenu";
 
 export const MIN_IMAGE_ZOOM = 0.1;
 export const MAX_IMAGE_ZOOM = 8;
@@ -55,14 +54,6 @@ export function zoomPanAtPoint(
   };
 }
 
-const fixedZoomOptions: readonly SelectMenuOption<string>[] = [
-  { value: "fit", label: translate("imageReview.fitShort") },
-  { value: "0.25", label: "25%" },
-  { value: "0.5", label: "50%" },
-  { value: "1", label: "100%" },
-  { value: "2", label: "200%" },
-];
-
 export function ImagePreviewViewport({
   assetKey,
   checkerBackground,
@@ -96,6 +87,12 @@ export function ImagePreviewViewport({
     setRotation(0);
     setShowChecker(false);
   }, [assetKey, fitView]);
+
+  useEffect(() => {
+    const onFit = () => fitView();
+    window.addEventListener("refcanvas:preview-fit", onFit);
+    return () => window.removeEventListener("refcanvas:preview-fit", onFit);
+  }, [fitView]);
 
   const applyZoom = useCallback((nextValue: number, pointer?: Point) => {
     const nextZoom = clampImageZoom(nextValue);
@@ -155,17 +152,6 @@ export function ImagePreviewViewport({
     setPanning(false);
   };
 
-  const zoomValue = fit ? "fit" : String(zoom);
-  const zoomOptions = useMemo<readonly SelectMenuOption<string>[]>(() => {
-    if (fit || fixedZoomOptions.some((option) => Number(option.value) === zoom)) {
-      return fixedZoomOptions;
-    }
-    return [
-      { value: zoomValue, label: `${Math.round(zoom * 100)}%` },
-      ...fixedZoomOptions,
-    ];
-  }, [fit, zoom, zoomValue]);
-
   const contentStyle = useMemo<CSSProperties>(() => ({
     transform: `translate3d(${pan.x}px, ${pan.y}px, 0) rotate(${rotation}deg) scale(${zoom})`,
     transformOrigin: "center center",
@@ -175,28 +161,13 @@ export function ImagePreviewViewport({
   const toolbar = (
     <div className="image-preview-toolbar">
       <div className="image-preview-toolbar-start">
-        <SelectMenu
-          value={zoomValue}
-          options={zoomOptions}
-          ariaLabel={translate("imageReview.fit")}
-          className="image-preview-zoom-menu"
-          onValueChange={(value) => {
-            if (value === "fit") {
-              fitView();
-              return;
-            }
-            applyZoom(Number(value));
-          }}
-        />
-        <button
+        {!controlsTarget && <button
           type="button"
-          className="mini-icon-button"
+          className={`found-tool-label image-preview-fit-button${fit ? " active" : ""}`}
           title={translate("imageReview.fit")}
           aria-label={translate("imageReview.fit")}
           onClick={fitView}
-        >
-          <Maximize2 size={15} />
-        </button>
+        >Fit</button>}
         <button
           type="button"
           className="mini-icon-button"

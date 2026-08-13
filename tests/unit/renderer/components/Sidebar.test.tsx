@@ -41,6 +41,7 @@ describe("Sidebar workspaces", () => {
           title: "镜头参考",
           createdAt: "2026-08-05T00:00:00.000Z",
           updatedAt: "2026-08-05T00:00:00.000Z",
+          revision: 1,
         },
       ],
       activeBoard: null,
@@ -67,8 +68,8 @@ describe("Sidebar workspaces", () => {
       "directory-browser",
     );
     expect(host.textContent).toContain("参考板");
-    expect(host.textContent).toContain("引用集合");
-    expect(host.textContent).toContain("还没有集合");
+    expect(host.textContent).toContain("收藏夹");
+    expect(host.textContent).toContain("还没有收藏夹");
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>(".sidebar-recycle-button")?.click();

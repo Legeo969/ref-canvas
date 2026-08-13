@@ -88,6 +88,8 @@ export interface OpenImageIoDecodeInput {
   maximumWidth: number;
   maximumHeight: number;
   inputColorSpace?: string;
+  displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw";
+  ocioConfigPath?: string;
   signal?: AbortSignal;
   executable?: string;
   subimage?: number;
@@ -107,6 +109,49 @@ export interface OpenImageIoSubimage {
   compression: string | null;
   colorSpace: string | null;
   channels: string[];
+}
+
+export function buildOpenImageIoDecodeArgs(
+  input: OpenImageIoDecodeInput,
+  outputPath: string,
+): string[] {
+  const dimensions = fitPreviewDimensions(
+    input.sourceWidth,
+    input.sourceHeight,
+    input.maximumWidth,
+    input.maximumHeight,
+  );
+  const displayTransform = input.displayTransform ?? "linear-srgb";
+  const sourceColorSpace = input.inputColorSpace || "linear";
+  const builtInConfig = displayTransform === "aces-1.3"
+    ? "ocio://cg-config-v1.0.0_aces-v1.3_ocio-v2.1"
+    : displayTransform === "aces-2.0"
+      ? "ocio://default"
+      : undefined;
+  const colorConfig = input.ocioConfigPath || builtInConfig;
+  const colorTransformArgs = displayTransform === "raw"
+    ? []
+    : !input.ocioConfigPath && displayTransform === "aces-1.3"
+      ? [`--ociodisplay:from=${sourceColorSpace}`, "sRGB - Display", "ACES 1.0 - SDR Video"]
+      : !input.ocioConfigPath && displayTransform === "aces-2.0"
+        ? [`--ociodisplay:from=${sourceColorSpace}`, "sRGB - Display", "ACES 2.0 - SDR 100 nits (Rec.709)"]
+        : ["--colorconvert", sourceColorSpace, "sRGB"];
+  return [
+    ...(colorConfig ? ["--colorconfig", colorConfig] : []),
+    input.inputPath,
+    "--subimage",
+    String(input.subimage ?? 0),
+    "--flatten",
+    "--ch",
+    input.channels.join(","),
+    ...colorTransformArgs,
+    "--resize",
+    `${dimensions.width}x${dimensions.height}`,
+    "-d",
+    "uint8",
+    "-o",
+    outputPath,
+  ];
 }
 
 function decodeXml(value: string): string {
@@ -219,23 +264,7 @@ export async function decodeExrWithOpenImageIo(
     path.dirname(input.outputPath),
     `${path.basename(input.outputPath)}.${randomUUID()}.tmp.png`,
   );
-  const args = [
-    input.inputPath,
-    "--subimage",
-    String(input.subimage ?? 0),
-    "--flatten",
-    "--ch",
-    input.channels.join(","),
-    "--colorconvert",
-    input.inputColorSpace || "linear",
-    "sRGB",
-    "--resize",
-    `${dimensions.width}x${dimensions.height}`,
-    "-d",
-    "uint8",
-    "-o",
-    temporary,
-  ];
+  const args = buildOpenImageIoDecodeArgs(input, temporary);
   try {
     await new Promise<void>((resolve, reject) => {
       execFile(

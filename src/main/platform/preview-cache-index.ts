@@ -12,7 +12,10 @@ export interface PreviewCacheRecord {
   retryAfterMs: number;
 }
 
-const FAILURE_TTL_MS = 24 * 60 * 60 * 1_000;
+// A decode can fail while a source file is still being written or while a
+// native provider is restarting. Keep a short negative cache to avoid hot
+// retry loops without making a recoverable preview disappear for the session.
+const FAILURE_TTL_MS = 30_000;
 const ACCESS_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
 export class PreviewCacheIndex {
@@ -38,6 +41,16 @@ export class PreviewCacheIndex {
       CREATE INDEX IF NOT EXISTS preview_cache_accessed
       ON preview_cache(accessed_at_ms);
     `);
+    // Cap failures written by older builds (which used a 24-hour TTL) so an
+    // upgrade immediately benefits from the recoverable-failure policy.
+    const failureCap = Date.now() + FAILURE_TTL_MS;
+    this.database
+      .prepare(
+        `UPDATE preview_cache
+         SET retry_after_ms = ?
+         WHERE status = 'failed' AND retry_after_ms > ?`,
+      )
+      .run(failureCap, failureCap);
   }
 
   get(key: string, now = Date.now()): PreviewCacheRecord | null {

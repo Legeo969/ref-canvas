@@ -62,7 +62,7 @@ describe("ImageReviewPreview (FND-005)", () => {
     await act(async () => {
       root.render(<ImageReviewPreview asset={asset} />);
     });
-    expect(host.querySelector("[role='combobox'][aria-label='适配窗口']")).toBeTruthy();
+    expect(host.querySelector("[role='combobox'][aria-label='适配窗口']")).toBeNull();
     expect(host.querySelector("[aria-label='适配窗口']")).toBeTruthy();
     expect(host.querySelector("[aria-label='旋转 90°']")).toBeTruthy();
     expect(host.querySelector("[aria-label='棋盘透明背景']")).toBeTruthy();

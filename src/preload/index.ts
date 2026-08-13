@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { RefCanvasApi } from "../shared/contracts";
 
+ipcRenderer.on("boards:flush-request", () => {
+  const event = new Event("refcanvas:board-flush-request", { cancelable: true });
+  if (window.dispatchEvent(event)) ipcRenderer.send("boards:flush-complete", true);
+});
+
 function applyUiScale(preferences: unknown): void {
   if (!preferences || typeof preferences !== "object") return;
   const foundSettings = (preferences as { foundSettings?: unknown }).foundSettings;
@@ -396,8 +401,8 @@ const api: RefCanvasApi = {
     rename: (id, title) => ipcRenderer.invoke("boards:rename", id, title),
     delete: (id) => ipcRenderer.invoke("boards:delete", id),
     load: (id) => ipcRenderer.invoke("boards:load", id),
-    save: (id, document) =>
-      ipcRenderer.invoke("boards:save", id, document),
+    save: (id, document, revision) =>
+      ipcRenderer.invoke("boards:save", id, document, revision),
     exportJson: (id) => ipcRenderer.invoke("boards:export-json", id),
     exportPng: (id, dataUrl) =>
       ipcRenderer.invoke("boards:export-png", id, dataUrl),
@@ -407,6 +412,7 @@ const api: RefCanvasApi = {
     touch: (id) => ipcRenderer.invoke("boards:touch", id),
     openWindow: (id) => ipcRenderer.invoke("boards:open-window", id),
     closeWindow: () => ipcRenderer.invoke("boards:close-window"),
+    confirmFlush: (saved) => ipcRenderer.send("boards:flush-complete", saved),
     getAssets: (id) => ipcRenderer.invoke("boards:get-assets", id),
     resolveReferences: (id) =>
       ipcRenderer.invoke("boards:resolve-references", id),

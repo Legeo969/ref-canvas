@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { Rect, type Canvas } from "fabric";
+import { Rect, classRegistry, type ActiveSelection, type Canvas } from "fabric";
 import { describe, expect, it, vi } from "vitest";
 import { applyBoardControls } from "../../src/renderer/app/board-controls";
 import {
   BoardActiveSelection,
+  installBoardActiveSelection,
   selectAllBoardObjects,
 } from "../../src/renderer/app/board-active-selection";
 
@@ -20,6 +21,29 @@ const controlContext = new Proxy(
 );
 
 describe("board active-selection capacity", () => {
+  it("routes a 1,000-object Fabric marquee through the optimized selection", () => {
+    const members = Array.from(
+      { length: 1_000 },
+      () => new Rect({ width: 20, height: 20 }),
+    );
+    installBoardActiveSelection();
+    const SelectionClass = classRegistry.getClass<
+      new (objects: Rect[]) => ActiveSelection
+    >("ActiveSelection");
+
+    const selection = new SelectionClass(members) as BoardActiveSelection;
+    applyBoardControls(selection);
+    const memberControls = members.map((member) =>
+      vi.spyOn(member, "_renderControls").mockImplementation(() => undefined),
+    );
+    vi.spyOn(selection, "drawControls").mockImplementation(() => undefined);
+
+    selection._renderControls(controlContext);
+
+    expect(selection).toBeInstanceOf(BoardActiveSelection);
+    expect(memberControls.every((render) => render.mock.calls.length === 0)).toBe(true);
+  });
+
   it("selects 1,000 objects without rendering per-member controls", () => {
     const members = Array.from(
       { length: 1_000 },

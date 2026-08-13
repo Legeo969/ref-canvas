@@ -30,10 +30,11 @@ export function BrowserTabBar() {
   if (tabs.length === 0) return null;
 
   const openNewTab = async () => {
-    const directory = await window.refCanvas.system.pickDirectory({
-      title: translate("directory.newTab"),
-    });
-    if (directory) await store.createBrowserTabForPath(directory);
+    const activeTab = tabs.find((tab) => tab.id === activeId);
+    const currentDirectory = activeTab?.kind === "directory" && activeTab.targetId !== "browser://empty"
+      ? activeTab.targetId
+      : store.directoryPath;
+    if (currentDirectory) await store.createBrowserTabForPath(currentDirectory);
   };
 
   const onDrop = (event: DragEvent<HTMLElement>, targetId: string) => {

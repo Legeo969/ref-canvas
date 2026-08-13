@@ -1909,16 +1909,31 @@ export class RefCanvasDatabase {
     return this.boardsRepository.load(id);
   }
 
-  saveBoard(id: string, input: BoardDocument): BoardSummary {
+  saveBoard(
+    id: string,
+    input: BoardDocument,
+    expectedRevision?: number,
+  ): BoardSummary {
     const document = toBoardV3(input);
     const now = new Date().toISOString();
-    this.db.transaction(() => {
-      this.boardsRepository.updateDocument(id, document, now);
+    const updated = this.db.transaction(() => {
+      const didUpdate = this.boardsRepository.updateDocument(
+        id,
+        document,
+        now,
+        expectedRevision,
+      );
+      if (!didUpdate) return false;
       this.boardsRepository.replaceAssetIds(
         id,
         boardAssetIds(document).filter((assetId) => Boolean(this.getAsset(assetId))),
       );
+      return true;
     })();
+    if (!updated) {
+      if (!this.boardsRepository.row(id)) throw new Error("BOARD_NOT_FOUND");
+      throw new Error("BOARD_CONFLICT");
+    }
     const row = this.boardsRepository.row(id);
     if (!row) throw new Error("BOARD_NOT_FOUND");
     return {
@@ -1926,6 +1941,7 @@ export class RefCanvasDatabase {
       title: row.title,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      revision: row.revision,
     };
   }
 

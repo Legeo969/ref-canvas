@@ -935,6 +935,8 @@ export interface BoardSummary {
   title: string;
   createdAt: string;
   updatedAt: string;
+  /** Monotonic document version used to reject stale writes from another window. */
+  revision: number;
 }
 
 export interface BoardDocumentV1 {
@@ -1152,6 +1154,9 @@ export interface ExportGifRequest {
   outputDirectory: string;
   baseName: string;
   maxWidth?: number;
+  /** Palette size. Lower values trade fidelity for a smaller file. */
+  colors?: number;
+  dither?: "none" | "bayer" | "floyd_steinberg" | "sierra2_4a";
   jobId?: string;
 }
 
@@ -1893,7 +1898,11 @@ export interface RefCanvasApi {
       summary: BoardSummary;
       document: BoardDocumentV3;
     } | null>;
-    save(id: string, document: BoardDocument): Promise<BoardSummary>;
+    save(
+      id: string,
+      document: BoardDocument,
+      revision: number,
+    ): Promise<BoardSummary>;
     exportJson(id: string): Promise<string | null>;
     exportPng(id: string, dataUrl: string): Promise<string | null>;
     /**
@@ -1912,6 +1921,8 @@ export interface RefCanvasApi {
     openWindow(id: string): Promise<boolean>;
     /** Closes the window this renderer lives in (board windows only). */
     closeWindow(): Promise<boolean>;
+    /** Completes any debounced board save before the host window closes. */
+    confirmFlush(saved: boolean): void;
     /** Assets referenced by the board (for board-window initial state). */
     getAssets(id: string): Promise<AssetRecord[]>;
     /** 批量解析 board 引用到磁盘路径/状态（计划 §11 V4 引用解析）。 */

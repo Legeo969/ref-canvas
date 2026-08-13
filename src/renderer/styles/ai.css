@@ -35,7 +35,7 @@
   width: 100%;
   min-width: 0;
   border-left: 0;
-  background: #242424;
+  background: var(--surface-1);
   box-shadow: none;
 }
 
@@ -49,14 +49,14 @@
 .ai-panel.embedded .ai-history {
   flex: 0 1 24%;
   padding: 10px 12px;
-  background: #242424;
+  background: var(--surface-1);
 }
 
 .ai-panel.embedded .found-ai-source-region {
   min-height: 220px;
   flex: 0 0 35%;
   padding: 10px 12px;
-  border-bottom: 1px solid #3a3a3a;
+  border-bottom: 1px solid var(--line);
   overflow-y: auto;
 }
 
@@ -65,14 +65,14 @@
   flex: 1 1 auto;
   border: 1px dashed #555;
   border-radius: 8px;
-  background: #242424;
+  background: var(--surface-1);
 }
 
 .ai-panel.embedded .found-ai-feedback-region {
   min-height: 150px;
   flex: 1 1 35%;
   padding: 10px 12px;
-  border-bottom: 1px solid #3a3a3a;
+  border-bottom: 1px solid var(--line);
 }
 
 .ai-panel.embedded .found-ai-feedback-region .ai-prompt-input {
@@ -81,14 +81,14 @@
   padding: 10px;
   border: 0;
   border-radius: 0;
-  background: #242424;
+  background: var(--surface-1);
   resize: vertical;
 }
 
 .ai-panel.embedded .found-ai-config-region {
   min-height: 40px;
   padding: 8px 12px;
-  background: #2b2b2b;
+  background: var(--surface-2);
 }
 
 .ai-panel.embedded .ai-output-row,
@@ -103,8 +103,8 @@
   align-items: center;
   justify-content: flex-end;
   padding: 5px 12px;
-  border-top: 1px solid #3a3a3a;
-  background: #1c1c1c;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
 }
 
 .ai-panel.embedded .found-ai-bottom-bar .primary-button {
@@ -112,7 +112,7 @@
   min-width: 96px;
   height: 30px;
   border-radius: 5px;
-  background: #3a3a3a;
+  background: var(--surface-3);
 }
 
 .ai-panel.embedded .ai-input-add {
@@ -120,7 +120,7 @@
   height: 40px;
   border: 0;
   border-radius: 6px;
-  background: #3a3a3a;
+  background: var(--surface-3);
 }
 
 .ai-panel > header {

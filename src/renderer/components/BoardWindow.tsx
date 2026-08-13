@@ -74,20 +74,21 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
     };
   }, [boardId, loadAssets]);
 
-  const save = async (next: BoardDocumentV3) => {
-    if (!board) return;
-    const summary = await window.refCanvas.boards.save(board.id, next);
+  const save = async (next: BoardDocumentV3, revision: number) => {
+    if (!board) throw new Error("BOARD_NOT_FOUND");
+    const summary = await window.refCanvas.boards.save(
+      board.id,
+      next,
+      revision,
+    );
     setDocument(next);
     setBoard(summary);
+    return summary;
   };
 
   /** 切换到另一个白板：在新窗口打开目标，关闭当前窗口。 */
   const openBoardElsewhere = async (id: string) => {
     if (!board || id === board.id) return;
-    // 先保存当前文档，避免切换丢失。
-    if (document) {
-      await window.refCanvas.boards.save(board.id, document);
-    }
     await window.refCanvas.boards.openWindow(id);
     window.close();
   };

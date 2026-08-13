@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,10 +17,14 @@ interface BoardIpcDependencies {
   getBoardReferences(): BoardReferenceService;
   getDatabase(): RefCanvasDatabase;
   getMainWindow(): BrowserWindow | null;
+  notifyBoardFlushComplete(
+    event: IpcMainEvent | IpcMainInvokeEvent,
+    saved: boolean,
+  ): void;
   openBoardWindow(boardId: string): void;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
   relinkBoardAsset(assetId: string, filename: string): Promise<AssetRecord>;
-  windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
+  windowForSender(event: IpcMainEvent | IpcMainInvokeEvent): BrowserWindow;
   writeAccess: WriteAccessController;
 }
 
@@ -46,10 +50,11 @@ export function registerBoardIpc(
     database().deleteBoard(idSchema.parse(id)),
   );
   ipc.handle("boards:load", (id) => database().loadBoard(idSchema.parse(id)));
-  ipc.handle("boards:save", (id, document) =>
+  ipc.handle("boards:save", (id, document, revision) =>
     database().saveBoard(
       idSchema.parse(id),
       boardDocumentSchema.parse(document) as BoardDocument,
+      z.number().int().positive().parse(revision),
     ),
   );
   ipc.handle("boards:touch", (id) => {
@@ -66,6 +71,9 @@ export function registerBoardIpc(
     const window = dependencies.windowForSender(event);
     if (window !== dependencies.getMainWindow()) window.close();
     return true;
+  });
+  ipc.on("boards:flush-complete", (event, saved) => {
+    dependencies.notifyBoardFlushComplete(event, z.boolean().parse(saved));
   });
   ipc.handle("boards:get-assets", (id) => {
     const assetIds = database().getBoardAssetIds(idSchema.parse(id));

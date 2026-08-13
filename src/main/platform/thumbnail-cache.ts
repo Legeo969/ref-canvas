@@ -11,10 +11,14 @@ interface ThumbnailIdentity {
 
 const safeId = (id: string): string => id.replaceAll(/[^a-zA-Z0-9_-]/g, "_");
 
-export function thumbnailCacheFilename(asset: ThumbnailIdentity): string {
-  const signature = createHash("sha256")
-    .update(`${asset.mtimeMs}:${asset.size}:${asset.fingerprint}`)
-    .digest("hex")
+export function thumbnailCacheFilename(
+  asset: ThumbnailIdentity,
+  variant = "composite",
+): string {
+  const identity = createHash("sha256")
+    .update(`${asset.mtimeMs}:${asset.size}:${asset.fingerprint}`);
+  if (variant !== "composite") identity.update(`:${variant}`);
+  const signature = identity.digest("hex")
     .slice(0, 20);
   return `${safeId(asset.id)}-${signature}.png`;
 }

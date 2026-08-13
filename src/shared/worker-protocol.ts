@@ -116,6 +116,12 @@ export interface ProviderThumbnailInput {
   outputPath?: string;
   /** HDR/EXR 的通道或 layer 选择（如 R、Beauty.R、Beauty）；缺省为自动合成。 */
   channel?: string;
+  /** Optional OCIO config used by HDR/EXR display transforms. */
+  ocioConfigPath?: string;
+  /** Explicit source color space selected by the HDR/EXR preview UI. */
+  inputColorSpace?: string;
+  /** Display transform selected by the HDR/EXR preview UI. */
+  displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw";
   /** Main-process cancellation; native sidecars must terminate on abort. */
   signal?: AbortSignal;
 }

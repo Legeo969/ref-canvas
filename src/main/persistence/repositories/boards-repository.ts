@@ -14,6 +14,7 @@ export interface BoardPersistenceRow {
   document_json: string;
   created_at: string;
   updated_at: string;
+  revision: number;
 }
 
 const defaultBoardAppearance: BoardAppearance = {
@@ -149,6 +150,7 @@ function mapBoard(row: BoardPersistenceRow): BoardSummary {
     title: row.title,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    revision: row.revision,
   };
 }
 
@@ -184,7 +186,7 @@ export class BoardsRepository {
       INSERT INTO boards (id, title, document_json, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, title, JSON.stringify(document), now, now);
-    return { id, title, createdAt: now, updatedAt: now };
+    return { id, title, createdAt: now, updatedAt: now, revision: 1 };
   }
 
   rename(id: string, title: string): BoardSummary {
@@ -223,10 +225,24 @@ export class BoardsRepository {
       | undefined) ?? null;
   }
 
-  updateDocument(id: string, document: BoardDocumentV3, updatedAt: string): void {
-    this.db.prepare(
-      "UPDATE boards SET document_json = ?, updated_at = ? WHERE id = ?",
-    ).run(JSON.stringify(document), updatedAt, id);
+  updateDocument(
+    id: string,
+    document: BoardDocumentV3,
+    updatedAt: string,
+    expectedRevision?: number,
+  ): boolean {
+    const result = this.db.prepare(
+      `UPDATE boards
+       SET document_json = ?, updated_at = ?, revision = revision + 1
+       WHERE id = ? AND (? IS NULL OR revision = ?)`,
+    ).run(
+      JSON.stringify(document),
+      updatedAt,
+      id,
+      expectedRevision ?? null,
+      expectedRevision ?? null,
+    );
+    return result.changes === 1;
   }
 
   replaceAssetIds(boardId: string, assetIds: string[]): void {

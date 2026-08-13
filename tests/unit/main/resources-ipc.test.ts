@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -122,6 +122,44 @@ describe("resources IPC mount events", () => {
       expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
     ]));
     expect((palette as Array<unknown>).length).toBe(2);
+  });
+
+  it("extracts an HDR palette from its provider-generated display preview", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-hdr-palette-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "environment.hdr");
+    await writeFile(filename, "HDR fixture placeholder");
+    const thumbnail = vi.fn(async (input: { outputPath?: string }) => {
+      const outputPath = input.outputPath!;
+      await sharp({
+        create: { width: 8, height: 4, channels: 4, background: { r: 80, g: 140, b: 210, alpha: 1 } },
+      }).png().toFile(outputPath);
+      return { path: outputPath, width: 8, height: 4 };
+    });
+    const provider = { thumbnail };
+    const registry = {
+      invoke: vi.fn(async (_kind, _extension, capability, run) => ({
+        value: await run(provider),
+        meta: { providerId: "hdr-test", providerVersion: "1", capability, fellBack: false, durationMs: 0, errorCode: null },
+      })),
+    };
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
+      getProviderRegistry: () => registry, getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      previewTokens: {}, notifyMountsChanged: vi.fn(),
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    const palette = await handlers.get("media:palette")?.(filename, { limit: 3 });
+    expect(thumbnail).toHaveBeenCalledOnce();
+    expect(palette).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
+    ]));
   });
 
   it("fails closed for renderer-triggered arbitrary script registration and execution", async () => {

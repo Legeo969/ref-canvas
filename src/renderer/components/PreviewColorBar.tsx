@@ -25,6 +25,7 @@ export function PreviewColorBar({
   autoRefresh = false,
   compact = false,
   live = false,
+  headless = false,
   label = "提取当前画面色彩",
   onSelect,
   onPaletteChange,
@@ -36,6 +37,7 @@ export function PreviewColorBar({
   autoRefresh?: boolean;
   compact?: boolean;
   live?: boolean;
+  headless?: boolean;
   label?: string;
   onSelect?: (color: PaletteColor) => void;
   onPaletteChange?: (palette: PaletteColor[]) => void;
@@ -121,6 +123,8 @@ export function PreviewColorBar({
     await window.refCanvas?.system?.writeClipboard(color.hex);
     setCopied(color.hex);
   };
+
+  if (headless) return <canvas ref={canvasRef} hidden />;
 
   return (
     <div className={`preview-color-bar ${compact ? "compact" : ""} ${live ? "live" : ""}`}>

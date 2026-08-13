@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 
-import { Rect, type Canvas } from "fabric";
+import { ActiveSelection, Rect, classRegistry, type Canvas } from "fabric";
 import { describe, expect, it, vi } from "vitest";
 import { applyBoardControls } from "../../../../src/renderer/app/board-controls";
 import {
   BOARD_MEMBER_CONTROL_LIMIT,
   BoardActiveSelection,
+  installBoardActiveSelection,
+  optimizeBoardActiveSelection,
   selectAllBoardObjects,
 } from "../../../../src/renderer/app/board-active-selection";
 
@@ -21,6 +23,30 @@ const controlContext = new Proxy(
 );
 
 describe("BoardActiveSelection", () => {
+  it("registers the optimized class for Fabric-created marquee selections", () => {
+    installBoardActiveSelection();
+
+    const SelectionClass = classRegistry.getClass<typeof ActiveSelection>(
+      "ActiveSelection",
+    );
+
+    expect(new SelectionClass([])).toBeInstanceOf(BoardActiveSelection);
+  });
+
+  it("upgrades Fabric marquee selections in place without rebuilding their members", () => {
+    const members = Array.from(
+      { length: 2_000 },
+      () => new Rect({ width: 2, height: 2 }),
+    );
+    const nativeSelection = new ActiveSelection(members);
+
+    const optimized = optimizeBoardActiveSelection(nativeSelection);
+
+    expect(optimized).toBe(nativeSelection);
+    expect(optimized).toBeInstanceOf(BoardActiveSelection);
+    expect(optimized.getObjects()).toEqual(members);
+  });
+
   it("culls offscreen selection members while preserving visible members", () => {
     const visible = new Rect({ width: 20, height: 20 });
     const offscreen = new Rect({ width: 20, height: 20 });

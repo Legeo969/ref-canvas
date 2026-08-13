@@ -8,7 +8,7 @@ import {
   restoreCollectionsV17,
 } from "./collection-restore-migrations";
 
-export const DATABASE_SCHEMA_VERSION = 18;
+export const DATABASE_SCHEMA_VERSION = 19;
 
 /**
  * Ordered migration model.
@@ -241,6 +241,22 @@ export const MIGRATIONS: readonly MigrationStep[] = [
         CREATE INDEX IF NOT EXISTS media_notes_asset_position
           ON media_notes(asset_id, position_kind, position, created_at);
       `);
+    },
+  },
+  {
+    version: 19,
+    id: "v19-board-document-revisions",
+    description:
+      "Adds monotonic board document revisions so stale window saves are rejected instead of overwriting newer edits.",
+    apply(db) {
+      const columns = new Set(
+        (db.pragma("table_info(boards)") as Array<{ name: string }>).map(
+          (column) => column.name,
+        ),
+      );
+      if (!columns.has("revision")) {
+        db.exec("ALTER TABLE boards ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
+      }
     },
   },
 ];

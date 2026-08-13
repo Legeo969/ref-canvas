@@ -834,6 +834,7 @@ describe("DirectoryAssetPanel", () => {
         title: "参考板 01",
         createdAt: "2026-08-05T00:00:00.000Z",
         updatedAt: "2026-08-05T00:00:00.000Z",
+        revision: 1,
       },
       assets: [],
       pendingBoardAssetIds: [],

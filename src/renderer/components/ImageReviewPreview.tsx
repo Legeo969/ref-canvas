@@ -31,6 +31,10 @@ interface ImageReviewPreviewProps {
   onPaletteChange?: (colors: string[]) => void;
   managed?: boolean;
   controlsTarget?: HTMLElement | null;
+  sharedColorControls?: boolean;
+  eyedropActive?: boolean;
+  onEyedropActiveChange?: (active: boolean) => void;
+  onColorSample?: (color: string) => void;
 }
 
 interface ColorSample {
@@ -42,21 +46,26 @@ function toHex(value: number): string {
   return value.toString(16).padStart(2, "0");
 }
 
-export function ImageReviewPreview({ asset, onPaletteChange, managed = false, controlsTarget }: ImageReviewPreviewProps) {
+export function ImageReviewPreview({ asset, onPaletteChange, managed = false, controlsTarget, sharedColorControls = false, eyedropActive: controlledEyedropActive, onEyedropActiveChange, onColorSample }: ImageReviewPreviewProps) {
   const foundSettings = useFoundSettings();
   const imageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [eyedropActive, setEyedropActive] = useState(false);
+  const [localEyedropActive, setLocalEyedropActive] = useState(false);
   const [sample, setSample] = useState<ColorSample | null>(null);
   const [copied, setCopied] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
 
   const isLayered = LAYERED_FORMATS.has(asset.extension.toLowerCase());
+  const eyedropActive = controlledEyedropActive ?? localEyedropActive;
+  const setEyedropActive = (active: boolean) => {
+    if (controlledEyedropActive === undefined) setLocalEyedropActive(active);
+    onEyedropActiveChange?.(active);
+  };
 
   // 切换资产时重置会话状态（缩放/旋转/取色/色板）。
   useEffect(() => {
-    setEyedropActive(false);
+    setLocalEyedropActive(false);
     setSample(null);
     setImageFailed(false);
   }, [asset.id, asset.previewUrl]);
@@ -103,6 +112,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     };
     setSample(next);
     setCopied(false);
+    onColorSample?.(next.hex);
   };
 
   const copySample = async () => {
@@ -121,17 +131,17 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
         controlsTarget={controlsTarget}
         toolbarEnd={
           <>
-            <button
+            {!sharedColorControls && <button
               type="button"
               className={`mini-icon-button ${eyedropActive ? "active" : ""}`}
               title={translate("imageReview.eyedrop")}
               aria-label={translate("imageReview.eyedrop")}
               aria-pressed={eyedropActive}
-              onClick={() => setEyedropActive((value) => !value)}
+              onClick={() => setEyedropActive(!eyedropActive)}
             >
               <Droplet size={15} />
-            </button>
-            <PreviewColorBar
+            </button>}
+            {!sharedColorControls && <PreviewColorBar
               compact
               live
               autoRefresh
@@ -140,8 +150,8 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
               revision={asset.previewUrl}
               label={translate("imageReview.palette")}
               onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
-            />
-            {sample && (
+            />}
+            {!sharedColorControls && sample && (
               <button
                 type="button"
                 className="image-review-inline-sample"
@@ -187,6 +197,16 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
           </>
         )}
       </ImagePreviewViewport>
+
+      {sharedColorControls && <PreviewColorBar
+        headless
+        autoRefresh
+        assetPath={asset.path}
+        source={() => imageRef.current}
+        revision={asset.previewUrl}
+        label={translate("imageReview.palette")}
+        onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
+      />}
 
       {layersOpen && (
         <div className="image-review-layers">

@@ -3,8 +3,6 @@ import {
   Camera,
   Grid3X3,
   ImageDown,
-  Maximize2,
-  Minimize2,
   Rotate3D,
   ScanLine,
 } from "lucide-react";
@@ -90,7 +88,6 @@ export function ModelPreview({
   );
   const [uvReady, setUvReady] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [fullscreen, setFullscreen] = useState(false);
   const displayModeRef = useRef<ModelDisplayMode>("solid");
   const onCameraChangeRef = useRef(onCameraChange);
   onCameraChangeRef.current = onCameraChange;
@@ -329,14 +326,6 @@ export function ModelPreview({
   }, [displayMode]);
 
   useEffect(() => {
-    const onFullscreenChange = () => {
-      setFullscreen(document.fullscreenElement === rootRef.current);
-    };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, []);
-
-  useEffect(() => {
     if (!feedback || feedback.startsWith("正在")) return;
     const timer = window.setTimeout(() => setFeedback(null), 2_500);
     return () => window.clearTimeout(timer);
@@ -378,7 +367,6 @@ export function ModelPreview({
   </div><div className="model-preview-actions" role="group" aria-label="3D 视图操作">
     <button type="button" aria-label="保存 3D 视图" title="保存当前视图" onClick={() => void saveRenderedImage("export")}><Camera size={16} /></button>
     {allowCustomThumbnail && <button type="button" aria-label="设为缩略图" title="设为素材缩略图" onClick={() => void saveRenderedImage("thumbnail")}><ImageDown size={16} /></button>}
-    <button type="button" aria-label={fullscreen ? "退出全屏" : "全屏查看"} title={fullscreen ? "退出全屏" : "全屏查看"} onClick={() => { if (document.fullscreenElement === rootRef.current) void document.exitFullscreen().catch(() => setFeedback("无法退出全屏")); else void rootRef.current?.requestFullscreen().catch(() => setFeedback("无法进入全屏")); }}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
   </div></div>;
 
   return (

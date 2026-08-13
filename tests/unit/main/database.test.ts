@@ -395,6 +395,34 @@ describe("RefCanvasDatabase", () => {
     );
   });
 
+  it("rejects a stale board save instead of overwriting a newer document", () => {
+    database = new RefCanvasDatabase(":memory:");
+    const board = database.createBoard("Shared board");
+    const firstWindow = database.loadBoard(board.id)!;
+    const secondWindow = database.loadBoard(board.id)!;
+
+    database.saveBoard(
+      board.id,
+      {
+        ...firstWindow.document,
+        canvas: { version: "7.4.0", objects: [{ type: "rect", left: 10 }] },
+      },
+      firstWindow.summary.revision,
+    );
+
+    expect(() => database!.saveBoard(
+      board.id,
+      {
+        ...secondWindow.document,
+        canvas: { version: "7.4.0", objects: [{ type: "circle", left: 20 }] },
+      },
+      secondWindow.summary.revision,
+    )).toThrow("BOARD_CONFLICT");
+    expect(database.loadBoard(board.id)?.document.canvas.objects).toEqual([
+      { type: "rect", left: 10 },
+    ]);
+  });
+
   it("keeps monitored roots unique and relinks without changing asset identity", () => {
     database = new RefCanvasDatabase(":memory:");
     const original = database.upsertAsset(createAsset()).asset;

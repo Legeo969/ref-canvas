@@ -23,6 +23,12 @@ interface AssetPreviewProps {
   onPaletteChange?: (colors: string[]) => void;
   managed?: boolean;
   controlsTarget?: HTMLElement | null;
+  multichannelOpen?: boolean;
+  multichannelAnchor?: HTMLElement | null;
+  sharedColorControls?: boolean;
+  eyedropActive?: boolean;
+  onEyedropActiveChange?: (active: boolean) => void;
+  onColorSample?: (color: string) => void;
 }
 
 function SystemThumbnail({ asset }: { asset: AssetRecord }) {
@@ -44,7 +50,7 @@ function SystemThumbnail({ asset }: { asset: AssetRecord }) {
   );
 }
 
-export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps, onPaletteChange, managed = false, controlsTarget }: AssetPreviewProps) {
+export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps, onPaletteChange, managed = false, controlsTarget, multichannelOpen = false, multichannelAnchor, sharedColorControls = false, eyedropActive, onEyedropActiveChange, onColorSample }: AssetPreviewProps) {
   const runtimeApi = (window as unknown as {
     refCanvas?: { media?: { probe?: unknown } };
   }).refCanvas;
@@ -107,6 +113,11 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
               path={asset.path}
               managed={managed}
               controlsTarget={controlsTarget}
+              multichannelOpen={multichannelOpen}
+              multichannelAnchor={multichannelAnchor}
+              eyedropActive={eyedropActive}
+              onEyedropActiveChange={onEyedropActiveChange}
+              onColorSample={onColorSample}
             />
           </MediaNotesOverlay>
         );
@@ -128,11 +139,15 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
               onPaletteChange={onPaletteChange}
               managed={managed}
               controlsTarget={controlsTarget}
+              sharedColorControls={sharedColorControls}
+              eyedropActive={eyedropActive}
+              onEyedropActiveChange={onEyedropActiveChange}
+              onColorSample={onColorSample}
             />
           )
         : <SystemThumbnail asset={asset} />;
     case "video":
-      return <VideoPreview asset={asset} onOpenTool={onOpenTool} onTimeChange={onTimeChange} playbackFps={playbackFps} onPaletteChange={onPaletteChange} />;
+      return <VideoPreview asset={asset} onOpenTool={onOpenTool} onTimeChange={onTimeChange} playbackFps={playbackFps} onPaletteChange={onPaletteChange} eyedropActive={eyedropActive} onEyedropActiveChange={onEyedropActiveChange} onColorSample={onColorSample} />;
     case "audio":
       return <AudioPreview asset={asset} />;
     case "pdf":

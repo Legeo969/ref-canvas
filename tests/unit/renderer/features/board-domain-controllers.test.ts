@@ -40,6 +40,48 @@ describe("BoardPersistenceController", () => {
     expect(setSaved).toHaveBeenLastCalledWith(true);
     controller.dispose();
   });
+
+  it("flushes the last debounced snapshot before disposal", async () => {
+    const save = vi.fn(async () => undefined);
+    const controller = new BoardPersistenceController(new BoardHistoryController(), {
+      blocked: () => false,
+      capture: () => ({ objects: [{ id: "last-edit" }] }),
+      save,
+      setSaved: vi.fn(),
+      onSnapshot: vi.fn(),
+    });
+
+    controller.schedule();
+    await vi.advanceTimersByTimeAsync(1);
+    await controller.flush();
+    controller.dispose();
+
+    expect(save).toHaveBeenCalledExactlyOnceWith({
+      objects: [{ id: "last-edit" }],
+    });
+  });
+
+  it("keeps the failed snapshot available for conflict recovery", async () => {
+    const failed = new Error("BOARD_CONFLICT");
+    const onSaveError = vi.fn();
+    const controller = new BoardPersistenceController(new BoardHistoryController(), {
+      blocked: () => false,
+      capture: () => ({ objects: [{ id: "local-edit" }] }),
+      save: async () => {
+        throw failed;
+      },
+      setSaved: vi.fn(),
+      onSnapshot: vi.fn(),
+      onSaveError,
+    });
+
+    controller.schedule();
+    await vi.advanceTimersByTimeAsync(501);
+
+    expect(onSaveError).toHaveBeenCalledWith(failed, {
+      objects: [{ id: "local-edit" }],
+    });
+  });
 });
 
 describe("BoardImportController", () => {
