@@ -21,6 +21,15 @@ async function exitOwnedFullscreen(root: HTMLElement | null): Promise<boolean> {
   }
 }
 
+// 同一窗口内可能同时存在多个预览会话（右侧面板 + 快速预览等）：模块级
+// 计数保证只要任一会话处于聚焦，窗口控制按钮就保持透明，退出最后一个
+// 聚焦会话时才恢复不透明。
+let immersivePreviewSessions = 0;
+
+function syncImmersiveTitleBarOverlay(): void {
+  void window.refCanvas?.system?.setPreviewImmersive?.(immersivePreviewSessions > 0);
+}
+
 export function usePreviewSessionMode(
   assetKey: string | null,
   onClose?: () => void,
@@ -79,6 +88,18 @@ export function usePreviewSessionMode(
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [focused, onClose]);
+
+  useEffect(() => {
+    if (!focused) return;
+    // 聚焦（fixed 伪全屏）不触发主进程的 HTML5 全屏事件，窗口控制按钮
+    // 需要显式通知主进程透明化，避免沉浸画面顶部压着不透明的系统按钮。
+    immersivePreviewSessions += 1;
+    syncImmersiveTitleBarOverlay();
+    return () => {
+      immersivePreviewSessions -= 1;
+      syncImmersiveTitleBarOverlay();
+    };
+  }, [focused]);
 
   const toggleFocus = useCallback(() => {
     const root = rootRef.current;

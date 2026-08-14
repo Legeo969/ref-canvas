@@ -270,6 +270,55 @@ describe("shared preview session", () => {
     expect(host.querySelector('[aria-label="全屏预览"]')?.getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("asks the main process to hide window controls while focused and restore after exit", async () => {
+    installFullscreenMock();
+    const setPreviewImmersive = vi.fn(async () => true);
+    const original = (window as unknown as { refCanvas?: unknown }).refCanvas;
+    (window as unknown as { refCanvas?: unknown }).refCanvas = { system: { setPreviewImmersive } };
+    try {
+      const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+      });
+      expect(setPreviewImmersive).toHaveBeenLastCalledWith(true);
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>('[aria-label="退出聚焦预览"]')?.click();
+      });
+      expect(setPreviewImmersive).toHaveBeenLastCalledWith(false);
+    } finally {
+      (window as unknown as { refCanvas?: unknown }).refCanvas = original;
+    }
+  });
+
+  it("keeps window controls hidden while any of several sessions stays focused", async () => {
+    installFullscreenMock();
+    const setPreviewImmersive = vi.fn(async () => true);
+    const original = (window as unknown as { refCanvas?: unknown }).refCanvas;
+    (window as unknown as { refCanvas?: unknown }).refCanvas = { system: { setPreviewImmersive } };
+    try {
+      const hostA = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+      const hostB = await render(<SessionHarness assetKey="b" onClose={() => undefined} />);
+      await act(async () => {
+        hostA.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+      });
+      await act(async () => {
+        hostB.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+      });
+      expect(setPreviewImmersive).toHaveBeenLastCalledWith(true);
+      await act(async () => {
+        hostA.querySelector<HTMLButtonElement>('[aria-label="退出聚焦预览"]')?.click();
+      });
+      // A 退出后 B 仍聚焦：窗口控制按钮保持隐藏。
+      expect(setPreviewImmersive).toHaveBeenLastCalledWith(true);
+      await act(async () => {
+        hostB.querySelector<HTMLButtonElement>('[aria-label="退出聚焦预览"]')?.click();
+      });
+      expect(setPreviewImmersive).toHaveBeenLastCalledWith(false);
+    } finally {
+      (window as unknown as { refCanvas?: unknown }).refCanvas = original;
+    }
+  });
+
   it("exits descendant fullscreen during session unmount", async () => {
     installFullscreenMock();
     const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);

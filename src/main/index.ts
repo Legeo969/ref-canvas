@@ -907,6 +907,8 @@ function registerIpc(): void {
     restoreCaptureWindow,
     saveCapture,
     scheduleBackgroundServices,
+    setImmersiveTitleBarOverlay: (window, immersive) =>
+      setFullscreenTitleBarOverlay(window, immersive),
     state: {
       get alwaysOnBottom() {
         return alwaysOnBottom;
@@ -1208,8 +1210,10 @@ function setFullscreenTitleBarOverlay(window: BrowserWindow | null, fullscreen: 
   // setTitleBarOverlay 仅 Windows/macOS 支持；Linux 上直接跳过，避免抛错。
   if (process.platform !== "win32" && process.platform !== "darwin") return;
   window.setTitleBarOverlay({
+    // 沉浸模式（HTML5/窗口级全屏、聚焦预览）下窗口控制按钮应完全不可见：
+    // color 透明背景 + symbolColor 全透明符号，避免半透明按钮仍压住画面。
     color: fullscreen ? "#00000000" : "#171a1c",
-    symbolColor: fullscreen ? "#dbe4e0aa" : "#aeb5b2",
+    symbolColor: fullscreen ? "#00000000" : "#aeb5b2",
     height: 40,
   });
 }
@@ -1333,6 +1337,9 @@ void app.whenReady().then(async () => {
     thumbnailCacheDirectory,
   );
   providerRegistry = new ProviderRegistry();
+  // provider worker 不继承 process.defaultApp（undefined 会被误判为打包
+  // 环境、只找 app.asar.unpacked 侧车），显式传递打包状态供侧车定位。
+  process.env.REFCANVAS_PACKAGED = app.isPackaged ? "1" : "0";
   providerSupervisor = new WorkerSupervisor({
     workerPath: path.join(__dirname, "provider-worker.js"),
     serviceName: "RefCanvas Provider Worker",

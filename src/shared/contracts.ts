@@ -1998,6 +1998,8 @@ export interface RefCanvasApi {
     }>;
     setPresentationMode(enabled: boolean): Promise<boolean>;
     onPresentationModeChanged(callback: (enabled: boolean) => void): () => void;
+    /** 聚焦预览（伪全屏）时让窗口控制按钮透明化，沉浸画面不显示系统按钮。 */
+    setPreviewImmersive(immersive: boolean): Promise<boolean>;
     /** Fired when the main-process emergency shortcut restores normal mode. */
     onWindowModeReset(callback: () => void): () => void;
     /** FND-002：第二实例打开目录 → 主窗口在新标签打开。 */

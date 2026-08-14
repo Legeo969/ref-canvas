@@ -479,6 +479,8 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:get-window-mode-state"),
     setPresentationMode: (enabled) =>
       ipcRenderer.invoke("system:set-presentation-mode", enabled),
+    setPreviewImmersive: (immersive) =>
+      ipcRenderer.invoke("system:set-preview-immersive", immersive),
     onPresentationModeChanged: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, enabled: boolean) =>
         callback(enabled);
