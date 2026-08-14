@@ -175,6 +175,8 @@ export function SequencePreviewDialog({
   const loadedSourcesRef = useRef(new Set<string>());
   const loadingSourcesRef = useRef(new Set<string>());
   const failedSourcesRef = useRef(new Set<string>());
+  /** 当前帧的可见画面已就绪/已定局（HdrPreview 上报的帧路径）。 */
+  const displayReadyPathRef = useRef<string | null>(null);
   const displayedImageRef = useRef<HTMLImageElement | null>(null);
   const [displayedSource, setDisplayedSource] = useState<string | null>(null);
   const [displayedFrameIndex, setDisplayedFrameIndex] = useState(0);
@@ -265,6 +267,10 @@ export function SequencePreviewDialog({
     setFps(foundSettings.defaultSequenceFps > 0 ? foundSettings.defaultSequenceFps : 24);
   }, [foundSettings.defaultSequenceFps]);
 
+  const handleDisplayReady = useCallback((framePath: string | undefined) => {
+    displayReadyPathRef.current = framePath ?? null;
+  }, []);
+
   // 播放循环：按 FPS 推进帧。
   useEffect(() => {
     if (!playing || frames.length < 2) return;
@@ -273,23 +279,27 @@ export function SequencePreviewDialog({
       // A large EXR can take longer than one frame interval to decode. Keep
       // the current display frame until its preview is ready so playback does
       // not enqueue the entire sequence and then appear frozen.
-      if (
-        isHdrSequence &&
-        (!source || (
-          displayedSourceRef.current !== source &&
-          !failedSourcesRef.current.has(source)
-        ))
-      ) {
-        // 暂存帧与 HdrPreview 显示使用同一 size 变体（默认变换路径），
-        // 门控等待的正是即将显示的缓存变体。
-        timerRef.current = window.setTimeout(tick, 50);
-        return;
+      if (isHdrSequence) {
+        // 显示门控：基础变体先行展示（渐进增强），但必须等到色彩管理
+        // 变体（切换 OCIO/ACES/Raw 后）真正显示、或该帧明确失败后，才
+        // 推进下一帧。否则播放推进远超变体解码速度，覆盖层永远来不及
+        // 显示——切换 OCIO 在序列里看起来完全不生效。
+        const gateImageFailed = source ? failedSourcesRef.current.has(source) : false;
+        const handedOver = displayedSourceRef.current === source;
+        const displayReady =
+          gateImageFailed ||
+          (handedOver && displayReadyPathRef.current === frames[frameIndex]);
+        if (!source || !displayReady) {
+          timerRef.current = window.setTimeout(tick, 50);
+          return;
+        }
       }
       const next = frameIndexRef.current + 1;
       if (next >= frames.length && !looping) {
         setPlaying(false);
         return;
       }
+      displayReadyPathRef.current = null;
       frameIndexRef.current = next % frames.length;
       setFrameIndex(frameIndexRef.current);
       timerRef.current = window.setTimeout(tick, 1000 / Math.max(0.01, fpsRef.current));
@@ -298,7 +308,7 @@ export function SequencePreviewDialog({
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
-  }, [isHdrSequence, looping, frames.length, playing, source]);
+  }, [frames, isHdrSequence, looping, playing, source]);
 
   // 预取相邻帧图。
   useEffect(() => {
@@ -644,6 +654,7 @@ export function SequencePreviewDialog({
               eyedropActive={eyedropActive}
               onEyedropActiveChange={onEyedropActiveChange}
               onColorSample={onColorSample}
+              onDisplayReady={handleDisplayReady}
             /> : <img
               ref={displayedImageRef}
               src={displayedSource}

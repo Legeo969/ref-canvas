@@ -82,6 +82,7 @@ export function HdrPreview({
   eyedropActive = false,
   onEyedropActiveChange,
   onColorSample,
+  onDisplayReady,
 }: {
   source: string;
   extension: string;
@@ -95,6 +96,8 @@ export function HdrPreview({
   eyedropActive?: boolean;
   onEyedropActiveChange?: (active: boolean) => void;
   onColorSample?: (color: string) => void;
+  /** 当前帧的可见画面就绪/定局时上报（序列播放据此推进帧）。 */
+  onDisplayReady?: (framePath: string | undefined) => void;
 }) {
   const foundSettings = useFoundSettings();
   const fallbackRef = useRef<HTMLImageElement | null>(null);
@@ -263,9 +266,38 @@ export function HdrPreview({
   // 明显慢于默认变体（大 EXR 序列尤甚）。渐进增强：基础变体先行显示，
   // 色彩管理变体就绪后淡入覆盖，播放不被变体解码拖住（见序列卡死回归）。
   const managedMode = colorManagedSource !== displaySource;
-  const managedReady = managedMode && preview.status === "ready";
+  // 就绪判断以 <img> 元素自身的 load 事件为准，而不是 useRetryingPreviewUrl
+  // 的 status：缓存命中时 load 事件可能先于 hook 的重置 effect 触发，
+  // status 会被重置回 "loading"，导致循环播放第二圈起门控永远等不到信号。
+  const [baseLoaded, setBaseLoaded] = useState(false);
+  const [managedLoaded, setManagedLoaded] = useState(false);
+  useEffect(() => {
+    setBaseLoaded(false);
+    setManagedLoaded(false);
+  }, [displaySource, requestSource]);
+  // 缓存命中时 load 事件可能在元素插入 DOM 前就触发（load 不冒泡，React
+  // 依赖根节点捕获，detached 阶段的 load 会永久丢失）：每次渲染后同步
+  // 检查 complete 兜底，避免第二圈循环起永远等不到加载完成。
+  useEffect(() => {
+    const managed = managedImageRef.current;
+    if (managedMode && managed?.complete && managed.naturalWidth > 0) {
+      setManagedLoaded(true);
+    }
+    const base = fallbackRef.current;
+    if (!managedMode && base?.complete && base.naturalWidth > 0) {
+      setBaseLoaded(true);
+    }
+  });
   // 基础变体（默认变换，通常已缓存）先行显示；色彩管理变体就绪后淡入覆盖。
   const visibleSource = managedMode ? displaySource : requestSource;
+  const visibleReady = managedMode ? managedLoaded : baseLoaded;
+
+  // 可见画面就绪/定局即上报：序列播放据此推进帧，保证色彩管理变体
+  // （OCIO/ACES/Raw）真正显示出来，而不是被下一帧跳过。
+  useEffect(() => {
+    const settled = visibleReady || preview.status === "failed";
+    if (settled) onDisplayReady?.(path);
+  }, [onDisplayReady, path, preview.status, visibleReady]);
   const closeLocalPopovers = () => {
     setExposureOpen(false);
     setOcioOpen(false);
@@ -508,24 +540,38 @@ export function HdrPreview({
             onClick={(event) => void sampleDisplayedPixel(event)}
           >
             <img
+              key={visibleSource}
               ref={fallbackRef}
               className="hdr-preview-fallback"
               src={visibleSource}
               alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
               draggable={false}
-              onLoad={managedMode ? undefined : preview.markReady}
-              onError={managedMode ? undefined : preview.markError}
+              onLoad={(event) => {
+                // key 重挂载保证 load 事件晚于重置 effect；再校验元素仍是
+                // 当前元素，旧元素迟到的 load 不写入状态。
+                if (event.currentTarget !== fallbackRef.current) return;
+                setBaseLoaded(true);
+                if (!managedMode) preview.markReady();
+              }}
+              onError={() => {
+                if (!managedMode) preview.markError();
+              }}
             />
             {managedMode && (
               <img
+                key={requestSource}
                 ref={managedImageRef}
                 className="hdr-preview-managed"
                 src={requestSource}
                 alt=""
                 aria-hidden="true"
                 draggable={false}
-                style={{ opacity: managedReady ? 1 : 0 }}
-                onLoad={preview.markReady}
+                style={{ opacity: managedLoaded ? 1 : 0 }}
+                onLoad={(event) => {
+                  if (event.currentTarget !== managedImageRef.current) return;
+                  setManagedLoaded(true);
+                  preview.markReady();
+                }}
                 onError={preview.markError}
               />
             )}
@@ -536,7 +582,7 @@ export function HdrPreview({
                 style={{ left: samplePoint.x, top: samplePoint.y, "--sample-color": samplePoint.color } as React.CSSProperties}
               />
             )}
-            {!managedMode && (preview.status === "loading" || preview.status === "waiting") && (
+            {!managedMode && !baseLoaded && (preview.status === "loading" || preview.status === "waiting") && (
               <span className="preview-message" role="status">
                 {preview.status === "waiting" ? "正在等待 EXR 预览…" : translate("hdr.generating")}
               </span>

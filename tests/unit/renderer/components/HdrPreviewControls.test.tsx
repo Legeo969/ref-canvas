@@ -196,7 +196,10 @@ describe("HDR preview controls", () => {
       expect(base?.getAttribute("src")).toBe(source);
       expect(managed?.getAttribute("src")).toContain("inputColorSpace=lin_srgb");
       expect(managed?.getAttribute("src")).toContain("ocio=");
-      // useRetryingPreviewUrl mock 恒为 ready：管理变体已就绪 → 淡入可见。
+      // 管理变体以 img 自身的 load 事件为准（jsdom 需手动触发）。
+      await act(async () => {
+        managed?.dispatchEvent(new Event("load"));
+      });
       expect(managed?.style.opacity).toBe("1");
     } finally {
       vi.mocked(useFoundSettings).mockReturnValue(
