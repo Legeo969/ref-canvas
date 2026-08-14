@@ -401,16 +401,8 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
             </div>
           </div>
         )}
-        {isPreview && (
-          <div className="found-preview-session-footer">
-            <PreviewSessionModeButtons
-              focused={previewSession.focused}
-              fullscreen={previewSession.fullscreen}
-              onToggleFocus={previewSession.toggleFocus}
-              onToggleFullscreen={() => void previewSession.toggleFullscreen()}
-            />
-          </div>
-        )}
+        {/* 无素材时不提供聚焦/全屏入口：对空面板做沉浸模式没有意义，
+            也避免空状态下孤零零两个按钮的奇怪排布。 */}
       </PreviewSessionShell>
     );
   }
