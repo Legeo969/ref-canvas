@@ -49,10 +49,12 @@ export interface FoundToolbarProps {
   loopActive?: boolean;
   /** Loop toggle handler. */
   onLoopToggle?: () => void;
-  /** FPS / speed label, e.g. "25 fps" or "8.333". */
-  fpsLabel?: string;
-  fpsActive?: boolean;
-  onFpsToggle?: () => void;
+  /** 帧率 / 播放速度标签（序列显示 "25 fps"，视频显示 "1.5×"）。 */
+  rateLabel?: string;
+  rateActive?: boolean;
+  onRateToggle?: () => void;
+  /** 帧率或播放速度菜单内容，锚定到速率触发器。 */
+  rateMenu?: ReactNode;
   /** Auto-play active. */
   autoActive?: boolean;
   /** Auto-play toggle handler. */
@@ -113,9 +115,10 @@ export function FoundToolbar({
   timecode = "00:00:00",
   loopActive = false,
   onLoopToggle,
-  fpsLabel = "25 fps",
-  fpsActive = false,
-  onFpsToggle,
+  rateLabel = "25 fps",
+  rateActive = false,
+  onRateToggle,
+  rateMenu,
   autoActive = true,
   onAutoToggle,
   gridActive = false,
@@ -159,12 +162,23 @@ export function FoundToolbar({
   const [paletteExpanded, setPaletteExpanded] = useState(true);
   const paletteVisible = paletteActive ?? colorSwatches.length > 0;
   const lutButtonRef = useRef<HTMLButtonElement>(null);
+  const rateButtonRef = useRef<HTMLButtonElement>(null);
   const [lutMenuPosition, setLutMenuPosition] = useState({ left: 0, bottom: 0 });
+  const [rateMenuPosition, setRateMenuPosition] = useState({ left: 0, bottom: 0 });
+  const rateAriaLabel = variant === "sequence" ? "帧率" : "播放速度";
   const positionLutMenu = useCallback(() => {
     const rect = lutButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
     setLutMenuPosition({
       left: Math.max(6, Math.min(rect.left, window.innerWidth - 226)),
+      bottom: Math.max(6, window.innerHeight - rect.top + 6),
+    });
+  }, []);
+  const positionRateMenu = useCallback(() => {
+    const rect = rateButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setRateMenuPosition({
+      left: Math.max(6, Math.min(rect.left, window.innerWidth - 128)),
       bottom: Math.max(6, window.innerHeight - rect.top + 6),
     });
   }, []);
@@ -180,6 +194,18 @@ export function FoundToolbar({
       window.removeEventListener("scroll", positionLutMenu, true);
     };
   }, [lutActive, lutMenu, positionLutMenu]);
+  useLayoutEffect(() => {
+    if (rateActive && rateMenu) positionRateMenu();
+  }, [rateActive, rateMenu, positionRateMenu]);
+  useEffect(() => {
+    if (!rateActive || !rateMenu) return;
+    window.addEventListener("resize", positionRateMenu);
+    window.addEventListener("scroll", positionRateMenu, true);
+    return () => {
+      window.removeEventListener("resize", positionRateMenu);
+      window.removeEventListener("scroll", positionRateMenu, true);
+    };
+  }, [rateActive, rateMenu, positionRateMenu]);
   return (
     <nav className={`found-toolbar found-toolbar-${variant}`} aria-label="Found 工具条" data-variant={variant}>
       {showUpperRow && (
@@ -286,14 +312,15 @@ export function FoundToolbar({
           >
             自动
           </button>}
-          {onFpsToggle && <button
-            className={`found-tool-label found-fps-trigger${fpsActive ? " active" : ""}`}
+          {onRateToggle && <button
+            ref={rateButtonRef}
+            className={`found-tool-label found-rate-trigger${rateActive ? " active" : ""}`}
             type="button"
-            aria-label="FPS"
-            aria-pressed={fpsActive}
-            title="FPS"
-            onClick={onFpsToggle}
-          >{fpsLabel}</button>}
+            aria-label={rateAriaLabel}
+            aria-pressed={rateActive}
+            title={rateAriaLabel}
+            onClick={onRateToggle}
+          >{rateLabel}</button>}
           {onGridToggle && <button
             className={`found-tool-btn${gridActive ? " active" : ""}`}
             title="网格"
@@ -346,6 +373,17 @@ export function FoundToolbar({
           style={{ left: lutMenuPosition.left, bottom: lutMenuPosition.bottom }}
         >
           {lutMenu}
+        </div>,
+        document.body,
+      )}
+      {rateActive && rateMenu && typeof document !== "undefined" && createPortal(
+        <div
+          className="found-rate-anchor-menu"
+          data-placement="top-start"
+          role="presentation"
+          style={{ left: rateMenuPosition.left, bottom: rateMenuPosition.bottom }}
+        >
+          {rateMenu}
         </div>,
         document.body,
       )}

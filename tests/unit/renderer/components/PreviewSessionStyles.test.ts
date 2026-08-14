@@ -35,24 +35,26 @@ describe("preview session controls", () => {
       /\.directory-preview:is\(\.preview-session-focused, :fullscreen\) \.directory-preview-info,[^{]*\.preview-nav\s*{\s*display:\s*none;/s,
     );
     expect(found).toMatch(
-      /\.found-preview-panel:fullscreen \.found-tab-bar \[role="tab"\],[^{]*{\s*display:\s*none;/s,
-    );
-    expect(found).toMatch(
-      /\.found-preview-panel:fullscreen \.found-tab-bar\s*{[^}]*position:\s*static;[^}]*height:\s*40px;/s,
+      /\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar,[^{]*{\s*display:\s*none;/s,
     );
   });
 
-  it("keeps focus chrome while fullscreen hides nonessential chrome", async () => {
+  it("makes focus and fullscreen previews media-first with transparent overlay controls", async () => {
     const found = await readFile(path.resolve("src/renderer/styles/found-preview.css"), "utf8");
     const shell = await readFile(path.resolve("src/renderer/styles/shell.css"), "utf8");
     const dialogs = await readFile(path.resolve("src/renderer/styles/dialogs.css"), "utf8");
     const directory = await readFile(path.resolve("src/renderer/styles/directory.css"), "utf8");
-    expect(found).toMatch(/\.found-preview-panel\.preview-session-focused \.found-tab-bar \[role="tab"\][^{]*{[^}]*display:\s*flex/s);
-    expect(found).toMatch(/\.found-preview-panel:fullscreen \.found-tab-bar \[role="tab"\][^{]*{[^}]*display:\s*none/s);
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar,[^{]*\.workbench-external-action\s*{[^}]*display:\s*none/s);
     expect(found).toMatch(/\.found-preview-viewport[^}]*min-height:\s*0/s);
-    expect(shell).toMatch(/\.preview-session-focused\s*{[^}]*inset:\s*48px 0 28px[^}]*height:\s*calc\(100vh - 76px\)/s);
+    expect(shell).toMatch(/\.preview-session-focused\s*{[^}]*inset:\s*0[^}]*height:\s*100vh/s);
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-preview-workspace\s*{[^}]*position:\s*absolute;[^}]*background:\s*transparent;[^}]*backdrop-filter:\s*none;/s);
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) :is\([^}]*\.found-toolbar-tail,[^}]*\.found-color-context-toolbar,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;/s);
+    expect(found).toMatch(/\.found-preview-panel:fullscreen :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/s);
+    expect(found).toMatch(/\.found-preview-panel:fullscreen\.fullscreen-controls-visible :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*visible;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;[^}]*transition-property:\s*opacity, transform;/s);
+    expect(found).toMatch(/\.found-toolbar-tail\s*{[^}]*background:\s*var\(--found-toolbar\);[^}]*}/s);
+    expect(found).not.toMatch(/\.found-toolbar-tail\s*{[^}]*box-shadow:/s);
     expect(found).toMatch(/\.found-context-tray\s*{[^}]*max-height:\s*min\(38vh, 320px\);[^}]*overflow:\s*auto/s);
-    expect(found).not.toMatch(/\.found-preview-panel:fullscreen \.found-tab-bar\s*{[^}]*position:\s*absolute/s);
+    expect(found).not.toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar\s*{[^}]*position:\s*absolute/s);
     expect(shell).toMatch(/\.preview-window:is\(\.preview-session-focused, :fullscreen\) \.preview-window-header\s*{[^}]*position:\s*static/s);
     expect(dialogs).toMatch(/\.directory-preview:is\(\.preview-session-focused, :fullscreen\) \.directory-preview-session-actions\s*{[^}]*position:\s*static/s);
     expect(directory).toMatch(/\.directory-workbench-panel:is\(\.preview-session-focused, :fullscreen\) \.workbench-header\s*{[^}]*position:\s*static/s);

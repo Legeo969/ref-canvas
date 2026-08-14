@@ -12,6 +12,13 @@ export function resolveEnvironmentPreviewMode(
   return forcedMode ?? selectedMode;
 }
 
+export function canRenderEnvironmentPreview(
+  forcedMode: EnvironmentPreviewMode | undefined,
+  isPanorama: boolean,
+): boolean {
+  return forcedMode === "reflection" || forcedMode === "panorama" || isPanorama;
+}
+
 export function createEnvironmentTexture(image: HTMLImageElement): THREE.Texture {
   const texture = new THREE.Texture(image);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -45,6 +52,7 @@ export function PanoramaPreview({
   const [environmentImage, setEnvironmentImage] = useState<HTMLImageElement | null>(null);
   const [rendererReady, setRendererReady] = useState(false);
   const effectiveMode = resolveEnvironmentPreviewMode(forcedMode, mode);
+  const environmentEligible = canRenderEnvironmentPreview(forcedMode, isPanorama);
 
   useEffect(() => {
     setIsPanorama(false);
@@ -54,6 +62,7 @@ export function PanoramaPreview({
     setRendererReady(false);
     const image = new Image();
     let cancelled = false;
+    image.crossOrigin = "anonymous";
     image.onload = async () => {
       try {
         await image.decode?.();
@@ -65,6 +74,9 @@ export function PanoramaPreview({
         setEnvironmentImage(image);
       }
     };
+    image.onerror = () => {
+      if (!cancelled) setPanoramaError(translate("panorama.error"));
+    };
     image.src = source;
     return () => {
       cancelled = true;
@@ -75,7 +87,7 @@ export function PanoramaPreview({
   useEffect(() => {
     setRendererReady(false);
     const host = canvasHostRef.current;
-    if (!host || !isPanorama || !environmentImage || effectiveMode === "flat" || panoramaError) return;
+    if (!host || !environmentEligible || !environmentImage || effectiveMode === "flat" || panoramaError) return;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x101314);
     const camera = new THREE.PerspectiveCamera(
@@ -120,13 +132,28 @@ export function PanoramaPreview({
     const sphere = new THREE.Mesh(geometry, material);
     scene.add(sphere);
     const texture = createEnvironmentTexture(environmentImage);
+    let reflectionEnvironment: THREE.Texture | null = null;
+    let pmremGenerator: THREE.PMREMGenerator | null = null;
     if (material instanceof THREE.MeshBasicMaterial) {
       material.map = texture;
     } else {
       texture.mapping = THREE.EquirectangularReflectionMapping;
       texture.needsUpdate = true;
-      material.envMap = texture;
-      scene.environment = texture;
+      try {
+        pmremGenerator = new THREE.PMREMGenerator(renderer);
+        reflectionEnvironment = pmremGenerator.fromEquirectangular(texture).texture;
+        material.envMap = reflectionEnvironment;
+        scene.environment = reflectionEnvironment;
+      } catch {
+        texture.dispose();
+        geometry.dispose();
+        material.dispose();
+        pmremGenerator?.dispose();
+        renderer.dispose();
+        host.replaceChildren();
+        setPanoramaError(translate("panorama.error"));
+        return;
+      }
     }
     material.needsUpdate = true;
     const resize = () => {
@@ -154,13 +181,15 @@ export function PanoramaPreview({
       controls.dispose();
       geometry.dispose();
       texture.dispose();
+      reflectionEnvironment?.dispose();
+      pmremGenerator?.dispose();
       material.dispose();
       renderer.dispose();
       host.replaceChildren();
     };
-  }, [effectiveMode, environmentImage, exposure, isPanorama, panoramaError, toneMapping]);
+  }, [effectiveMode, environmentEligible, environmentImage, exposure, panoramaError, toneMapping]);
 
-  const showingEnvironment = effectiveMode !== "flat" && isPanorama && !panoramaError;
+  const showingEnvironment = effectiveMode !== "flat" && environmentEligible && !panoramaError;
 
   return (
     <div className="panorama-preview">

@@ -127,7 +127,10 @@ export class PreviewQueue<T> {
         item.signalConsumers.delete(signal);
         if (item.persistentConsumers || item.signalConsumers.size) return;
         if (item.active) {
-          item.controller.abort();
+          // 进行中的任务已持有解码器/子进程：结果会写入持久缓存，中止只会
+          // 浪费已完成的工作并让下一次相同请求从头再来。布局拖拽会高频中止
+          // 预览请求（重排→旧 fetch 作废），若连带杀死解码，大目录缩略图
+          // 会一直「正在生成预览」。让任务跑完即可，无人等待也无妨。
           return;
         }
         const index = this.queue.indexOf(item);

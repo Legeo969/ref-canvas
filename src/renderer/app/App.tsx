@@ -274,7 +274,11 @@ function WorkspaceApp() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      // 合成键盘事件的目标可能是 window/document（非 Element），此时
+      // matches/isContentEditable 会抛 TypeError；真实按键始终以元素为
+      // 目标，但防御性收窄不会改变任何正常行为。
+      const target =
+        event.target instanceof HTMLElement ? event.target : null;
       const isEditing =
         target?.matches("input, textarea, select") ||
         target?.isContentEditable ||

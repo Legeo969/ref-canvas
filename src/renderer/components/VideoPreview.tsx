@@ -71,32 +71,59 @@ export function VideoPreview({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [paletteTimeMs, setPaletteTimeMs] = useState(0);
   const [samplePoint, setSamplePoint] = useState<{ x: number; y: number; color: string } | null>(null);
+  const sampleReticleTimerRef = useRef<number | null>(null);
   const lastFrameTimeRef = useRef(0);
   const paletteTimerRef = useRef<number | null>(null);
   const pendingPaletteTimeRef = useRef(0);
   const lastPaletteUpdateRef = useRef(0);
   const effectiveFrameRate = playbackFps ?? frameRate;
 
-  const sampleDisplayedPixel = (event: MouseEvent<HTMLDivElement>) => {
+  const sampleDisplayedPixel = (event: MouseEvent<HTMLElement>) => {
     if (!eyedropActive) return;
     const source = frameSource && !playing ? frameImageRef.current : videoRef.current;
-    if (!source) return;
+    // 任何失败路径都显式退出取色，避免吸管光标/准星永远停在画面上。
+    if (!source) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
     const rect = source.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+    if (!rect.width || !rect.height) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
     const width = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
     const height = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
-    if (!width || !height) return;
+    if (!width || !height) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return;
-    context.drawImage(source, 0, 0, width, height);
     const x = Math.max(0, Math.min(width - 1, Math.floor((event.clientX - rect.left) * width / rect.width)));
     const y = Math.max(0, Math.min(height - 1, Math.floor((event.clientY - rect.top) * height / rect.height)));
-    const pixel = context.getImageData(x, y, 1, 1).data;
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
+    let pixel: Uint8ClampedArray;
+    try {
+      context.imageSmoothingEnabled = false;
+      context.drawImage(source, x, y, 1, 1, 0, 0, 1, 1);
+      pixel = context.getImageData(0, 0, 1, 1).data;
+    } catch {
+      onEyedropActiveChange?.(false);
+      return;
+    }
     const color = `#${[pixel[0], pixel[1], pixel[2]].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
     setSamplePoint({ x: event.clientX - rect.left, y: event.clientY - rect.top, color });
+    // 准星只做极短的「点在了这里」反馈（约 250ms），随即消失。
+    if (sampleReticleTimerRef.current !== null) window.clearTimeout(sampleReticleTimerRef.current);
+    sampleReticleTimerRef.current = window.setTimeout(() => {
+      sampleReticleTimerRef.current = null;
+      setSamplePoint(null);
+    }, 250);
     onColorSample?.(color);
     onEyedropActiveChange?.(false);
   };
@@ -118,6 +145,7 @@ export function VideoPreview({
 
   useEffect(() => () => {
     if (paletteTimerRef.current !== null) window.clearTimeout(paletteTimerRef.current);
+    if (sampleReticleTimerRef.current !== null) window.clearTimeout(sampleReticleTimerRef.current);
   }, []);
 
   // 挂载后按偏好触发播放（浏览器 autoplay 策略下静音不可行时忽略）。
@@ -232,17 +260,15 @@ export function VideoPreview({
   });
 
   const content = (
-    <div
-      className={`video-preview${eyedropActive ? " is-sampling" : ""}`}
-      onClick={(event) => {
-        if (event.target instanceof HTMLVideoElement || event.target instanceof HTMLImageElement) {
-          sampleDisplayedPixel(event);
-        }
-      }}
-    >
+    <div className={`video-preview${eyedropActive ? " is-sampling" : ""}`}>
+        {/* crossOrigin：画布取色需要 CORS-clean 源；协议仅在可信 origin
+            下回 ACAO，缺失时取色静默失效——与 ImageReviewPreview 的
+            fetch+ImageBitmap 兜底不对称，属刻意取舍。 */}
         <video
           ref={videoRef}
+          crossOrigin="anonymous"
           src={asset.previewUrl}
+          onClick={sampleDisplayedPixel}
           controls={!onOpenTool}
           loop={looping}
           muted={muted}
@@ -279,9 +305,11 @@ export function VideoPreview({
           <img
             ref={frameImageRef}
             className="video-frame-step"
+            crossOrigin="anonymous"
             src={frameSource}
             alt={translate("video.frameAlt").replace("{timecode}", formatTimecode(timecode))}
             draggable={false}
+            onClick={sampleDisplayedPixel}
           />
         )}
         {samplePoint && (

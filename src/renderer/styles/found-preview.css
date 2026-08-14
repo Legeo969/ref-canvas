@@ -388,11 +388,15 @@
 
 .sequence-inline-menu.anchored {
   position: fixed;
-  z-index: 1000;
+  /* 快看对话框（quick-preview-backdrop）z-index 2200：锚点菜单必须高于
+     它，否则在独立预览对话框里打开时会被对话框盖住、点了「白点」。 */
+  z-index: 2300;
   top: auto;
   right: auto;
   animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
 }
+
+.sequence-fps-popover { width: 128px; }
 
 .sequence-export-popover {
   width: 270px;
@@ -613,8 +617,7 @@
 }
 
 .found-preview-panel .image-review-img,
-.found-preview-panel .hdr-preview-fallback,
-.found-preview-panel .hdr-preview-stage canvas {
+.found-preview-panel .hdr-preview-fallback {
   outline: 0;
 }
 
@@ -683,9 +686,41 @@
 
 .found-lut-anchor-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: 2300;
   width: 210px;
 }
+
+.found-rate-anchor-menu {
+  position: fixed;
+  z-index: 2300;
+  width: 128px;
+}
+
+.playback-rate-menu {
+  display: grid;
+  gap: 1px;
+  padding: 5px;
+  border-radius: 7px;
+  background: #111312;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  transform-origin: bottom left;
+  animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.playback-rate-menu button {
+  min-height: 28px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #d6ded9;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.playback-rate-menu button:hover { background: rgba(255, 255, 255, 0.07); }
+.playback-rate-menu button.active { background: rgba(64, 161, 130, 0.18); color: #a9e6d2; }
 
 .preview-color-tools.lut-popover-menu {
   display: grid;
@@ -727,7 +762,7 @@
 .hdr-ocio-anchor-menu,
 .hdr-channel-anchor-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: 2300;
   animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
 }
 .hdr-ocio-anchor-menu { width: 210px; }
@@ -750,7 +785,7 @@
 .hdr-exposure-control { position: relative; }
 .hdr-exposure-anchor-menu {
   position: fixed;
-  z-index: 1000;
+  z-index: 2300;
   width: 196px;
   transform-origin: bottom center;
   animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
@@ -789,35 +824,125 @@
   white-space: nowrap;
 }
 
-/* Focus and fullscreen keep controls in layout so no chrome covers the media. */
-.found-preview-panel.preview-session-focused .found-tab-bar [role="tab"] {
-  display: flex;
-}
-
-.found-preview-panel:fullscreen .found-tab-bar {
-  position: static;
-  width: 100%;
-  height: 40px;
-  padding: 0 4px;
-  border-bottom: 1px solid var(--found-divider);
-  border-radius: 0;
-  background: var(--found-panel);
-  box-shadow: none;
-}
-
-.found-preview-panel:fullscreen .found-tab-bar [role="tab"],
-.found-preview-panel:fullscreen .workbench-external-action {
-  display: none;
-}
-
-.found-preview-panel:fullscreen .found-toolbar-spacer {
+/* Immersive preview gives the media the full surface; controls float over it. */
+.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-tab-bar,
+.found-preview-panel:is(.preview-session-focused, :fullscreen) .workbench-external-action {
   display: none;
 }
 
 .found-preview-panel:is(.preview-session-focused, :fullscreen) .found-preview-content,
 .found-preview-panel:is(.preview-session-focused, :fullscreen) .workbench-preview-shell {
+  position: relative;
   width: 100%;
   height: 100%;
+}
+
+.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-preview-content {
+  position: absolute;
+  inset: 0;
+  height: auto;
+}
+
+.found-preview-panel:is(.preview-session-focused, :fullscreen) {
+  background: transparent !important;
+}
+
+.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-preview-workspace {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 6;
+  border-color: transparent;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.found-preview-panel:is(.preview-session-focused, :fullscreen) :is(
+  .found-preview-file-row,
+  .found-toolbar,
+  .found-toolbar-row,
+  .found-toolbar-row.secondary,
+  .found-toolbar-tail,
+  .found-color-context-toolbar,
+  .found-preview-session-footer,
+  .found-context-tray,
+  .found-context-tray-header,
+  .asset-notes-panel
+) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.found-preview-panel:fullscreen :is(
+  .found-preview-workspace,
+  .found-preview-session-footer,
+  .found-layers-panel,
+  .preview-sample-reticle
+) {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: none;
+}
+
+.found-preview-panel:fullscreen.fullscreen-controls-visible :is(
+  .found-preview-workspace,
+  .found-preview-session-footer,
+  .found-layers-panel,
+  .preview-sample-reticle
+) {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition-property: opacity, transform;
+  transition-duration: 140ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+body:has(.found-preview-panel:is(.preview-session-focused, :fullscreen)) :is(
+  .playback-rate-menu,
+  .preview-color-tools.lut-popover-menu,
+  .hdr-ocio-menu,
+  .hdr-exposure-popover,
+  .hdr-channel-anchor-menu .hdr-channel-control,
+  .sequence-inline-menu
+) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .found-preview-panel:fullscreen :is(
+    .found-preview-workspace,
+    .found-preview-session-footer,
+    .found-layers-panel
+  ) {
+    transform: none;
+  }
+
+  .found-preview-panel:fullscreen.fullscreen-controls-visible :is(
+    .found-preview-workspace,
+    .found-preview-session-footer,
+    .found-layers-panel
+  ) {
+    transition-duration: 0ms;
+  }
+}
+
+/* 沉浸模式仅视频/GIF 填满裁切（影院语义）；静态图与序列帧保持 contain，
+   避免裁掉画面内容。 */
+.found-preview-panel:is(.preview-session-focused, :fullscreen) :is(
+  .gif-preview-canvas,
+  .video-preview video
+) {
+  object-fit: cover;
 }
 
 /* ─── Canvas area ─── */
@@ -938,7 +1063,6 @@
   gap: 2px;
   padding-left: 4px;
   background: var(--found-toolbar);
-  box-shadow: -10px 0 18px rgba(0, 0, 0, 0.2);
 }
 
 .found-toolbar-tail .preview-session-mode-actions {

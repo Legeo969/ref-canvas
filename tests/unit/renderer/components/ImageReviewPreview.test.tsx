@@ -105,7 +105,7 @@ describe("ImageReviewPreview (FND-005)", () => {
     expect(controls.querySelector(".image-preview-toolbar")).toBeTruthy();
   });
 
-  it("enables the eyedropper mode on click", async () => {
+  it("enables the eyedropper without forcing custom-scheme images through CORS", async () => {
     installRefCanvas();
     const { host, root, asset } = render();
     await act(async () => {
@@ -115,6 +115,7 @@ describe("ImageReviewPreview (FND-005)", () => {
       host.querySelector<HTMLButtonElement>("[aria-label='像素取色']")?.click();
     });
     expect(host.querySelector(".image-review-img")?.classList.contains("eyedrop")).toBe(true);
+    expect(host.querySelector(".image-review-img")?.getAttribute("crossorigin")).toBeNull();
   });
 
   it("shows the layers panel only for layered formats", async () => {
@@ -171,9 +172,10 @@ describe("ImageReviewPreview (FND-005)", () => {
     installRefCanvas();
     window.refCanvas.system.writeClipboard = writeClipboard;
     const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray([18, 52, 86, 255]) }));
+    const drawImage = vi.fn();
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
       clearRect: vi.fn(),
-      drawImage: vi.fn(),
+      drawImage,
       getImageData,
     } as unknown as CanvasRenderingContext2D);
     const { host, root, asset } = render();
@@ -208,7 +210,11 @@ describe("ImageReviewPreview (FND-005)", () => {
       }));
       await Promise.resolve();
     });
-    expect(getImageData).toHaveBeenLastCalledWith(50, 25, 1, 1);
+    expect(getImageData).toHaveBeenLastCalledWith(0, 0, 1, 1);
+    expect(drawImage).toHaveBeenLastCalledWith(image, 50, 25, 1, 1, 0, 0, 1, 1);
+    const sampleCanvas = host.querySelector<HTMLCanvasElement>(".image-preview-viewport-stage canvas");
+    expect(sampleCanvas?.width).toBe(1);
+    expect(sampleCanvas?.height).toBe(1);
     const sample = host.querySelector<HTMLButtonElement>('[aria-label="复制 #123456"]');
     expect(sample).toBeTruthy();
     await act(async () => sample?.click());

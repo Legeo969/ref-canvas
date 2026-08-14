@@ -911,10 +911,10 @@ body.panel-resizing {
 .preview-session-focused {
   position: fixed !important;
   z-index: 2600 !important;
-  inset: 48px 0 28px !important;
+  inset: 0 !important;
   width: 100vw !important;
   max-width: none !important;
-  height: calc(100vh - 76px) !important;
+  height: 100vh !important;
   max-height: none !important;
   border-radius: 0 !important;
   background: #111514 !important;

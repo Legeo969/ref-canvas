@@ -136,12 +136,94 @@ async function main() {
       "base64",
     ),
   );
+  fs.writeFileSync(
+    path.join(browseRoot, "runtime-still.jpg"),
+    Buffer.from(
+      "/9j/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAEAAQDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAABv/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AIkAPQp//9k=",
+      "base64",
+    ),
+  );
+  const stillImageFixtures = {
+    "runtime-still.webp": "UklGRjgAAABXRUJQVlA4ICwAAADQAQCdASoEAAQAAMASJYgCdLoB+AADsAD+/ZVV/5miY5j9q//ylUWqbcUAAA==",
+    "runtime-still.bmp": "Qk1mAAAAAAAAADYAAAAoAAAABAAAAAQAAAABABgAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQS",
+    "runtime-still.avif": "AAAAHGZ0eXBhdmlmAAAAAG1pZjFhdmlmbWlhZgAAANRtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAACJpbG9jAAAAAERAAAEAAQAAAAAA+AABAAAAAAAAACgAAAAjaWluZgAAAAAAAQAAABVpbmZlAgAAAAABAABhdjAxAAAAAA5waXRtAAAAAAABAAAAVGlwcnAAAAA2aXBjbwAAAAxhdjFDgSACAAAAABRpc3BlAAAAAAAAAAQAAAAEAAAADnBpeGkAAAAAAQgAAAAWaXBtYQAAAAAAAAABAAEDgQIDAAAAMG1kYXQSAAoIOAR9pAQ0GkAyGhICQ0qAAPIAAP9cCJEvSUS9rSx3dWQmcOLE",
+  };
+  for (const [filename, contents] of Object.entries(stillImageFixtures)) {
+    fs.writeFileSync(path.join(browseRoot, filename), Buffer.from(contents, "base64"));
+  }
+  fs.writeFileSync(
+    path.join(browseRoot, "runtime-still.svg"),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#123456"/></svg>',
+  );
   execFileSync(ffmpegStatic, [
     "-hide_banner", "-loglevel", "error", "-y",
     "-f", "lavfi", "-i", "testsrc=size=640x360:rate=24",
     "-t", "2", "-pix_fmt", "yuv420p",
     path.join(browseRoot, "runtime-preview.mp4"),
   ]);
+  execFileSync(ffmpegStatic, [
+    "-hide_banner", "-loglevel", "error", "-y",
+    "-f", "lavfi", "-i", "testsrc=size=32x32:rate=4",
+    "-t", "1", "-loop", "0",
+    path.join(browseRoot, "runtime-still.gif"),
+  ]);
+  // 目录切换缓存场景：dir-a 小图 + 大 EXR（模拟用户的大素材目录），
+  // dir-b 只有小图。大 EXR 由仓库自带的 oiiotool 生成；缺失时降级为小图。
+  fs.mkdirSync(path.join(browseRoot, "dir-a"), { recursive: true });
+  fs.mkdirSync(path.join(browseRoot, "dir-b"), { recursive: true });
+  for (const name of ["runtime-still.jpg", "runtime-still.bmp", "runtime-still.webp"]) {
+    fs.copyFileSync(
+      path.join(browseRoot, name),
+      path.join(browseRoot, "dir-a", name),
+    );
+  }
+  fs.copyFileSync(
+    path.join(browseRoot, "runtime-still.bmp"),
+    path.join(browseRoot, "dir-b", "small-a.bmp"),
+  );
+  fs.copyFileSync(
+    path.join(browseRoot, "runtime-still.webp"),
+    path.join(browseRoot, "dir-b", "small-b.webp"),
+  );
+  const devOiiotool = path.join(
+    root,
+    "assets",
+    "native",
+    "openimageio",
+    "win32-x64",
+    "oiiotool.exe",
+  );
+  if (fs.existsSync(devOiiotool)) {
+    // EXR 吸色场景 fixture：已知颜色（线性 0.2/0.4/0.6 → sRGB ≈ 123,168,202）。
+    execFileSync(devOiiotool, [
+      "--create", "64x64", "3",
+      "--fill:color=0.2,0.4,0.6", "64x64",
+      "--chnames", "R,G,B",
+      "--scanline", "--compression", "zip", "-d", "half",
+      "-o", path.join(browseRoot, "runtime-still.exr"),
+    ]);
+    execFileSync(devOiiotool, [
+      "--pattern", "noise:type=gaussian:mean=0.5:stddev=0.25",
+      "4096x2048", "3", "-d", "half", "--compression", "zip",
+      "-o", path.join(browseRoot, "dir-a", "big-noise.exr"),
+    ]);
+    // 独立序列对话框的工具菜单场景：3 帧迷你序列（帧率快、持续换帧，
+    // 用于验证播放期间打开的工具菜单不会被下一帧关闭）。
+    for (let index = 0; index < 3; index += 1) {
+      execFileSync(devOiiotool, [
+        "--create", "32x32", "3",
+        `--fill:color=0.2,0.3,${0.4 + index * 0.2}`, "32x32",
+        "--chnames", "R,G,B",
+        "--scanline", "--compression", "zip", "-d", "half",
+        "-o", path.join(browseRoot, `smoke-seq_${String(index + 1).padStart(4, "0")}.exr`),
+      ]);
+    }
+  } else {
+    fs.copyFileSync(
+      path.join(browseRoot, "runtime-still.jpg"),
+      path.join(browseRoot, "dir-a", "big-fallback.jpg"),
+    );
+  }
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
   const migrated = await launchOnce("schema-12-to-19");

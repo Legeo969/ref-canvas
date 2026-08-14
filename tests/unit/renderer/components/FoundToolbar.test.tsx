@@ -87,7 +87,7 @@ describe("FoundToolbar variants", () => {
 
   it("does not render commands that have no implementation", async () => {
     const host = await render("image");
-    for (const label of ["添加", "自动", "FPS", "网格", "画笔", "截图"]) {
+    for (const label of ["添加", "自动", "播放速度", "帧率", "网格", "画笔", "截图"]) {
       expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull();
     }
   });
@@ -197,8 +197,8 @@ describe("FoundToolbar variants", () => {
     expect(host.querySelector(".found-color-context-toolbar")).toBeNull();
   });
 
-  it("routes FPS and shows active contextual tools as pressed", async () => {
-    const onFps = vi.fn();
+  it("routes playback speed and shows active contextual tools as pressed", async () => {
+    const onRate = vi.fn();
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -206,19 +206,19 @@ describe("FoundToolbar variants", () => {
     await act(async () => root.render(
       <FoundToolbar
         variant="video"
-        fpsActive
+        rateActive
         notesActive
         lutActive
         gifActive
-        onFpsToggle={onFps}
+        onRateToggle={onRate}
         onNotesToggle={() => undefined}
         onLutToggle={() => undefined}
         onGifExport={() => undefined}
       />,
     ));
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="FPS"]')?.click());
-    expect(onFps).toHaveBeenCalledOnce();
-    for (const label of ["FPS", "资产备注", "LUT", "导出 GIF"]) {
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="播放速度"]')?.click());
+    expect(onRate).toHaveBeenCalledOnce();
+    for (const label of ["播放速度", "资产备注", "LUT", "导出 GIF"]) {
       expect(host.querySelector(`[aria-label="${label}"]`)?.getAttribute("aria-pressed")).toBe("true");
     }
   });
@@ -240,5 +240,45 @@ describe("FoundToolbar variants", () => {
     expect(menu?.querySelector('[data-testid="lut-menu-content"]')).toBeTruthy();
     expect(host.querySelector(".found-toolbar-scroll .found-lut-anchor-menu")).toBeNull();
     expect(menu?.getAttribute("data-placement")).toBe("top-start");
+  });
+
+  it("anchors playback speed options to the toolbar trigger", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar
+        variant="video"
+        rateActive
+        onRateToggle={() => undefined}
+        rateMenu={<div data-testid="playback-options">1.5×</div>}
+      />,
+    ));
+    const menu = document.body.querySelector(".found-rate-anchor-menu");
+    expect(menu?.querySelector('[data-testid="playback-options"]')).toBeTruthy();
+    expect(host.querySelector(".found-toolbar-scroll .found-rate-anchor-menu")).toBeNull();
+    expect(menu?.getAttribute("data-placement")).toBe("top-start");
+  });
+
+  it("labels the rate trigger by concept: 帧率 for sequences, 播放速度 for video", async () => {
+    const sequenceHost = document.createElement("div");
+    document.body.append(sequenceHost);
+    const sequenceRoot = createRoot(sequenceHost);
+    roots.push(sequenceRoot);
+    await act(async () => sequenceRoot.render(
+      <FoundToolbar variant="sequence" onRateToggle={() => undefined} rateLabel="24 fps" />,
+    ));
+    expect(sequenceHost.querySelector('[aria-label="帧率"]')?.textContent).toBe("24 fps");
+
+    const videoHost = document.createElement("div");
+    document.body.append(videoHost);
+    const videoRoot = createRoot(videoHost);
+    roots.push(videoRoot);
+    await act(async () => videoRoot.render(
+      <FoundToolbar variant="video" onRateToggle={() => undefined} rateLabel="1.5×" />,
+    ));
+    expect(videoHost.querySelector('[aria-label="播放速度"]')?.textContent).toBe("1.5×");
+    expect(videoHost.querySelector('[aria-label="帧率"]')).toBeNull();
   });
 });

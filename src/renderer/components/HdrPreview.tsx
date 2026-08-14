@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   alphaBackgroundStyle,
@@ -9,7 +9,7 @@ import { translate } from "../app/i18n";
 import { Download, FolderOpen, RefreshCw, RotateCcw, SunMedium } from "lucide-react";
 import { ImagePreviewViewport } from "./ImagePreviewViewport";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
-import { createEnvironmentTexture, PanoramaPreview, type EnvironmentPreviewMode } from "./PanoramaPreview";
+import { PanoramaPreview, type EnvironmentPreviewMode } from "./PanoramaPreview";
 import type { ColorStatus } from "../../shared/contracts";
 
 type ToneMappingName = "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw";
@@ -28,8 +28,8 @@ const AUTO_LAYER = "__auto__";
 const MAIN_LAYER = "__main__";
 const PROBE_RETRY_DELAYS_MS = [600, 1_200, 2_400] as const;
 
-export function hdrDisplayPreviewUrl(token: string): string {
-  return `refbrowse://thumbnail/${token}?priority=preview&size=1920`;
+export function hdrDisplayPreviewUrl(token: string, size = 1920): string {
+  return `refbrowse://thumbnail/${token}?priority=preview&size=${size}`;
 }
 
 const toneMappings: Record<ToneMappingName, THREE.ToneMapping> = {
@@ -50,11 +50,32 @@ function appendPreviewParameter(source: string, name: string, value: string): st
   return `${source}${source.includes("?") ? "&" : "?"}${name}=${encodeURIComponent(value)}`;
 }
 
+/**
+ * 默认路径（linear-srgb）按文件头解析输入色彩空间、线性→sRGB 显示，与序列
+ * 暂存解码共享同一缓存变体，因此不携带显式变换参数；显式 ACES/Raw 或 OCIO
+ * 配置才生成独立的色彩管理变体（见 ADR-0001）。
+ */
+export function resolveHdrTransformSource(
+  displaySource: string,
+  toneMapping: ToneMappingName,
+  ocioConfigPath: string | null,
+): string {
+  const needsExplicitColorTransform = toneMapping !== "linear-srgb" || Boolean(ocioConfigPath);
+  return needsExplicitColorTransform
+    ? appendPreviewParameter(
+        appendPreviewParameter(displaySource, "inputColorSpace", inputColorSpaces[toneMapping]),
+        "displayTransform",
+        toneMapping,
+      )
+    : displaySource;
+}
+
 export function HdrPreview({
   source,
   extension,
   path,
   managed = false,
+  displaySize = 1920,
   controlsTarget,
   multichannelOpen = false,
   multichannelAnchor,
@@ -66,6 +87,8 @@ export function HdrPreview({
   extension: string;
   path?: string;
   managed?: boolean;
+  /** 显示变体解码尺寸；序列内嵌播放传 960，全屏/单帧保持 1920。 */
+  displaySize?: number;
   controlsTarget?: HTMLElement | null;
   multichannelOpen?: boolean;
   multichannelAnchor?: HTMLElement | null;
@@ -74,12 +97,6 @@ export function HdrPreview({
   onColorSample?: (color: string) => void;
 }) {
   const foundSettings = useFoundSettings();
-  const hostRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.OrthographicCamera | null>(null);
-  const planeRef = useRef<THREE.Mesh | null>(null);
-  const textureRef = useRef<THREE.Texture | null>(null);
   const fallbackRef = useRef<HTMLImageElement | null>(null);
   const exposureButtonRef = useRef<HTMLButtonElement | null>(null);
   const ocioButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -96,12 +113,9 @@ export function HdrPreview({
   const [colorStatus, setColorStatus] = useState<ColorStatus | null>(null);
   const [viewMode, setViewMode] = useState<EnvironmentPreviewMode>("flat");
   const [exposureOpen, setExposureOpen] = useState(false);
-  const [exposureMenuPosition, setExposureMenuPosition] = useState({ left: 0, bottom: 0 });
-  const [ocioMenuPosition, setOcioMenuPosition] = useState({ left: 0, bottom: 0 });
-  const [channelMenuPosition, setChannelMenuPosition] = useState({ left: 0, bottom: 0 });
-  const [textureStatus, setTextureStatus] = useState<"loading" | "ready" | "failed">(
-    "loading",
-  );
+  const [exposureMenuPosition, setExposureMenuPosition] = useState<{ left: number; top: number | null; bottom: number | null }>({ left: 0, top: null, bottom: 0 });
+  const [ocioMenuPosition, setOcioMenuPosition] = useState<{ left: number; top: number | null; bottom: number | null }>({ left: 0, top: null, bottom: 0 });
+  const [channelMenuPosition, setChannelMenuPosition] = useState<{ left: number; top: number | null; bottom: number | null }>({ left: 0, top: null, bottom: 0 });
   const [layers, setLayers] = useState<DisplayLayer[]>([]);
   const [defaultLayer, setDefaultLayer] = useState<string | null>(null);
   const [layer, setLayer] = useState(AUTO_LAYER);
@@ -113,32 +127,89 @@ export function HdrPreview({
   const [exportError, setExportError] = useState<string | null>(null);
   const [resolvedSource, setResolvedSource] = useState(source);
   const [samplePoint, setSamplePoint] = useState<{ x: number; y: number; color: string } | null>(null);
+  const sampleReticleTimerRef = useRef<number | null>(null);
 
-  const sampleDisplayedPixel = (event: MouseEvent<HTMLDivElement>) => {
-    if (!eyedropActive || viewMode !== "flat") return;
-    const renderer = rendererRef.current;
-    const canvas = renderer?.domElement;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const x = Math.max(0, Math.min(canvas.width - 1, Math.floor((event.clientX - rect.left) * canvas.width / rect.width)));
-    const y = Math.max(0, Math.min(canvas.height - 1, Math.floor((event.clientY - rect.top) * canvas.height / rect.height)));
-    const pixels = new Uint8Array(4);
-    const context = renderer.getContext();
-    context.readPixels(
-      x,
-      canvas.height - y - 1,
-      1,
-      1,
-      context.RGBA,
-      context.UNSIGNED_BYTE,
-      pixels,
-    );
-    const color = `#${[pixels[0], pixels[1], pixels[2]].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+  const sampleDisplayedPixel = async (event: MouseEvent<HTMLDivElement>) => {
+    if (!eyedropActive) return;
+    // 反射球/全景视图不支持像素取色。
+    if (viewMode !== "flat") {
+      onEyedropActiveChange?.(false);
+      return;
+    }
+    // 直接吸「用户真正看到的那张图」（fallback <img>，即色彩管理后的
+    // 预览 PNG）。WebGL 画布依赖 crossOrigin 纹理上传，打包环境里协议
+    // 对 CORS 图片请求不返回 ACAO，纹理会是白/黑占位色——从画布读到的
+    // 就是假颜色；从 <img> 读到的才是屏幕上显示的真实像素。
+    const image = fallbackRef.current;
+    if (!image || !image.complete || !image.naturalWidth) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
+    const rect = image.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    const canvas = document.createElement("canvas");
+    const x = Math.max(0, Math.min(width - 1, Math.floor((event.clientX - rect.left) * width / rect.width)));
+    const y = Math.max(0, Math.min(height - 1, Math.floor((event.clientY - rect.top) * height / rect.height)));
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      onEyedropActiveChange?.(false);
+      return;
+    }
+    let pixel: Uint8ClampedArray;
+    try {
+      context.imageSmoothingEnabled = false;
+      context.drawImage(image, x, y, 1, 1, 0, 0, 1, 1);
+      pixel = context.getImageData(0, 0, 1, 1).data;
+    } catch {
+      // 非 CORS-clean 时画布被污染。注意：被污染的画布「永远」是脏的，
+      // 即使再画干净的 bitmap 也读不了像素——必须换一块新画布。
+      let bitmap: ImageBitmap | null = null;
+      try {
+        const response = await fetch(requestSource, { referrer: window.location.href });
+        if (!response.ok) {
+          onEyedropActiveChange?.(false);
+          return;
+        }
+        bitmap = await createImageBitmap(await response.blob());
+        const clean = document.createElement("canvas");
+        clean.width = 1;
+        clean.height = 1;
+        const cleanContext = clean.getContext("2d", { willReadFrequently: true });
+        if (!cleanContext) {
+          onEyedropActiveChange?.(false);
+          return;
+        }
+        cleanContext.drawImage(bitmap, x, y, 1, 1, 0, 0, 1, 1);
+        pixel = cleanContext.getImageData(0, 0, 1, 1).data;
+      } catch {
+        onEyedropActiveChange?.(false);
+        return;
+      } finally {
+        bitmap?.close();
+      }
+    }
+    const color = `#${[pixel[0], pixel[1], pixel[2]].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
     setSamplePoint({ x: event.clientX - rect.left, y: event.clientY - rect.top, color });
+    // 准星只做极短的「点在了这里」反馈（约 250ms），随即消失。
+    if (sampleReticleTimerRef.current !== null) window.clearTimeout(sampleReticleTimerRef.current);
+    sampleReticleTimerRef.current = window.setTimeout(() => {
+      sampleReticleTimerRef.current = null;
+      setSamplePoint(null);
+    }, 250);
     onColorSample?.(color);
     onEyedropActiveChange?.(false);
   };
+
+  useEffect(() => () => {
+    if (sampleReticleTimerRef.current !== null) window.clearTimeout(sampleReticleTimerRef.current);
+  }, []);
   useEffect(() => {
     let cancelled = false;
     void window.refCanvas.color?.getStatus().then((status) => {
@@ -154,10 +225,10 @@ export function HdrPreview({
     if (!path || !window.refCanvas.filesystem.previewToken) return;
     let cancelled = false;
     void window.refCanvas.filesystem.previewToken(path).then((token) => {
-      if (!cancelled && token) setResolvedSource(hdrDisplayPreviewUrl(token));
+      if (!cancelled && token) setResolvedSource(hdrDisplayPreviewUrl(token, displaySize));
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [path, source]);
+  }, [path, source, displaySize]);
   const selectedLayerName = layer === AUTO_LAYER
     ? defaultLayer
     : layer === MAIN_LAYER
@@ -177,11 +248,8 @@ export function HdrPreview({
   const ocioSignature = ocioConfigPath
     ? Array.from(ocioConfigPath).reduce((hash, character) => ((hash * 31) + character.charCodeAt(0)) >>> 0, 0).toString(36)
     : null;
-  const transformSource = appendPreviewParameter(
-    appendPreviewParameter(displaySource, "inputColorSpace", inputColorSpaces[toneMapping]),
-    "displayTransform",
-    toneMapping,
-  );
+  // 默认路径与序列暂存解码共享同一缓存变体（见 ADR-0001）。
+  const transformSource = resolveHdrTransformSource(displaySource, toneMapping, ocioConfigPath);
   const colorManagedSource = ocioSignature
     ? appendPreviewParameter(transformSource, "ocio", ocioSignature)
     : transformSource;
@@ -273,128 +341,45 @@ export function HdrPreview({
     };
   }, [multichannelOpen, path]);
 
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host || viewMode !== "flat") return;
-    setTextureStatus("loading");
-    const scene = new THREE.Scene();
-    scene.background = null;
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-    camera.position.z = 1;
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: false,
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.toneMapping = toneMappings["linear-srgb"];
-    renderer.toneMappingExposure = 1;
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-    });
-    const plane = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
-    scene.add(plane);
-    host.replaceChildren(renderer.domElement);
-    rendererRef.current = renderer;
-    sceneRef.current = scene;
-    cameraRef.current = camera;
-    planeRef.current = plane;
-    textureRef.current = null;
+  // 平面视图不再叠加 WebGL 画布：打包环境下 <img> 无 CORS 许可（协议对
+  // CORS 图片请求不返回 ACAO），纹理上传必然抛 SecurityError，画布只会
+  // 呈现黑/白占位并覆盖正确的预览图（见 packaged 运行时烟测）。
+  // 预览 PNG 已在主进程完成显示变换，曝光用 CSS brightness 直接作用于
+  // <img>；WebGL 仅保留给全景/反射球模式（PanoramaPreview）。
 
-    const resize = () => {
-      const width = Math.max(1, host.clientWidth);
-      const height = Math.max(1, host.clientHeight);
-      renderer.setSize(width, height, false);
-      const image = textureRef.current?.image as
-        | { width?: number; height?: number }
-        | undefined;
-      const imageAspect =
-        image?.width && image.height ? image.width / image.height : 1;
-      const hostAspect = width / height;
-      plane.scale.set(
-        imageAspect > hostAspect ? 1 : imageAspect / hostAspect,
-        imageAspect > hostAspect ? hostAspect / imageAspect : 1,
-        1,
-      );
-      renderer.render(scene, camera);
-    };
-    resize();
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(resize);
-    observer?.observe(host);
-
-    let active = true;
-    const image = fallbackRef.current;
-    const applyLoadedImage = () => {
-      if (!active || !image) return;
-      const texture = createEnvironmentTexture(image);
-      textureRef.current = texture;
-      material.map = texture;
-      material.needsUpdate = true;
-      setTextureStatus("ready");
-      preview.markReady();
-      resize();
-    };
-    const markTextureFailed = () => {
-      if (active) setTextureStatus("failed");
-    };
-    if (image?.complete && image.naturalWidth > 0) applyLoadedImage();
-    else {
-      image?.addEventListener("load", applyLoadedImage, { once: true });
-      image?.addEventListener("error", markTextureFailed, { once: true });
-    }
-
-    return () => {
-      active = false;
-      image?.removeEventListener("load", applyLoadedImage);
-      image?.removeEventListener("error", markTextureFailed);
-      observer?.disconnect();
-      textureRef.current?.dispose();
-      material.dispose();
-      plane.geometry.dispose();
-      renderer.dispose();
-      rendererRef.current = null;
-      sceneRef.current = null;
-      cameraRef.current = null;
-      planeRef.current = null;
-    };
-  }, [requestSource, extension, viewMode]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    const scene = sceneRef.current;
-    const camera = cameraRef.current;
-    if (!renderer || !scene || !camera) return;
-    renderer.toneMapping = toneMappings[toneMapping];
-    renderer.toneMappingExposure = exposure;
-    renderer.render(scene, camera);
-  }, [exposure, toneMapping]);
-
-  useEffect(() => {
+  // 锚点菜单定位：优先在触发器上方展开；上方放不下（例如独立预览对话框
+  // 顶部悬浮的 HDR 工具行）时翻转到下方，否则菜单会整块落在屏幕外、
+  // 点击按钮看起来毫无反应。需要实测菜单高度，用 useLayoutEffect 在
+  // 绘制前完成首次定位，避免先闪现到默认位置再跳动。
+  useLayoutEffect(() => {
     if (!exposureOpen && !ocioOpen && !multichannelOpen) return;
+    const clamp = (value: number, minimum: number, maximum: number) =>
+      Math.max(minimum, Math.min(value, maximum));
     const placeMenus = () => {
       const place = (
         trigger: HTMLElement | null | undefined,
+        menu: HTMLElement | null | undefined,
         width: number,
         align: "start" | "center",
-        setPosition: (position: { left: number; bottom: number }) => void,
+        setPosition: (position: { left: number; top: number | null; bottom: number | null }) => void,
       ) => {
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const rawLeft = align === "center" ? rect.left + rect.width / 2 - width / 2 : rect.left;
-      setPosition({
-        left: Math.max(6, Math.min(rawLeft, window.innerWidth - width - 6)),
-        bottom: Math.max(8, window.innerHeight - rect.top + 6),
-      });
+        if (!trigger || !menu) return;
+        const rect = trigger.getBoundingClientRect();
+        const menuHeight = menu.getBoundingClientRect().height || 44;
+        const rawLeft = align === "center" ? rect.left + rect.width / 2 - width / 2 : rect.left;
+        const left = clamp(rawLeft, 6, window.innerWidth - width - 6);
+        if (rect.top - 6 >= menuHeight) {
+          setPosition({ left, top: null, bottom: window.innerHeight - rect.top + 6 });
+        } else {
+          const top = clamp(rect.bottom + 6, 6, window.innerHeight - menuHeight - 6);
+          setPosition({ left, top, bottom: null });
+        }
       };
-      if (exposureOpen) place(exposureButtonRef.current, 196, "center", setExposureMenuPosition);
-      if (ocioOpen) place(ocioButtonRef.current, 210, "start", setOcioMenuPosition);
+      if (exposureOpen) place(exposureButtonRef.current, exposureMenuRef.current, 196, "center", setExposureMenuPosition);
+      if (ocioOpen) place(ocioButtonRef.current, ocioMenuRef.current, 210, "start", setOcioMenuPosition);
       if (multichannelOpen) {
         const toolbarAnchor = multichannelAnchor ?? controlsTarget?.parentElement?.querySelector<HTMLElement>('[aria-label="提取多通道"]');
-        place(toolbarAnchor, 360, "start", setChannelMenuPosition);
+        place(toolbarAnchor, channelMenuRef.current, 360, "start", setChannelMenuPosition);
       }
     };
     placeMenus();
@@ -404,7 +389,7 @@ export function HdrPreview({
       window.removeEventListener("resize", placeMenus);
       window.removeEventListener("scroll", placeMenus, true);
     };
-  }, [controlsTarget, exposureOpen, multichannelAnchor, multichannelOpen, ocioOpen]);
+  }, [controlsTarget, exposureOpen, layers, multichannelAnchor, multichannelOpen, ocioOpen]);
 
   useEffect(() => {
     if (!exposureOpen && !ocioOpen && !multichannelOpen) return;
@@ -446,9 +431,13 @@ export function HdrPreview({
     return () => window.removeEventListener("refcanvas:close-preview-popovers", closePopovers);
   }, []);
 
-  useEffect(() => {
-    closeLocalPopovers();
-  }, [path, source]);
+  // 注意：这里故意没有「path 变化即关闭浮层」的 effect。序列播放时
+  // SequencePreview 传入的 path 每帧都会变（frames[displayedFrameIndex]），
+  // 以 path 为触发条件会在每个帧节拍关闭刚打开的 OCIO/曝光/多通道菜单
+  // （用户看到的「点了白点」）。切换资产由上层负责：内嵌面板按
+  // key={asset.path} / key={sequenceGroup.id} 重挂载，独立对话框换资产
+  // 即整体重建；浮层关闭统一走 refcanvas:close-preview-popovers 事件
+  // （点击外部、Esc、失焦、全屏等）。
 
   useEffect(() => {
     const onViewMode = (event: Event) => {
@@ -481,7 +470,7 @@ export function HdrPreview({
           <div
             className={`hdr-preview-stage${eyedropActive ? " is-sampling" : ""}`}
             style={style}
-            onClick={sampleDisplayedPixel}
+            onClick={(event) => void sampleDisplayedPixel(event)}
           >
             <img
               ref={fallbackRef}
@@ -491,11 +480,6 @@ export function HdrPreview({
               draggable={false}
               onLoad={preview.markReady}
               onError={preview.markError}
-            />
-            <div
-              className="hdr-preview-canvas"
-              ref={hostRef}
-              style={{ opacity: textureStatus === "ready" ? 1 : 0 }}
             />
             {samplePoint && (
               <span
@@ -565,7 +549,7 @@ export function HdrPreview({
           className="hdr-exposure-anchor-menu"
           ref={exposureMenuRef}
           data-placement="top-center"
-          style={{ left: exposureMenuPosition.left, bottom: exposureMenuPosition.bottom }}
+          style={{ left: exposureMenuPosition.left, top: exposureMenuPosition.top ?? undefined, bottom: exposureMenuPosition.bottom ?? undefined }}
         >
           <div className="hdr-exposure-popover">
             <SunMedium size={14} aria-hidden="true" />
@@ -577,9 +561,9 @@ export function HdrPreview({
         document.body,
       )}
       {ocioOpen && typeof document !== "undefined" && createPortal(
-        <div ref={ocioMenuRef} className="hdr-ocio-anchor-menu" data-placement="top-start" style={{ left: ocioMenuPosition.left, bottom: ocioMenuPosition.bottom }}>
+        <div ref={ocioMenuRef} className="hdr-ocio-anchor-menu" data-placement="top-start" style={{ left: ocioMenuPosition.left, top: ocioMenuPosition.top ?? undefined, bottom: ocioMenuPosition.bottom ?? undefined }}>
           <div className="hdr-ocio-menu" role="menu" aria-label="OCIO 色彩管理菜单">
-            {([['linear-srgb', 'Linear sRGB'], ['aces-1.3', 'ACEScg 1.3'], ['aces-2.0', 'ACEScg 2.0'], ['raw', 'Raw']] as const).map(([value, label]) => (
+            {([['linear-srgb', 'sRGB（默认）'], ['aces-1.3', 'ACEScg 1.3'], ['aces-2.0', 'ACEScg 2.0'], ['raw', 'Raw']] as const).map(([value, label]) => (
               <button type="button" role="menuitemradio" aria-checked={toneMapping === value} className={toneMapping === value ? "active" : ""} key={value} onClick={() => { setToneMapping(value); setOcioOpen(false); }}><span className="lut-radio" />{label}</button>
             ))}
             <span className="hdr-ocio-separator" />
@@ -609,7 +593,7 @@ export function HdrPreview({
         document.body,
       )}
       {multichannelOpen && typeof document !== "undefined" && createPortal(
-        <div ref={channelMenuRef} className="hdr-channel-anchor-menu" data-placement="top-start" style={{ left: channelMenuPosition.left, bottom: channelMenuPosition.bottom }}>
+        <div ref={channelMenuRef} className="hdr-channel-anchor-menu" data-placement="top-start" style={{ left: channelMenuPosition.left, top: channelMenuPosition.top ?? undefined, bottom: channelMenuPosition.bottom ?? undefined }}>
           <div className="hdr-channel-control" role="group" aria-label="提取多通道">
             <label className="hdr-layer-select">
               <span>{translate("hdr.layers")}</span>

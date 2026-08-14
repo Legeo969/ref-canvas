@@ -11,8 +11,12 @@ export interface PreviewCacheIdentity {
   variant:
     | "thumbnail-480x320-png"
     | "thumbnail-shell-480x320-png"
+    | "thumbnail-480x480-png"
+    | "thumbnail-shell-480x480-png"
     | `thumbnail-480x320-png-${string}`
     | `thumbnail-shell-480x320-png-${string}`
+    | `thumbnail-480x480-png-${string}`
+    | `thumbnail-shell-480x480-png-${string}`
     | "thumbnail-960x960-png"
     | "thumbnail-shell-960x960-png"
     | `thumbnail-960x960-png-${string}`
@@ -21,6 +25,7 @@ export interface PreviewCacheIdentity {
     | "thumbnail-shell-1920x1920-png"
     | `thumbnail-1920x1920-png-${string}`
     | `thumbnail-shell-1920x1920-png-${string}`
+    | "palette-320-png"
     | `board-${512 | 1024 | 2048}-png`;
 }
 

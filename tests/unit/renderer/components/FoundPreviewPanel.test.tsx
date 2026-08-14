@@ -341,6 +341,8 @@ describe("FoundPreviewPanel smoke", () => {
     expect(host.querySelector('[aria-label="吸取颜色"]')).toBeTruthy();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色"]')?.click());
     expect(host.querySelector(".image-review-img")?.classList.contains("eyedrop")).toBe(true);
+    await act(async () => host.querySelector(".image-review-img")?.dispatchEvent(new Event("pointerdown", { bubbles: true })));
+    expect(host.querySelector(".image-review-img")?.classList.contains("eyedrop")).toBe(true);
   });
 
   it("opens the real EXR channel controls inside the shared toolbar", async () => {

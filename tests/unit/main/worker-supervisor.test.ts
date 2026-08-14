@@ -263,6 +263,61 @@ describe("WorkerSupervisor", () => {
     supervisor.close();
   });
 
+  it("recovers the restart budget after a healthy job completes", async () => {
+    const first = new FakeUtilityProcess();
+    const second = new FakeUtilityProcess();
+    const third = new FakeUtilityProcess();
+    electron.fork
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second)
+      .mockReturnValueOnce(third);
+    const supervisor = new WorkerSupervisor({
+      workerPath: "worker.js",
+      serviceName: "test",
+      maxConcurrency: 1,
+      maxRestarts: 1,
+    });
+
+    // 首次崩溃耗尽预算。
+    const crashing = supervisor.submit({
+      providerId: "p",
+      operation: "probe",
+      inputPath: "C:\\crash",
+    });
+    first.emit("exit", 1);
+    await expect(crashing).rejects.toThrow("WORKER_CRASHED");
+
+    // 下一个健康任务拉起新 worker（第二次 fork）并完成 → 预算恢复。
+    const healthy = supervisor.submit({
+      providerId: "p",
+      operation: "probe",
+      inputPath: "C:\\healthy",
+    });
+    reply(second, submittedJob(second, 0), { ok: true });
+    await expect(healthy).resolves.toMatchObject({ data: { ok: true } });
+    expect(electron.fork).toHaveBeenCalledTimes(2);
+
+    // 再次崩溃时，排队任务应能在新 worker 上重试，而不是直接被
+    // WORKER_RESTART_EXHAUSTED 拒绝（预算已恢复）。
+    const runningAgain = supervisor.submit({
+      providerId: "p",
+      operation: "probe",
+      inputPath: "C:\\r2",
+    });
+    const queuedAfterRecovery = supervisor.submit({
+      providerId: "p",
+      operation: "probe",
+      inputPath: "C:\\q4",
+    });
+    second.emit("exit", 1);
+    await expect(runningAgain).rejects.toThrow("WORKER_CRASHED");
+    const retried = submittedJob(third, 0);
+    expect(retried.inputPath).toBe("C:\\q4");
+    reply(third, retried, { recovered: true });
+    await expect(queuedAfterRecovery).resolves.toMatchObject({ data: { recovered: true } });
+    supervisor.close();
+  });
+
   it("rejects pending and queued work on close", async () => {
     const child = new FakeUtilityProcess();
     electron.fork.mockReturnValue(child);

@@ -1,9 +1,10 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerResourcesIpc } from "../../../src/main/ipc/resources-ipc";
+import { previewCacheKey } from "../../../src/main/platform/preview-cache-key";
 import type { SecureIpcRegistrar } from "../../../src/main/platform/secure-ipc";
 
 describe("resources IPC mount events", () => {
@@ -124,6 +125,35 @@ describe("resources IPC mount events", () => {
     expect((palette as Array<unknown>).length).toBe(2);
   });
 
+  it("extracts a BMP palette through a temporary PNG conversion", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-bmp-palette-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "solid.bmp");
+    await writeFile(filename, Buffer.from(
+      "Qk1mAAAAAAAAADYAAAAoAAAABAAAAAQAAAABABgAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQSVjQS",
+      "base64",
+    ));
+
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
+      getProviderRegistry: () => ({}), getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      previewTokens: {}, notifyMountsChanged: vi.fn(),
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    const palette = await handlers.get("media:palette")?.(filename, { limit: 2 });
+    expect(palette).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
+    ]));
+  });
+
   it("extracts an HDR palette from its provider-generated display preview", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-hdr-palette-"));
     temporaryDirectories.push(directory);
@@ -157,6 +187,84 @@ describe("resources IPC mount events", () => {
 
     const palette = await handlers.get("media:palette")?.(filename, { limit: 3 });
     expect(thumbnail).toHaveBeenCalledOnce();
+    expect(palette).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
+    ]));
+  });
+
+  it("persists the HDR palette sample and reuses it on the next call", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-hdr-palette-cache-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "environment.hdr");
+    await writeFile(filename, "HDR fixture placeholder");
+    const thumbnail = vi.fn(async (input: { outputPath?: string }) => {
+      const outputPath = input.outputPath!;
+      await sharp({
+        create: { width: 8, height: 4, channels: 4, background: { r: 80, g: 140, b: 210, alpha: 1 } },
+      }).png().toFile(outputPath);
+      return { path: outputPath, width: 8, height: 4 };
+    });
+    const registry = {
+      invoke: vi.fn(async (_kind, _extension, capability, run) => ({
+        value: await run({ thumbnail }),
+        meta: { providerId: "hdr-test", providerVersion: "1", capability, fellBack: false, durationMs: 0, errorCode: null },
+      })),
+    };
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
+      getProviderRegistry: () => registry, getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      previewTokens: {}, notifyMountsChanged: vi.fn(),
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    await handlers.get("media:palette")?.(filename, { limit: 3 });
+    await handlers.get("media:palette")?.(filename, { limit: 3 });
+    expect(thumbnail).toHaveBeenCalledOnce();
+  });
+
+  it("reuses an existing display variant PNG for HDR palettes instead of re-decoding", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-hdr-palette-reuse-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "environment.hdr");
+    await writeFile(filename, "HDR fixture placeholder");
+    const { size, mtimeMs } = await stat(filename);
+    const displayKey = previewCacheKey({
+      realPath: filename,
+      size,
+      mtimeMs,
+      variant: "thumbnail-1920x1920-png",
+    });
+    const displayDirectory = path.join(directory, "directory");
+    await mkdir(displayDirectory, { recursive: true });
+    await sharp({
+      create: { width: 8, height: 4, channels: 4, background: { r: 200, g: 40, b: 20, alpha: 1 } },
+    }).png().toFile(path.join(displayDirectory, `${displayKey}.png`));
+    const thumbnail = vi.fn();
+    const registry = {
+      invoke: vi.fn(async (_kind, _extension, capability, run) => ({
+        value: await run({ thumbnail }),
+        meta: { providerId: "hdr-test", providerVersion: "1", capability, fellBack: false, durationMs: 0, errorCode: null },
+      })),
+    };
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
+      getProviderRegistry: () => registry, getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      previewTokens: {}, notifyMountsChanged: vi.fn(),
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    const palette = await handlers.get("media:palette")?.(filename, { limit: 3 });
+    expect(thumbnail).not.toHaveBeenCalled();
     expect(palette).toEqual(expect.arrayContaining([
       expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
     ]));

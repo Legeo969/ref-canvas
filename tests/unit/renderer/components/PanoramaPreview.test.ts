@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canRenderEnvironmentPreview,
   createEnvironmentTexture,
   environmentFallbackKind,
   resolveEnvironmentPreviewMode,
@@ -12,6 +13,13 @@ describe("environment preview mode", () => {
 
   it("supports a dedicated reflection-ball mode", () => {
     expect(resolveEnvironmentPreviewMode("reflection", "flat")).toBe("reflection");
+  });
+
+  it("allows toolbar-forced environment modes for HDR images that are not 2:1", () => {
+    expect(canRenderEnvironmentPreview("reflection", false)).toBe(true);
+    expect(canRenderEnvironmentPreview("panorama", false)).toBe(true);
+    expect(canRenderEnvironmentPreview(undefined, false)).toBe(false);
+    expect(canRenderEnvironmentPreview(undefined, true)).toBe(true);
   });
 
   it("reuses the already loaded protocol image as the WebGL texture source", () => {

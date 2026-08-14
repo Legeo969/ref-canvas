@@ -3,8 +3,8 @@ import { HdrProvider } from "../main/providers/hdr-provider";
 import { ImageProvider } from "../main/providers/image-provider";
 import { VideoProvider } from "../main/providers/video-provider";
 import { workerJobSchema } from "../main/platform/worker-protocol-validation";
-import { assetKinds } from "../shared/contracts";
 import type { ResourceProvider, WorkerJob } from "../shared/worker-protocol";
+import { providerInputSchemas } from "./provider-schemas";
 import { z } from "zod";
 
 interface ParentPort {
@@ -22,28 +22,7 @@ const providers = new Map([
   ["image-provider", new ImageProvider()],
 ]);
 const cancelled = new Set<string>();
-
-const providerInputBase = z.object({
-  path: z.string().min(1).max(32_768),
-  kind: z.enum(assetKinds),
-  extension: z.string().min(1).max(32),
-});
-const providerInputSchemas = {
-  probe: providerInputBase.extend({ size: z.number().nonnegative() }),
-  metadata: providerInputBase,
-  thumbnail: providerInputBase.extend({
-    width: z.number().nonnegative(),
-    height: z.number().nonnegative(),
-    outputPath: z.string().min(1).max(32_768).optional(),
-    channel: z.string().min(1).max(256).optional(),
-  }),
-  waveform: providerInputBase.extend({ samples: z.number().int().nonnegative() }),
-  preview: providerInputBase.extend({ variant: z.string().min(1).max(128) }),
-  convert: providerInputBase.extend({
-    targetFormat: z.string().min(1).max(16),
-    options: z.record(z.string(), z.unknown()),
-  }),
-} as const;
+const jobAborts = new Map<string, AbortController>();
 
 function postFailure(jobId: string, errorCode: string): void {
   parentPort?.postMessage({
@@ -66,7 +45,11 @@ function parseJob(message: unknown): WorkerJob | null {
   return parsed.success ? parsed.data : null;
 }
 
-async function dispatch(provider: ResourceProvider, job: WorkerJob): Promise<unknown> {
+async function dispatch(
+  provider: ResourceProvider,
+  job: WorkerJob,
+  signal: AbortSignal,
+): Promise<unknown> {
   const input = { ...job.options, path: job.inputPath };
   switch (job.operation) {
     case "probe":
@@ -74,13 +57,15 @@ async function dispatch(provider: ResourceProvider, job: WorkerJob): Promise<unk
     case "metadata":
       return provider.metadata(providerInputSchemas.metadata.parse(input));
     case "thumbnail":
-      return provider.thumbnail(providerInputSchemas.thumbnail.parse(input));
+      // signal 让取消/超时立即中止解码子进程（oiiotool/ffmpeg），
+      // 而不是等解码跑满自身的 90s 超时。
+      return provider.thumbnail({ ...providerInputSchemas.thumbnail.parse(input), signal });
     case "waveform":
       return provider.waveform(providerInputSchemas.waveform.parse(input));
     case "preview":
       return provider.preview(providerInputSchemas.preview.parse(input));
     case "convert":
-      return provider.convert(providerInputSchemas.convert.parse(input));
+      return provider.convert({ ...providerInputSchemas.convert.parse(input), signal });
   }
 }
 
@@ -89,10 +74,12 @@ parentPort.on("message", (event) => {
   if (!message || typeof message !== "object") return;
   const envelope = message as { type?: unknown; jobId?: unknown };
   if (envelope.type === "close") {
+    for (const controller of jobAborts.values()) controller.abort();
     process.exit(0);
   }
   if (envelope.type === "cancel" && typeof envelope.jobId === "string") {
     cancelled.add(envelope.jobId);
+    jobAborts.get(envelope.jobId)?.abort();
     return;
   }
   const job = parseJob(message);
@@ -112,9 +99,12 @@ parentPort.on("message", (event) => {
       error: null,
     },
   });
+  const controller = new AbortController();
+  jobAborts.set(job.jobId, controller);
   void (async () => {
     try {
-      const result = await dispatch(provider, job);
+      const result = await dispatch(provider, job, controller.signal);
+      jobAborts.delete(job.jobId);
       if (cancelled.has(job.jobId)) {
         cancelled.delete(job.jobId);
         return;
@@ -125,6 +115,7 @@ parentPort.on("message", (event) => {
         result: { jobId: job.jobId, data },
       });
     } catch (error) {
+      jobAborts.delete(job.jobId);
       parentPort.postMessage({
         type: "update",
         update: {

@@ -926,29 +926,44 @@ export function DirectoryAssetPanel() {
     const end = Math.min(totalEntries, (lastVisibleRow + prefetchRows) * columns);
     const firstPage = Math.floor(start / directoryPageSize) * directoryPageSize;
     const lastPage = Math.floor(Math.max(0, end - 1) / directoryPageSize) * directoryPageSize;
-    for (let offset = firstPage; offset <= lastPage; offset += directoryPageSize) {
-      if (searchId) {
-        if (!searchPages.has(offset)) void loadSearchPage(searchId, offset);
-      } else if (!directoryPages.has(offset)) {
-        void loadDirectoryPage(offset);
+    let controller: AbortController | null = null;
+    // 面板拖拽时 viewport/columns 每个像素都会变：防抖 150ms，拖动期间不
+    // 逐帧重建整批 prefetch，也不反复作废上一批请求（在途解码被中止后
+    // 只能从头再来，大目录会一直「正在生成预览」）。
+    const timer = window.setTimeout(() => {
+      for (let offset = firstPage; offset <= lastPage; offset += directoryPageSize) {
+        if (searchId) {
+          if (!searchPages.has(offset)) void loadSearchPage(searchId, offset);
+        } else if (!directoryPages.has(offset)) {
+          void loadDirectoryPage(offset);
+        }
       }
-    }
-    const paths: string[] = [];
-    for (let index = start; index < end && paths.length < 256; index += 1) {
-      const entry = activeIndexedEntries.get(index);
-      if (entry && !entry.isDirectory) paths.push(entry.path);
-    }
-    if (!paths.length || !window.refCanvas.filesystem.previewTokens) return;
-    const controller = new AbortController();
-    void window.refCanvas.filesystem.previewTokens(paths).then((tokens) => {
-      if (controller.signal.aborted) return;
-      for (const item of tokens) {
-        void fetch(`refbrowse://thumbnail/${item.token}?priority=prefetch`, {
-          signal: controller.signal,
-        }).catch(() => undefined);
+      const paths: string[] = [];
+      for (let index = start; index < end && paths.length < 256; index += 1) {
+        const entry = activeIndexedEntries.get(index);
+        if (entry && !entry.isDirectory) paths.push(entry.path);
       }
-    }).catch(() => undefined);
-    return () => controller.abort();
+      if (!paths.length || !window.refCanvas.filesystem.previewTokens) return;
+      const batchController = new AbortController();
+      controller = batchController;
+      void window.refCanvas.filesystem.previewTokens(paths).then((tokens) => {
+        if (batchController.signal.aborted) return;
+        for (const item of tokens) {
+          void fetch(`refbrowse://thumbnail/${item.token}?priority=prefetch`, {
+            signal: batchController.signal,
+          }).catch(() => undefined);
+        }
+      }).catch(() => undefined);
+    }, 150);
+    // 应用经 reload 完成目录导航；旧文档的定时器在卸载窗口内触发会从
+    // 已销毁的 frame 发 IPC（主进程报 INVALID_IPC_SENDER），pagehide 时取消。
+    const cancelOnPageHide = () => window.clearTimeout(timer);
+    window.addEventListener("pagehide", cancelOnPageHide);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pagehide", cancelOnPageHide);
+      controller?.abort();
+    };
   }, [activeIndexedEntries, columns, directoryPages, firstVisibleRow, lastVisibleRow, searchId, searchPages, store.directoryPath, totalEntries, viewport.height]);
 
   const crumbs = directoryBreadcrumb(store.directoryPath);

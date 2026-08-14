@@ -153,6 +153,8 @@ export interface ProviderConvertInput {
   /** 目标格式（如 "mp4"、"png"）。 */
   targetFormat: string;
   options: Record<string, unknown>;
+  /** Main-process cancellation; native sidecars must terminate on abort. */
+  signal?: AbortSignal;
 }
 
 export interface ProviderConvertResult {

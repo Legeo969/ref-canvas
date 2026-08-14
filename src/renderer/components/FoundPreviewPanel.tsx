@@ -5,10 +5,9 @@ import {
   Sparkles,
   SquareArrowOutUpRight,
   X,
-  Gauge,
   Globe2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
@@ -42,11 +41,14 @@ import {
   previewRendererKind,
 } from "./PreviewSessionShell";
 
-type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "notes" | "lut";
+type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "rate" | "notes" | "lut";
 type WorkbenchCommand = WorkbenchTool | "color";
 type PreviewTab = "preview" | "ai";
 
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
+
+/** 全屏下指针停在这些控件上时，控制栏不自动隐藏。 */
+const FULLSCREEN_CONTROLS_SELECTOR = ".found-preview-workspace, .found-preview-session-footer, .found-layers-panel, .found-lut-anchor-menu, .found-rate-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu";
 
 /**
  * Found-style right preview panel — 1:1 spec skeleton (§1 structure).
@@ -79,8 +81,65 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const [sequenceGifRangeActive, setSequenceGifRangeActive] = useState(false);
   const [panoramaCapable, setPanoramaCapable] = useState(false);
   const [hdrViewMode, setHdrViewMode] = useState<"flat" | "reflection" | "panorama">("flat");
+  const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(false);
+  const fullscreenControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fullscreenControlsReadyAtRef = useRef(0);
+  const fullscreenLastPointerPositionRef = useRef<{ x: number; y: number } | null>(null);
   const previewSession = usePreviewSessionMode(entry?.path ?? null);
   const transport = usePreviewTransport();
+
+  const hideFullscreenControls = useCallback(() => {
+    if (fullscreenControlsTimerRef.current !== null) {
+      clearTimeout(fullscreenControlsTimerRef.current);
+      fullscreenControlsTimerRef.current = null;
+    }
+    setFullscreenControlsVisible(false);
+  }, []);
+
+  useEffect(() => {
+    hideFullscreenControls();
+    if (!previewSession.fullscreen) return;
+
+    window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+    fullscreenControlsReadyAtRef.current = performance.now() + 180;
+    fullscreenLastPointerPositionRef.current = null;
+    // 进入全屏只关闭浮层、不重置工具状态（GIF 范围、多通道、调色板、
+    // 取色、备注等），退出全屏后原样恢复。
+    const scheduleHide = () => {
+      fullscreenControlsTimerRef.current = setTimeout(() => {
+        fullscreenControlsTimerRef.current = null;
+        const lastPointer = fullscreenLastPointerPositionRef.current;
+        const target = lastPointer ? document.elementFromPoint(lastPointer.x, lastPointer.y) : null;
+        if (target?.closest(FULLSCREEN_CONTROLS_SELECTOR)) {
+          // 指针停在控件上时保持可见；重新武装计时器，移出后隐藏。
+          scheduleHide();
+          return;
+        }
+        setFullscreenControlsVisible(false);
+      }, 1800);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (performance.now() < fullscreenControlsReadyAtRef.current) return;
+      const previous = fullscreenLastPointerPositionRef.current;
+      if (previous && previous.x === event.clientX && previous.y === event.clientY) return;
+      fullscreenLastPointerPositionRef.current = { x: event.clientX, y: event.clientY };
+      setFullscreenControlsVisible(true);
+      if (fullscreenControlsTimerRef.current !== null) clearTimeout(fullscreenControlsTimerRef.current);
+      scheduleHide();
+    };
+    document.addEventListener("pointermove", onPointerMove, { passive: true });
+    document.addEventListener("pointerleave", hideFullscreenControls);
+    return () => {
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerleave", hideFullscreenControls);
+      if (fullscreenControlsTimerRef.current !== null) {
+        clearTimeout(fullscreenControlsTimerRef.current);
+        fullscreenControlsTimerRef.current = null;
+      }
+      fullscreenControlsReadyAtRef.current = 0;
+      fullscreenLastPointerPositionRef.current = null;
+    };
+  }, [hideFullscreenControls, previewSession.fullscreen]);
 
   useEffect(() => {
     setAsset(null);
@@ -138,6 +197,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   useEffect(() => {
     const closeOnPointerAway = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
+      if (eyedropActive && target?.closest(".found-preview-viewport")) return;
       if (target?.closest(".found-toolbar, .found-lut-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu")) return;
       window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
     };
@@ -150,7 +210,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       document.removeEventListener("pointerdown", closeOnPointerAway);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, []);
+  }, [eyedropActive]);
 
   useEffect(() => {
     window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
@@ -266,6 +326,38 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     : frameRate
       ? `${frameRate % 1 ? frameRate.toFixed(2) : frameRate} fps`
       : "25 fps";
+  const sequenceFps = entry?.sequenceGroup?.fps || foundSettings.defaultSequenceFps;
+  // 序列菜单设置绝对帧率、视频菜单设置倍率；两者都经 transport 写回对应
+  // 渲染器的本地状态（对话框的 setPlaybackRate 对序列按绝对 fps 解释）。
+  const playbackMenu = toolbarVariant === "sequence" ? (
+    <section className="playback-rate-menu" aria-label="播放帧率">
+      {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
+        <button
+          type="button"
+          key={fps}
+          className={transport.snapshot?.fps === fps ? "active" : ""}
+          onClick={() => {
+            transport.actions?.setPlaybackRate(fps);
+            setTool("preview");
+          }}
+        >{fps} fps</button>
+      ))}
+    </section>
+  ) : toolbarVariant === "video" ? (
+    <section className="playback-rate-menu" aria-label="播放速度">
+      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+        <button
+          type="button"
+          key={rate}
+          className={Math.abs((transport.snapshot?.playbackRate ?? 1) - rate) < 1e-6 ? "active" : ""}
+          onClick={() => {
+            transport.actions?.setPlaybackRate(rate);
+            setTool("preview");
+          }}
+        >{rate}×</button>
+      ))}
+    </section>
+  ) : undefined;
 
   // ─── Empty / directory state ───
   if (!entry || entry.isDirectory) {
@@ -275,7 +367,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         elementRef={previewSession.rootRef}
         focused={previewSession.focused}
         fullscreen={previewSession.fullscreen}
-        className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}`}
+        className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
       >
         {/* Found tab bar */}
         <header className="found-tab-bar" role="tablist" aria-label="右侧预览区">
@@ -330,7 +422,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       elementRef={previewSession.rootRef}
       focused={previewSession.focused}
       fullscreen={previewSession.fullscreen}
-      className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" ? "tool-open" : ""} mode-${mode}`}
+      className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""} mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
     >
       {/* Found tab bar */}
       <header className="found-tab-bar" role="tablist" aria-label="右侧预览区">
@@ -397,6 +489,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       key={entry.sequenceGroup.id}
                       sequence={entry.sequenceGroup}
                       embedded
+                      fullscreen={previewSession.fullscreen}
                       controlsTarget={controlsTarget}
                       multichannelOpen={multichannelOpen}
                       multichannelAnchor={multichannelAnchor}
@@ -412,6 +505,9 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       }}
                       onClose={() => undefined}
                       onPaletteChange={setColorSwatches}
+                      eyedropActive={eyedropActive}
+                      onEyedropActiveChange={setEyedropActive}
+                      onColorSample={(color) => setSampledColorSwatches((colors) => [color, ...colors.filter((candidate) => candidate !== color)])}
                     />
                   ) : (
                     <AssetPreview
@@ -437,10 +533,10 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                 </PreviewSurface>
 
                 <div className="found-preview-workspace">
-                    {tool !== "preview" && tool !== "lut" && (
+                    {tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" && (
                       <section className={`found-context-tray found-context-tray-${tool}`} aria-label="上下文工具托盘">
                         <header className="found-context-tray-header">
-                          <strong>{tool === "gif" ? "导出 GIF" : tool === "frames" ? "导出序列帧" : tool === "fps" ? "FPS" : tool === "notes" ? "资产备注" : "LUT"}</strong>
+                          <strong>{tool === "gif" ? "导出 GIF" : tool === "frames" ? "导出序列帧" : tool === "notes" ? "资产备注" : "LUT"}</strong>
                           <button type="button" aria-label="关闭工具" title="关闭工具" onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
                         </header>
                         {tool === "gif" && isVideo && (
@@ -477,21 +573,6 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                             variant="panel"
                             onClose={() => setTool("preview")}
                           />
-                        )}
-                        {tool === "fps" && isVideo && (
-                          <section className="workbench-fps-tool" aria-label="FPS 预设">
-                            <Gauge size={16} />
-                            <div className="workbench-fps-grid">
-                              <button className={playbackFps === null ? "active" : ""} onClick={() => setPlaybackFps(null)}>
-                                自动 {frameRate ? frameRate.toFixed(frameRate % 1 ? 2 : 0) : "—"} FPS
-                              </button>
-                              {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
-                                <button key={fps} className={playbackFps === fps ? "active" : ""} onClick={() => setPlaybackFps(fps)}>
-                                  {fps} FPS
-                                </button>
-                              ))}
-                            </div>
-                          </section>
                         )}
                         {tool === "notes" && (
                           <AssetNotesPanel
@@ -546,11 +627,18 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onStepFrames={(delta) => transport.actions?.stepFrames(delta)}
                     muted={transport.snapshot?.muted ?? false}
                     onMutedToggle={() => transport.actions?.setMuted(!(transport.snapshot?.muted ?? false))}
-                    fpsLabel={transport.snapshot?.fps
-                      ? `${Number(transport.snapshot.fps.toFixed(2))} fps`
-                      : fpsLabel}
-                    fpsActive={tool === "fps"}
-                    onFpsToggle={isVideo ? () => toggleTool("fps") : undefined}
+                    rateLabel={toolbarVariant === "video"
+                      ? `${Number((transport.snapshot?.playbackRate ?? 1).toFixed(2))}×`
+                      : toolbarVariant === "sequence"
+                        ? transport.snapshot?.fps
+                          ? `${Number(transport.snapshot.fps.toFixed(2))} fps`
+                          : `${sequenceFps} fps`
+                        : fpsLabel}
+                    rateActive={tool === "fps" || tool === "rate"}
+                    onRateToggle={toolbarVariant === "video" || toolbarVariant === "sequence"
+                      ? () => toggleTool(toolbarVariant === "video" ? "rate" : "fps")
+                      : undefined}
+                    rateMenu={tool === "fps" || tool === "rate" ? playbackMenu : undefined}
                     showUpperRow={toolbarVariant === "video" || toolbarVariant === "gif" || toolbarVariant === "sequence"}
                     showLowerRow
                     onFit={toolbarVariant === "image" || toolbarVariant === "svg"

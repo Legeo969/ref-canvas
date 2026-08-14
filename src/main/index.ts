@@ -1062,11 +1062,14 @@ function createWindow(): void {
   trustedWindows.register(mainWindow);
 
   hardenWindowNavigation(mainWindow.webContents);
+  bindFullscreenTitleBarOverlay(mainWindow);
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("enter-full-screen", () => {
+    setFullscreenTitleBarOverlay(mainWindow, true);
     mainWindow?.webContents.send("system:presentation-mode-changed", true);
   });
   mainWindow.on("leave-full-screen", () => {
+    setFullscreenTitleBarOverlay(mainWindow, false);
     mainWindow?.webContents.send("system:presentation-mode-changed", false);
   });
   mainWindow.on("close", (event) => {
@@ -1200,6 +1203,22 @@ async function closeWindowAfterBoardFlush(
 
 const previewWindows = new Set<BrowserWindow>();
 
+function setFullscreenTitleBarOverlay(window: BrowserWindow | null, fullscreen: boolean): void {
+  if (!window || window.isDestroyed()) return;
+  // setTitleBarOverlay 仅 Windows/macOS 支持；Linux 上直接跳过，避免抛错。
+  if (process.platform !== "win32" && process.platform !== "darwin") return;
+  window.setTitleBarOverlay({
+    color: fullscreen ? "#00000000" : "#171a1c",
+    symbolColor: fullscreen ? "#dbe4e0aa" : "#aeb5b2",
+    height: 40,
+  });
+}
+
+function bindFullscreenTitleBarOverlay(window: BrowserWindow): void {
+  window.on("enter-html-full-screen", () => setFullscreenTitleBarOverlay(window, true));
+  window.on("leave-html-full-screen", () => setFullscreenTitleBarOverlay(window, false));
+}
+
 /** base64url 编码预览路径（renderer 侧 preview-window.ts 解码）。 */
 function encodePreviewWindowPath(filename: string): string {
   return Buffer.from(filename, "utf8")
@@ -1236,6 +1255,7 @@ function openPreviewWindow(filename: string): void {
   });
   trustedWindows.register(window);
   hardenWindowNavigation(window.webContents);
+  bindFullscreenTitleBarOverlay(window);
   window.once("ready-to-show", () => window.show());
   window.on("closed", () => previewWindows.delete(window));
   previewWindows.add(window);
@@ -1317,7 +1337,10 @@ void app.whenReady().then(async () => {
     workerPath: path.join(__dirname, "provider-worker.js"),
     serviceName: "RefCanvas Provider Worker",
     maxConcurrency: 2,
-    defaultDeadlineMs: 60_000,
+    // 必须大于解码子进程自身的 90s 超时（openimageio-tools），否则大文件
+    // 解码在 60s 被提前取消、oiiotool 仍在运行，重试再起一个进程导致
+    // 内存翻倍与 worker 崩溃循环。
+    defaultDeadlineMs: 120_000,
   });
   const genericProvider = new GenericProvider();
   providerRegistry.register({

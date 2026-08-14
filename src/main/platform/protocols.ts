@@ -24,6 +24,7 @@ import {
 } from "./refbrowse";
 import { thumbnailCacheFilename } from "./thumbnail-cache";
 import type { ThumbnailWorkerClient } from "./thumbnail-worker-client";
+import { genericPlaceholderThumbnail } from "./placeholder-thumbnail";
 import type { ProviderRegistry } from "./provider-registry";
 import { invokeThumbnail } from "./provider-registry";
 import {
@@ -184,11 +185,21 @@ async function generateThumbnail(
     if (converted) return converted;
   }
   if (signal.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
-  const thumbnail = await nativeImage.createThumbnailFromPath(source, {
-    width: size.width,
-    height: size.height,
-  });
-  if (thumbnail.isEmpty()) throw new Error("NO_THUMBNAIL");
+  // Windows 上没有外壳缩略图的格式（.aep/.zip 等）可能返回空图，也可能
+  // 直接抛「Failed to get thumbnail from local thumbnail cache reference」。
+  // 两种情况都视为无缩略图：生成并缓存占位卡片，避免每次请求都重试
+  // 失败并在控制台刷 404。
+  const thumbnail = await nativeImage
+    .createThumbnailFromPath(source, {
+      width: size.width,
+      height: size.height,
+    })
+    .catch(() => null);
+  if (!thumbnail || thumbnail.isEmpty()) {
+    const placeholder = await genericPlaceholderThumbnail(extension, size);
+    await writeCacheAtomically(cacheFile, placeholder);
+    return placeholder;
+  }
   const png = thumbnail.toPNG();
   await writeCacheAtomically(cacheFile, png);
   return png;

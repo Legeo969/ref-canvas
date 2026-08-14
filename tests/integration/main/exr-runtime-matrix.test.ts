@@ -32,8 +32,9 @@ function deterministicMetadata(): string[] {
 
 async function makeFlatExr(
   filename: string,
-  compression: "zip" | "piz" | "dwaa" | "dwab",
+  compression: string,
   tiled: boolean,
+  bitDepth: "half" | "float" = "half",
 ): Promise<void> {
   await runTool([
     "--create", "32x16", "3",
@@ -42,7 +43,7 @@ async function makeFlatExr(
     ...deterministicMetadata(),
     ...(tiled ? ["--tile", "16", "16"] : ["--scanline"]),
     "--compression", compression,
-    "-d", "half",
+    "-d", bitDepth,
     "-o", filename,
   ]);
 }
@@ -125,19 +126,26 @@ afterAll(async () => {
 
 describe("bundled OpenImageIO EXR matrix", () => {
   const variants = [
-    { name: "scanline-zip", compression: "zip", tiled: false },
-    { name: "scanline-piz", compression: "piz", tiled: false },
-    { name: "scanline-dwaa", compression: "dwaa", tiled: false },
-    { name: "scanline-dwab", compression: "dwab", tiled: false },
-    { name: "tiled-piz", compression: "piz", tiled: true },
-    { name: "tiled-dwab", compression: "dwab", tiled: true },
+    { name: "scanline-none", compression: "none", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-rle", compression: "rle", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-zips", compression: "zips", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-zip", compression: "zip", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-piz", compression: "piz", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-pxr24", compression: "pxr24", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-b44", compression: "b44", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-b44a", compression: "b44a", tiled: false, bitDepth: "float" as const },
+    { name: "scanline-dwaa", compression: "dwaa", tiled: false, bitDepth: "half" as const },
+    { name: "scanline-dwab", compression: "dwab", tiled: false, bitDepth: "half" as const },
+    { name: "tiled-zips", compression: "zips", tiled: true, bitDepth: "half" as const },
+    { name: "tiled-piz", compression: "piz", tiled: true, bitDepth: "half" as const },
+    { name: "tiled-dwab", compression: "dwab", tiled: true, bitDepth: "half" as const },
   ] as const;
 
   for (const variant of variants) {
     it(`decodes ${variant.name}`, async () => {
       const source = path.join(root, `${variant.name}.exr`);
       const output = path.join(root, `${variant.name}.png`);
-      await makeFlatExr(source, variant.compression, variant.tiled);
+      await makeFlatExr(source, variant.compression, variant.tiled, variant.bitDepth);
       const provider = new HdrProvider();
       const probe = await provider.probe({
         path: source,

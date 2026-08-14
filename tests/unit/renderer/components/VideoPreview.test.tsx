@@ -66,6 +66,7 @@ describe("VideoPreview frame stepping", () => {
       await Promise.resolve();
     });
     const video = host.querySelector("video")!;
+    expect(video.getAttribute("crossorigin")).toBe("anonymous");
     Object.defineProperty(video, "duration", {
       configurable: true,
       value: 10,
@@ -247,5 +248,136 @@ describe("VideoPreview frame stepping", () => {
       await vi.advanceTimersByTimeAsync(800);
     });
     expect(palette).toHaveBeenLastCalledWith("D:\\refs\\clip.mp4", { timeMs: 2000, limit: 6 });
+  });
+
+  it("samples a video pixel from a click bound directly to the media element", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage,
+      getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([17, 34, 51, 255]) })),
+      imageSmoothingEnabled: true,
+    } as unknown as CanvasRenderingContext2D);
+    Object.assign(window, {
+      refCanvas: {
+        media: { probe: vi.fn(async () => ({ duration: 1, extra: { frameRate: 24 } })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const onColorSample = vi.fn();
+    const onEyedropActiveChange = vi.fn();
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+          eyedropActive
+          onColorSample={onColorSample}
+          onEyedropActiveChange={onEyedropActiveChange}
+        />,
+      );
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 640 },
+      videoHeight: { configurable: true, value: 360 },
+      getBoundingClientRect: { configurable: true, value: () => ({ left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360, x: 0, y: 0, toJSON: () => ({}) }) },
+    });
+    await act(async () => {
+      video.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 320, clientY: 180 }));
+    });
+    expect(drawImage).toHaveBeenCalled();
+    expect(onColorSample).toHaveBeenCalledWith("#112233");
+    expect(onEyedropActiveChange).toHaveBeenCalledWith(false);
+  });
+
+  it("clears the sampling reticle shortly after a successful sample", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const drawImage = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage,
+      getImageData: vi.fn(() => ({ data: new Uint8ClampedArray([17, 34, 51, 255]) })),
+      imageSmoothingEnabled: true,
+    } as unknown as CanvasRenderingContext2D);
+    Object.assign(window, {
+      refCanvas: {
+        media: { probe: vi.fn(async () => ({ duration: 1, extra: { frameRate: 24 } })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+          eyedropActive
+          onColorSample={vi.fn()}
+          onEyedropActiveChange={vi.fn()}
+        />,
+      );
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    Object.defineProperties(video, {
+      videoWidth: { configurable: true, value: 640 },
+      videoHeight: { configurable: true, value: 360 },
+      getBoundingClientRect: { configurable: true, value: () => ({ left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360, x: 0, y: 0, toJSON: () => ({}) }) },
+    });
+    await act(async () => {
+      video.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 320, clientY: 180 }));
+    });
+    expect(host.querySelector(".video-preview .preview-sample-reticle")).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    // 闪现未结束：准星还在。
+    expect(host.querySelector(".video-preview .preview-sample-reticle")).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(host.querySelector(".video-preview .preview-sample-reticle")).toBeNull();
+  });
+
+  it("deactivates eyedrop when sampling has no decoded frame to read", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    Object.assign(window, {
+      refCanvas: {
+        media: { probe: vi.fn(async () => ({ duration: 1, extra: { frameRate: 24 } })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const onEyedropActiveChange = vi.fn();
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+          eyedropActive
+          onEyedropActiveChange={onEyedropActiveChange}
+        />,
+      );
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    // 视频未就绪（videoWidth/Height 为 0）→ 取色必须显式退出，而不是卡住。
+    Object.defineProperty(video, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, width: 640, height: 360, right: 640, bottom: 360, x: 0, y: 0, toJSON: () => ({}) }),
+    });
+    await act(async () => {
+      video.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 320, clientY: 180 }));
+    });
+    expect(onEyedropActiveChange).toHaveBeenCalledWith(false);
   });
 });

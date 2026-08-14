@@ -11,8 +11,9 @@ import { SequencePreviewDialog } from "../../../../src/renderer/components/Seque
 vi.mock("../../../../src/renderer/components/HdrPreview", async () => {
   const { createPortal } = await import("react-dom");
   return {
-    HdrPreview: ({ path, controlsTarget, multichannelOpen }: { path?: string; controlsTarget?: HTMLElement | null; multichannelOpen?: boolean }) => (
-      <div data-testid="sequence-hdr-frame" data-path={path}>
+    HdrPreview: ({ path, controlsTarget, multichannelOpen, eyedropActive, onColorSample, displaySize }: { path?: string; controlsTarget?: HTMLElement | null; multichannelOpen?: boolean; eyedropActive?: boolean; onColorSample?: (color: string) => void; displaySize?: number }) => (
+      <div data-testid="sequence-hdr-frame" data-path={path} data-eyedrop-active={eyedropActive ? "true" : "false"} data-display-size={displaySize}>
+        <button type="button" aria-label="采样 EXR 颜色" onClick={() => onColorSample?.("#010203")}>采样</button>
         {controlsTarget && createPortal(<div className="hdr-preview-controls">
           <button aria-label="OCIO 色彩管理">OCIO</button>
           {multichannelOpen && <div aria-label="提取多通道" />}
@@ -176,8 +177,55 @@ describe("SequencePreviewDialog", () => {
     )).toBe(true);
   });
 
-  it("does not advance the HDR renderer path before the next frame is decoded", async () => {
+  it("uses 960px staging for multi-frame EXR sequences and 1920px in fullscreen", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = { ...FOUND_SETTINGS_DEFAULTS, autoplaySequence: false };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "exr-token") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const multiExr = {
+      ...sequence,
+      extension: "exr",
+      files: ["D:\\refs\\shot.0001.exr", "D:\\refs\\shot.0002.exr"],
+    };
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const renderDialog = (fullscreen: boolean) => act(async () => {
+      root?.render(<SequencePreviewDialog sequence={multiExr} embedded fullscreen={fullscreen} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await renderDialog(false);
+    expect(BufferedImageMock.instances.some((image) =>
+      image.src === "refbrowse://thumbnail/exr-token?priority=preview&size=960",
+    )).toBe(true);
+    // HDR 前瞻预取：后续帧以 prefetch 优先级入队。
+    expect(BufferedImageMock.instances.some((image) =>
+      image.src === "refbrowse://thumbnail/exr-token?priority=prefetch&size=960",
+    )).toBe(true);
+    await act(async () => {
+      BufferedImageMock.instances
+        .find((image) => image.src.includes("priority=preview&size=960"))
+        ?.onload?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-display-size")).toBe("960");
+
+    await renderDialog(true);
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-display-size")).toBe("1920");
+    expect(BufferedImageMock.instances.some((image) =>
+      image.src === "refbrowse://thumbnail/exr-token?priority=preview&size=1920",
+    )).toBe(true);
+  });
+
+  it("does not advance the HDR renderer path before the next frame is decoded", async () => {    vi.stubGlobal("Image", BufferedImageMock);
     const foundSettings = { ...FOUND_SETTINGS_DEFAULTS, autoplaySequence: false };
     Object.assign(window, {
       refCanvas: {
@@ -325,8 +373,10 @@ describe("SequencePreviewDialog", () => {
     document.body.append(host);
     root = createRoot(host);
     const onPaletteChange = vi.fn();
+    const onEyedropActiveChange = vi.fn();
+    const onColorSample = vi.fn();
     await act(async () => {
-      root?.render(<SequencePreviewDialog sequence={{ ...sequence, extension: "exr", files: ["D:\\refs\\shot.0001.exr"] }} embedded controlsTarget={controlsTarget} multichannelOpen onClose={vi.fn()} onPaletteChange={onPaletteChange} />);
+      root?.render(<SequencePreviewDialog sequence={{ ...sequence, extension: "exr", files: ["D:\\refs\\shot.0001.exr"] }} embedded controlsTarget={controlsTarget} multichannelOpen eyedropActive onEyedropActiveChange={onEyedropActiveChange} onColorSample={onColorSample} onClose={vi.fn()} onPaletteChange={onPaletteChange} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
     await act(async () => {
@@ -334,6 +384,9 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve();
     });
     expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-path")).toBe("D:\\refs\\shot.0001.exr");
+    expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-eyedrop-active")).toBe("true");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="采样 EXR 颜色"]')?.click());
+    expect(onColorSample).toHaveBeenCalledWith("#010203");
     expect(controlsTarget.querySelector('[aria-label="OCIO 色彩管理"]')).toBeTruthy();
     expect(controlsTarget.querySelector('[aria-label="提取多通道"]')).toBeTruthy();
     expect(palette).toHaveBeenCalledWith("D:\\refs\\shot.0001.exr", expect.objectContaining({ limit: 6 }));
@@ -382,10 +435,12 @@ describe("SequencePreviewDialog", () => {
     await act(async () => {
       host.querySelector<HTMLButtonElement>('button[aria-label="帧率"]')?.click();
     });
-    expect(host.querySelector('[aria-label="FPS 预设抽屉"]')).toBeTruthy();
+    const fpsMenu = document.body.querySelector('[aria-label="FPS 预设菜单"]');
+    expect(fpsMenu).toBeTruthy();
+    expect(fpsMenu?.getAttribute("data-placement")).toBe("top-start");
     await act(async () => {
-      [...host.querySelectorAll<HTMLButtonElement>('.sequence-drawer-grid button')]
-        .find((button) => button.textContent?.includes("30 FPS"))?.click();
+      [...fpsMenu!.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent?.includes("30 fps"))?.click();
     });
     expect(host.querySelector<HTMLButtonElement>('button[aria-label="帧率"]')?.textContent).toContain("30 FPS");
 

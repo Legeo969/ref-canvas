@@ -13,7 +13,7 @@ import { PreviewColorBar } from "./PreviewColorBar";
 import { usePreviewTransportRegistration } from "./PreviewTransport";
 
 interface GifFrame {
-  image: ImageBitmap;
+  image: VideoFrame;
   durationMs: number;
 }
 
@@ -43,7 +43,7 @@ type ImageDecoderLike = {
     selected: { frameCount: number } | null;
   };
   decode(options: { frameIndex: number }): Promise<{
-    image: ImageBitmap;
+    image: VideoFrame;
     duration?: number | undefined;
   }>;
   close(): void;
@@ -52,7 +52,7 @@ type ImageDecoderLike = {
 const ImageDecoderCtor = (
   globalThis as unknown as {
     ImageDecoder?: new (options: {
-      data: Blob;
+      data: ArrayBuffer;
       type: string;
     }) => ImageDecoderLike;
   }
@@ -90,32 +90,43 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
       return;
     }
     void (async () => {
+      let decoder: ImageDecoderLike | null = null;
+      let committed = false;
+      const frames: GifFrame[] = [];
       try {
-        const response = await fetch(asset.previewUrl);
-        const blob = await response.blob();
-        const decoder = new ImageDecoderCtor!({ data: blob, type: "image/gif" });
+        const response = await fetch(asset.previewUrl, {
+          referrer: window.location.href,
+        });
+        if (!response.ok) throw new Error(`GIF_FETCH_${response.status}`);
+        const data = await response.arrayBuffer();
+        decoder = new ImageDecoderCtor!({ data, type: "image/gif" });
         await decoder.tracks.ready;
         const count = decoder.tracks.selected?.frameCount ?? 1;
-        const frames: GifFrame[] = [];
         for (let index = 0; index < count; index += 1) {
           const { image, duration } = await decoder.decode({ frameIndex: index });
           frames.push({ image, durationMs: duration ?? 100 });
-          if (cancelled) {
-            decoder.close();
-            return;
-          }
+          if (cancelled) return;
         }
-        decoder.close();
         const decoded = { frames };
         gifRef.current = decoded;
         setGif(decoded);
+        committed = true;
       } catch {
         if (!cancelled) setError(true);
+      } finally {
+        decoder?.close();
+        // 取消或失败时，已解码但未挂载到 gifRef 的 VideoFrame 必须关闭，
+        // 否则快速切换资源会泄漏 GPU/解码器内存。
+        if (!committed) {
+          for (const frame of frames) frame.image.close();
+        }
       }
     })();
     return () => {
       cancelled = true;
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      for (const frame of gifRef.current?.frames ?? []) frame.image.close();
+      gifRef.current = null;
     };
   }, [asset.id, asset.previewUrl]);
 
@@ -157,8 +168,8 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     if (!canvas || !frame) return;
     const context = canvas.getContext("2d");
     if (!context) return;
-    canvas.width = frame.image.width;
-    canvas.height = frame.image.height;
+    canvas.width = frame.image.displayWidth;
+    canvas.height = frame.image.displayHeight;
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.drawImage(frame.image, 0, 0);
   }, [gif, frameIndex]);

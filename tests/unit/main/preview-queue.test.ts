@@ -110,4 +110,42 @@ describe("PreviewQueue", () => {
     release();
     await active;
   });
+
+  it("keeps an active task running after its last signal consumer leaves", async () => {
+    // 布局拖拽会高频作废旧预览请求：在途解码结果会写入持久缓存，中止只
+    // 会让下一次相同请求从头再来（回归：拖拽时缩略图一直「正在生成预览」）。
+    const queue = new PreviewQueue<string>(1, 8);
+    let release!: () => void;
+    let aborted = false;
+    const consumer = new AbortController();
+    const task = queue.enqueue("active", (signal) => {
+      signal.addEventListener("abort", () => {
+        aborted = true;
+      });
+      return new Promise<string>((resolve) => (release = () => resolve("done")));
+    }, { signal: consumer.signal });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(queue.stats().active).toBe(1);
+    consumer.abort();
+    expect(aborted).toBe(false);
+    expect(queue.stats().active).toBe(1);
+    release();
+    await expect(task).resolves.toBe("done");
+    expect(queue.stats()).toEqual({ active: 0, queued: 0, inFlight: 0 });
+  });
+
+  it("lets a new request join the orphaned active task instead of restarting it", async () => {
+    const queue = new PreviewQueue<string>(1, 8);
+    let release!: () => void;
+    const consumer = new AbortController();
+    const first = queue.enqueue("active", () => new Promise<string>((resolve) => {
+      release = () => resolve("done");
+    }), { signal: consumer.signal });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    consumer.abort();
+    const rejoined = queue.enqueue("active", async () => "wrong");
+    expect(rejoined).toBe(first);
+    release();
+    await expect(rejoined).resolves.toBe("done");
+  });
 });

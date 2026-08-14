@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -209,6 +209,18 @@ function hasCanonicalChannelOrder(header: ExrHeaderInfo): boolean {
  * 已知色彩转换结果（验收 15.1）：线性 0.5 灰的 EXR 应输出约 188/255
  * （0.5^(1/2.2) ≈ 0.730 → 186）；测试用 fixture 验证。
  */
+
+interface ExrProbeCacheEntry {
+  at: number;
+  size: number;
+  mtimeMs: number;
+  subimages: OpenImageIoSubimage[];
+}
+
+/** resolveExrSelection 的进程内探测缓存：序列逐帧解码时省掉每帧一次
+ *  oiiotool --info 进程启动（约 50ms）。键=路径，值随大小/mtime 失效。 */
+const exrProbeCache = new Map<string, ExrProbeCacheEntry>();
+const EXR_PROBE_CACHE_MAX = 64;
 
 export const HDR_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "hdr-provider",
@@ -718,9 +730,32 @@ export class HdrProvider implements ResourceProvider {
       throw new Error(`HDR_THUMBNAIL_FAILED:${header.error ?? "UNKNOWN"}`);
     }
     const executable = await packagedOiiotoolPath();
+    // 序列逐帧解码时，每个 thumbnail 调用都会重新探测同一文件的
+    // subimage/通道结构（一次 oiiotool --info 进程 + ~50ms）。按
+    // 路径+大小+mtime 做进程内 LRU，帧图结构不变时直接复用。
+    const info = await stat(filename).catch(() => null);
+    const probeCacheKey = filename;
+    const probeCached = info
+      ? exrProbeCache.get(probeCacheKey)
+      : undefined;
     const probed = executable
-      ? await probeExrWithOpenImageIo(filename, { executable }).catch(() => null)
+      ? probeCached && probeCached.size === info!.size && probeCached.mtimeMs === info!.mtimeMs
+        ? probeCached.subimages
+        : await probeExrWithOpenImageIo(filename, { executable }).catch(() => null)
       : null;
+    if (probed && info) {
+      exrProbeCache.set(probeCacheKey, {
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+        at: Date.now(),
+        subimages: probed,
+      });
+      if (exrProbeCache.size > EXR_PROBE_CACHE_MAX) {
+        const oldest = [...exrProbeCache.entries()]
+          .sort((left, right) => left[1].at - right[1].at)[0]?.[0];
+        if (oldest) exrProbeCache.delete(oldest);
+      }
+    }
     const subimages: OpenImageIoSubimage[] = probed ?? [{
       index: 0,
       name: "",

@@ -39,6 +39,7 @@ import type { FoundSettings } from "../../shared/contracts";
 import { mergeFoundSettings } from "./found-settings";
 import { idSchema, pathSchema } from "./schemas";
 import { extractDominantPalette } from "../../shared/color-palette";
+import { previewCacheKey } from "../platform/preview-cache-key";
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import {
   assertAbsoluteLocalPath,
@@ -333,30 +334,67 @@ export function registerResourcesIpc(
     if (extension === "exr" || extension === "hdr") {
       const cacheDirectory = dependencies.getThumbnailCacheDirectory();
       if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
-      const signature = createHash("sha256")
-        .update(`${path.normalize(resolved)}:${randomUUID()}:palette-display`)
-        .digest("hex")
-        .slice(0, 20);
-      samplePath = path.join(cacheDirectory, `palette-${signature}.png`);
-      removeSample = true;
-      await invokeThumbnail(dependencies.getProviderRegistry(), {
-        path: resolved,
-        kind,
-        extension,
-        width: 320,
-        height: 320,
-        outputPath: samplePath,
-      });
-    } else if (kind === "video") {
+      // 大体积 EXR/HDR 不再为取色做全分辨率解码：优先复用显示层已解码
+      // 的 PNG 变体（1920/960/480，命中任一个都行），否则解码一次 320
+      // 并持久缓存（键含路径+大小+mtime，文件变化自动失效）。
+      const info = await stat(resolved).catch(() => null);
+      if (!info) throw new Error("PALETTE_SOURCE_UNAVAILABLE");
+      const identity = {
+        realPath: resolved,
+        size: info.size,
+        mtimeMs: info.mtimeMs,
+      };
+      let sourcePng: string | null = null;
+      const displayVariants = [
+        "thumbnail-1920x1920-png",
+        "thumbnail-960x960-png",
+        "thumbnail-480x480-png",
+      ] as const;
+      for (const variant of displayVariants) {
+        const candidate = path.join(
+          cacheDirectory,
+          "directory",
+          `${previewCacheKey({ ...identity, variant })}.png`,
+        );
+        if (await stat(candidate).then(() => true, () => false)) {
+          sourcePng = candidate;
+          break;
+        }
+      }
+      if (!sourcePng) {
+        const paletteFile = path.join(
+          cacheDirectory,
+          `palette-${previewCacheKey({ ...identity, variant: "palette-320-png" })}.png`,
+        );
+        if (await stat(paletteFile).then(() => true, () => false)) {
+          sourcePng = paletteFile;
+        } else {
+          await invokeThumbnail(dependencies.getProviderRegistry(), {
+            path: resolved,
+            kind,
+            extension,
+            width: 320,
+            height: 320,
+            outputPath: paletteFile,
+          });
+          sourcePng = paletteFile;
+        }
+      }
+      samplePath = sourcePng;
+      // removeSample 保持 false：样本持久缓存，二次打开与逐帧刷新直接复用。
+    } else if (kind === "video" || extension === "bmp") {
+      // BMP 必须走 ffmpeg 抽帧：本构建的 sharp/libvips 不含 BMP 解码器
+      // （实测所有 BMP 变体均报 unsupported image format），直接喂 sharp
+      // 会抛错。勿改回 sharp 直解。
       const cacheDirectory = dependencies.getThumbnailCacheDirectory();
       if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
       const signature = createHash("sha256")
-        .update(`${path.normalize(resolved)}:${Math.round(parsed.timeMs)}:${randomUUID()}:palette`)
+        .update(`${path.normalize(resolved)}:${kind === "video" ? Math.round(parsed.timeMs) : 0}:${randomUUID()}:palette`)
         .digest("hex")
         .slice(0, 20);
       samplePath = path.join(cacheDirectory, `palette-${signature}.png`);
       removeSample = true;
-      await extractVideoFrame(resolved, parsed.timeMs, samplePath, {
+      await extractVideoFrame(resolved, kind === "video" ? parsed.timeMs : 0, samplePath, {
         width: 320,
         height: 320,
       });

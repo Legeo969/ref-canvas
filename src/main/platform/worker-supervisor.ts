@@ -247,6 +247,9 @@ export class WorkerSupervisor {
     for (const follower of entry.followers) follower.resolve(result);
     entry.followers = [];
     entry.resolve(result);
+    // worker 成功处理了一个任务：恢复重启预算，避免一次崩溃永久耗尽
+    // 之后任意单点故障都拒绝整个队列。
+    this.restartCount = 0;
     this.drain();
   }
 

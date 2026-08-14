@@ -70,7 +70,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     setImageFailed(false);
   }, [asset.id, asset.previewUrl]);
 
-  /** 取色：优先读取显示元素；跨协议污染时通过 fetch + ImageBitmap 重绘。 */
+  /** 取色只绘制目标源像素，避免为大图分配整张 canvas。 */
   const samplePixel = async (event: MouseEvent<HTMLImageElement>) => {
     if (!eyedropActive) return;
     const image = imageRef.current;
@@ -82,29 +82,39 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     const normalizedY = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return;
-    let width = image.naturalWidth;
-    let height = image.naturalHeight;
+    const sampleSource = (
+      source: CanvasImageSource,
+      width: number,
+      height: number,
+    ) => {
+      const x = Math.min(width - 1, Math.max(0, Math.floor(normalizedX * width)));
+      const y = Math.min(height - 1, Math.max(0, Math.floor(normalizedY * height)));
+      canvas.width = 1;
+      canvas.height = 1;
+      context.imageSmoothingEnabled = false;
+      context.clearRect(0, 0, 1, 1);
+      context.drawImage(source, x, y, 1, 1, 0, 0, 1, 1);
+      return context.getImageData(0, 0, 1, 1).data;
+    };
+    let pixel: Uint8ClampedArray;
     try {
-      canvas.width = width;
-      canvas.height = height;
-      context.clearRect(0, 0, width, height);
-      context.drawImage(image, 0, 0, width, height);
-      context.getImageData(0, 0, 1, 1);
+      pixel = sampleSource(image, image.naturalWidth, image.naturalHeight);
     } catch {
-      const response = await fetch(asset.previewUrl);
-      if (!response.ok) return;
-      const bitmap = await createImageBitmap(await response.blob());
-      width = bitmap.width;
-      height = bitmap.height;
-      canvas.width = width;
-      canvas.height = height;
-      context.clearRect(0, 0, width, height);
-      context.drawImage(bitmap, 0, 0);
-      bitmap.close();
+      let bitmap: ImageBitmap | null = null;
+      try {
+        const response = await fetch(asset.previewUrl, {
+          referrer: window.location.href,
+        });
+        if (!response.ok) return;
+        bitmap = await createImageBitmap(await response.blob());
+        pixel = sampleSource(bitmap, bitmap.width, bitmap.height);
+      } catch {
+        setEyedropActive(false);
+        return;
+      } finally {
+        bitmap?.close();
+      }
     }
-    const x = Math.min(width - 1, Math.max(0, Math.floor(normalizedX * width)));
-    const y = Math.min(height - 1, Math.max(0, Math.floor(normalizedY * height)));
-    const pixel = context.getImageData(x, y, 1, 1).data;
     const [sr, sg, sb] = [pixel[0], pixel[1], pixel[2]];
     const next = {
       rgb: [sr, sg, sb] as [number, number, number],
@@ -113,6 +123,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     setSample(next);
     setCopied(false);
     onColorSample?.(next.hex);
+    setEyedropActive(false);
   };
 
   const copySample = async () => {

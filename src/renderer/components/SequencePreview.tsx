@@ -60,10 +60,15 @@ function useFrameTokens(files: string[]) {
   return tokens;
 }
 
-export function sequenceFrameSourceUrl(extension: string, token: string): string {
+export function sequenceFrameSourceUrl(
+  extension: string,
+  token: string,
+  size = 1920,
+  priority: "preview" | "prefetch" = "preview",
+): string {
   const normalized = extension.toLowerCase();
   return normalized === "exr" || normalized === "hdr"
-    ? `refbrowse://thumbnail/${token}?priority=preview&size=1920`
+    ? `refbrowse://thumbnail/${token}?priority=${priority}&size=${size}`
     : `refbrowse://preview/${token}`;
 }
 
@@ -82,7 +87,11 @@ export function SequencePreviewDialog({
   sequence,
   onClose,
   embedded = false,
+  fullscreen = false,
   onPaletteChange,
+  eyedropActive = false,
+  onEyedropActiveChange,
+  onColorSample,
   controlsTarget,
   multichannelOpen = false,
   multichannelAnchor,
@@ -95,7 +104,12 @@ export function SequencePreviewDialog({
   sequence: SequenceGroupInfo;
   onClose(): void;
   embedded?: boolean;
+  /** 预览面板是否处于全屏；全屏时帧解码尺寸升回 1920。 */
+  fullscreen?: boolean;
   onPaletteChange?: (colors: string[]) => void;
+  eyedropActive?: boolean;
+  onEyedropActiveChange?: (active: boolean) => void;
+  onColorSample?: (color: string) => void;
   controlsTarget?: HTMLElement | null;
   multichannelOpen?: boolean;
   multichannelAnchor?: HTMLElement | null;
@@ -106,6 +120,9 @@ export function SequencePreviewDialog({
   onGifExportToggle?: () => void;
 }) {
   const frames = useMemo(() => sequence.files, [sequence.files]);
+  // 960px 对内嵌播放面足够，避免每帧解码完整 1920px EXR；全屏时呈现表面
+  // 变大（4K 上 960 上采样会糊），尺寸随预览面板全屏状态升回 1920。
+  const framePreviewSize = frames.length > 1 ? (fullscreen ? 1920 : 960) : 1920;
   const foundSettings = useFoundSettings();
   // 阶段 5：autoplaySequence 决定打开时是否自动播放；defaultSequenceFps
   // 作为 FPS presets 默认速度（检测器推断值保留给无设置时）。
@@ -122,6 +139,11 @@ export function SequencePreviewDialog({
   const [localGifRangeActive, setLocalGifRangeActive] = useState(false);
   const [failed, setFailed] = useState(false);
   const tokens = useFrameTokens(frames);
+  const activeToken = frames[frameIndex] ? tokens.get(frames[frameIndex]) : undefined;
+  const source = activeToken
+    ? sequenceFrameSourceUrl(sequence.extension, activeToken, framePreviewSize)
+    : null;
+  const isHdrSequence = /^(exr|hdr)$/i.test(sequence.extension);
   const fpsPresets = foundSettings.sequenceFpsPresets.length
     ? foundSettings.sequenceFpsPresets
     : [24];
@@ -149,14 +171,24 @@ export function SequencePreviewDialog({
   const fpsRef = useRef(fps);
   const timerRef = useRef<number | null>(null);
   const displayedSourceRef = useRef<string | null>(null);
+  const requestedSourceRef = useRef<string | null>(null);
+  const loadedSourcesRef = useRef(new Set<string>());
+  const loadingSourcesRef = useRef(new Set<string>());
+  const failedSourcesRef = useRef(new Set<string>());
   const displayedImageRef = useRef<HTMLImageElement | null>(null);
   const [displayedSource, setDisplayedSource] = useState<string | null>(null);
   const [displayedFrameIndex, setDisplayedFrameIndex] = useState(0);
+  const fpsButtonRef = useRef<HTMLButtonElement>(null);
   const mp4ButtonRef = useRef<HTMLButtonElement>(null);
   const gifButtonRef = useRef<HTMLButtonElement>(null);
   const [presetMenuPosition, setPresetMenuPosition] = useState({ left: 0, bottom: 0 });
   const positionPresetMenu = useCallback(() => {
-    const rect = (optionsDrawer === "gif" ? gifButtonRef : mp4ButtonRef).current?.getBoundingClientRect();
+    const trigger = optionsDrawer === "gif"
+      ? gifButtonRef
+      : optionsDrawer === "fps"
+        ? fpsButtonRef
+        : mp4ButtonRef;
+    const rect = trigger.current?.getBoundingClientRect();
     if (!rect) return;
     setPresetMenuPosition({
       left: Math.max(6, Math.min(rect.left, window.innerWidth - 286)),
@@ -174,11 +206,11 @@ export function SequencePreviewDialog({
     if (!onGifRangeActiveChange) setLocalGifRangeActive(active);
   }, [onGifRangeActiveChange]);
   const closeExportPopover = useCallback(() => {
-    setOptionsDrawer((current) => current === "fps" ? current : null);
+    setOptionsDrawer(null);
     setGifRangeActive(false);
   }, [setGifRangeActive]);
   useLayoutEffect(() => {
-    if (optionsDrawer === "mp4" || optionsDrawer === "gif") positionPresetMenu();
+    if (optionsDrawer) positionPresetMenu();
   }, [optionsDrawer, positionPresetMenu]);
   useEffect(() => {
     const closeMenu = () => closeExportPopover();
@@ -186,7 +218,7 @@ export function SequencePreviewDialog({
     return () => window.removeEventListener("refcanvas:close-preview-popovers", closeMenu);
   }, [closeExportPopover]);
   useEffect(() => {
-    if (optionsDrawer !== "mp4" && optionsDrawer !== "gif") return;
+    if (!optionsDrawer) return;
     window.addEventListener("resize", positionPresetMenu);
     window.addEventListener("scroll", positionPresetMenu, true);
     return () => {
@@ -195,11 +227,15 @@ export function SequencePreviewDialog({
     };
   }, [optionsDrawer, positionPresetMenu]);
   useEffect(() => {
-    if (optionsDrawer !== "mp4" && optionsDrawer !== "gif") return;
+    if (!optionsDrawer) return;
     const closeOnPointerAway = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest(".sequence-export-popover")) return;
-      if (target && (mp4ButtonRef.current?.contains(target) || gifButtonRef.current?.contains(target))) return;
+      if (target?.closest(".sequence-export-popover, .sequence-fps-popover")) return;
+      if (target && (
+        fpsButtonRef.current?.contains(target) ||
+        mp4ButtonRef.current?.contains(target) ||
+        gifButtonRef.current?.contains(target)
+      )) return;
       closeExportPopover();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -234,6 +270,21 @@ export function SequencePreviewDialog({
     if (!playing || frames.length < 2) return;
     const tick = () => {
       if (!playingRef.current) return;
+      // A large EXR can take longer than one frame interval to decode. Keep
+      // the current display frame until its preview is ready so playback does
+      // not enqueue the entire sequence and then appear frozen.
+      if (
+        isHdrSequence &&
+        (!source || (
+          displayedSourceRef.current !== source &&
+          !failedSourcesRef.current.has(source)
+        ))
+      ) {
+        // 暂存帧与 HdrPreview 显示使用同一 size 变体（默认变换路径），
+        // 门控等待的正是即将显示的缓存变体。
+        timerRef.current = window.setTimeout(tick, 50);
+        return;
+      }
       const next = frameIndexRef.current + 1;
       if (next >= frames.length && !looping) {
         setPlaying(false);
@@ -247,51 +298,68 @@ export function SequencePreviewDialog({
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     };
-  }, [playing, frames.length, looping]);
+  }, [isHdrSequence, looping, frames.length, playing, source]);
 
   // 预取相邻帧图。
   useEffect(() => {
-    for (let delta = -2; delta <= 2; delta += 1) {
-      if (!delta) continue;
+    // EXR/HDR 每帧解码约 1s（PIZ 全通道解压），纯按需加载会导致逐帧卡顿。
+    // 只前瞻 2 帧、以 prefetch 优先级入队（显示请求始终插队），当前帧
+    // 显示时下一帧已在解码——受限流水线，避免再次喂饱解码器。
+    const lookahead = isHdrSequence ? [1, 2] : [-2, -1, 1, 2];
+    for (const delta of lookahead) {
       const neighbor = frames[frameIndex + delta];
       const token = neighbor ? tokens.get(neighbor) : undefined;
       if (!token) continue;
       const image = new Image();
-      image.src = sequenceFrameSourceUrl(sequence.extension, token);
+      image.src = isHdrSequence
+        ? sequenceFrameSourceUrl(sequence.extension, token, framePreviewSize, "prefetch")
+        : sequenceFrameSourceUrl(sequence.extension, token, framePreviewSize);
     }
-  }, [frameIndex, frames, tokens]);
+  }, [frameIndex, framePreviewSize, frames, isHdrSequence, sequence.extension, tokens]);
 
-  const token = frames[frameIndex] ? tokens.get(frames[frameIndex]) : undefined;
-  const source = token ? sequenceFrameSourceUrl(sequence.extension, token) : null;
   useEffect(() => {
     if (!source) {
       displayedSourceRef.current = null;
+      requestedSourceRef.current = null;
       setDisplayedSource(null);
       return;
     }
-    if (source === displayedSourceRef.current) return;
-    let cancelled = false;
+    requestedSourceRef.current = source;
+    if (source === displayedSourceRef.current || loadedSourcesRef.current.has(source)) {
+      if (source !== displayedSourceRef.current) {
+        displayedSourceRef.current = source;
+        setDisplayedSource(source);
+        setDisplayedFrameIndex(frameIndex);
+      }
+      return;
+    }
+    if (loadingSourcesRef.current.has(source)) return;
+    loadingSourcesRef.current.add(source);
     const image = new Image();
     image.onload = async () => {
-      if (cancelled) return;
       try {
         await image.decode?.();
       } catch {
         // A completed load is still usable when decode() is unsupported.
       }
-      if (cancelled) return;
-      displayedSourceRef.current = source;
-      setDisplayedSource(source);
-      setDisplayedFrameIndex(frameIndex);
-      setFailed(false);
+      loadingSourcesRef.current.delete(source);
+      loadedSourcesRef.current.add(source);
+      failedSourcesRef.current.delete(source);
+      // Do not discard a completed decode just because playback advanced while
+      // it was loading. Show it only when it is still the requested frame.
+      if (requestedSourceRef.current === source) {
+        displayedSourceRef.current = source;
+        setDisplayedSource(source);
+        setDisplayedFrameIndex(frameIndex);
+        setFailed(false);
+      }
     };
     image.onerror = () => {
-      if (!cancelled && !displayedSourceRef.current) setFailed(true);
+      loadingSourcesRef.current.delete(source);
+      failedSourcesRef.current.add(source);
+      if (requestedSourceRef.current === source && !displayedSourceRef.current) setFailed(true);
     };
     image.src = source;
-    return () => {
-      cancelled = true;
-    };
   }, [frameIndex, source]);
   useEffect(() => {
     if (!availableMp4Presets.some((preset) => preset.id === exportPresetId)) {
@@ -403,6 +471,27 @@ export function SequencePreviewDialog({
     </section>,
     document.body,
   ) : null;
+  const fpsPopover = optionsDrawer === "fps" && typeof document !== "undefined" ? createPortal(
+    <section
+      className="sequence-inline-menu anchored sequence-fps-popover"
+      data-placement="top-start"
+      style={{ left: presetMenuPosition.left, bottom: presetMenuPosition.bottom }}
+      aria-label="FPS 预设菜单"
+    >
+      {fpsPresets.map((candidate) => (
+        <button
+          type="button"
+          key={candidate}
+          className={candidate === fps ? "active" : ""}
+          onClick={() => {
+            setFps(candidate);
+            setOptionsDrawer(null);
+          }}
+        >{candidate} fps</button>
+      ))}
+    </section>,
+    document.body,
+  ) : null;
 
   usePreviewTransportRegistration({
     kind: "sequence",
@@ -424,7 +513,9 @@ export function SequencePreviewDialog({
       return (current + delta + frames.length) % frames.length;
     }),
     setLooping,
-    setPlaybackRate: (value) => setFps(Math.max(1, Math.round((sequence.fps || 24) * value))),
+    // 序列的 transport 播放速率语义为绝对帧率（视频为倍率），与页脚
+    // FPS 弹窗同源写本地 fps 状态。
+    setPlaybackRate: (value) => setFps(Math.min(240, Math.max(1, Math.round(value)))),
     setMuted: () => undefined,
     setVolume: () => undefined,
     exportGif: () => void exportGif(),
@@ -546,9 +637,13 @@ export function SequencePreviewDialog({
               extension={sequence.extension}
               path={frames[displayedFrameIndex]}
               managed={embedded}
+              displaySize={framePreviewSize}
               controlsTarget={controlsTarget}
               multichannelOpen={multichannelOpen}
               multichannelAnchor={multichannelAnchor}
+              eyedropActive={eyedropActive}
+              onEyedropActiveChange={onEyedropActiveChange}
+              onColorSample={onColorSample}
             /> : <img
               ref={displayedImageRef}
               src={displayedSource}
@@ -601,9 +696,14 @@ export function SequencePreviewDialog({
             </button>
             <button
               className={`sequence-option-trigger ${optionsDrawer === "fps" ? "active" : ""}`}
+              ref={fpsButtonRef}
               aria-label={translate("sequence.fps")}
               aria-expanded={optionsDrawer === "fps"}
-              onClick={() => setOptionsDrawer((current) => current === "fps" ? null : "fps")}
+              onClick={() => {
+                const opening = optionsDrawer !== "fps";
+                window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+                setOptionsDrawer(opening ? "fps" : null);
+              }}
             >
               <Gauge size={14} />
               {fps} FPS
@@ -653,19 +753,7 @@ export function SequencePreviewDialog({
             </button>
           </div>
           {exportPopover}
-          {optionsDrawer === "fps" && (
-            <div className="sequence-options-drawer" aria-label="FPS 预设抽屉">
-              <div className="sequence-drawer-title"><Gauge size={15} /><strong>播放 FPS</strong><span>来自设置中的图片序列预设</span></div>
-              <div className="sequence-drawer-grid">
-                {fpsPresets.map((candidate) => (
-                  <button key={candidate} className={candidate === fps ? "active" : ""} onClick={() => setFps(candidate)}>
-                    <span>{candidate === foundSettings.defaultSequenceFps ? "默认" : "预设"}</span>
-                    <strong>{candidate} FPS</strong>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {fpsPopover}
         </footer>}
 
         {missing.length > 0 && (
