@@ -98,6 +98,7 @@ export function HdrPreview({
 }) {
   const foundSettings = useFoundSettings();
   const fallbackRef = useRef<HTMLImageElement | null>(null);
+  const managedImageRef = useRef<HTMLImageElement | null>(null);
   const exposureButtonRef = useRef<HTMLButtonElement | null>(null);
   const ocioButtonRef = useRef<HTMLButtonElement | null>(null);
   const exposureMenuRef = useRef<HTMLDivElement | null>(null);
@@ -136,11 +137,13 @@ export function HdrPreview({
       onEyedropActiveChange?.(false);
       return;
     }
-    // 直接吸「用户真正看到的那张图」（fallback <img>，即色彩管理后的
-    // 预览 PNG）。WebGL 画布依赖 crossOrigin 纹理上传，打包环境里协议
+    // 直接吸「用户真正看到的那张图」：色彩管理变体就绪时取它，否则取
+    // 基础变体。WebGL 画布依赖 crossOrigin 纹理上传，打包环境里协议
     // 对 CORS 图片请求不返回 ACAO，纹理会是白/黑占位色——从画布读到的
     // 就是假颜色；从 <img> 读到的才是屏幕上显示的真实像素。
-    const image = fallbackRef.current;
+    const image = managedImageRef.current?.complete && managedImageRef.current.naturalWidth
+      ? managedImageRef.current
+      : fallbackRef.current;
     if (!image || !image.complete || !image.naturalWidth) {
       onEyedropActiveChange?.(false);
       return;
@@ -256,9 +259,41 @@ export function HdrPreview({
   const preview = useRetryingPreviewUrl(colorManagedSource);
   const requestSource = preview.url ?? colorManagedSource;
   const exposure = 2 ** exposureEv;
+  // 显式色彩管理（自定义 OCIO / ACES / Raw）走独立缓存变体，解码可能
+  // 明显慢于默认变体（大 EXR 序列尤甚）。渐进增强：基础变体先行显示，
+  // 色彩管理变体就绪后淡入覆盖，播放不被变体解码拖住（见序列卡死回归）。
+  const managedMode = colorManagedSource !== displaySource;
+  const managedReady = managedMode && preview.status === "ready";
+  // 基础变体（默认变换，通常已缓存）先行显示；色彩管理变体就绪后淡入覆盖。
+  const visibleSource = managedMode ? displaySource : requestSource;
   const closeLocalPopovers = () => {
     setExposureOpen(false);
     setOcioOpen(false);
+  };
+
+  /**
+   * 应用自定义 OCIO 配置：先让主进程跑一次最小转换校验（色彩空间解析 +
+   * LUT 引用）。配置缺 LUT（如 Unreal MRQ 只导出 config.ocio 未带 luts
+   * 目录）时直接拒绝并提示原因，而不是让预览静默失败或序列卡死。
+   */
+  const applyOcioConfig = async (configPath: string): Promise<boolean> => {
+    setOcioError(null);
+    try {
+      const validation = await window.refCanvas.media?.validateOcioConfig?.(configPath);
+      if (validation && !validation.ok) {
+        setOcioError(`无法加载该 OCIO 配置：${validation.detail ?? "未知错误"}`);
+        return false;
+      }
+      const next = await window.refCanvas.system.setPreferences({ foundSettings: { ocioConfigPath: configPath } });
+      setOcioConfigPath(next.foundSettings.ocioConfigPath);
+      window.dispatchEvent(new CustomEvent("refcanvas:found-settings", { detail: next.foundSettings }));
+      setOcioOpen(false);
+      return true;
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? `：${error.message}` : "";
+      setOcioError(`无法加载该 OCIO 配置${detail}`);
+      return false;
+    }
   };
 
   const exportChannel = async () => {
@@ -475,12 +510,25 @@ export function HdrPreview({
             <img
               ref={fallbackRef}
               className="hdr-preview-fallback"
-              src={requestSource}
+              src={visibleSource}
               alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
               draggable={false}
-              onLoad={preview.markReady}
-              onError={preview.markError}
+              onLoad={managedMode ? undefined : preview.markReady}
+              onError={managedMode ? undefined : preview.markError}
             />
+            {managedMode && (
+              <img
+                ref={managedImageRef}
+                className="hdr-preview-managed"
+                src={requestSource}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+                style={{ opacity: managedReady ? 1 : 0 }}
+                onLoad={preview.markReady}
+                onError={preview.markError}
+              />
+            )}
             {samplePoint && (
               <span
                 className="hdr-sample-reticle"
@@ -488,12 +536,12 @@ export function HdrPreview({
                 style={{ left: samplePoint.x, top: samplePoint.y, "--sample-color": samplePoint.color } as React.CSSProperties}
               />
             )}
-            {(preview.status === "loading" || preview.status === "waiting") && (
+            {!managedMode && (preview.status === "loading" || preview.status === "waiting") && (
               <span className="preview-message" role="status">
                 {preview.status === "waiting" ? "正在等待 EXR 预览…" : translate("hdr.generating")}
               </span>
             )}
-            {preview.status === "failed" && (
+            {!managedMode && preview.status === "failed" && (
               <span className="preview-message preview-message-retry">
                 <span>{translate("hdr.failed")}</span>
                 <button type="button" onClick={preview.retry} aria-label="重试 EXR 预览">
@@ -567,22 +615,13 @@ export function HdrPreview({
               <button type="button" role="menuitemradio" aria-checked={toneMapping === value} className={toneMapping === value ? "active" : ""} key={value} onClick={() => { setToneMapping(value); setOcioOpen(false); }}><span className="lut-radio" />{label}</button>
             ))}
             <span className="hdr-ocio-separator" />
-            {colorStatus?.detectedOcio && <button type="button" role="menuitemradio" aria-checked={!ocioConfigPath} className={!ocioConfigPath ? "active" : ""} title={colorStatus.detectedOcio} onClick={async () => {
-              const next = await window.refCanvas.system.setPreferences({ foundSettings: { ocioConfigPath: colorStatus.detectedOcio } });
-              setOcioConfigPath(next.foundSettings.ocioConfigPath);
-              window.dispatchEvent(new CustomEvent("refcanvas:found-settings", { detail: next.foundSettings }));
-              setOcioOpen(false);
-            }}><span className="lut-radio" />$OCIO · {colorStatus.detectedOcio.split(/[\\/]/).pop()}</button>}
+            {colorStatus?.detectedOcio && <button type="button" role="menuitemradio" aria-checked={!ocioConfigPath} className={!ocioConfigPath ? "active" : ""} title={colorStatus.detectedOcio} onClick={() => { if (colorStatus?.detectedOcio) void applyOcioConfig(colorStatus.detectedOcio); }}><span className="lut-radio" />$OCIO · {colorStatus.detectedOcio.split(/[\\/]/).pop()}</button>}
             {ocioConfigPath && <button type="button" role="menuitemradio" aria-checked className="active" title={ocioConfigPath} onClick={() => setOcioOpen(false)}><span className="lut-radio" />{ocioConfigPath.split(/[\\/]/).pop()}</button>}
             <button type="button" role="menuitem" onClick={async () => {
-              setOcioError(null);
               try {
                 const [filename] = await window.refCanvas.system.pickFile({ title: "添加新的 config.ocio", multiSelections: false, filters: [{ name: "OCIO Config", extensions: ["ocio"] }] });
                 if (!filename) return;
-                const next = await window.refCanvas.system.setPreferences({ foundSettings: { ocioConfigPath: filename } });
-                setOcioConfigPath(next.foundSettings.ocioConfigPath);
-                window.dispatchEvent(new CustomEvent("refcanvas:found-settings", { detail: next.foundSettings }));
-                setOcioOpen(false);
+                await applyOcioConfig(filename);
               } catch {
                 setOcioError("无法加载该 OCIO 配置");
               }

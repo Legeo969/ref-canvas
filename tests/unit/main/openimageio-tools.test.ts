@@ -7,7 +7,9 @@ import {
   buildOpenImageIoDecodeArgs,
   fitPreviewDimensions,
   packagedOiiotoolCandidates,
+  packagedOiiotoolPath,
   parseOpenImageIoInfoXml,
+  validateOcioConfigWithOpenImageIo,
 } from "../../../src/main/services/media/openimageio-tools";
 
 const directories: string[] = [];
@@ -127,5 +129,46 @@ describe("OpenImageIO sidecar", () => {
     await expect(pending).rejects.toThrow();
     expect(Date.now() - started).toBeLessThan(2_000);
     await expect(readFile(outputPath)).rejects.toThrow();
+  });
+
+  it("accepts an OCIO config whose minimal conversion succeeds", async () => {
+    const executable = await packagedOiiotoolPath();
+    if (!executable) return; // 解码侧车缺失时跳过
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-ocio-ok-"));
+    directories.push(directory);
+    const config = path.join(directory, "config.ocio");
+    await writeFile(config, `ocio_profile_version: 1
+search_path: ""
+strictparsing: false
+roles:
+  scene_linear: lin
+  color_picking: sRGB
+colorspaces:
+  - !<ColorSpace> {name: lin}
+  - !<ColorSpace> {name: sRGB}
+`);
+    const validation = await validateOcioConfigWithOpenImageIo(config, { executable });
+    expect(validation).toEqual({ ok: true, detail: null });
+  });
+
+  it("reports the failure reason for an unusable OCIO config", async () => {
+    const executable = await packagedOiiotoolPath();
+    if (!executable) return; // 解码侧车缺失时跳过
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-ocio-bad-"));
+    directories.push(directory);
+    const config = path.join(directory, "config.ocio");
+    // 缺失 scene_linear 角色与 sRGB 色彩空间：--colorconvert 无法解析。
+    await writeFile(config, `ocio_profile_version: 1
+search_path: ""
+strictparsing: true
+roles:
+  scene_linear: nope
+  color_picking: also_missing
+colorspaces:
+  - !<ColorSpace> {name: whatever}
+`);
+    const validation = await validateOcioConfigWithOpenImageIo(config, { executable });
+    expect(validation.ok).toBe(false);
+    expect(validation.detail).toContain("could not be found");
   });
 });

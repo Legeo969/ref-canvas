@@ -1662,6 +1662,8 @@ export interface RefCanvasApi {
     thumbnail(path: string, options?: MediaThumbnailOptions): Promise<MediaThumbnailResult>;
     /** 生成 refbrowse 预览源 URL。 */
     preview(path: string): Promise<MediaPreviewResult>;
+    /** 校验自定义 OCIO 配置可用性（解析 + 最小转换；LUT 缺失在此暴露）。 */
+    validateOcioConfig(path: string): Promise<{ ok: boolean; detail: string | null }>;
     /** 按时间戳精确取帧（视频逐帧；不依赖 HTML video seek）。 */
     frame(
       path: string,

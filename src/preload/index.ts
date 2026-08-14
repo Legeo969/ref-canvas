@@ -269,6 +269,8 @@ const api: RefCanvasApi = {
     thumbnail: (path, options) =>
       ipcRenderer.invoke("media:thumbnail", path, options),
     preview: (path) => ipcRenderer.invoke("media:preview", path),
+    validateOcioConfig: (path) =>
+      ipcRenderer.invoke("media:validateOcioConfig", path),
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
     palette: (path, options) =>

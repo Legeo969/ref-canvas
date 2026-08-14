@@ -7,11 +7,13 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 vi.mock("../../../../src/renderer/app/found-settings", () => ({
   alphaBackgroundStyle: () => "none",
-  useFoundSettings: () => ({ ocioConfigPath: null }),
+  useFoundSettings: vi.fn(() => ({ ocioConfigPath: null })),
 }));
 
 vi.mock("../../../../src/renderer/components/ImagePreviewViewport", () => ({
-  ImagePreviewViewport: ({ assetKey }: { assetKey: string }) => <div data-testid="image-viewport" data-asset-key={assetKey} />,
+  ImagePreviewViewport: ({ assetKey, children }: { assetKey: string; children?: (state: { style: React.CSSProperties; panning: boolean }) => React.ReactNode }) => (
+    <div data-testid="image-viewport" data-asset-key={assetKey}>{children?.({ style: {}, panning: false }) ?? null}</div>
+  ),
 }));
 
 vi.mock("../../../../src/renderer/components/useRetryingPreviewUrl", () => ({
@@ -29,6 +31,7 @@ vi.mock("../../../../src/renderer/components/PanoramaPreview", () => ({
 }));
 
 import { HdrPreview } from "../../../../src/renderer/components/HdrPreview";
+import { useFoundSettings } from "../../../../src/renderer/app/found-settings";
 
 describe("HDR preview controls", () => {
   const roots: Root[] = [];
@@ -169,6 +172,74 @@ describe("HDR preview controls", () => {
     });
     expect(setPreferences).toHaveBeenCalledWith({ foundSettings: { ocioConfigPath: "D:\\color\\config.ocio" } });
     expect(host.querySelector('[data-testid="image-viewport"]')?.getAttribute("data-asset-key")).toContain("ocio=");
+  });
+
+  it("shows the base variant first and overlays the color-managed variant with a custom config", async () => {
+    const stubSettings = (ocioConfigPath: string | null) =>
+      ({ ocioConfigPath }) as unknown as ReturnType<typeof useFoundSettings>;
+    vi.mocked(useFoundSettings).mockReturnValue(stubSettings("D:\\color\\config.ocio"));
+    try {
+      Object.assign(window, {
+        refCanvas: {
+          color: { getStatus: vi.fn(async () => ({ detectedOcio: null })) },
+        },
+      });
+      const host = document.createElement("div");
+      const toolbar = document.createElement("div");
+      document.body.append(host, toolbar);
+      const root = createRoot(host);
+      roots.push(root);
+      const source = "refbrowse://thumbnail/token?priority=preview&size=1920";
+      await act(async () => root.render(<HdrPreview source={source} extension="exr" controlsTarget={toolbar} />));
+      const base = host.querySelector<HTMLImageElement>("img.hdr-preview-fallback");
+      const managed = host.querySelector<HTMLImageElement>("img.hdr-preview-managed");
+      expect(base?.getAttribute("src")).toBe(source);
+      expect(managed?.getAttribute("src")).toContain("inputColorSpace=lin_srgb");
+      expect(managed?.getAttribute("src")).toContain("ocio=");
+      // useRetryingPreviewUrl mock 恒为 ready：管理变体已就绪 → 淡入可见。
+      expect(managed?.style.opacity).toBe("1");
+    } finally {
+      vi.mocked(useFoundSettings).mockReturnValue(
+        stubSettings(null) as ReturnType<typeof useFoundSettings>,
+      );
+    }
+  });
+
+  it("rejects a broken OCIO config with the validation reason", async () => {
+    const setPreferences = vi.fn();
+    Object.assign(window, {
+      refCanvas: {
+        color: { getStatus: vi.fn(async () => ({ detectedOcio: null })) },
+        system: {
+          pickFile: vi.fn(async () => ["D:\\color\\broken.ocio"]),
+          setPreferences,
+        },
+        media: {
+          validateOcioConfig: vi.fn(async () => ({
+            ok: false,
+            detail: "The specified file reference 'linear_to_sRGB.spi1d' could not be located",
+          })),
+        },
+      },
+    });
+    const host = document.createElement("div");
+    const toolbar = document.createElement("div");
+    document.body.append(host, toolbar);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(<HdrPreview source="refasset://hdr" extension="hdr" controlsTarget={toolbar} />));
+    await act(async () => toolbar.querySelector<HTMLButtonElement>('[aria-label="OCIO 色彩管理"]')?.click());
+    await act(async () => {
+      [...document.body.querySelectorAll<HTMLButtonElement>(".hdr-ocio-menu button")]
+        .find((button) => button.textContent?.includes("添加新的"))?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // 校验失败：不落盘配置，菜单保持打开并在菜单内展示原因。
+    expect(setPreferences).not.toHaveBeenCalled();
+    expect(document.body.querySelector(".hdr-ocio-menu")).toBeTruthy();
+    expect(document.body.querySelector(".hdr-ocio-error")?.textContent).toContain("无法加载该 OCIO 配置");
+    expect(document.body.querySelector(".hdr-ocio-error")?.textContent).toContain("linear_to_sRGB.spi1d");
   });
 
   it("changes the actual preview request when selecting an OCIO input color space", async () => {

@@ -222,6 +222,36 @@ interface ExrProbeCacheEntry {
 const exrProbeCache = new Map<string, ExrProbeCacheEntry>();
 const EXR_PROBE_CACHE_MAX = 64;
 
+/**
+ * OCIO 配置失败的进程内记忆：配置刚失败过（如缺 LUT）时直接跳过配置、
+ * 走内置显示变换，避免序列播放中每一帧都先白白失败一次再回退。键随
+ * 配置文件的 mtime/size 失效，修复配置后自动恢复。
+ */
+const ocioConfigFailureAt = new Map<string, number>();
+const OCIO_CONFIG_FAILURE_TTL_MS = 5 * 60_000;
+
+function ocioConfigIdentity(configPath: string, mtimeMs: number, size: number): string {
+  return `${configPath}:${mtimeMs}:${size}`;
+}
+
+async function shouldSkipOcioConfig(configPath: string): Promise<boolean> {
+  const info = await stat(configPath).catch(() => null);
+  const key = ocioConfigIdentity(configPath, info?.mtimeMs ?? 0, info?.size ?? 0);
+  const failedAt = ocioConfigFailureAt.get(key);
+  return failedAt !== undefined && Date.now() - failedAt < OCIO_CONFIG_FAILURE_TTL_MS;
+}
+
+async function rememberOcioConfigFailure(configPath: string): Promise<void> {
+  const info = await stat(configPath).catch(() => null);
+  const key = ocioConfigIdentity(configPath, info?.mtimeMs ?? 0, info?.size ?? 0);
+  ocioConfigFailureAt.set(key, Date.now());
+  if (ocioConfigFailureAt.size > 16) {
+    const oldest = [...ocioConfigFailureAt.entries()]
+      .sort((left, right) => left[1] - right[1])[0]?.[0];
+    if (oldest) ocioConfigFailureAt.delete(oldest);
+  }
+}
+
 export const HDR_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "hdr-provider",
   version: "2.0.0",
@@ -310,7 +340,12 @@ export class HdrProvider implements ResourceProvider {
     // display transform，再量化 8bit PNG。EXR/HDR 不依赖 sharp
     // 的 libvips loader（prebuilt 不含 EXR）。
     const extension = input.extension.toLowerCase();
-    const ocioExecutable = input.ocioConfigPath || input.displayTransform
+    // 失败的 OCIO 配置短期记忆：直接走内置显示变换，避免逐帧重复失败。
+    const ocioConfigPath = input.ocioConfigPath &&
+      !(await shouldSkipOcioConfig(input.ocioConfigPath))
+      ? input.ocioConfigPath
+      : undefined;
+    const ocioExecutable = ocioConfigPath || input.displayTransform
       ? await packagedOiiotoolPath()
       : null;
     if (extension === "hdr" && ocioExecutable) {
@@ -318,7 +353,7 @@ export class HdrProvider implements ResourceProvider {
       if (!header.valid || !header.width || !header.height) {
         throw new Error(`HDR_DECODE_FAILED:${header.error ?? "INVALID_HEADER"}`);
       }
-      return decodeExrWithOpenImageIo({
+      const decodeArgs = {
         inputPath: input.path,
         outputPath: input.outputPath,
         channels: ["R", "G", "B"],
@@ -328,10 +363,22 @@ export class HdrProvider implements ResourceProvider {
         maximumHeight: input.height,
         inputColorSpace: input.inputColorSpace || header.colorSpace || "linear",
         displayTransform: input.displayTransform,
-        ocioConfigPath: input.ocioConfigPath,
+        ocioConfigPath,
         signal: input.signal,
         executable: ocioExecutable,
-      });
+      };
+      try {
+        return await decodeExrWithOpenImageIo(decodeArgs);
+      } catch (error) {
+        if (input.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED", { cause: error });
+        // 自定义 OCIO 配置解码失败（如配置缺 LUT）时回退内置显示变换，
+        // 保证预览可用；配置问题由 OCIO 菜单的校验提示给用户。
+        if (ocioConfigPath) {
+          await rememberOcioConfigFailure(ocioConfigPath);
+          return decodeExrWithOpenImageIo({ ...decodeArgs, ocioConfigPath: undefined });
+        }
+        throw error;
+      }
     }
     if (extension === "exr") {
       const selection = await this.resolveExrSelection(input.path, input.channel);
@@ -353,13 +400,39 @@ export class HdrProvider implements ResourceProvider {
               ? "ACEScg"
               : "linear"),
             displayTransform: input.displayTransform,
-            ocioConfigPath: input.ocioConfigPath,
+            ocioConfigPath,
             signal: input.signal,
             executable,
             subimage: selection.subimage,
           });
         } catch (error) {
           if (input.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED", { cause: error });
+          // 自定义 OCIO 配置解码失败（如配置缺 LUT）时回退内置显示变换，
+          // 保证预览可用；配置问题由 OCIO 菜单的校验提示给用户。
+          if (ocioConfigPath) {
+            await rememberOcioConfigFailure(ocioConfigPath);
+            try {
+              return await decodeExrWithOpenImageIo({
+                inputPath: input.path,
+                outputPath: input.outputPath,
+                channels: selection.channels,
+                sourceWidth: selection.sourceWidth,
+                sourceHeight: selection.sourceHeight,
+                maximumWidth: input.width,
+                maximumHeight: input.height,
+                inputColorSpace: input.inputColorSpace || (/acescg/i.test(selection.colorSpace ?? "")
+                  ? "ACEScg"
+                  : "linear"),
+                displayTransform: input.displayTransform,
+                signal: input.signal,
+                executable,
+                subimage: selection.subimage,
+              });
+            } catch (fallbackError) {
+              if (input.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED", { cause: fallbackError });
+              error = fallbackError;
+            }
+          }
           if (!canUseSimpleExrsFallback(selection.header, selection)) {
             const detail = error instanceof Error ? error.message : String(error);
             throw new Error(`EXR_DECODE_FAILED:${detail}`, { cause: error });

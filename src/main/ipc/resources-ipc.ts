@@ -21,6 +21,7 @@ import type { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client"
 import type { ScriptsService } from "../services/scripts-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import { extractVideoFrame, applyLut3dToPng } from "../services/media/ffmpeg-tools";
+import { validateOcioConfigWithOpenImageIo } from "../services/media/openimageio-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
 import { exportSequenceToMp4 } from "../services/media/mp4-export";
@@ -157,6 +158,16 @@ export function registerResourcesIpc(
       },
     );
     return result;
+  });
+  // 校验自定义 OCIO 配置：解析色彩空间并跑一次最小转换（LUT 引用缺失的
+  // 配置在此暴露），让 OCIO 菜单在应用配置前就能给出明确原因。
+  ipc.handle("media:validateOcioConfig", async (filename) => {
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
+    const validation = await validateOcioConfigWithOpenImageIo(resolved);
+    return {
+      ok: validation.ok,
+      detail: validation.ok ? null : (validation.detail ?? "UNKNOWN"),
+    };
   });
   ipc.handle("media:thumbnail", async (filename, options) => {
     const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));

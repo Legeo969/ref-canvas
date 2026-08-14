@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, rename, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 const OIIO_RELATIVE_PATH = path.join(
@@ -291,5 +292,77 @@ export async function decodeExrWithOpenImageIo(
     return { path: input.outputPath, ...dimensions };
   } finally {
     await rm(temporary, { force: true }).catch(() => undefined);
+  }
+}
+
+export interface OcioConfigValidation {
+  ok: boolean;
+  detail: string | null;
+}
+
+/**
+ * 用一次最小解码校验自定义 OCIO 配置：色彩空间能否解析、引用的 LUT 是否
+ * 存在。缺失 LUT 的配置（如 Unreal MRQ 只导出 config.ocio 未带 luts 目录）
+ * 只有在真实转换时才会报错——提前校验，让用户在 OCIO 菜单里立刻看到
+ * 原因，而不是预览静默失败或整条序列卡在「正在生成 HDR 预览」。
+ */
+export async function validateOcioConfigWithOpenImageIo(
+  configPath: string,
+  options: { executable?: string; signal?: AbortSignal } = {},
+): Promise<OcioConfigValidation> {
+  if (options.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
+  const executable = options.executable ?? await packagedOiiotoolPath();
+  if (!executable) {
+    // 无解码侧车时无法验证，按「未知」放行，交给解码期回退兜底。
+    return { ok: true, detail: null };
+  }
+  const directory = await mkdtemp(path.join(tmpdir(), "refcanvas-ocio-"));
+  const inputPath = path.join(directory, "probe.exr");
+  const outputPath = path.join(directory, "probe.png");
+  const run = (args: string[], timeout = 30_000): Promise<void> =>
+    new Promise((resolve, reject) => {
+      execFile(
+        executable,
+        args,
+        {
+          maxBuffer: 4 * 1024 * 1024,
+          timeout,
+          windowsHide: true,
+          signal: options.signal,
+        },
+        (error, _stdout, stderr) => {
+          if (!error) {
+            resolve();
+            return;
+          }
+          const detail = stderr.trim() || error.message;
+          reject(new Error(detail));
+        },
+      );
+    });
+  try {
+    await run([
+      "--create", "4x4", "3",
+      "--chnames", "R,G,B",
+      "-d", "half",
+      "-o", inputPath,
+    ]);
+    await run([
+      inputPath,
+      "--colorconfig", configPath,
+      "--colorconvert", "scene_linear", "sRGB",
+      "-d", "uint8",
+      "-o", outputPath,
+    ]);
+    return { ok: true, detail: null };
+  } catch (error) {
+    if (options.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      detail: detail.length > 400 ? `${detail.slice(0, 400)}…` : detail,
+    };
+  } finally {
+    await rm(directory, { recursive: true, force: true }).catch(() => undefined);
   }
 }

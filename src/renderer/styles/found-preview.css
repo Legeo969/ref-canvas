@@ -617,8 +617,20 @@
 }
 
 .found-preview-panel .image-review-img,
-.found-preview-panel .hdr-preview-fallback {
+.found-preview-panel .hdr-preview-fallback,
+.found-preview-panel .hdr-preview-managed {
   outline: 0;
+}
+
+/* 显式色彩管理（OCIO/ACES/Raw）变体：绝对定位覆盖在基础变体之上，
+   解码就绪后淡入。基础变体先行显示，序列播放不被变体解码拖住。 */
+.hdr-preview-stage { position: relative; }
+.hdr-preview-stage .hdr-preview-managed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 140ms ease;
 }
 
 .found-preview-file-row {
