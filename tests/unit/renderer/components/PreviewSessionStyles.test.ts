@@ -29,13 +29,13 @@ describe("preview session controls", () => {
       "utf8",
     );
     expect(dialogs).toMatch(
-      /\.directory-preview:is\(\.preview-session-focused, :fullscreen\)[^{]*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
+      /\.directory-preview:is\(\.preview-session-focused, \.preview-session-window-fullscreen\)[^{]*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
     );
     expect(dialogs).toMatch(
-      /\.directory-preview:is\(\.preview-session-focused, :fullscreen\) \.directory-preview-info,[^{]*\.preview-nav\s*{\s*display:\s*none;/s,
+      /\.directory-preview:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.directory-preview-info,[^{]*\.preview-nav\s*{\s*display:\s*none;/s,
     );
     expect(found).toMatch(
-      /\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar,[^{]*{\s*display:\s*none;/s,
+      /\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar,[^{]*{\s*display:\s*none;/s,
     );
   });
 
@@ -44,20 +44,20 @@ describe("preview session controls", () => {
     const shell = await readFile(path.resolve("src/renderer/styles/shell.css"), "utf8");
     const dialogs = await readFile(path.resolve("src/renderer/styles/dialogs.css"), "utf8");
     const directory = await readFile(path.resolve("src/renderer/styles/directory.css"), "utf8");
-    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar,[^{]*\.workbench-external-action\s*{[^}]*display:\s*none/s);
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar,[^{]*\.workbench-external-action\s*{[^}]*display:\s*none/s);
     expect(found).toMatch(/\.found-preview-viewport[^}]*min-height:\s*0/s);
     expect(shell).toMatch(/\.preview-session-focused\s*{[^}]*inset:\s*0[^}]*height:\s*100vh/s);
-    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-preview-workspace\s*{[^}]*position:\s*absolute;[^}]*background:\s*transparent;[^}]*backdrop-filter:\s*none;/s);
-    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) :is\([^}]*\.found-toolbar-tail,[^}]*\.found-color-context-toolbar,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;/s);
-    expect(found).toMatch(/\.found-preview-panel:fullscreen :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/s);
-    expect(found).toMatch(/\.found-preview-panel:fullscreen\.fullscreen-controls-visible :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*visible;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;[^}]*transition-property:\s*opacity, transform;/s);
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-preview-workspace\s*{[^}]*position:\s*absolute;[^}]*background:\s*transparent;[^}]*backdrop-filter:\s*none;/s);
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) :is\([^}]*\.found-toolbar-tail,[^}]*\.found-color-context-toolbar,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;/s);
+    expect(found).toMatch(/\.found-preview-panel\.preview-session-window-fullscreen :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/s);
+    expect(found).toMatch(/\.found-preview-panel\.preview-session-window-fullscreen\.fullscreen-controls-visible :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*visible;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;[^}]*transition-property:\s*opacity, transform;/s);
     expect(found).toMatch(/\.found-toolbar-tail\s*{[^}]*background:\s*var\(--found-toolbar\);[^}]*}/s);
     expect(found).not.toMatch(/\.found-toolbar-tail\s*{[^}]*box-shadow:/s);
     expect(found).toMatch(/\.found-context-tray\s*{[^}]*max-height:\s*min\(38vh, 320px\);[^}]*overflow:\s*auto/s);
-    expect(found).not.toMatch(/\.found-preview-panel:is\(\.preview-session-focused, :fullscreen\) \.found-tab-bar\s*{[^}]*position:\s*absolute/s);
-    expect(shell).toMatch(/\.preview-window:is\(\.preview-session-focused, :fullscreen\) \.preview-window-header\s*{[^}]*position:\s*static/s);
-    expect(dialogs).toMatch(/\.directory-preview:is\(\.preview-session-focused, :fullscreen\) \.directory-preview-session-actions\s*{[^}]*position:\s*static/s);
-    expect(directory).toMatch(/\.directory-workbench-panel:is\(\.preview-session-focused, :fullscreen\) \.workbench-header\s*{[^}]*position:\s*static/s);
+    expect(found).not.toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar\s*{[^}]*position:\s*absolute/s);
+    expect(shell).toMatch(/\.preview-window:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.preview-window-header\s*{[^}]*position:\s*static/s);
+    expect(dialogs).toMatch(/\.directory-preview:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.directory-preview-session-actions\s*{[^}]*position:\s*static/s);
+    expect(directory).toMatch(/\.directory-workbench-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.workbench-header\s*{[^}]*position:\s*static/s);
   });
 
   it("gives fitted images a stable viewport box instead of relying on intrinsic size", async () => {

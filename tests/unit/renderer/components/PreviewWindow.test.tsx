@@ -43,17 +43,6 @@ describe("preview window (FND-004)", () => {
   });
 
   it("renders the asset preview for an indexed path", async () => {
-    const exitFullscreen = vi.fn(async () => {
-      throw new Error("Document not active");
-    });
-    Object.defineProperty(document, "fullscreenElement", {
-      configurable: true,
-      value: null,
-    });
-    Object.defineProperty(document, "exitFullscreen", {
-      configurable: true,
-      value: exitFullscreen,
-    });
     const asset = {
       id: "asset-1",
       path: "D:\\refs\\a.png",
@@ -87,7 +76,6 @@ describe("preview window (FND-004)", () => {
     expect(host.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
     expect(host.querySelector(".preview-session-shell.preview-window")).toBeTruthy();
     expect(host.querySelector('[data-preview-renderer="image"]')).toBeTruthy();
-    expect(exitFullscreen).not.toHaveBeenCalled();
   });
 
   it("keeps floating preview isolated with fullscreen then close Escape order", async () => {
@@ -103,30 +91,22 @@ describe("preview window (FND-004)", () => {
       linkState: "online",
     };
     const onClose = vi.fn();
+    let presentationListeners = new Set<(enabled: boolean) => void>();
     Object.assign(window, {
       refCanvas: {
         library: { getByPath: vi.fn(async () => asset) },
         filesystem: { reveal: vi.fn(async () => undefined) },
+        system: {
+          setPresentationMode: vi.fn(async (enabled: boolean) => {
+            presentationListeners.forEach((listener) => listener(enabled));
+            return true;
+          }),
+          onPresentationModeChanged: vi.fn((listener: (enabled: boolean) => void) => {
+            presentationListeners.add(listener);
+            return () => presentationListeners.delete(listener);
+          }),
+        },
       },
-    });
-    let fullscreenElement: Element | null = null;
-    Object.defineProperty(document, "fullscreenElement", {
-      configurable: true,
-      get: () => fullscreenElement,
-    });
-    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
-      configurable: true,
-      value: vi.fn(async () => {
-        fullscreenElement = document.querySelector(".preview-window");
-        document.dispatchEvent(new Event("fullscreenchange"));
-      }),
-    });
-    Object.defineProperty(document, "exitFullscreen", {
-      configurable: true,
-      value: vi.fn(async () => {
-        fullscreenElement = null;
-        document.dispatchEvent(new Event("fullscreenchange"));
-      }),
     });
     const host = document.createElement("div");
     document.body.append(host);
@@ -143,6 +123,7 @@ describe("preview window (FND-004)", () => {
       await Promise.resolve();
     });
     expect(host.querySelector(".preview-window")?.classList.contains("preview-session-focused")).toBe(false);
+    expect(host.querySelector(".preview-window")?.classList.contains("preview-session-window-fullscreen")).toBe(true);
     expect(host.querySelector('[aria-label="退出全屏预览"]')).toBeTruthy();
     expect(host.querySelector('[aria-label*="聚焦"]')).toBeNull();
 

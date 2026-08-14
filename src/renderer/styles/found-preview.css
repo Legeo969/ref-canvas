@@ -792,6 +792,7 @@
 .hdr-ocio-menu button { display: flex; min-height: 30px; align-items: center; gap: 8px; padding: 0 7px; border: 0; border-radius: 4px; background: transparent; color: #e2e6e4; text-align: left; }
 .hdr-ocio-menu button:hover { background: rgba(255, 255, 255, 0.07); }
 .hdr-ocio-menu button.active .lut-radio { border-color: #329cff; box-shadow: inset 0 0 0 2px #111312; background: #329cff; }
+.hdr-ocio-group { padding: 4px 7px 1px; color: #8b9590; font-size: 9px; letter-spacing: 0.5px; text-transform: uppercase; }
 .hdr-ocio-separator { height: 1px; margin: 3px -5px; background: rgba(255, 255, 255, 0.1); }
 .hdr-ocio-error { padding: 5px 7px; color: var(--danger, #d8877d); font-size: 10px; text-wrap: pretty; }
 .hdr-exposure-control { position: relative; }
@@ -837,29 +838,29 @@
 }
 
 /* Immersive preview gives the media the full surface; controls float over it. */
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-tab-bar,
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .workbench-external-action {
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .found-tab-bar,
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .workbench-external-action {
   display: none;
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-preview-content,
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .workbench-preview-shell {
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .found-preview-content,
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .workbench-preview-shell {
   position: relative;
   width: 100%;
   height: 100%;
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-preview-content {
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .found-preview-content {
   position: absolute;
   inset: 0;
   height: auto;
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) {
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) {
   background: transparent !important;
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) .found-preview-workspace {
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .found-preview-workspace {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -870,7 +871,7 @@
   backdrop-filter: none;
 }
 
-.found-preview-panel:is(.preview-session-focused, :fullscreen) :is(
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) :is(
   .found-preview-file-row,
   .found-toolbar,
   .found-toolbar-row,
@@ -888,7 +889,7 @@
   backdrop-filter: none;
 }
 
-.found-preview-panel:fullscreen :is(
+.found-preview-panel.preview-session-window-fullscreen :is(
   .found-preview-workspace,
   .found-preview-session-footer,
   .found-layers-panel,
@@ -901,7 +902,7 @@
   transition: none;
 }
 
-.found-preview-panel:fullscreen.fullscreen-controls-visible :is(
+.found-preview-panel.preview-session-window-fullscreen.fullscreen-controls-visible :is(
   .found-preview-workspace,
   .found-preview-session-footer,
   .found-layers-panel,
@@ -916,7 +917,7 @@
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
-body:has(.found-preview-panel:is(.preview-session-focused, :fullscreen)) :is(
+body:has(.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen)) :is(
   .playback-rate-menu,
   .preview-color-tools.lut-popover-menu,
   .hdr-ocio-menu,
@@ -931,7 +932,7 @@ body:has(.found-preview-panel:is(.preview-session-focused, :fullscreen)) :is(
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .found-preview-panel:fullscreen :is(
+  .found-preview-panel.preview-session-window-fullscreen :is(
     .found-preview-workspace,
     .found-preview-session-footer,
     .found-layers-panel
@@ -939,7 +940,7 @@ body:has(.found-preview-panel:is(.preview-session-focused, :fullscreen)) :is(
     transform: none;
   }
 
-  .found-preview-panel:fullscreen.fullscreen-controls-visible :is(
+  .found-preview-panel.preview-session-window-fullscreen.fullscreen-controls-visible :is(
     .found-preview-workspace,
     .found-preview-session-footer,
     .found-layers-panel
@@ -950,7 +951,7 @@ body:has(.found-preview-panel:is(.preview-session-focused, :fullscreen)) :is(
 
 /* 沉浸模式仅视频/GIF 填满裁切（影院语义）；静态图与序列帧保持 contain，
    避免裁掉画面内容。 */
-.found-preview-panel:is(.preview-session-focused, :fullscreen) :is(
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) :is(
   .gif-preview-canvas,
   .video-preview video
 ) {

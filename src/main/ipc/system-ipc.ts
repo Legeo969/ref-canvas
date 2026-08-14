@@ -65,8 +65,6 @@ interface SystemIpcDependencies {
   registerOverlayEmergencyShortcut(): boolean;
   restoreCaptureWindow(): void;
   saveCapture(buffer: Buffer, directory?: string): Promise<string>;
-  /** 沉浸预览（聚焦模式）时让窗口控制按钮透明化；false 恢复不透明。 */
-  setImmersiveTitleBarOverlay(window: BrowserWindow, immersive: boolean): void;
   scheduleBackgroundServices(): void;
   state: SystemIpcState;
   thumbnailQueue: PreviewQueue<Buffer>;
@@ -365,15 +363,6 @@ export function registerSystemIpc(
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     return window.isFullScreen();
-  });
-  // 聚焦预览（fixed 伪全屏）不是 HTML5 全屏，主进程收不到
-  // enter-html-full-screen 事件；渲染进程聚焦时主动通知，让窗口控制
-  // 按钮透明化（沉浸模式不显示最小化/最大化/关闭）。
-  ipc.handleWithEvent("system:set-preview-immersive", (event, immersive) => {
-    const next = z.boolean().parse(immersive);
-    const window = dependencies.windowForSender(event);
-    dependencies.setImmersiveTitleBarOverlay(window, next);
-    return true;
   });
   ipc.handleWithEvent("system:capture-clipboard", async (event) => {
     const image = clipboard.readImage();

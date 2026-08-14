@@ -907,8 +907,6 @@ function registerIpc(): void {
     restoreCaptureWindow,
     saveCapture,
     scheduleBackgroundServices,
-    setImmersiveTitleBarOverlay: (window, immersive) =>
-      setFullscreenTitleBarOverlay(window, immersive),
     state: {
       get alwaysOnBottom() {
         return alwaysOnBottom;

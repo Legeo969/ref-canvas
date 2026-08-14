@@ -1,35 +1,13 @@
 import { Focus, Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export function ownsPreviewFullscreen(root: HTMLElement | null): boolean {
-  const fullscreenElement = document.fullscreenElement;
-  return Boolean(
-    root && fullscreenElement &&
-      (fullscreenElement === root || root.contains(fullscreenElement)),
-  );
-}
-
-async function exitOwnedFullscreen(root: HTMLElement | null): Promise<boolean> {
-  if (!ownsPreviewFullscreen(root) || typeof document.exitFullscreen !== "function") {
-    return false;
-  }
-  try {
-    await document.exitFullscreen();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// 同一窗口内可能同时存在多个预览会话（右侧面板 + 快速预览等）：模块级
-// 计数保证只要任一会话处于聚焦，窗口控制按钮就保持透明，退出最后一个
-// 聚焦会话时才恢复不透明。
-let immersivePreviewSessions = 0;
-
-function syncImmersiveTitleBarOverlay(): void {
-  void window.refCanvas?.system?.setPreviewImmersive?.(immersivePreviewSessions > 0);
-}
-
+/**
+ * 全屏预览走窗口级系统全屏（主进程 setFullScreen）：HTML5
+ * requestFullscreen 在 titleBarOverlay 窗口上不可靠（不触发窗口全屏、
+ * 系统按钮不隐藏），窗口级全屏才是「真全屏」——任务栏隐藏、窗口铺满
+ * 显示器、系统按钮不再绘制。渲染进程经 system:set-presentation-mode
+ * 请求，主进程 enter/leave-full-screen 事件回推状态。
+ */
 export function usePreviewSessionMode(
   assetKey: string | null,
   onClose?: () => void,
@@ -39,38 +17,32 @@ export function usePreviewSessionMode(
   const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
-    const root = rootRef.current;
-    setFocused(false);
-    if (!ownsPreviewFullscreen(root)) {
-      setFullscreen(false);
-    }
-    return () => {
-      if (ownsPreviewFullscreen(root)) {
-        void exitOwnedFullscreen(root);
-      }
-    };
-  }, [assetKey]);
-
-  useEffect(() => {
-    // 聚焦（软沉浸）与全屏互斥：任何全屏生效的瞬间都清除聚焦，堵住
-    // 「全屏请求 pending 期间点击聚焦」的竞态窗口，保证两个沉浸模式
+    // 聚焦与全屏互斥：任何进入全屏的路径都清除聚焦，两个沉浸模式
     // 按钮任意时刻至多一个激活。
-    const onFullscreenChange = () => {
-      const owns = ownsPreviewFullscreen(rootRef.current);
-      setFullscreen(owns);
-      if (owns) setFocused(false);
+    const onPresentationModeChanged = (enabled: boolean) => {
+      setFullscreen(enabled);
+      if (enabled) setFocused(false);
     };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+    const unsubscribe = window.refCanvas?.system?.onPresentationModeChanged?.(
+      onPresentationModeChanged,
+    );
+    return () => unsubscribe?.();
   }, []);
+
+  // 切换资产时退出沉浸状态；setFullScreen(false) 对非全屏窗口幂等。
+  useEffect(() => {
+    setFocused(false);
+    setFullscreen(false);
+    void window.refCanvas?.system?.setPresentationMode?.(false);
+  }, [assetKey]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (ownsPreviewFullscreen(rootRef.current)) {
+      if (fullscreen) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        void exitOwnedFullscreen(rootRef.current);
+        void window.refCanvas?.system?.setPresentationMode?.(false);
         return;
       }
       if (focused) {
@@ -87,49 +59,20 @@ export function usePreviewSessionMode(
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [focused, onClose]);
+  }, [focused, fullscreen, onClose]);
 
-  useEffect(() => {
-    if (!focused) return;
-    // 聚焦（fixed 伪全屏）不触发主进程的 HTML5 全屏事件，窗口控制按钮
-    // 需要显式通知主进程透明化，避免沉浸画面顶部压着不透明的系统按钮。
-    immersivePreviewSessions += 1;
-    syncImmersiveTitleBarOverlay();
-    return () => {
-      immersivePreviewSessions -= 1;
-      syncImmersiveTitleBarOverlay();
-    };
-  }, [focused]);
-
+  // 聚焦（软沉浸）与全屏互斥：全屏中点击聚焦 = 退出全屏，而不是叠加。
   const toggleFocus = useCallback(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    // 全屏中点击聚焦 = 退出全屏，而不是叠加进入聚焦（两个沉浸模式互斥）。
     if (fullscreen) {
-      void exitOwnedFullscreen(root);
+      void window.refCanvas?.system?.setPresentationMode?.(false);
       return;
     }
     setFocused((value) => !value);
   }, [fullscreen]);
 
   const toggleFullscreen = useCallback(async () => {
-    const root = rootRef.current;
-    if (!root) return;
-    if (ownsPreviewFullscreen(root)) {
-      await exitOwnedFullscreen(root);
-      return;
-    }
-    if (typeof root.requestFullscreen !== "function") return;
-    // 进入全屏前清除聚焦；请求被拒时恢复原聚焦状态。
-    const wasFocused = focused;
-    setFocused(false);
-    try {
-      await root.requestFullscreen();
-    } catch {
-      setFullscreen(ownsPreviewFullscreen(root));
-      setFocused(wasFocused);
-    }
-  }, [focused]);
+    await window.refCanvas?.system?.setPresentationMode?.(!fullscreen);
+  }, [fullscreen]);
 
   return {
     rootRef,

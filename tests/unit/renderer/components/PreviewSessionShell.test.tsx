@@ -42,28 +42,27 @@ function asset(kind: AssetRecord["kind"], extension: string): Pick<AssetRecord, 
 
 describe("shared preview session", () => {
   let root: Root | null = null;
-  let fullscreenElement: Element | null = null;
+  let presentationListeners: Set<(enabled: boolean) => void>;
 
+  /**
+   * 全屏预览走窗口级系统全屏：mock 主进程 setPresentationMode（立即生效并
+   * 回推 presentation-mode-changed），渲染进程经 onPresentationModeChanged
+   * 订阅状态。
+   */
   function installFullscreenMock() {
-    fullscreenElement = null;
-    Object.defineProperty(document, "fullscreenElement", {
-      configurable: true,
-      get: () => fullscreenElement,
-    });
-    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
-      configurable: true,
-      value: vi.fn(async () => {
-        fullscreenElement = document.querySelector(".preview-session-shell");
-        document.dispatchEvent(new Event("fullscreenchange"));
-      }),
-    });
-    Object.defineProperty(document, "exitFullscreen", {
-      configurable: true,
-      value: vi.fn(async () => {
-        fullscreenElement = null;
-        document.dispatchEvent(new Event("fullscreenchange"));
-      }),
-    });
+    presentationListeners = new Set();
+    (window as unknown as { refCanvas?: unknown }).refCanvas = {
+      system: {
+        setPresentationMode: vi.fn(async (enabled: boolean) => {
+          presentationListeners.forEach((listener) => listener(enabled));
+          return true;
+        }),
+        onPresentationModeChanged: vi.fn((listener: (enabled: boolean) => void) => {
+          presentationListeners.add(listener);
+          return () => presentationListeners.delete(listener);
+        }),
+      },
+    };
   }
 
   async function render(ui: ReactNode) {
@@ -78,6 +77,7 @@ describe("shared preview session", () => {
     await act(async () => root?.unmount());
     root = null;
     document.body.replaceChildren();
+    (window as unknown as { refCanvas?: unknown }).refCanvas = undefined;
     vi.restoreAllMocks();
   });
 
@@ -85,10 +85,9 @@ describe("shared preview session", () => {
     installFullscreenMock();
     const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
 
-    // 普通模式 → 全屏：只亮全屏。
+    // 普通模式 → 全屏：窗口级系统全屏生效，只亮全屏。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
-      await Promise.resolve();
     });
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
@@ -96,7 +95,6 @@ describe("shared preview session", () => {
     // 全屏中点击聚焦 = 退出全屏，不进入聚焦。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-      await Promise.resolve();
     });
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
@@ -107,10 +105,9 @@ describe("shared preview session", () => {
     });
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("true");
 
-    // 聚焦中进入全屏：聚焦被清除，只亮全屏（不再叠加）。
+    // 聚焦中进入全屏：聚焦被互斥清除，只亮全屏（不再叠加）。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
-      await Promise.resolve();
     });
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
@@ -118,56 +115,24 @@ describe("shared preview session", () => {
     // 退出全屏回到普通模式，不残留聚焦。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="退出全屏预览"]')?.click();
-      await Promise.resolve();
     });
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
   });
 
-  it("clears focus when fullscreen lands after a pending toggle race", async () => {
-    // 全屏请求 pending 期间用户点了聚焦：全屏生效时必须清除聚焦，
-    // 不能出现两个沉浸按钮同时激活。
+  it("keeps focus when the fullscreen request fails", async () => {
     installFullscreenMock();
-    let resolveFullscreen: (() => void) | null = null;
-    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
-      configurable: true,
-      value: vi.fn(() => new Promise<void>((resolve) => {
-        resolveFullscreen = resolve;
-      })),
-    });
-    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
-    });
-    // 请求尚未落地：此时聚焦可用并已被用户点亮。
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-    });
-    // 全屏随后生效（触发 fullscreenchange）：聚焦必须被清除。
-    await act(async () => {
-      fullscreenElement = host.querySelector(".preview-session-shell");
-      document.dispatchEvent(new Event("fullscreenchange"));
-      resolveFullscreen?.();
-      await Promise.resolve();
-    });
-    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
-    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
-  });
-
-  it("restores focus when the fullscreen request is rejected", async () => {
-    installFullscreenMock();
-    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
-      configurable: true,
-      value: vi.fn(async () => { throw new Error("denied"); }),
-    });
+    // 主进程拒绝全屏：不回推 presentation-mode-changed。
+    (window as unknown as { refCanvas: { system: { setPresentationMode: ReturnType<typeof vi.fn> } } })
+      .refCanvas.system.setPresentationMode.mockImplementation(async () => false);
     const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
     });
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
-      await Promise.resolve();
     });
+    // 请求失败：聚焦保留，全屏不生效。
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("true");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
   });
@@ -179,7 +144,6 @@ describe("shared preview session", () => {
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
-      await Promise.resolve();
     });
     // 聚焦与全屏互斥：进入全屏时聚焦被清除，不会两个按钮同时激活。
     expect(host.querySelector('[aria-label="退出全屏预览"]')).toBeTruthy();
@@ -187,7 +151,6 @@ describe("shared preview session", () => {
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      await Promise.resolve();
     });
     expect(onClose).not.toHaveBeenCalled();
     expect(host.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
@@ -198,135 +161,23 @@ describe("shared preview session", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("treats a fullscreen renderer descendant as session-owned", async () => {
-    installFullscreenMock();
-    const onClose = vi.fn();
-    const host = await render(<SessionHarness assetKey="a" onClose={onClose} />);
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-    });
-    fullscreenElement = host.querySelector('[data-testid="nested-renderer"]');
-    await act(async () => {
-      document.dispatchEvent(new Event("fullscreenchange"));
-    });
-    expect(host.querySelector('[aria-label="退出全屏预览"]')).toBeTruthy();
-
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-      await Promise.resolve();
-    });
-    expect(document.exitFullscreen).toHaveBeenCalledTimes(1);
-    // 全屏生效时聚焦已被互斥清除，退出全屏回到普通模式。
-    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeTruthy();
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it("does not claim fullscreen owned outside the session", async () => {
-    installFullscreenMock();
-    const outside = document.createElement("div");
-    document.body.append(outside);
-    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-    });
-    fullscreenElement = outside;
-    await act(async () => {
-      document.dispatchEvent(new Event("fullscreenchange"));
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
-    expect(document.exitFullscreen).not.toHaveBeenCalled();
-    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeTruthy();
-  });
-
-  it("resets focus and exits owned fullscreen when the asset changes", async () => {
+  it("resets focus and exits fullscreen when the asset changes", async () => {
     installFullscreenMock();
     const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
     });
-    fullscreenElement = host.querySelector('[data-testid="nested-renderer"]');
-    await act(async () => document.dispatchEvent(new Event("fullscreenchange")));
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
     await act(async () => {
       root?.render(<SessionHarness assetKey="b" onClose={() => undefined} />);
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(document.exitFullscreen).toHaveBeenCalledTimes(1);
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
-  });
-
-  it("keeps fullscreen inactive when requestFullscreen rejects", async () => {
-    installFullscreenMock();
-    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
-      configurable: true,
-      value: vi.fn(async () => { throw new Error("denied"); }),
-    });
-    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
-      await Promise.resolve();
-    });
-    expect(host.querySelector('[aria-label="全屏预览"]')?.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("asks the main process to hide window controls while focused and restore after exit", async () => {
-    installFullscreenMock();
-    const setPreviewImmersive = vi.fn(async () => true);
-    const original = (window as unknown as { refCanvas?: unknown }).refCanvas;
-    (window as unknown as { refCanvas?: unknown }).refCanvas = { system: { setPreviewImmersive } };
-    try {
-      const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
-      await act(async () => {
-        host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-      });
-      expect(setPreviewImmersive).toHaveBeenLastCalledWith(true);
-      await act(async () => {
-        host.querySelector<HTMLButtonElement>('[aria-label="退出聚焦预览"]')?.click();
-      });
-      expect(setPreviewImmersive).toHaveBeenLastCalledWith(false);
-    } finally {
-      (window as unknown as { refCanvas?: unknown }).refCanvas = original;
-    }
-  });
-
-  it("keeps window controls hidden while any of several sessions stays focused", async () => {
-    installFullscreenMock();
-    const setPreviewImmersive = vi.fn(async () => true);
-    const original = (window as unknown as { refCanvas?: unknown }).refCanvas;
-    (window as unknown as { refCanvas?: unknown }).refCanvas = { system: { setPreviewImmersive } };
-    try {
-      const hostA = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
-      const hostB = await render(<SessionHarness assetKey="b" onClose={() => undefined} />);
-      await act(async () => {
-        hostA.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-      });
-      await act(async () => {
-        hostB.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-      });
-      expect(setPreviewImmersive).toHaveBeenLastCalledWith(true);
-      await act(async () => {
-        hostA.querySelector<HTMLButtonElement>('[aria-label="退出聚焦预览"]')?.click();
-      });
-      // A 退出后 B 仍聚焦：窗口控制按钮保持隐藏。
-      expect(setPreviewImmersive).toHaveBeenLastCalledWith(true);
-      await act(async () => {
-        hostB.querySelector<HTMLButtonElement>('[aria-label="退出聚焦预览"]')?.click();
-      });
-      expect(setPreviewImmersive).toHaveBeenLastCalledWith(false);
-    } finally {
-      (window as unknown as { refCanvas?: unknown }).refCanvas = original;
-    }
-  });
-
-  it("exits descendant fullscreen during session unmount", async () => {
-    installFullscreenMock();
-    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
-    fullscreenElement = host.querySelector('[data-testid="nested-renderer"]');
-    await act(async () => document.dispatchEvent(new Event("fullscreenchange")));
-    await act(async () => root?.unmount());
-    root = null;
-    expect(document.exitFullscreen).toHaveBeenCalledTimes(1);
   });
 
   it("uses the same title and surface slots for image, HDR, video and generic renderers", async () => {

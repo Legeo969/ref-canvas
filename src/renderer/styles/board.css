@@ -873,12 +873,12 @@
     0 32px 96px rgba(0, 0, 0, 0.58);
 }
 
-.quick-preview-shell:is(.preview-session-focused, :fullscreen) {
+.quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) {
   grid-template-rows: 56px minmax(0, 1fr);
 }
 
-.quick-preview-shell:is(.preview-session-focused, :fullscreen) .quick-preview-details,
-.quick-preview-shell:is(.preview-session-focused, :fullscreen) .quick-preview-footer {
+.quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) .quick-preview-details,
+.quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) .quick-preview-footer {
   display: none;
 }
 

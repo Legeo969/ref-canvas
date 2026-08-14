@@ -58,6 +58,9 @@ export function PreviewSessionShell({
     "preview-session-shell",
     className,
     focused ? "preview-session-focused" : "",
+    // 全屏预览走窗口级系统全屏（无 :fullscreen 伪类），用类承载原本
+    // 由 :fullscreen 伪类提供的沉浸样式。
+    fullscreen ? "preview-session-window-fullscreen" : "",
   ].filter(Boolean).join(" ");
   return createElement(as, {
     ...props,
