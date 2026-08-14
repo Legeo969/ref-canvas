@@ -46,7 +46,7 @@ describe("preview session controls", () => {
     const directory = await readFile(path.resolve("src/renderer/styles/directory.css"), "utf8");
     expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar,[^{]*\.workbench-external-action\s*{[^}]*display:\s*none/s);
     expect(found).toMatch(/\.found-preview-viewport[^}]*min-height:\s*0/s);
-    expect(shell).toMatch(/\.preview-session-focused\s*{[^}]*inset:\s*0[^}]*height:\s*100vh/s);
+    expect(shell).toMatch(/\.preview-session-focused,\s*\.preview-session-window-fullscreen\s*{[^}]*inset:\s*0[^}]*height:\s*100vh/s);
     expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-preview-workspace\s*{[^}]*position:\s*absolute;[^}]*background:\s*transparent;[^}]*backdrop-filter:\s*none;/s);
     expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) :is\([^}]*\.found-toolbar-tail,[^}]*\.found-color-context-toolbar,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;/s);
     expect(found).toMatch(/\.found-preview-panel\.preview-session-window-fullscreen :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/s);
