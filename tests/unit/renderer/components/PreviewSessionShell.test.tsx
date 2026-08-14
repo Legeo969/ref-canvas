@@ -81,10 +81,11 @@ describe("shared preview session", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps focus and fullscreen independent and preserves focus after fullscreen exit", async () => {
+  it("keeps focus and fullscreen mutually exclusive and returns to the plain mode after exit", async () => {
     installFullscreenMock();
     const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
 
+    // 普通模式 → 全屏：只亮全屏。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
       await Promise.resolve();
@@ -92,10 +93,74 @@ describe("shared preview session", () => {
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
 
+    // 全屏中点击聚焦 = 退出全屏，不进入聚焦。
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
+
+    // 普通模式 → 聚焦：只亮聚焦。
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("true");
+
+    // 聚焦中进入全屏：聚焦被清除，只亮全屏（不再叠加）。
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+
+    // 退出全屏回到普通模式，不残留聚焦。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="退出全屏预览"]')?.click();
       await Promise.resolve();
     });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
+  });
+
+  it("clears focus when fullscreen lands after a pending toggle race", async () => {
+    // 全屏请求 pending 期间用户点了聚焦：全屏生效时必须清除聚焦，
+    // 不能出现两个沉浸按钮同时激活。
+    installFullscreenMock();
+    let resolveFullscreen: (() => void) | null = null;
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn(() => new Promise<void>((resolve) => {
+        resolveFullscreen = resolve;
+      })),
+    });
+    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+    });
+    // 请求尚未落地：此时聚焦可用并已被用户点亮。
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
+    });
+    // 全屏随后生效（触发 fullscreenchange）：聚焦必须被清除。
+    await act(async () => {
+      fullscreenElement = host.querySelector(".preview-session-shell");
+      document.dispatchEvent(new Event("fullscreenchange"));
+      resolveFullscreen?.();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+  });
+
+  it("restores focus when the fullscreen request is rejected", async () => {
+    installFullscreenMock();
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: vi.fn(async () => { throw new Error("denied"); }),
+    });
+    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
     });
@@ -103,15 +168,11 @@ describe("shared preview session", () => {
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
       await Promise.resolve();
     });
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="退出全屏预览"]')?.click();
-      await Promise.resolve();
-    });
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("true");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
   });
 
-  it("unwinds Escape in fullscreen, focus, close order without double handling", async () => {
+  it("unwinds Escape in fullscreen then close order without double handling", async () => {
     installFullscreenMock();
     const onClose = vi.fn();
     const host = await render(<SessionHarness assetKey="a" onClose={onClose} />);
@@ -120,19 +181,16 @@ describe("shared preview session", () => {
       host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
       await Promise.resolve();
     });
+    // 聚焦与全屏互斥：进入全屏时聚焦被清除，不会两个按钮同时激活。
+    expect(host.querySelector('[aria-label="退出全屏预览"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeTruthy();
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
       await Promise.resolve();
     });
     expect(onClose).not.toHaveBeenCalled();
-    expect(host.querySelector('[aria-label="退出聚焦预览"]')).toBeTruthy();
-
-    await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
-    expect(onClose).not.toHaveBeenCalled();
-    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -158,7 +216,8 @@ describe("shared preview session", () => {
       await Promise.resolve();
     });
     expect(document.exitFullscreen).toHaveBeenCalledTimes(1);
-    expect(host.querySelector('[aria-label="退出聚焦预览"]')).toBeTruthy();
+    // 全屏生效时聚焦已被互斥清除，退出全屏回到普通模式。
+    expect(host.querySelector('[aria-label="聚焦预览"]')).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
   });
 

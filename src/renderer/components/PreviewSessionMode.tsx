@@ -43,8 +43,13 @@ export function usePreviewSessionMode(
   }, [assetKey]);
 
   useEffect(() => {
+    // 聚焦（软沉浸）与全屏互斥：任何全屏生效的瞬间都清除聚焦，堵住
+    // 「全屏请求 pending 期间点击聚焦」的竞态窗口，保证两个沉浸模式
+    // 按钮任意时刻至多一个激活。
     const onFullscreenChange = () => {
-      setFullscreen(ownsPreviewFullscreen(rootRef.current));
+      const owns = ownsPreviewFullscreen(rootRef.current);
+      setFullscreen(owns);
+      if (owns) setFocused(false);
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
@@ -76,8 +81,15 @@ export function usePreviewSessionMode(
   }, [focused, onClose]);
 
   const toggleFocus = useCallback(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    // 全屏中点击聚焦 = 退出全屏，而不是叠加进入聚焦（两个沉浸模式互斥）。
+    if (fullscreen) {
+      void exitOwnedFullscreen(root);
+      return;
+    }
     setFocused((value) => !value);
-  }, []);
+  }, [fullscreen]);
 
   const toggleFullscreen = useCallback(async () => {
     const root = rootRef.current;
@@ -87,12 +99,16 @@ export function usePreviewSessionMode(
       return;
     }
     if (typeof root.requestFullscreen !== "function") return;
+    // 进入全屏前清除聚焦；请求被拒时恢复原聚焦状态。
+    const wasFocused = focused;
+    setFocused(false);
     try {
       await root.requestFullscreen();
     } catch {
       setFullscreen(ownsPreviewFullscreen(root));
+      setFocused(wasFocused);
     }
-  }, []);
+  }, [focused]);
 
   return {
     rootRef,
