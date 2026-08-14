@@ -218,13 +218,14 @@ function WorkspaceApp() {
   }, [prepareRegionCapture]);
 
   useEffect(() => {
+    // 只同步 App 自己的演示模式状态，绝不强制退出窗口全屏：预览全屏
+    // （PreviewSessionModeButtons）发生在 directory 工作区，若在这里
+    // setPresentationMode(false) 会把刚进入的全屏立刻退掉（「全屏闪一
+    // 下」）。board 演示模式的状态退出由下方 effect 按 workspaceMode 处理。
     return window.refCanvas.system.onPresentationModeChanged((enabled) => {
-      if (enabled && useAppStore.getState().workspaceMode !== "board") {
-        setPresentationModeState(false);
-        void window.refCanvas.system.setPresentationMode(false);
-        return;
-      }
-      setPresentationModeState(enabled);
+      setPresentationModeState(
+        enabled && useAppStore.getState().workspaceMode === "board",
+      );
     });
   }, []);
 

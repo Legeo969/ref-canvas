@@ -29,11 +29,12 @@ export function usePreviewSessionMode(
     return () => unsubscribe?.();
   }, []);
 
-  // 切换资产时退出沉浸状态；setFullScreen(false) 对非全屏窗口幂等。
+  // 切换资产只重置聚焦。全屏是窗口级系统状态，由用户操作显式退出；
+  // 这里绝不能调用 setPresentationMode(false) —— 同窗口内还挂着
+  // QuickPreview 等其它会话实例，它们随 hover 频繁变化的 assetKey 会把
+  // 主窗口刚进入的全屏立刻退掉（「全屏闪一下」）。
   useEffect(() => {
     setFocused(false);
-    setFullscreen(false);
-    void window.refCanvas?.system?.setPresentationMode?.(false);
   }, [assetKey]);
 
   useEffect(() => {

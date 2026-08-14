@@ -161,7 +161,7 @@ describe("shared preview session", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("resets focus and exits fullscreen when the asset changes", async () => {
+  it("resets focus but keeps window fullscreen when the asset changes", async () => {
     installFullscreenMock();
     const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
     await act(async () => {
@@ -176,8 +176,29 @@ describe("shared preview session", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    // 资产切换只重置聚焦；全屏是窗口级状态，不随资产变化退出（否则
+    // QuickPreview 等其它实例的 assetKey 变化会把刚进入的全屏闪掉）。
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
-    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+  });
+
+  it("keeps window fullscreen when another session's asset changes", async () => {
+    // 主窗口全屏中，QuickPreview 等其它实例的 assetKey 随 hover 变化，
+    // 不得把窗口全屏退掉（「全屏闪一下」回归）。
+    installFullscreenMock();
+    const hostA = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+    await render(<SessionHarness assetKey="hover-1" onClose={() => undefined} />);
+    await act(async () => {
+      hostA.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+    });
+    expect(hostA.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+    await act(async () => {
+      root?.render(<SessionHarness assetKey="hover-2" onClose={() => undefined} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // hostB 的 assetKey 变化不应触发 setPresentationMode(false)。
+    expect(hostA.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
   });
 
   it("uses the same title and surface slots for image, HDR, video and generic renderers", async () => {
