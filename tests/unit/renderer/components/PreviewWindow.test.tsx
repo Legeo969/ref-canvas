@@ -91,7 +91,7 @@ describe("preview window (FND-004)", () => {
       linkState: "online",
     };
     const onClose = vi.fn();
-    let presentationListeners = new Set<(enabled: boolean) => void>();
+    const presentationListeners = new Set<(enabled: boolean) => void>();
     Object.assign(window, {
       refCanvas: {
         library: { getByPath: vi.fn(async () => asset) },
