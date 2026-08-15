@@ -573,6 +573,66 @@ describe("VideoPreview frame stepping", () => {
     });
   });
 
+  it("toggles playback on click and Space while the preview is focused", async () => {
+    let paused = true;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => {
+      paused = false;
+      return Promise.resolve();
+    });
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {
+      paused = true;
+    });
+    Object.assign(window, {
+      refCanvas: {
+        media: { probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+        />,
+      );
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    Object.defineProperty(video, "paused", { configurable: true, get: () => paused });
+    // 复位：autoplay 偏好为真时挂载即触发过 play()，清掉计数与状态。
+    paused = true;
+    play.mockClear();
+    pause.mockClear();
+    // 点击画面 → 播放。
+    await act(async () => {
+      video.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(1);
+    // 再点击 → 暂停。
+    await act(async () => {
+      video.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(pause).toHaveBeenCalledTimes(1);
+    // 空格（焦点在预览根内）→ 播放。
+    const previewRoot = host.querySelector<HTMLElement>(".video-preview")!;
+    await act(async () => {
+      previewRoot.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+    // 空格（焦点在预览外）→ 不响应。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+      await Promise.resolve();
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+  });
+
   it("never shows the browser's broken-image placeholder for a failed frame grab", async () => {
     vi.useFakeTimers();
     // media:frame 的 token 按路径复用（tokenFor），同一目标重抓返回同一

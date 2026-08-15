@@ -584,6 +584,90 @@ describe("DirectoryAssetPanel", () => {
     expect(document.querySelector(".directory-preview")).toBeNull();
   });
 
+  it("yields space and arrow shortcuts while focus is inside the preview panel", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          previewToken: vi.fn(async () => "token-1"),
+          open: vi.fn(async () => undefined),
+          reveal: vi.fn(async () => undefined),
+          materialize: vi.fn(async () => ({
+            asset: {},
+            created: true,
+            copied: false,
+            verified: false,
+          })),
+          trash: vi.fn(async () => undefined),
+        },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        {
+          path: "D:\\refs\\a.png",
+          name: "a.png",
+          isDirectory: false,
+          extension: "png",
+          size: 8,
+        },
+        {
+          path: "D:\\refs\\b.png",
+          name: "b.png",
+          isDirectory: false,
+          extension: "png",
+          size: 8,
+        },
+      ],
+      directoryTotal: 2,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+    });
+
+    const section = document.querySelector<HTMLElement>(".asset-panel")!;
+    const previewRegion = document.createElement("div");
+    previewRegion.className = "found-preview-panel";
+    document.body.append(previewRegion);
+    await act(async () => {
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".directory-card"))[0]?.click();
+    });
+    // 焦点在预览区域：空格不打开面板内预览、方向键不移动选中。
+    await act(async () => {
+      previewRegion.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: " ", bubbles: true }),
+      );
+    });
+    expect(document.querySelector(".directory-preview")).toBeNull();
+    await act(async () => {
+      previewRegion.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+      );
+    });
+    expect(document.querySelector(".directory-preview")).toBeNull();
+    // 焦点回到目录面板：空格恢复打开面板内预览。
+    await act(async () => {
+      section.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: " ", bubbles: true }),
+      );
+    });
+    expect(document.querySelector(".directory-preview")).toBeTruthy();
+    previewRegion.remove();
+  });
+
   it("handles global browse, favorite and rating shortcuts without panel focus", async () => {
     let favorite = false;
     let rating = 0;

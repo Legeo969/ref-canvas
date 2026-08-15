@@ -567,14 +567,32 @@ export function SequencePreviewDialog({
         target.tagName === "TEXTAREA" ||
         target.isContentEditable
       );
-      if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-        // 方向键按焦点归属路由：事件目标必须在本预览根内（点击画面后），
-        // 目录网格等全局方向键处理在目标进入预览区域后让位。
+      if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === " ")) {
+        // 按键按焦点归属路由：事件目标须在本预览根内（点击画面后），
+        // 或位于 Found 预览面板（点击工具栏后方向键仍归预览）；滑杆等
+        // 自带方向键处理的控件除外。目录网格等全局处理在目标进入预览
+        // 区域后让位。空格 = 播放/暂停（只在预览根内生效，按钮保留
+        // 原生 Space 激活语义）。
         const root = shellRef.current;
-        if (!root || !(target instanceof Node) || !root.contains(target)) return;
+        if (!root || !(target instanceof Node)) return;
+        const insideRoot = root.contains(target);
+        const inFoundPanel =
+          target instanceof Element &&
+          target.closest(".found-preview-panel") != null;
+        if (!insideRoot && !inFoundPanel) return;
+        if (
+          target instanceof Element &&
+          target.closest("button, input, textarea, select, a, [role='slider']")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        if (event.key === " ") {
+          if (!event.repeat && insideRoot) setPlaying((value) => !value);
+          return;
+        }
         // ←/→ 逐帧：播放中先暂停再步进；长按加速（按住越久每键跳帧
         // 越多，最多 32 帧/键），与视频预览的扫览手感一致。
-        event.preventDefault();
         setPlaying(false);
         const direction = event.key === "ArrowLeft" ? -1 : 1;
         const hold = scrubHoldRef.current;

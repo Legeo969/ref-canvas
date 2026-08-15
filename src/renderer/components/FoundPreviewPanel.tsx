@@ -88,6 +88,17 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const previewSession = usePreviewSessionMode(entry?.path ?? null);
   const transport = usePreviewTransport();
 
+  // 沉浸模式（聚焦/全屏）下把键盘焦点交给媒体预览根：方向键/空格
+  // 立即生效，无需先点击画面。
+  useEffect(() => {
+    if (!previewSession.fullscreen && !previewSession.focused) return;
+    const shell = previewSession.rootRef.current;
+    const mediaRoot = shell?.querySelector<HTMLElement>(
+      ".video-preview, .sequence-preview-shell",
+    );
+    mediaRoot?.focus({ preventScroll: true });
+  }, [previewSession.fullscreen, previewSession.focused]);
+
   const hideFullscreenControls = useCallback(() => {
     if (fullscreenControlsTimerRef.current !== null) {
       clearTimeout(fullscreenControlsTimerRef.current);

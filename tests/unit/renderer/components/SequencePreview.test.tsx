@@ -390,6 +390,45 @@ describe("SequencePreviewDialog", () => {
     expect(frameCount()).toContain("0001");
   });
 
+  it("toggles playback with Space while the preview is focused", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      autoplaySequence: false,
+    };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "token") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={sequence} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const playLabel = () =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="播放"], button[aria-label="暂停"]')
+        ?.getAttribute("aria-label");
+    expect(playLabel()).toBe("播放");
+    const shell = host.querySelector<HTMLElement>(".sequence-preview-shell")!;
+    await act(async () => {
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(playLabel()).toBe("暂停");
+    await act(async () => {
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(playLabel()).toBe("播放");
+  });
+
   it("exports only the frame range selected on the shared timeline to GIF", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
     const exportGif = vi.fn(async () => ({

@@ -1459,11 +1459,12 @@ export function DirectoryAssetPanel() {
       target?.matches("input, textarea, select") || target?.isContentEditable;
     if (isEditing) return;
     // 方向键按焦点归属路由：事件目标位于预览区域（视频/序列预览根、
-    // 右侧 Found 预览面板）时，由预览自己的方向键处理接管——网格导航
-    // 与面板内预览导航都让位，避免「按一下又步进又跳目录/切素材」。
+    // 右侧 Found 预览面板、模态预览浮层）时，由预览自己的方向键处理
+    // 接管——网格导航与面板内预览导航都让位，避免「按一下又步进又
+    // 跳目录/切素材」。
     const inPreviewFocus = Boolean(
       target?.closest(
-        ".video-preview, .sequence-preview-shell, .found-preview-panel",
+        ".video-preview, .sequence-preview-shell, .found-preview-panel, .quick-preview-backdrop",
       ),
     );
     if (
