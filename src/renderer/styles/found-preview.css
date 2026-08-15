@@ -237,6 +237,18 @@
   max-height: none;
 }
 
+/* 资产备注是内容编辑工具，可读性优先：沉浸（聚焦/全屏）下保持接近
+   不透明的衬底，不跟随工具栏的半透明毛玻璃（回归：备注面板半透明时
+   内容行透出画面、部分文字看不清）。不做浮动卡片——fixed 定位在聚焦
+   模式下会脱离托盘布局、破坏整个界面（回归：聚焦模式下方区域错乱）。 */
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .asset-notes-panel {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(17, 19, 18, 0.96);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .found-slider-track { position: relative; }
 .found-slider-range { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
 .found-slider-handle.range-start,
@@ -388,9 +400,11 @@
 
 .sequence-inline-menu.anchored {
   position: fixed;
-  /* 快看对话框（quick-preview-backdrop）z-index 2200：锚点菜单必须高于
-     它，否则在独立预览对话框里打开时会被对话框盖住、点了「白点」。 */
-  z-index: 2300;
+  /* 快看对话框（quick-preview-backdrop）z-index 2200、全屏/聚焦预览层
+     z-index 2600（shell.css）：锚点菜单必须高于两者，否则独立预览对话框
+     或全屏预览里打开菜单会被盖住、点了「白点」（回归：全屏预览底部
+     工具栏的菜单跑到全屏外面看不见）。 */
+  z-index: 2700;
   top: auto;
   right: auto;
   animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
@@ -637,6 +651,17 @@
   transition: opacity 140ms ease;
 }
 
+/* 换帧预载层：隐藏但保持加载，load 完成后才切换显示层 src，
+   避免换帧瞬间旧图卸载出现空白/文案闪现。 */
+.hdr-preview-stage .hdr-preview-preload {
+  position: absolute;
+  inset: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .found-preview-file-row {
   display: flex;
   height: 28px;
@@ -702,13 +727,14 @@
 
 .found-lut-anchor-menu {
   position: fixed;
-  z-index: 2300;
+  /* 高于全屏/聚焦预览层（2600）：全屏时菜单必须可见。 */
+  z-index: 2700;
   width: 210px;
 }
 
 .found-rate-anchor-menu {
   position: fixed;
-  z-index: 2300;
+  z-index: 2700;
   width: 128px;
 }
 
@@ -778,7 +804,8 @@
 .hdr-ocio-anchor-menu,
 .hdr-channel-anchor-menu {
   position: fixed;
-  z-index: 2300;
+  /* 高于全屏/聚焦预览层（2600）：全屏时菜单必须可见。 */
+  z-index: 2700;
   animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
 }
 .hdr-ocio-anchor-menu { width: 210px; }
@@ -803,7 +830,8 @@
 .hdr-exposure-control { position: relative; }
 .hdr-exposure-anchor-menu {
   position: fixed;
-  z-index: 2300;
+  /* 高于全屏/聚焦预览层（2600）：全屏时菜单必须可见。 */
+  z-index: 2700;
   width: 196px;
   transform-origin: bottom center;
   animation: found-anchor-menu-in 100ms cubic-bezier(0.2, 0, 0, 1);
@@ -861,9 +889,11 @@
   height: auto;
 }
 
-.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) {
-  background: transparent !important;
-}
+/* 注意：不得把面板根背景覆盖为 transparent——found-preview.css 是最后
+   加载的样式，`background: transparent !important` 会覆盖 shell.css 的
+   全屏背景 `#111514 !important`（同为 !important，后加载者胜），导致
+   全屏/聚焦面板全透明、主界面直接透出（回归：全屏后看到参考板栏与
+   素材缩略图）。全屏背景由 shell.css 统一提供。 */
 
 .found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .found-preview-workspace {
   position: absolute;
@@ -885,13 +915,27 @@
   .found-color-context-toolbar,
   .found-preview-session-footer,
   .found-context-tray,
-  .found-context-tray-header,
-  .asset-notes-panel
+  .found-context-tray-header
 ) {
-  border-color: transparent;
-  background: transparent;
+  /* 沉浸模式不再全透明：完全透明会让 GIF/视频裁剪范围、进度条直接叠在
+     画面上、下层 UI 透出（回归：全屏下裁剪分割看不清）。统一半透明
+     毛玻璃，与全屏锚点菜单一致。 */
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(15, 18, 17, 0.72);
+  box-shadow: none;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+/* 资产备注是内容编辑工具，可读性优先：沉浸下保持接近不透明的衬底，
+   不再跟随半透明毛玻璃（回归：备注面板半透明时内容行透出画面、部分
+   文字看不清）。 */
+.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .asset-notes-panel {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(17, 19, 18, 0.96);
   box-shadow: none;
   backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .found-preview-panel.preview-session-window-fullscreen :is(
@@ -922,13 +966,39 @@
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 
-body:has(.found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen)) :is(
+/* 沉浸模式（聚焦/全屏，右侧预览面板与快速预览对话框）：锚点气泡卡片
+   统一为半透明毛玻璃——外层容器半透明 + 背景模糊，内层内容去背景防
+   双层叠加。原规则把背景置 transparent 且漏掉导出弹窗内层，各菜单
+   半透明程度不一（回归：全屏里气泡卡片不统一）。 */
+body:has(
+  .found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen),
+  .quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen)
+) :is(
+  .sequence-inline-menu,
+  .hdr-ocio-anchor-menu,
+  .hdr-exposure-anchor-menu,
+  .hdr-channel-anchor-menu,
+  .found-lut-anchor-menu,
+  .found-rate-anchor-menu
+) {
+  border: 0;
+  border-radius: 9px;
+  background: rgba(15, 18, 17, 0.72);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+body:has(
+  .found-preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen),
+  .quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen)
+) :is(
   .playback-rate-menu,
   .preview-color-tools.lut-popover-menu,
   .hdr-ocio-menu,
   .hdr-exposure-popover,
   .hdr-channel-anchor-menu .hdr-channel-control,
-  .sequence-inline-menu
+  .sequence-inline-menu .sequence-export-popover
 ) {
   border-color: transparent;
   background: transparent;

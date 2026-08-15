@@ -255,6 +255,41 @@ describe("SequencePreviewDialog", () => {
     expect(host.querySelector('[data-testid="sequence-hdr-frame"]')?.getAttribute("data-path")).toContain("0002");
   });
 
+  it("steps frames with arrow keys and pauses playback", async () => {
+    vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      autoplaySequence: true,
+    };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "token") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={sequence} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // autoplay 打开时默认播放；按 → 应暂停并前进一帧。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".sequence-frame-count")?.textContent).toContain("0002");
+    expect(host.querySelector('button[aria-label="播放"]')).toBeTruthy();
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".sequence-frame-count")?.textContent).toContain("0001");
+  });
+
   it("exports only the frame range selected on the shared timeline to GIF", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
     const exportGif = vi.fn(async () => ({

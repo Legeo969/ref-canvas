@@ -48,6 +48,30 @@ import {
 const execFileAsync = promisify(execFile);
 let exrsInitialization: Promise<void> | null = null;
 
+/**
+ * WASM/sharp 兜底解码没有子进程可杀，一旦挂死（损坏文件、网络盘、
+ * sharp 线程卡住）会永久占住预览队列的一个并发槽；4 个槽全占时整个
+ * 队列死锁，所有缩略图永远「正在生成预览」。与 oiiotool 解码上限
+ * （90s）对齐的超时：超时即释放槽位（底层泄漏的解码不会阻塞队列）。
+ */
+const EXR_FALLBACK_DECODE_TIMEOUT_MS = 90_000;
+
+async function withFallbackDecodeTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("EXR_FALLBACK_DECODE_TIMEOUT")),
+      EXR_FALLBACK_DECODE_TIMEOUT_MS,
+    );
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
 function ensureExrsInitialized(): Promise<void> {
   exrsInitialization ??= initExrs();
   return exrsInitialization;
@@ -443,9 +467,11 @@ export class HdrProvider implements ResourceProvider {
         throw new Error("EXR_DECODE_FAILED:OPENIMAGEIO_RUNTIME_MISSING");
       }
       try {
-        return await this.decodeExrThumbnail(
-          { ...input, outputPath: input.outputPath },
-          selection,
+        return await withFallbackDecodeTimeout(
+          this.decodeExrThumbnail(
+            { ...input, outputPath: input.outputPath },
+            selection,
+          ),
         );
       } catch (error) {
         if (String(error).includes("channel names are not sorted alphabetically")) {

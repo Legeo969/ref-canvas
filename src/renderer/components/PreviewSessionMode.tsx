@@ -15,6 +15,10 @@ export function usePreviewSessionMode(
   const rootRef = useRef<HTMLElement | null>(null);
   const [focused, setFocused] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const fullscreenRef = useRef(fullscreen);
+  fullscreenRef.current = fullscreen;
+  const focusedRef = useRef(focused);
+  focusedRef.current = focused;
 
   useEffect(() => {
     // 聚焦与全屏互斥：任何进入全屏的路径都清除聚焦，两个沉浸模式
@@ -40,9 +44,11 @@ export function usePreviewSessionMode(
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (fullscreen) {
+      if (fullscreenRef.current) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        // 乐观退出：本地状态立即复位（overlay 撤下），主进程回推再同步。
+        setFullscreen(false);
         void window.refCanvas?.system?.setPresentationMode?.(false);
         return;
       }
@@ -60,20 +66,39 @@ export function usePreviewSessionMode(
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [focused, fullscreen, onClose]);
+  }, [focused, onClose]);
 
   // 聚焦（软沉浸）与全屏互斥：全屏中点击聚焦 = 退出全屏，而不是叠加。
   const toggleFocus = useCallback(() => {
-    if (fullscreen) {
+    if (fullscreenRef.current) {
+      setFullscreen(false);
       void window.refCanvas?.system?.setPresentationMode?.(false);
       return;
     }
     setFocused((value) => !value);
-  }, [fullscreen]);
+  }, []);
 
   const toggleFullscreen = useCallback(async () => {
-    await window.refCanvas?.system?.setPresentationMode?.(!fullscreen);
-  }, [fullscreen]);
+    const next = !fullscreenRef.current;
+    const previousFocused = focusedRef.current;
+    // 乐观更新：窗口级全屏的回推事件（enter-full-screen）偶发丢失时，
+    // overlay 类也必须立即加上，否则窗口已全屏但主界面直接铺满画面
+    // （回归：全屏后看到参考板栏/素材缩略图）。回推到达后最终同步；
+    // 主进程明确拒绝（返回 false）时回滚并恢复原聚焦状态。
+    setFullscreen(next);
+    if (next) setFocused(false);
+    const rollback = () => {
+      if (fullscreenRef.current !== next) return;
+      setFullscreen(!next);
+      if (next) setFocused(previousFocused);
+    };
+    try {
+      const applied = await window.refCanvas?.system?.setPresentationMode?.(next);
+      if (applied === false) rollback();
+    } catch {
+      rollback();
+    }
+  }, []);
 
   return {
     rootRef,

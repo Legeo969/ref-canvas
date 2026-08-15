@@ -306,6 +306,8 @@ button[aria-label] {
 .workspace {
   display: grid;
   min-height: 0;
+  /* 主工作区实心背景：面板之间缝隙/空白不再透出窗口底层。 */
+  background: var(--bg-base);
 }
 
 .workspace.directory-workspace {
@@ -460,6 +462,9 @@ body.panel-resizing {
   overflow-y: auto;
   padding: 14px 8px 10px;
   border-right: 1px solid var(--line);
+  /* 侧边栏此前无背景色、直接透出窗口底层（回归：收藏夹/参考板栏
+     看起来半透明、与内容区层次不清）。补实心背景与其他面板一致。 */
+  background: var(--surface-1);
 }
 
 .sidebar-recycle-button {

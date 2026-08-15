@@ -135,6 +135,10 @@ export function SequencePreviewDialog({
       : (sequence.fps || 24),
   );
   const [optionsDrawer, setOptionsDrawer] = useState<"fps" | "mp4" | "gif" | null>(null);
+  /** 对话框模式的 HDR 工具行：HdrPreview 的控件（Fit/旋转/网格、OCIO/
+   * 曝光/导出通道）portal 到这里，与右侧预览面板的工具栏一致——避免
+   * 控件堆在图片下方、对话框「乱的要死」。 */
+  const [dialogToolbar, setDialogToolbar] = useState<HTMLDivElement | null>(null);
   const [localGifRange, setLocalGifRange] = useState({ start: 0, end: 1 });
   const [localGifRangeActive, setLocalGifRangeActive] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -381,6 +385,20 @@ export function SequencePreviewDialog({
   const missing = sequence.missingFrames;
   const frameLabel = (index: number) =>
     String(sequence.start + index).padStart(sequence.width, "0");
+  // HDR 变体预取：主进程缓存预热，ACES/OCIO 播放提速。内嵌播放预取
+  // 2 帧维持流水线；全屏时解码尺寸升到 1920（像素量 4 倍，每帧 2-4s），
+  // 预取加深到 8 帧作为提前量（≈20s 解码缓冲），播放推进时窗口滚动补
+  // 尾部——解码负载与播放节奏绑定，暂停/退出即停止（不做整条序列的全量
+  // 预热，避免后台满载解码、CPU 长时间占用）。
+  const hdrPrefetchPaths = useMemo(() => {
+    const depth = fullscreen ? 8 : 2;
+    const paths: string[] = [];
+    for (let delta = 1; delta <= depth; delta += 1) {
+      const frame = frames[displayedFrameIndex + delta];
+      if (frame) paths.push(frame);
+    }
+    return paths;
+  }, [displayedFrameIndex, frames, fullscreen]);
   const activePresetLabel = availableMp4Presets.find((preset) => preset.id === exportPresetId)?.label ?? "MP4";
 
   // 阶段 5：MP4 导出（预设来自 FoundSettings.mp4Presets）。
@@ -533,6 +551,23 @@ export function SequencePreviewDialog({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const typing = target instanceof HTMLElement && (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+      if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        // ←/→ 逐帧：播放中先暂停再步进（与主流播放器一致）。
+        event.preventDefault();
+        setPlaying(false);
+        const delta = event.key === "ArrowLeft" ? -1 : 1;
+        setFrameIndex((current) => {
+          if (!frames.length) return 0;
+          return (current + delta + frames.length) % frames.length;
+        });
+        return;
+      }
       if (!embedded && event.key === "Escape") {
         event.preventDefault();
         onClose();
@@ -540,7 +575,7 @@ export function SequencePreviewDialog({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [embedded, onClose]);
+  }, [embedded, frames.length, onClose]);
 
   const embeddedExportControls = embedded && controlsTarget ? createPortal(
     <div className="sequence-inline-export-controls">
@@ -596,6 +631,14 @@ export function SequencePreviewDialog({
             </button>
           </div>
         </header>}
+        {!embedded && isHdrSequence && (
+          <div
+            ref={setDialogToolbar}
+            className="sequence-dialog-toolbar"
+            role="toolbar"
+            aria-label="HDR 预览工具"
+          />
+        )}
         {exportState === "running" && (
           <div className="sequence-export-banner">{translate("sequence.exportingMp4")}</div>
         )}
@@ -648,13 +691,14 @@ export function SequencePreviewDialog({
               path={frames[displayedFrameIndex]}
               managed={embedded}
               displaySize={framePreviewSize}
-              controlsTarget={controlsTarget}
+              controlsTarget={controlsTarget ?? dialogToolbar}
               multichannelOpen={multichannelOpen}
               multichannelAnchor={multichannelAnchor}
               eyedropActive={eyedropActive}
               onEyedropActiveChange={onEyedropActiveChange}
               onColorSample={onColorSample}
               onDisplayReady={handleDisplayReady}
+              prefetchPaths={hdrPrefetchPaths}
             /> : <img
               ref={displayedImageRef}
               src={displayedSource}

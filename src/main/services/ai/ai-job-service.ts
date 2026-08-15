@@ -183,7 +183,15 @@ export class AiJobService {
     this.cancelTokens.set(job.id, cancelState);
     const cancelRef = { current: createToken(cancelState) };
     void this.runJob(job.id, provider, validated.request, cancelRef).catch(
-      (error) => this.handleRunError(job.id, error),
+      (error) => {
+        try {
+          this.handleRunError(job.id, error);
+        } catch {
+          // 应用/数据库已关闭（退出或测试收尾）时，后台任务错误不再可写库；
+          // 吞掉避免 unhandled rejection（回归：ai-job-service 测试偶发
+          // 「The database connection is not open」）。
+        }
+      },
     );
     return this.jobs.get(job.id)!;
   }
@@ -298,7 +306,14 @@ export class AiJobService {
     this.cancelTokens.set(job.id, cancelState);
     const cancelRef = { current: createToken(cancelState) };
     void this.runJob(job.id, provider, validated.request, cancelRef).catch(
-      (error) => this.handleRunError(job.id, error),
+      (error) => {
+        try {
+          this.handleRunError(job.id, error);
+        } catch {
+          // 应用/数据库已关闭：后台任务错误不再可写库，吞掉避免
+          // unhandled rejection（与 start 路径一致）。
+        }
+      },
     );
     return this.jobs.get(job.id)!;
   }

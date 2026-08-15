@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PreviewQueue } from "../../../src/main/platform/preview-queue";
 
 describe("PreviewQueue", () => {
@@ -147,5 +147,63 @@ describe("PreviewQueue", () => {
     expect(rejoined).toBe(first);
     release();
     await expect(rejoined).resolves.toBe("done");
+  });
+
+  it("ages queued work so continuous high-priority injection cannot starve it", async () => {
+    // 序列播放时每帧注入 priority=0 的 preview 请求，visible 缩略图（10）
+    // 会被永远排在队尾（回归：目录序列缩略图一直「正在生成预览」）。
+    vi.useFakeTimers();
+    const queue = new PreviewQueue<string>(1, 8);
+    let release!: () => void;
+    const order: string[] = [];
+    const active = queue.enqueue("active", () => new Promise<string>((resolve) => {
+      release = () => resolve("active");
+    }));
+    const thumbnail = queue.enqueue("thumbnail", async () => {
+      order.push("thumbnail");
+      return "thumbnail";
+    }, { priority: 10 });
+    const preview1 = queue.enqueue("preview-1", async () => {
+      order.push("preview-1");
+      return "preview-1";
+    }, { priority: 0 });
+    const preview2 = queue.enqueue("preview-2", async () => {
+      order.push("preview-2");
+      return "preview-2";
+    }, { priority: 0 });
+    // 等待超过老化阈值：thumbnail 的优先级衰减到与 preview 相同，按先来先服务执行。
+    await vi.advanceTimersByTimeAsync(20_000);
+    release();
+    await active;
+    await Promise.all([thumbnail, preview1, preview2]);
+    expect(order[0]).toBe("thumbnail");
+    vi.useRealTimers();
+  });
+
+  it("never lets aged prefetch work jump ahead of display requests", async () => {
+    // 全屏批量预热：prefetch(30) 排队极久后若无限老化会升到 0，插到当前帧
+    // 显示请求（preview 0）前面——播放反而更卡。prefetch 类必须保持下限。
+    vi.useFakeTimers();
+    const queue = new PreviewQueue<string>(1, 8);
+    let release!: () => void;
+    const order: string[] = [];
+    const active = queue.enqueue("active", () => new Promise<string>((resolve) => {
+      release = () => resolve("active");
+    }));
+    const preview = queue.enqueue("preview", async () => {
+      order.push("preview");
+      return "preview";
+    }, { priority: 0 });
+    const prefetch = queue.enqueue("prefetch", async () => {
+      order.push("prefetch");
+      return "prefetch";
+    }, { priority: 30 });
+    // 远超任何老化阈值：prefetch 若不设下限会与 preview 同权。
+    await vi.advanceTimersByTimeAsync(60_000);
+    release();
+    await active;
+    await Promise.all([preview, prefetch]);
+    expect(order).toEqual(["preview", "prefetch"]);
+    vi.useRealTimers();
   });
 });

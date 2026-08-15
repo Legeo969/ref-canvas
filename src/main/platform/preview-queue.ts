@@ -14,6 +14,8 @@ interface QueueItem<T> {
   key: string;
   priority: number;
   sequence: number;
+  /** 入队时刻（老化计时起点；同 key 去重复用时不重置，等待时间持续累积）。 */
+  enqueuedAt: number;
   task: (signal: AbortSignal) => Promise<T>;
   promise: Promise<T>;
   resolve(value: T): void;
@@ -23,6 +25,9 @@ interface QueueItem<T> {
   persistentConsumers: number;
   signalConsumers: Set<AbortSignal>;
 }
+
+/** 老化速率：排队每满 1 秒，优先级值下降 1（等效插队，下限 0）。 */
+const AGING_INTERVAL_MS = 1_000;
 
 /** Bounded, priority-aware and deduplicated background work queue. */
 export class PreviewQueue<T> {
@@ -78,6 +83,7 @@ export class PreviewQueue<T> {
       key,
       priority: options.priority ?? 20,
       sequence: this.sequence++,
+      enqueuedAt: Date.now(),
       task,
       promise,
       resolve: resolvePromise,
@@ -143,15 +149,30 @@ export class PreviewQueue<T> {
     );
   }
 
+  /** 老化后的有效优先级：等待越久越靠前，任何持续注入的高优请求都无法
+   * 饿死排队中的任务（回归：序列播放的 preview 请求占满并发槽后，目录
+   * 可见缩略图一直「正在生成预览」）。prefetch 类（≥30）只衰减到 10，
+   * 永远不超越显示请求（priority 0）——否则全屏批量预热时排队变体升权
+   * 会插到当前帧前面，播放反而更卡。 */
+  private effectivePriority(item: QueueItem<T>): number {
+    const floor = item.priority >= 30 ? 10 : 0;
+    const aged = item.priority - Math.floor((Date.now() - item.enqueuedAt) / AGING_INTERVAL_MS);
+    return Math.max(floor, aged);
+  }
+
   private sortQueue(): void {
     this.queue.sort(
       (left, right) =>
-        left.priority - right.priority || left.sequence - right.sequence,
+        this.effectivePriority(left) - this.effectivePriority(right) ||
+        left.sequence - right.sequence,
     );
   }
 
   private pump(): void {
     while (this.active < this.maximumConcurrent && this.queue.length) {
+      // 每次取任务前按当前时间重排：老化是时间驱动的，只在 enqueue 时
+      // 排序会让等待中的任务永远排不到前面。
+      this.sortQueue();
       const item = this.queue.shift()!;
       item.active = true;
       this.active += 1;

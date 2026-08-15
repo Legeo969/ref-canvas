@@ -279,9 +279,11 @@ export function buildOpenImageIoDecodeArgs(
     "--flatten",
     "--ch",
     input.channels.join(","),
-    ...colorTransformArgs,
+    // 先缩到显示尺寸再做颜色变换：ACES/OCIO 显示变换按像素计费，
+    // 4K→960 先降采样让变换成本降低约 17 倍（序列逐帧播放显著提速）。
     "--resize",
     `${dimensions.width}x${dimensions.height}`,
+    ...colorTransformArgs,
     "-d",
     "uint8",
     "-o",
