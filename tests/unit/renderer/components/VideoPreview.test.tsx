@@ -380,4 +380,199 @@ describe("VideoPreview frame stepping", () => {
     });
     expect(onEyedropActiveChange).toHaveBeenCalledWith(false);
   });
+
+  it("holds ArrowRight to scrub forward with accelerating steps, then finalizes the precise frame", async () => {
+    vi.useFakeTimers();
+    const frame = vi.fn(async () => ({
+      source: "refbrowse://preview/token",
+      path: "frame.png",
+      timeMs: 0,
+      jobId: "frame-job",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        media: {
+          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
+          frame,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    let current = 0;
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => current,
+      set: (value: number) => { current = value; },
+    });
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      await Promise.resolve();
+    });
+    // 按下即走 1 帧（第 0 拍），与旧短按单帧行为一致。
+    expect(current).toBeCloseTo(1 / 24, 5);
+    // 按住 500ms（10 拍）后已升档，前进明显超过 10 帧。
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+    });
+    expect(current).toBeGreaterThan(10 / 24);
+    const frozen = current;
+    // 松键：扫览停止，并做一次最终精确抓帧。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(frame).toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+      await Promise.resolve();
+    });
+    expect(current).toBe(frozen);
+  });
+
+  it("holds ArrowLeft to scrub backward, clamped at the start", async () => {
+    vi.useFakeTimers();
+    const frame = vi.fn(async () => ({
+      source: "refbrowse://preview/token",
+      path: "frame.png",
+      timeMs: 0,
+      jobId: "frame-job",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        media: {
+          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
+          frame,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    let current = 0;
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => current,
+      set: (value: number) => { current = value; },
+    });
+    // 从开头反向扫览：立即停在 0，不进入负时间。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+      await Promise.resolve();
+    });
+    expect(current).toBe(0);
+    await act(async () => {
+      vi.advanceTimersByTime(400);
+      await Promise.resolve();
+    });
+    expect(current).toBe(0);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft" }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(frame).not.toHaveBeenCalled();
+  });
+
+  it("never shows the browser's broken-image placeholder for a failed frame grab", async () => {
+    vi.useFakeTimers();
+    // media:frame 的 token 按路径复用（tokenFor），同一目标重抓返回同一
+    // URL；mock 与之保持一致。
+    const frame = vi.fn(async () => ({
+      source: "refbrowse://preview/token",
+      path: "frame.png",
+      timeMs: 0,
+      jobId: "frame-job",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        media: {
+          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
+          frame,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    let current = 0;
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => current,
+      set: (value: number) => { current = value; },
+    });
+    // 步进一次 → 抓帧返回 → 帧图渲染。
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('button[aria-label="下一帧"]')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(frame.mock.calls.length).toBeGreaterThanOrEqual(1);
+    // 同一 URL 至多重试一次（步进 + 重试 = 2 次调用封顶），失败不会无限循环。
+    expect(frame.mock.calls.length).toBeLessThanOrEqual(2);
+    // 无论环境是否已自动触发过 error：手动补发，最终必须收敛到正式错误
+    // 提示，破图占位（img + alt 文本）不得留存，抓帧调用不再增长。
+    await act(async () => {
+      host.querySelector<HTMLImageElement>(".video-frame-step")?.dispatchEvent(new Event("error"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      host.querySelector<HTMLImageElement>(".video-frame-step")?.dispatchEvent(new Event("error"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.querySelector<HTMLImageElement>(".video-frame-step")).toBeNull();
+    expect(host.querySelector(".video-frame-error")).toBeTruthy();
+    expect(frame.mock.calls.length).toBeLessThanOrEqual(2);
+  });
 });

@@ -72,6 +72,7 @@ describe("SequencePreviewDialog", () => {
     BufferedImageMock.instances = [];
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it("keeps the previous frame until the next frame has loaded", async () => {
@@ -288,6 +289,65 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve();
     });
     expect(host.querySelector(".sequence-frame-count")?.textContent).toContain("0001");
+  });
+
+  it("accelerates held arrow keys and resets to single-frame steps on release", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
+    vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      autoplaySequence: false,
+    };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "token") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const rangedSequence = {
+      ...sequence,
+      files: [
+        "D:\\refs\\shot.0001.png",
+        "D:\\refs\\shot.0002.png",
+        "D:\\refs\\shot.0003.png",
+        "D:\\refs\\shot.0004.png",
+        "D:\\refs\\shot.0005.png",
+      ],
+      frames: [1, 2, 3, 4, 5],
+      end: 5,
+    };
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={rangedSequence} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const frameCount = () => host.querySelector(".sequence-frame-count")?.textContent ?? "";
+    // 短按 → +1 帧（0001 → 0002）。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      await Promise.resolve();
+    });
+    expect(frameCount()).toContain("0002");
+    // 长按 1.2s 后单次重复按键已升到 8 帧/键：0002 + 8 = 0005（5 帧序列）。
+    await act(async () => {
+      vi.advanceTimersByTime(1200);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat: true }));
+      await Promise.resolve();
+    });
+    expect(frameCount()).toContain("0005");
+    // 松键：重复按键回到单帧步进（0005 + 1 → 0001，取模）。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight" }));
+      await Promise.resolve();
+      vi.advanceTimersByTime(1000);
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat: true }));
+      await Promise.resolve();
+    });
+    expect(frameCount()).toContain("0001");
   });
 
   it("exports only the frame range selected on the shared timeline to GIF", async () => {

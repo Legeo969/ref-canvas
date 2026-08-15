@@ -32,6 +32,11 @@ import { usePreviewTransportRegistration } from "./PreviewTransport";
  * 帧图通过 refbrowse token 按需加载；播放时预取相邻帧保证流畅。
  */
 
+/** 长按 ←/→ 加速步进：重复按键按按住时长升档（每 400ms 一档，每键
+ * 1→2→4→…→32 帧），与 VideoPreview 的扫览手感一致；短按 = 单帧。 */
+const SEQUENCE_SCRUB_SKIPS = [1, 2, 4, 8, 16, 32] as const;
+const SEQUENCE_SCRUB_TIER_MS = 400;
+
 function useFrameTokens(files: string[]) {
   const [tokens, setTokens] = useState<Map<string, string>>(() => new Map());
   const tokensRef = useRef(tokens);
@@ -549,6 +554,9 @@ export function SequencePreviewDialog({
     exportGif: () => void exportGif(),
   });
 
+  /** 长按 ←/→ 加速的按住状态（方向 + 起始时刻）；keyup/blur/卸载清除。 */
+  const scrubHoldRef = useRef<{ direction: 1 | -1; startedAt: number } | null>(null);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
@@ -558,13 +566,24 @@ export function SequencePreviewDialog({
         target.isContentEditable
       );
       if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-        // ←/→ 逐帧：播放中先暂停再步进（与主流播放器一致）。
+        // ←/→ 逐帧：播放中先暂停再步进；长按加速（按住越久每键跳帧
+        // 越多，最多 32 帧/键），与视频预览的扫览手感一致。
         event.preventDefault();
         setPlaying(false);
-        const delta = event.key === "ArrowLeft" ? -1 : 1;
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        const hold = scrubHoldRef.current;
+        if (!event.repeat || hold?.direction !== direction) {
+          scrubHoldRef.current = { direction, startedAt: performance.now() };
+        }
+        const holdMs = performance.now() - (scrubHoldRef.current?.startedAt ?? performance.now());
+        const tier = Math.min(
+          SEQUENCE_SCRUB_SKIPS.length - 1,
+          Math.floor(holdMs / SEQUENCE_SCRUB_TIER_MS),
+        );
+        const skip = SEQUENCE_SCRUB_SKIPS[tier] * direction;
         setFrameIndex((current) => {
           if (!frames.length) return 0;
-          return (current + delta + frames.length) % frames.length;
+          return (current + skip + frames.length) % frames.length;
         });
         return;
       }
@@ -573,8 +592,23 @@ export function SequencePreviewDialog({
         onClose();
       }
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        scrubHoldRef.current = null;
+      }
+    };
+    const onBlur = () => {
+      scrubHoldRef.current = null;
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      scrubHoldRef.current = null;
+    };
   }, [embedded, frames.length, onClose]);
 
   const embeddedExportControls = embedded && controlsTarget ? createPortal(

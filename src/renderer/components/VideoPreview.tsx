@@ -28,6 +28,17 @@ function formatTimecode(seconds: number): string {
     : `${minutes}:${String(secs).padStart(2, "0")}`;
 }
 
+/**
+ * 长按 ←/→ 加速扫览（jog/shuttle）：按住期间每 50ms 走一拍，档位按
+ * 拍数递增（每 400ms 一档，1→2→4→…→64 帧/拍）。播放器原生 seek
+ * 赶不上时 Chromium 自动合并（只应用最后一次 currentTime），高端档
+ * 表现为跳帧式快速扫览。松键后用一次 ffmpeg 精确抓帧把显示定格在
+ * 最终帧。第 0 拍固定 1 帧，保证短按仍是「精确单帧」。
+ */
+const SCRUB_TICK_MS = 50;
+const SCRUB_TIER_MS = 400;
+const SCRUB_TICK_FRAMES = [1, 2, 4, 8, 16, 32, 64] as const;
+
 export function VideoPreview({
   asset,
   persistNotes = true,
@@ -54,6 +65,16 @@ export function VideoPreview({
   const frameImageRef = useRef<HTMLImageElement>(null);
   const assetPathRef = useRef(asset.path);
   assetPathRef.current = asset.path;
+  /** 精确抓帧的世代号：每次新抓帧递增，旧抓帧的异步结果据此作废。 */
+  const grabEpochRef = useRef(0);
+  /** 已重试过的帧图 URL：同一 URL 只自动重抓一次，失败持续时不会无限循环。 */
+  const failedFrameSourceRef = useRef<string | null>(null);
+  /** 长按扫览状态：方向 + 已走拍数 + 计时器；null = 未在扫览。 */
+  const scrubStateRef = useRef<{
+    direction: 1 | -1;
+    ticks: number;
+    timer: number | null;
+  } | null>(null);
   // 阶段 5：autoplay 偏好（默认播放）；首次挂载按设置决定是否自动播放。
   const [playing, setPlaying] = useState(foundSettings.autoplayVideo);
   const autoPlayedRef = useRef(false);
@@ -176,16 +197,11 @@ export function VideoPreview({
   }, [asset.path]);
 
   // 单帧步进：暂停视频，用 ffmpeg 精确提取目标时间帧。
-  const step = (deltaFrames: number) => {
+  // 抓帧是异步的：epoch 递增使旧抓帧结果作废（连续步进/扫览/切素材时
+  // 晚到的旧帧不得覆盖新画面）。
+  const grabFrameAt = (next: number) => {
     const video = videoRef.current;
-    if (!video || !effectiveFrameRate || stepping) return;
-    const current = lastFrameTimeRef.current;
-    const deltaSeconds = deltaFrames / effectiveFrameRate;
-    const next = Math.min(
-      Math.max(0, current + deltaSeconds),
-      Number.isFinite(video.duration) ? video.duration : current,
-    );
-    if (next === current && deltaSeconds > 0) return;
+    if (!video) return;
     video.pause();
     video.currentTime = next;
     lastFrameTimeRef.current = next;
@@ -193,27 +209,118 @@ export function VideoPreview({
     setStepping(true);
     setFailed(false);
     const requestPath = asset.path;
+    const epoch = ++grabEpochRef.current;
     void window.refCanvas.media
       .frame(requestPath, { timeMs: next * 1000, width: 1920, height: 1080 })
       .then((result) => {
-        if (assetPathRef.current !== requestPath) return;
+        if (assetPathRef.current !== requestPath || epoch !== grabEpochRef.current) return;
         setFrameSource(result.source);
         setTimecode(next);
         onTimeChange?.(next);
         if (onOpenTool) schedulePalette(next, true);
       })
       .catch(() => {
-        if (assetPathRef.current === requestPath) setFailed(true);
+        if (assetPathRef.current === requestPath && epoch === grabEpochRef.current) setFailed(true);
       })
       .finally(() => {
-        if (assetPathRef.current === requestPath) setStepping(false);
+        if (assetPathRef.current === requestPath && epoch === grabEpochRef.current) setStepping(false);
       });
+  };
+
+  const step = (deltaFrames: number) => {
+    const video = videoRef.current;
+    if (!video || !effectiveFrameRate || stepping) return;
+    // 步进按钮按下时结束进行中的长按扫览（本次步进自己负责抓帧）。
+    if (scrubStateRef.current) stopScrubRef.current(false);
+    const current = lastFrameTimeRef.current;
+    const deltaSeconds = deltaFrames / effectiveFrameRate;
+    const next = Math.min(
+      Math.max(0, current + deltaSeconds),
+      Number.isFinite(video.duration) ? video.duration : current,
+    );
+    if (next === current && deltaSeconds > 0) return;
+    grabFrameAt(next);
   };
 
   const stepRef = useRef(step);
   stepRef.current = step;
-  // ←/→ 逐帧（与序列预览一致）：播放中自动暂停并步进；焦点在输入框时
-  // 不响应。
+
+  // 长按扫览的节拍：按当前档位把 currentTime 推进一步；到边界则停止。
+  const scrubTick = () => {
+    const state = scrubStateRef.current;
+    const video = videoRef.current;
+    if (!state || !video || !effectiveFrameRate) return;
+    const tier = Math.min(
+      SCRUB_TICK_FRAMES.length - 1,
+      Math.floor((state.ticks * SCRUB_TICK_MS) / SCRUB_TIER_MS),
+    );
+    state.ticks += 1;
+    const frames = SCRUB_TICK_FRAMES[tier] * state.direction;
+    const current = lastFrameTimeRef.current;
+    const duration = Number.isFinite(video.duration)
+      ? video.duration
+      : Number.POSITIVE_INFINITY;
+    const next = Math.min(
+      Math.max(0, current + frames / effectiveFrameRate),
+      duration,
+    );
+    if (next === current) {
+      stopScrubRef.current(false);
+      return;
+    }
+    video.currentTime = next;
+    lastFrameTimeRef.current = next;
+    setTimecode(next);
+    onTimeChange?.(next);
+    if (onOpenTool) schedulePalette(next);
+  };
+  const scrubTickRef = useRef(scrubTick);
+  scrubTickRef.current = scrubTick;
+
+  const stopScrub = (finalize: boolean) => {
+    const state = scrubStateRef.current;
+    if (!state) return;
+    scrubStateRef.current = null;
+    if (state.timer !== null) window.clearInterval(state.timer);
+    if (finalize) {
+      // 最终精确帧以播放器实际落位为准（扫览时 seek 可能被合并）。
+      const video = videoRef.current;
+      if (video && Number.isFinite(video.currentTime)) {
+        grabFrameAt(video.currentTime);
+      }
+    }
+  };
+  const stopScrubRef = useRef(stopScrub);
+  stopScrubRef.current = stopScrub;
+
+  const startScrub = (direction: 1 | -1) => {
+    const video = videoRef.current;
+    if (!video || !effectiveFrameRate) return;
+    const existing = scrubStateRef.current;
+    if (existing) {
+      // 已按住：同向保持当前加速；反向翻转时重置档位（计时器保留）。
+      if (existing.direction === direction) return;
+      scrubStateRef.current = { direction, ticks: 0, timer: existing.timer };
+      return;
+    }
+    video.pause();
+    setPlaying(false);
+    setFrameSource(null);
+    // 使在途的精确抓帧作废：其结果不得覆盖扫览画面。
+    grabEpochRef.current += 1;
+    scrubStateRef.current = {
+      direction,
+      ticks: 0,
+      timer: window.setInterval(() => scrubTickRef.current(), SCRUB_TICK_MS),
+    };
+    // 按下即走一拍（第 0 拍 = 1 帧），避免停顿一个 tick 的延迟感。
+    scrubTickRef.current();
+  };
+  const startScrubRef = useRef(startScrub);
+  startScrubRef.current = startScrub;
+  // ←/→ 逐帧：短按 = 精确单帧；长按 = 加速扫览（计时器驱动，忽略
+  // 浏览器按键自动重复）；焦点在输入框时不响应。扫览中窗口失焦
+  // （Alt-Tab 等）立即停止，防计时器悬挂。
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
@@ -225,10 +332,23 @@ export function VideoPreview({
       if (typing) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       event.preventDefault();
-      stepRef.current(event.key === "ArrowLeft" ? -1 : 1);
+      if (event.repeat) return;
+      startScrubRef.current(event.key === "ArrowLeft" ? -1 : 1);
     };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      stopScrubRef.current(true);
+    };
+    const onBlur = () => stopScrubRef.current(false);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      stopScrubRef.current(false);
+    };
   }, []);
 
   usePreviewTransportRegistration({
@@ -297,6 +417,8 @@ export function VideoPreview({
           onPlay={() => {
             setPlaying(true);
             setFrameSource(null);
+            // 播放/继续播放时结束进行中的长按扫览，避免 seek 与播放打架。
+            stopScrubRef.current(false);
           }}
           onVolumeChange={(event) => {
             setMuted(event.currentTarget.muted);
@@ -331,6 +453,20 @@ export function VideoPreview({
             alt={translate("video.frameAlt").replace("{timecode}", formatTimecode(timecode))}
             draggable={false}
             onClick={sampleDisplayedPixel}
+            onError={() => {
+              // 帧图 URL 加载失败（会话 token 淘汰等瞬态）：同一 URL 先
+              // 自动重抓一次（重新签发 token）；仍失败才转正式错误提示。
+              // 绝不外露浏览器破图占位 + alt 文本，也不无限重试。
+              const source = frameSource;
+              if (source && failedFrameSourceRef.current !== source) {
+                failedFrameSourceRef.current = source;
+                setFrameSource(null);
+                grabFrameAt(lastFrameTimeRef.current);
+                return;
+              }
+              setFrameSource(null);
+              setFailed(true);
+            }}
           />
         )}
         {samplePoint && (
