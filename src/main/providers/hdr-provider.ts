@@ -409,6 +409,7 @@ export class HdrProvider implements ResourceProvider {
           if (input.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED", { cause: error });
           // 自定义 OCIO 配置解码失败（如配置缺 LUT）时回退内置显示变换，
           // 保证预览可用；配置问题由 OCIO 菜单的校验提示给用户。
+          let effectiveError: unknown = error;
           if (ocioConfigPath) {
             await rememberOcioConfigFailure(ocioConfigPath);
             try {
@@ -430,11 +431,11 @@ export class HdrProvider implements ResourceProvider {
               });
             } catch (fallbackError) {
               if (input.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED", { cause: fallbackError });
-              error = fallbackError;
+              effectiveError = fallbackError;
             }
           }
           if (!canUseSimpleExrsFallback(selection.header, selection)) {
-            const detail = error instanceof Error ? error.message : String(error);
+            const detail = effectiveError instanceof Error ? effectiveError.message : String(effectiveError);
             throw new Error(`EXR_DECODE_FAILED:${detail}`, { cause: error });
           }
         }

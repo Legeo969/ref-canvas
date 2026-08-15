@@ -207,6 +207,14 @@ async function generateThumbnail(
 
 const HDR_DISPLAY_TRANSFORMS = new Set(["linear-srgb", "aces-1.3", "aces-2.0", "raw"] as const);
 
+/**
+ * 色彩管理变体管线版本。显示变换/解码实现发生变化时递增（如修复
+ * 「选了 ACES 配置不生效」：旧版本生成的变体缓存内容等同基础画面，
+ * 而缓存键只看源文件身份、永不失效），让旧的错误变体缓存自然失效
+ * 并重新生成；不带色彩管理参数的默认路径不受影响。
+ */
+const COLOR_MANAGED_VARIANT_VERSION = "v1";
+
 function hdrDisplayTransform(url: URL): "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw" | undefined {
   const value = url.searchParams.get("displayTransform");
   return value && HDR_DISPLAY_TRANSFORMS.has(value as "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw")
@@ -219,11 +227,12 @@ function hdrInputColorSpace(url: URL): string | undefined {
   return value && value.length <= 128 ? value : undefined;
 }
 
-function hdrColorVariant(url: URL): string {
+export function hdrColorVariant(url: URL): string {
   const transform = hdrDisplayTransform(url);
   const inputColorSpace = hdrInputColorSpace(url);
   const ocioSignature = url.searchParams.get("ocio")?.toLowerCase().replace(/[^a-z0-9_-]+/g, "-") ?? "";
-  return `${transform ? `-display-${transform}` : ""}${inputColorSpace ? `-input-${inputColorSpace.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}` : ""}${ocioSignature ? `-ocio-${ocioSignature}` : ""}`;
+  const variant = `${transform ? `-display-${transform}` : ""}${inputColorSpace ? `-input-${inputColorSpace.toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}` : ""}${ocioSignature ? `-ocio-${ocioSignature}` : ""}`;
+  return variant ? `${variant}-${COLOR_MANAGED_VARIANT_VERSION}` : "";
 }
 
 function registerAssetProtocol(dependencies: ProtocolDependencies): void {

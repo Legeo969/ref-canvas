@@ -18,20 +18,32 @@ describe("HDR display preview source", () => {
   });
 });
 
-describe("HDR transform source resolution", () => {
+describe("HDR color scheme source resolution", () => {
   const source = "refbrowse://thumbnail/token?priority=preview&size=960";
 
-  it("omits explicit transform parameters on the default path", () => {
+  it("omits explicit transform parameters for the default sRGB scheme", () => {
     expect(resolveHdrTransformSource(source, "linear-srgb", null)).toBe(source);
   });
 
-  it("appends input color space and display transform for ACES", () => {
+  it("appends input color space and display transform for ACES 1.3", () => {
     expect(resolveHdrTransformSource(source, "aces-1.3", null)).toBe(
       "refbrowse://thumbnail/token?priority=preview&size=960&inputColorSpace=ACEScg&displayTransform=aces-1.3",
     );
   });
 
-  it("treats a custom OCIO config as an explicit transform even with the default choice", () => {
+  it("appends input color space and display transform for ACES 2.0", () => {
+    expect(resolveHdrTransformSource(source, "aces-2.0", null)).toBe(
+      "refbrowse://thumbnail/token?priority=preview&size=960&inputColorSpace=ACEScg&displayTransform=aces-2.0",
+    );
+  });
+
+  it("appends the Raw scheme parameters", () => {
+    expect(resolveHdrTransformSource(source, "raw", null)).toBe(
+      "refbrowse://thumbnail/token?priority=preview&size=960&inputColorSpace=Raw&displayTransform=raw",
+    );
+  });
+
+  it("treats a custom OCIO config as an explicit transform even with the default scheme", () => {
     expect(resolveHdrTransformSource(source, "linear-srgb", "D:\\ocio\\config.ocio")).toBe(
       "refbrowse://thumbnail/token?priority=preview&size=960&inputColorSpace=lin_srgb&displayTransform=linear-srgb",
     );

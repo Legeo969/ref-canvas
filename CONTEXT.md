@@ -55,7 +55,7 @@ _Avoid_: 色彩栏、固定色板
 _Avoid_: 采样色板
 
 **显示变换 (display transform)**:
-HDR（EXR/HDR）解码后呈现到屏幕的变换选择：`sRGB（默认）`（UI 标签；线协议值 `linear-srgb`；输入色彩空间按文件头解析）、`aces-1.3`、`aces-2.0`、`raw`。
+HDR（EXR/HDR）解码后呈现到屏幕的变换选择（线协议值）：`linear-srgb`（默认，线性→sRGB；输入被解析为 ACEScg 时自动走 ACES RRT+ODT 映射）、`aces-1.3`（ACES 1.0 - SDR Video）、`aces-2.0`（ACES 2.0 - SDR 100 nits）、`raw`（无变换）。OCIO 菜单以「色彩管理方案」呈现：每个方案打包输入解释 + 显示变换；默认方案（linear-srgb）不携带显式参数、与序列暂存解码共享缓存变体，其余方案携带 `inputColorSpace`/`displayTransform` 参数生成独立变体。
 
 **OCIO 配置 (OCIO config)**:
 可选的 OpenColorIO 配置文件路径，用于自定义色彩管理，优先级高于内置显示变换。

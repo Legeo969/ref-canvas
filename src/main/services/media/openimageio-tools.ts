@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { access, mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -35,7 +35,14 @@ export function packagedOiiotoolCandidates(
     cwd: process.cwd(),
   };
   const resourcesPath = runtime.resourcesPath;
-  const packaged = Boolean(resourcesPath && runtime.defaultApp !== true);
+  // provider worker 线程不继承 process.defaultApp（值为 undefined，会被
+  // 误判为打包环境、只找 app.asar.unpacked，dev 模式因此找不到侧车）。
+  // 主进程在创建 worker 前写入 REFCANVAS_PACKAGED 显式传递打包状态；
+  // 测试与独立 node 环境未设置该变量时沿用旧推断逻辑。
+  const explicitPackaged = process.env.REFCANVAS_PACKAGED;
+  const packaged = explicitPackaged !== undefined
+    ? explicitPackaged === "1"
+    : Boolean(resourcesPath && runtime.defaultApp !== true);
   if (packaged) {
     return [path.join(resourcesPath!, "app.asar.unpacked", OIIO_RELATIVE_PATH)];
   }
@@ -91,6 +98,8 @@ export interface OpenImageIoDecodeInput {
   inputColorSpace?: string;
   displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw";
   ocioConfigPath?: string;
+  /** 自定义 OCIO 配置的默认显示变换（display/view），由解码器解析注入。 */
+  ocioDisplayView?: OcioDisplayView | null;
   signal?: AbortSignal;
   executable?: string;
   subimage?: number;
@@ -110,6 +119,120 @@ export interface OpenImageIoSubimage {
   compression: string | null;
   colorSpace: string | null;
   channels: string[];
+}
+
+export interface OcioDisplayView {
+  display: string;
+  view: string;
+}
+
+function parseOcioListValue(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((item) => item.trim().replace(/^["']|["']$/g, ""))
+    .filter((item) => item.length > 0);
+}
+
+function unquoteOcioName(raw: string): string {
+  return raw.trim().replace(/^["']|["']$/g, "");
+}
+
+const OCIO_VIEW_NAME_PATTERN =
+  /^\s*-\s*!<View>\s*\{\s*name\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,\s}]+)/;
+const OCIO_V2_DISPLAY_PATTERN =
+  /^\s*-\s*!<Display>\s*\{\s*name\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^,\s}]+)/;
+
+/**
+ * 从 OCIO 配置文本中提取「默认显示变换」（display + view）。
+ *
+ * 优先使用 active_displays / active_views（OCIO v1/v2 均支持）；缺失时
+ * 回退到 displays 段下的第一个 display 及其第一个 view。兼容 v1
+ * （"  ACES:" + "    - !<View>…"）与 v2（"- !<Display> {name, views: […]}"）
+ * 两种写法。解析不出时返回 null，调用方回退到 --colorconvert 路径。
+ */
+export function parseOcioDisplayView(configText: string): OcioDisplayView | null {
+  const activeDisplays = configText.match(/^\s*active_displays:\s*\[([^\]]*)\]/m);
+  const activeViews = configText.match(/^\s*active_views:\s*\[([^\]]*)\]/m);
+  const preferredDisplay = activeDisplays ? parseOcioListValue(activeDisplays[1])[0] : undefined;
+  const preferredView = activeViews ? parseOcioListValue(activeViews[1])[0] : undefined;
+
+  let firstDisplay: string | null = null;
+  let firstView: string | null = null;
+  let preferredDisplayView: string | null = null;
+  let inDisplays = false;
+  let currentDisplay: string | null = null;
+
+  for (const line of configText.split(/\r?\n/)) {
+    if (!inDisplays) {
+      if (/^\s*displays:\s*$/.test(line)) inDisplays = true;
+      continue;
+    }
+    // 到达新的顶层键说明 displays 段已结束。
+    if (/^\S/.test(line)) break;
+    const v2Display = line.match(OCIO_V2_DISPLAY_PATTERN);
+    if (v2Display) {
+      const name = unquoteOcioName(v2Display[1]);
+      currentDisplay = name;
+      firstDisplay ??= name;
+      const inlineViews = line.match(/views\s*:\s*\[([^\]]*)\]/);
+      const view = inlineViews ? parseOcioListValue(inlineViews[1])[0] : undefined;
+      if (view) {
+        firstView ??= view;
+        if (currentDisplay === preferredDisplay) preferredDisplayView ??= view;
+      }
+      continue;
+    }
+    const viewLine = line.match(OCIO_VIEW_NAME_PATTERN);
+    if (viewLine) {
+      const view = unquoteOcioName(viewLine[1]);
+      firstView ??= view;
+      if (currentDisplay === preferredDisplay) preferredDisplayView ??= view;
+      continue;
+    }
+    // OCIO v1：display 名是缩进的 "  Name:" 行（"- !<View>…" 已在上方处理）。
+    // v2 多行写法里的 "name:"/"views:" 等键名不当作 display。
+    const v1Display = line.match(/^\s+([A-Za-z0-9 _\-().]+):\s*$/);
+    if (v1Display && !/^(name|views|family|description|isdata|bitdepth|allocation|allocationvars|equalitygroup|categories|encoding|searchpath|strictparsing|luma|roles)$/i.test(v1Display[1].trim())) {
+      currentDisplay = v1Display[1].trim();
+      firstDisplay ??= currentDisplay;
+    }
+  }
+
+  if (preferredDisplay && (preferredView ?? preferredDisplayView)) {
+    return { display: preferredDisplay, view: preferredView ?? preferredDisplayView! };
+  }
+  if (firstDisplay && (preferredView ?? firstView)) {
+    return { display: firstDisplay, view: preferredView ?? firstView! };
+  }
+  return null;
+}
+
+const ocioDisplayViewCache = new Map<string, OcioDisplayView | null>();
+const OCIO_DISPLAY_VIEW_CACHE_MAX = 16;
+
+/**
+ * 读取 OCIO 配置并解析其默认显示变换。结果按 路径 + mtime + size 缓存：
+ * 序列逐帧解码时避免每帧重读整个配置文件（ACES 配置可达数百 KB）。
+ * 读取或解析失败返回 null，由调用方回退到 --colorconvert 路径。
+ */
+export async function resolveOcioDisplayView(
+  configPath: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<OcioDisplayView | null> {
+  if (options.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
+  const info = await stat(configPath).catch(() => null);
+  if (!info) return null;
+  const key = `${configPath}:${info.mtimeMs}:${info.size}`;
+  const cached = ocioDisplayViewCache.get(key);
+  if (cached !== undefined) return cached;
+  const configText = await readFile(configPath, "utf8").catch(() => "");
+  const parsed = configText ? parseOcioDisplayView(configText) : null;
+  ocioDisplayViewCache.set(key, parsed);
+  if (ocioDisplayViewCache.size > OCIO_DISPLAY_VIEW_CACHE_MAX) {
+    const oldest = ocioDisplayViewCache.keys().next().value;
+    if (oldest !== undefined) ocioDisplayViewCache.delete(oldest);
+  }
+  return parsed;
 }
 
 export function buildOpenImageIoDecodeArgs(
@@ -132,11 +255,22 @@ export function buildOpenImageIoDecodeArgs(
   const colorConfig = input.ocioConfigPath || builtInConfig;
   const colorTransformArgs = displayTransform === "raw"
     ? []
-    : !input.ocioConfigPath && displayTransform === "aces-1.3"
-      ? [`--ociodisplay:from=${sourceColorSpace}`, "sRGB - Display", "ACES 1.0 - SDR Video"]
-      : !input.ocioConfigPath && displayTransform === "aces-2.0"
-        ? [`--ociodisplay:from=${sourceColorSpace}`, "sRGB - Display", "ACES 2.0 - SDR 100 nits (Rec.709)"]
-        : ["--colorconvert", sourceColorSpace, "sRGB"];
+    : input.ocioConfigPath && input.ocioDisplayView
+      // 自定义 OCIO 配置：应用配置自身的显示变换（display/view）。ACES
+      // 配置的显示视图指向 "Output - sRGB" 等含 RRT+ODT 色调映射的输出
+      // 空间；写死 --colorconvert … sRGB 只会命中普通 sRGB 曲线空间，
+      // 画面几乎不变（「选了 ACES 配置不生效」）。
+      ? [`--ociodisplay:from=${sourceColorSpace}`, input.ocioDisplayView.display, input.ocioDisplayView.view]
+      // sRGB 方案自动适配：输入被解析为 ACEScg（文件头声明或显式选择）时，
+      // 「sRGB 显示」走 ACES 的 RRT+ODT 映射，而不是纯 gamma 直出——
+      // 保证用户直觉的「ACEScg 输入 + sRGB 显示」得到标准 ACES 观感。
+      : !input.ocioConfigPath && displayTransform === "linear-srgb" && sourceColorSpace === "ACEScg"
+        ? [`--ociodisplay:from=ACEScg`, "sRGB - Display", "ACES 1.0 - SDR Video"]
+        : !input.ocioConfigPath && displayTransform === "aces-1.3"
+          ? [`--ociodisplay:from=${sourceColorSpace}`, "sRGB - Display", "ACES 1.0 - SDR Video"]
+          : !input.ocioConfigPath && displayTransform === "aces-2.0"
+            ? [`--ociodisplay:from=${sourceColorSpace}`, "sRGB - Display", "ACES 2.0 - SDR 100 nits (Rec.709)"]
+            : ["--colorconvert", sourceColorSpace, "sRGB"];
   return [
     ...(colorConfig ? ["--colorconfig", colorConfig] : []),
     input.inputPath,
@@ -265,7 +399,13 @@ export async function decodeExrWithOpenImageIo(
     path.dirname(input.outputPath),
     `${path.basename(input.outputPath)}.${randomUUID()}.tmp.png`,
   );
-  const args = buildOpenImageIoDecodeArgs(input, temporary);
+  // 自定义 OCIO 配置：解析配置的默认 display/view，用 --ociodisplay 应用
+  // 真正的显示变换；解析失败时回退到 --colorconvert（buildOpenImageIoDecodeArgs
+  // 内部兜底），保证老配置与老行为不受影响。
+  const ocioDisplayView = input.ocioConfigPath && input.displayTransform !== "raw"
+    ? await resolveOcioDisplayView(input.ocioConfigPath, { signal: input.signal })
+    : undefined;
+  const args = buildOpenImageIoDecodeArgs({ ...input, ocioDisplayView }, temporary);
   try {
     await new Promise<void>((resolve, reject) => {
       execFile(
@@ -347,16 +487,21 @@ export async function validateOcioConfigWithOpenImageIo(
       "-d", "half",
       "-o", inputPath,
     ]);
+    // 与真实解码路径保持一致：配置能解析出 display/view 时用
+    // --ociodisplay 校验显示变换，否则回退 --colorconvert（老行为）。
+    const displayView = await resolveOcioDisplayView(configPath, { signal: options.signal });
     await run([
       inputPath,
       "--colorconfig", configPath,
-      "--colorconvert", "scene_linear", "sRGB",
+      ...(displayView
+        ? [`--ociodisplay:from=scene_linear`, displayView.display, displayView.view]
+        : ["--colorconvert", "scene_linear", "sRGB"]),
       "-d", "uint8",
       "-o", outputPath,
     ]);
     return { ok: true, detail: null };
   } catch (error) {
-    if (options.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
+    if (options.signal?.aborted) throw new Error("PREVIEW_QUEUE_ABORTED", { cause: error });
     const detail = error instanceof Error ? error.message : String(error);
     return {
       ok: false,

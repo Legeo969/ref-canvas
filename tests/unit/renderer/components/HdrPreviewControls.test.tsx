@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -208,6 +210,66 @@ describe("HDR preview controls", () => {
     }
   });
 
+  it("applies exposure brightness to the color-managed overlay too", async () => {
+    const stubSettings = (ocioConfigPath: string | null) =>
+      ({ ocioConfigPath }) as unknown as ReturnType<typeof useFoundSettings>;
+    vi.mocked(useFoundSettings).mockReturnValue(stubSettings("D:\\color\\config.ocio"));
+    try {
+      Object.assign(window, {
+        refCanvas: {
+          color: { getStatus: vi.fn(async () => ({ detectedOcio: null })) },
+        },
+      });
+      const host = document.createElement("div");
+      const toolbar = document.createElement("div");
+      document.body.append(host, toolbar);
+      const root = createRoot(host);
+      roots.push(root);
+      await act(async () => {
+        root.render(<HdrPreview source="refbrowse://thumbnail/token?priority=preview&size=1920" extension="exr" controlsTarget={toolbar} />);
+      });
+      const container = host.querySelector<HTMLElement>(".hdr-preview");
+      const managed = host.querySelector<HTMLImageElement>("img.hdr-preview-managed");
+      // managed（覆盖在 fallback 之上的色彩管理变体）必须存在，
+      // 且曝光变量仍在容器上——jsdom 无法解析样式表，
+      // 按仓库既有约定（AiDesignSupervisor/CollectionsPanel 测试）断言 CSS 规则文本。
+      expect(managed).toBeTruthy();
+      expect(container?.style.getPropertyValue("--hdr-exposure")).toBe("1");
+
+      const managedCss = readFileSync(
+        resolve(process.cwd(), "src/renderer/styles/found-preview.css"),
+        "utf8",
+      );
+      expect(managedCss).toMatch(
+        /\.hdr-preview-stage \.hdr-preview-managed\s*\{[^}]*filter:\s*brightness\(var\(--hdr-exposure,\s*1\)\);/s,
+      );
+      expect(managedCss).toMatch(
+        /\.hdr-preview-stage \.hdr-preview-managed\s*\{[^}]*transition:\s*opacity 140ms ease;/s,
+      );
+      const fallbackCss = readFileSync(
+        resolve(process.cwd(), "src/renderer/styles/dialogs.css"),
+        "utf8",
+      );
+      expect(fallbackCss).toMatch(
+        /\.hdr-preview-fallback\s*\{[^}]*filter:\s*brightness\(var\(--hdr-exposure,\s*1\)\);/s,
+      );
+
+      // 拖动曝光滑块：变量仍随滑块更新（managed 覆盖层由同一变量驱动亮度）。
+      await act(async () => toolbar.querySelector<HTMLButtonElement>('[aria-label="调整曝光"]')?.click());
+      const input = document.body.querySelector<HTMLInputElement>('[aria-label="曝光值"]');
+      await act(async () => {
+        if (!input) return;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "1");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(container?.style.getPropertyValue("--hdr-exposure")).toBe("2");
+    } finally {
+      vi.mocked(useFoundSettings).mockReturnValue(
+        stubSettings(null) as ReturnType<typeof useFoundSettings>,
+      );
+    }
+  });
+
   it("rejects a broken OCIO config with the validation reason", async () => {
     const setPreferences = vi.fn();
     Object.assign(window, {
@@ -245,7 +307,7 @@ describe("HDR preview controls", () => {
     expect(document.body.querySelector(".hdr-ocio-error")?.textContent).toContain("linear_to_sRGB.spi1d");
   });
 
-  it("changes the actual preview request when selecting an OCIO input color space", async () => {
+  it("changes the actual preview request when selecting an OCIO color scheme", async () => {
     Object.assign(window, {
       refCanvas: {
         color: { getStatus: vi.fn(async () => ({ detectedOcio: null })) },
@@ -260,14 +322,16 @@ describe("HDR preview controls", () => {
     const before = host.querySelector('[data-testid="image-viewport"]')?.getAttribute("data-asset-key");
 
     await act(async () => toolbar.querySelector<HTMLButtonElement>('[aria-label="OCIO 色彩管理"]')?.click());
+    // 方案 → ACES 1.3
     await act(async () => {
       [...document.body.querySelectorAll<HTMLButtonElement>(".hdr-ocio-menu button")]
-        .find((button) => button.textContent?.includes("ACEScg 1.3"))?.click();
+        .find((button) => button.textContent?.trim() === "ACES 1.3")?.click();
     });
 
     const after = host.querySelector('[data-testid="image-viewport"]')?.getAttribute("data-asset-key");
     expect(after).not.toBe(before);
     expect(after).toContain("inputColorSpace=ACEScg");
+    expect(after).toContain("displayTransform=aces-1.3");
   });
 
   it("still opens the multichannel card when the EXR has no detected extra layers", async () => {

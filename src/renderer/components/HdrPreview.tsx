@@ -13,6 +13,8 @@ import { PanoramaPreview, type EnvironmentPreviewMode } from "./PanoramaPreview"
 import type { ColorStatus } from "../../shared/contracts";
 
 type ToneMappingName = "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw";
+/** 色彩管理方案：每个方案是一套完整组合（输入解释 + 显示变换），用户无需分别理解。 */
+type ColorSchemeName = ToneMappingName;
 type DisplayComponent = "R" | "G" | "B" | "A";
 
 interface DisplayLayer {
@@ -39,33 +41,35 @@ const toneMappings: Record<ToneMappingName, THREE.ToneMapping> = {
   raw: THREE.LinearToneMapping,
 };
 
-const inputColorSpaces: Record<ToneMappingName, string> = {
+function appendPreviewParameter(source: string, name: string, value: string): string {
+  return `${source}${source.includes("?") ? "&" : "?"}${name}=${encodeURIComponent(value)}`;
+}
+
+/** 每个方案的输入色彩空间（解码端 from 空间）。 */
+const schemeInputSpaces: Record<ColorSchemeName, string> = {
   "linear-srgb": "lin_srgb",
   "aces-1.3": "ACEScg",
   "aces-2.0": "ACEScg",
   raw: "Raw",
 };
 
-function appendPreviewParameter(source: string, name: string, value: string): string {
-  return `${source}${source.includes("?") ? "&" : "?"}${name}=${encodeURIComponent(value)}`;
-}
-
 /**
- * 默认路径（linear-srgb）按文件头解析输入色彩空间、线性→sRGB 显示，与序列
- * 暂存解码共享同一缓存变体，因此不携带显式变换参数；显式 ACES/Raw 或 OCIO
- * 配置才生成独立的色彩管理变体（见 ADR-0001）。
+ * 默认方案（sRGB）按文件头解析输入色彩空间：ACEScg 头自动走 ACES 显示
+ * 变换（解码端适配），线性文件线性→sRGB 直出；与序列暂存解码共享同一
+ * 缓存变体，因此不携带显式变换参数。显式 ACES/Raw 或 OCIO 配置才生成
+ * 独立的色彩管理变体（见 ADR-0001）。
  */
 export function resolveHdrTransformSource(
   displaySource: string,
-  toneMapping: ToneMappingName,
+  scheme: ColorSchemeName,
   ocioConfigPath: string | null,
 ): string {
-  const needsExplicitColorTransform = toneMapping !== "linear-srgb" || Boolean(ocioConfigPath);
+  const needsExplicitColorTransform = scheme !== "linear-srgb" || Boolean(ocioConfigPath);
   return needsExplicitColorTransform
     ? appendPreviewParameter(
-        appendPreviewParameter(displaySource, "inputColorSpace", inputColorSpaces[toneMapping]),
+        appendPreviewParameter(displaySource, "inputColorSpace", schemeInputSpaces[scheme]),
         "displayTransform",
-        toneMapping,
+        scheme,
       )
     : displaySource;
 }
@@ -110,7 +114,7 @@ export function HdrPreview({
   const probedPathRef = useRef<string | undefined>(undefined);
   const multichannelWasOpenRef = useRef(multichannelOpen);
   const [exposureEv, setExposureEv] = useState(0);
-  const [toneMapping, setToneMapping] = useState<ToneMappingName>("linear-srgb");
+  const [scheme, setScheme] = useState<ColorSchemeName>("linear-srgb");
   const [ocioOpen, setOcioOpen] = useState(false);
   const [ocioConfigPath, setOcioConfigPath] = useState(foundSettings.ocioConfigPath);
   const [ocioError, setOcioError] = useState<string | null>(null);
@@ -255,7 +259,7 @@ export function HdrPreview({
     ? Array.from(ocioConfigPath).reduce((hash, character) => ((hash * 31) + character.charCodeAt(0)) >>> 0, 0).toString(36)
     : null;
   // 默认路径与序列暂存解码共享同一缓存变体（见 ADR-0001）。
-  const transformSource = resolveHdrTransformSource(displaySource, toneMapping, ocioConfigPath);
+  const transformSource = resolveHdrTransformSource(displaySource, scheme, ocioConfigPath);
   const colorManagedSource = ocioSignature
     ? appendPreviewParameter(transformSource, "ocio", ocioSignature)
     : transformSource;
@@ -526,7 +530,7 @@ export function HdrPreview({
         alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
         forcedMode={viewMode}
         exposure={exposure}
-        toneMapping={toneMappings[toneMapping]}
+        toneMapping={toneMappings[scheme]}
       /> : <ImagePreviewViewport
         assetKey={colorManagedSource}
         checkerBackground={alphaBackgroundStyle(foundSettings)}
@@ -657,8 +661,9 @@ export function HdrPreview({
       {ocioOpen && typeof document !== "undefined" && createPortal(
         <div ref={ocioMenuRef} className="hdr-ocio-anchor-menu" data-placement="top-start" style={{ left: ocioMenuPosition.left, top: ocioMenuPosition.top ?? undefined, bottom: ocioMenuPosition.bottom ?? undefined }}>
           <div className="hdr-ocio-menu" role="menu" aria-label="OCIO 色彩管理菜单">
-            {([['linear-srgb', 'sRGB（默认）'], ['aces-1.3', 'ACEScg 1.3'], ['aces-2.0', 'ACEScg 2.0'], ['raw', 'Raw']] as const).map(([value, label]) => (
-              <button type="button" role="menuitemradio" aria-checked={toneMapping === value} className={toneMapping === value ? "active" : ""} key={value} onClick={() => { setToneMapping(value); setOcioOpen(false); }}><span className="lut-radio" />{label}</button>
+            <span className="hdr-ocio-group">色彩管理</span>
+            {([['linear-srgb', 'sRGB'], ['aces-1.3', 'ACES 1.3'], ['aces-2.0', 'ACES 2.0'], ['raw', 'Raw']] as const).map(([value, label]) => (
+              <button type="button" role="menuitemradio" aria-checked={scheme === value} className={scheme === value ? "active" : ""} key={value} onClick={() => setScheme(value)}><span className="lut-radio" />{label}</button>
             ))}
             <span className="hdr-ocio-separator" />
             {colorStatus?.detectedOcio && <button type="button" role="menuitemradio" aria-checked={!ocioConfigPath} className={!ocioConfigPath ? "active" : ""} title={colorStatus.detectedOcio} onClick={() => { if (colorStatus?.detectedOcio) void applyOcioConfig(colorStatus.detectedOcio); }}><span className="lut-radio" />$OCIO · {colorStatus.detectedOcio.split(/[\\/]/).pop()}</button>}
