@@ -603,7 +603,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     variant={toolbarVariant}
                     seekPosition={transport.snapshot?.position ?? 0}
                     onSeekChange={(position) => transport.actions?.seek(position)}
-                    seekRange={(tool === "gif" && isVideo) || (toolbarVariant === "sequence" && sequenceGifRangeActive)
+                    seekRange={(tool === "gif" && isVideo) || (tool === "frames" && isVideo) || (toolbarVariant === "sequence" && sequenceGifRangeActive)
                       ? { ...gifRange, onChange: (start, end) => setGifRange({ start, end }) }
                       : undefined}
                     timecode={transport.snapshot?.kind === "sequence"

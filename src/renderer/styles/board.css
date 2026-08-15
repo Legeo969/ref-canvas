@@ -878,7 +878,8 @@
 }
 
 .quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) .quick-preview-details,
-.quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) .quick-preview-footer {
+.quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) .quick-preview-footer,
+.quick-preview-shell:is(.preview-session-focused, .preview-session-window-fullscreen) .sequence-dialog-toolbar {
   display: none;
 }
 

@@ -357,6 +357,8 @@
 .asset-virtual-grid {
   position: relative;
   width: 100%;
+  /* 素材网格区域实心背景：缩略图未加载/空白时不再透出底层界面。 */
+  background: var(--surface-1);
 }
 
 .asset-virtual-grid .asset-card {
@@ -3233,140 +3235,21 @@
 
 .directory-preview {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 286px;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
-  width: min(1080px, calc(100vw - 80px));
+  width: min(680px, calc(100vw - 80px));
   max-height: calc(100vh - 96px);
-  padding: 20px;
+  padding: 24px 28px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #202425;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
 }
 
-.directory-preview-session-actions {
-  position: absolute;
-  z-index: 12;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 0 2px;
-  border-radius: 10px;
-  background: rgba(12, 15, 14, 0.72);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.directory-preview-session-actions .preview-close {
-  position: static;
-  width: 40px;
-  height: 40px;
-}
-
-.directory-preview:is(.preview-session-focused, .preview-session-window-fullscreen) {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 40px minmax(0, 1fr);
-  gap: 0;
-  padding: 0;
-}
-
-.directory-preview:is(.preview-session-focused, .preview-session-window-fullscreen) .directory-preview-session-actions {
-  position: static;
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: end;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-.directory-preview:is(.preview-session-focused, .preview-session-window-fullscreen) .directory-preview-stage {
-  width: 100%;
-  height: 100%;
-  grid-column: 1;
-  grid-row: 2;
-  border-radius: 0;
-}
-
-.directory-preview:is(.preview-session-focused, .preview-session-window-fullscreen) .directory-preview-info,
-.directory-preview:is(.preview-session-focused, .preview-session-window-fullscreen) .preview-nav {
-  display: none;
-}
-
-.directory-preview-stage {
-  grid-column: 1;
-  grid-row: 1;
-  display: flex;
-  min-height: 0;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 10px;
-  background: #16191a;
-}
-
+/* 信息浮层：无播放舞台，仅素材详细信息 + 媒体信息。 */
 .directory-preview-info {
   min-width: 0;
-  max-height: min(54vh, 560px);
-  grid-column: 2;
-  grid-row: 1;
+  max-height: min(68vh, 640px);
   overflow-y: auto;
-  padding: 6px 8px 6px 2px;
-}
-
-.directory-preview-stage > img,
-.directory-preview-stage > video,
-.directory-preview-stage > iframe,
-.directory-preview-stage > .model-preview,
-.directory-preview-stage > .audio-preview,
-.directory-preview-stage > .video-preview,
-.directory-preview-stage > .hdr-preview,
-.directory-preview-stage > .image-review {
-  width: 100%;
-  height: min(54vh, 560px);
-  border: 0;
-}
-
-.directory-preview-stage > img,
-.directory-preview-stage > video {
-  max-width: 100%;
-  max-height: 54vh;
-  object-fit: contain;
-}
-
-.directory-preview-stage > img {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
-
-/* Space is a read-only inspection surface: media renderers may keep their
-   controls in normal previews, but the quick-preview shell only exposes
-   content, details, previous/next, and close. */
-.directory-preview-stage .image-preview-toolbar,
-.directory-preview-stage .hdr-preview-controls,
-.directory-preview-stage .video-step-controls,
-.directory-preview-stage .video-workbench-seek,
-.directory-preview-stage .model-preview-toolbar,
-.directory-preview-stage .model-preview-actions,
-.directory-preview-stage .media-notes-toolbar {
-  display: none;
-}
-
-.progressive-preview {
-  opacity: 1;
-  transition-property: opacity;
-  transition-duration: 120ms;
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .progressive-preview {
-    transition-duration: 0ms;
-  }
+  padding-right: 6px;
 }
 
 .directory-preview-info h3 {
@@ -3390,38 +3273,27 @@
   font-variant-numeric: tabular-nums;
 }
 
-.directory-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  grid-column: 1 / -1;
-  grid-row: 2;
-}
-
 @media (max-width: 860px) {
   .directory-preview {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto auto;
-  }
-
-  .directory-preview-stage,
-  .directory-preview-info,
-  .directory-preview-actions {
-    grid-column: 1;
-  }
-
-  .directory-preview-stage {
-    grid-row: 1;
+    width: min(480px, calc(100vw - 48px));
+    padding: 20px;
   }
 
   .directory-preview-info {
-    max-height: 180px;
-    grid-row: 2;
-    padding: 0;
+    max-height: 52vh;
   }
+}
 
-  .directory-preview-actions {
-    grid-row: 3;
+.progressive-preview {
+  opacity: 1;
+  transition-property: opacity;
+  transition-duration: 120ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressive-preview {
+    transition-duration: 0ms;
   }
 }
 
@@ -3627,6 +3499,20 @@
   max-width: min(920px, 92vw);
 }
 
+/* 对话框模式的 HDR 工具行：HdrPreview 控件（Fit/旋转/网格、OCIO/曝光/
+   导出通道）portal 至此，与右侧预览面板的工具栏一致，图片下方不再堆
+   两套控件。 */
+.sequence-dialog-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #101214;
+}
+
 .sequence-preview-shell > .quick-preview-header {
   flex: 0 0 64px;
 }
@@ -3650,6 +3536,16 @@
   background: #101314;
   outline: 1px solid rgba(255, 255, 255, 0.1);
   outline-offset: -1px;
+}
+
+/* HdrPreview 根容器只有 min-height: 320px（dialogs.css .hdr-preview）；
+   快速预览对话框（board.css）与右侧面板（found-preview.css）都有撑满
+   规则，唯独序列预览对话框的 stage 缺失——高度塌缩到 320px、宽度按
+   grid item 内容收缩（stage 是 grid），EXR 图被 contain 成一小块、四周
+   大片空白（回归：合并序列双击预览画面很小）。 */
+.sequence-preview-stage > .hdr-preview {
+  width: 100%;
+  height: 100%;
 }
 
 .sequence-label {

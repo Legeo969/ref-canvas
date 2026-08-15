@@ -137,6 +137,24 @@ describe("shared preview session", () => {
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
   });
 
+  it("applies the fullscreen overlay optimistically when the window event never arrives", async () => {
+    installFullscreenMock();
+    // 主进程确认全屏生效（返回 true）但不回推 presentation-mode-changed：
+    // 乐观更新必须让 overlay 类立即加上（回归：全屏后看到主界面内容）。
+    (window as unknown as { refCanvas: { system: { setPresentationMode: ReturnType<typeof vi.fn> } } })
+      .refCanvas.system.setPresentationMode.mockImplementation(async () => true);
+    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+    // Escape 退出同样乐观复位。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
+  });
+
   it("unwinds Escape in fullscreen then close order without double handling", async () => {
     installFullscreenMock();
     const onClose = vi.fn();
