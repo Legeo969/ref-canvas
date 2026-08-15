@@ -421,8 +421,10 @@ describe("VideoPreview frame stepping", () => {
       get: () => current,
       set: (value: number) => { current = value; },
     });
+    // 方向键按焦点归属路由：事件须落在预览根内（点击画面后的真实形态）。
+    const previewRoot = host.querySelector<HTMLElement>(".video-preview")!;
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      previewRoot.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await Promise.resolve();
     });
     // 按下即走 1 帧（第 0 拍），与旧短按单帧行为一致。
@@ -436,7 +438,7 @@ describe("VideoPreview frame stepping", () => {
     const frozen = current;
     // 松键：扫览停止，并做一次最终精确抓帧。
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight" }));
+      previewRoot.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -489,8 +491,9 @@ describe("VideoPreview frame stepping", () => {
       set: (value: number) => { current = value; },
     });
     // 从开头反向扫览：立即停在 0，不进入负时间。
+    const previewRoot = host.querySelector<HTMLElement>(".video-preview")!;
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+      previewRoot.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       await Promise.resolve();
     });
     expect(current).toBe(0);
@@ -500,11 +503,74 @@ describe("VideoPreview frame stepping", () => {
     });
     expect(current).toBe(0);
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft" }));
+      previewRoot.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft", bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(frame).not.toHaveBeenCalled();
+  });
+
+  it("ignores arrow keys while the preview is not focused (focus-ownership routing)", async () => {
+    vi.useFakeTimers();
+    const frame = vi.fn(async () => ({
+      source: "refbrowse://preview/token",
+      path: "frame.png",
+      timeMs: 0,
+      jobId: "frame-job",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        media: {
+          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
+          frame,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <VideoPreview
+          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
+          persistNotes={false}
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const video = host.querySelector("video")!;
+    let current = 0;
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      get: () => current,
+      set: (value: number) => { current = value; },
+    });
+    // 焦点在预览外（事件目标为 window，等同目录网格聚焦时）：不步进、不扫览。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      await Promise.resolve();
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+    });
+    expect(current).toBe(0);
+    expect(frame).not.toHaveBeenCalled();
+    // 事件目标进入预览根后恢复响应（点击画面后的真实形态）。
+    const previewRoot = host.querySelector<HTMLElement>(".video-preview")!;
+    await act(async () => {
+      previewRoot.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(current).toBeCloseTo(1 / 24, 5);
+    await act(async () => {
+      previewRoot.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
   });
 
   it("never shows the browser's broken-image placeholder for a failed frame grab", async () => {

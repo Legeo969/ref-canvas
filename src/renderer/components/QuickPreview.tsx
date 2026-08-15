@@ -100,15 +100,23 @@ export function QuickPreview({
         event.target instanceof HTMLElement &&
           event.target.matches("input, textarea, select, button"),
       );
+      // 方向键按焦点归属路由：事件目标位于媒体预览根/Found 预览面板时
+      // 让位（视频步进、序列步进接管），快速预览不翻页。
+      const inPreviewFocus = Boolean(
+        event.target instanceof HTMLElement &&
+          event.target.closest(
+            ".video-preview, .sequence-preview-shell, .found-preview-panel",
+          ),
+      );
       if (event.key === " " && !interactive) {
         event.preventDefault();
         onClose();
       } else if (interactive) {
         return;
-      } else if (event.key === "ArrowLeft" && canGoBack) {
+      } else if (event.key === "ArrowLeft" && canGoBack && !inPreviewFocus) {
         event.preventDefault();
         navigateTo(absoluteIndex - 1);
-      } else if (event.key === "ArrowRight" && canGoForward) {
+      } else if (event.key === "ArrowRight" && canGoForward && !inPreviewFocus) {
         event.preventDefault();
         navigateTo(absoluteIndex + 1);
       }

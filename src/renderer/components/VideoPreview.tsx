@@ -63,12 +63,12 @@ export function VideoPreview({
   const foundSettings = useFoundSettings();
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameImageRef = useRef<HTMLImageElement>(null);
+  /** 预览根：可聚焦，方向键按焦点归属路由（点击预览后接管 ←/→）。 */
+  const rootRef = useRef<HTMLDivElement>(null);
   const assetPathRef = useRef(asset.path);
   assetPathRef.current = asset.path;
   /** 精确抓帧的世代号：每次新抓帧递增，旧抓帧的异步结果据此作废。 */
   const grabEpochRef = useRef(0);
-  /** 已重试过的帧图 URL：同一 URL 只自动重抓一次，失败持续时不会无限循环。 */
-  const failedFrameSourceRef = useRef<string | null>(null);
   /** 长按扫览状态：方向 + 已走拍数 + 计时器；null = 未在扫览。 */
   const scrubStateRef = useRef<{
     direction: 1 | -1;
@@ -199,9 +199,13 @@ export function VideoPreview({
   // 单帧步进：暂停视频，用 ffmpeg 精确提取目标时间帧。
   // 抓帧是异步的：epoch 递增使旧抓帧结果作废（连续步进/扫览/切素材时
   // 晚到的旧帧不得覆盖新画面）。
-  const grabFrameAt = (next: number) => {
+  // frameRetriedRef：一次抓帧流程（用户步进/seek/扫览落位）中，帧图
+  // 加载失败只自动重抓一次；重抓后无论成败都不再自动重试，转正式错误。
+  const frameRetriedRef = useRef(false);
+  const grabFrameAt = (next: number, { retry = false } = {}) => {
     const video = videoRef.current;
     if (!video) return;
+    if (!retry) frameRetriedRef.current = false;
     video.pause();
     video.currentTime = next;
     lastFrameTimeRef.current = next;
@@ -319,8 +323,10 @@ export function VideoPreview({
   const startScrubRef = useRef(startScrub);
   startScrubRef.current = startScrub;
   // ←/→ 逐帧：短按 = 精确单帧；长按 = 加速扫览（计时器驱动，忽略
-  // 浏览器按键自动重复）；焦点在输入框时不响应。扫览中窗口失焦
-  // （Alt-Tab 等）立即停止，防计时器悬挂。
+  // 浏览器按键自动重复）。方向键按焦点归属路由：只有事件目标位于本
+  // 预览根内（点击画面后）才响应，目录网格等全局方向键处理在事件
+  // 目标进入预览区域后让位——避免「按一下又步进又跳目录」。焦点在
+  // 输入框时同样不响应。扫览中窗口失焦（Alt-Tab 等）立即停止。
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
@@ -331,6 +337,8 @@ export function VideoPreview({
       );
       if (typing) return;
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const root = rootRef.current;
+      if (!root || !(target instanceof Node) || !root.contains(target)) return;
       event.preventDefault();
       if (event.repeat) return;
       startScrubRef.current(event.key === "ArrowLeft" ? -1 : 1);
@@ -401,7 +409,24 @@ export function VideoPreview({
   });
 
   const content = (
-    <div className={`video-preview${eyedropActive ? " is-sampling" : ""}`}>
+    <div
+      ref={rootRef}
+      className={`video-preview${eyedropActive ? " is-sampling" : ""}`}
+      tabIndex={-1}
+      onPointerDown={(event) => {
+        // 点击画面/空白区把键盘焦点收进预览根：此后 ←/→ 由预览接管，
+        // 目录网格等全局方向键处理让位（防止「按一下又步进又跳目录」）。
+        // 交互控件（按钮/输入框/滑杆等）保持原生焦点，不抢焦点。
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest("button, input, textarea, select, a, [tabindex]")
+        ) {
+          return;
+        }
+        rootRef.current?.focus({ preventScroll: true });
+      }}
+    >
         {/* crossOrigin：画布取色需要 CORS-clean 源；协议仅在可信 origin
             下回 ACAO，缺失时取色静默失效——与 ImageReviewPreview 的
             fetch+ImageBitmap 兜底不对称，属刻意取舍。 */}
@@ -454,14 +479,13 @@ export function VideoPreview({
             draggable={false}
             onClick={sampleDisplayedPixel}
             onError={() => {
-              // 帧图 URL 加载失败（会话 token 淘汰等瞬态）：同一 URL 先
-              // 自动重抓一次（重新签发 token）；仍失败才转正式错误提示。
-              // 绝不外露浏览器破图占位 + alt 文本，也不无限重试。
-              const source = frameSource;
-              if (source && failedFrameSourceRef.current !== source) {
-                failedFrameSourceRef.current = source;
+              // 帧图 URL 加载失败（会话 token 淘汰等瞬态）：本次抓帧
+              // 流程自动重抓一次（重新签发 token）；仍失败才转正式错误
+              // 提示。绝不外露浏览器破图占位 + alt 文本，也不无限重试。
+              if (frameSource && !frameRetriedRef.current) {
+                frameRetriedRef.current = true;
                 setFrameSource(null);
-                grabFrameAt(lastFrameTimeRef.current);
+                grabFrameAt(lastFrameTimeRef.current, { retry: true });
                 return;
               }
               setFrameSource(null);

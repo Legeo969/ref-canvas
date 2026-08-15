@@ -277,18 +277,57 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    // autoplay 打开时默认播放；按 → 应暂停并前进一帧。
+    // autoplay 打开时默认播放；按 → 应暂停并前进一帧（方向键按焦点
+    // 归属路由，事件须落在预览根内）。
+    const shell = host.querySelector<HTMLElement>(".sequence-preview-shell")!;
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await Promise.resolve();
     });
     expect(host.querySelector(".sequence-frame-count")?.textContent).toContain("0002");
     expect(host.querySelector('button[aria-label="播放"]')).toBeTruthy();
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
       await Promise.resolve();
     });
     expect(host.querySelector(".sequence-frame-count")?.textContent).toContain("0001");
+  });
+
+  it("ignores arrow keys while the sequence preview is not focused", async () => {
+    vi.stubGlobal("Image", BufferedImageMock);
+    const foundSettings = {
+      ...FOUND_SETTINGS_DEFAULTS,
+      autoplaySequence: false,
+    };
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { previewToken: vi.fn(async () => "token") },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(<SequencePreviewDialog sequence={sequence} onClose={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const frameCount = () => host.querySelector(".sequence-frame-count")?.textContent ?? "";
+    // 焦点在预览外（事件目标为 window）：不步进。
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      await Promise.resolve();
+    });
+    expect(frameCount()).toContain("0001");
+    // 事件目标进入预览根后恢复响应。
+    const shell = host.querySelector<HTMLElement>(".sequence-preview-shell")!;
+    await act(async () => {
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(frameCount()).toContain("0002");
   });
 
   it("accelerates held arrow keys and resets to single-frame steps on release", async () => {
@@ -326,25 +365,26 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve();
     });
     const frameCount = () => host.querySelector(".sequence-frame-count")?.textContent ?? "";
+    const shell = host.querySelector<HTMLElement>(".sequence-preview-shell")!;
     // 短按 → +1 帧（0001 → 0002）。
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       await Promise.resolve();
     });
     expect(frameCount()).toContain("0002");
     // 长按 1.2s 后单次重复按键已升到 8 帧/键：0002 + 8 = 0005（5 帧序列）。
     await act(async () => {
       vi.advanceTimersByTime(1200);
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat: true }));
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat: true, bubbles: true }));
       await Promise.resolve();
     });
     expect(frameCount()).toContain("0005");
     // 松键：重复按键回到单帧步进（0005 + 1 → 0001，取模）。
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight" }));
+      shell.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }));
       await Promise.resolve();
       vi.advanceTimersByTime(1000);
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat: true }));
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", repeat: true, bubbles: true }));
       await Promise.resolve();
     });
     expect(frameCount()).toContain("0001");

@@ -1458,6 +1458,14 @@ export function DirectoryAssetPanel() {
     const isEditing =
       target?.matches("input, textarea, select") || target?.isContentEditable;
     if (isEditing) return;
+    // 方向键按焦点归属路由：事件目标位于预览区域（视频/序列预览根、
+    // 右侧 Found 预览面板）时，由预览自己的方向键处理接管——网格导航
+    // 与面板内预览导航都让位，避免「按一下又步进又跳目录/切素材」。
+    const inPreviewFocus = Boolean(
+      target?.closest(
+        ".video-preview, .sequence-preview-shell, .found-preview-panel",
+      ),
+    );
     if (
       target?.closest("button") &&
       !target.closest(".directory-card") &&
@@ -1472,12 +1480,12 @@ export function DirectoryAssetPanel() {
         closePreview();
         return;
       }
-      if (event.key === "ArrowLeft") {
+      if (event.key === "ArrowLeft" && !inPreviewFocus) {
         event.preventDefault();
         navigatePreview(-1);
         return;
       }
-      if (event.key === "ArrowRight") {
+      if (event.key === "ArrowRight" && !inPreviewFocus) {
         event.preventDefault();
         navigatePreview(1);
         return;
@@ -1502,6 +1510,8 @@ export function DirectoryAssetPanel() {
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey) return;
+    // 焦点在预览区域时网格不响应方向键（预览接管；见上方 inPreviewFocus）。
+    if (inPreviewFocus) return;
 
     if (
       [
@@ -1567,6 +1577,18 @@ export function DirectoryAssetPanel() {
     <section
       className="asset-panel"
       tabIndex={0}
+      onPointerDown={(event) => {
+        // 点击面板空白处把键盘焦点收进目录面板：此后 ←/→ 由网格接管
+        // （与预览面板的点击聚焦对称）。交互控件保持原生焦点。
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest("button, input, textarea, select, a, [tabindex]")
+        ) {
+          return;
+        }
+        event.currentTarget.focus({ preventScroll: true });
+      }}
     >
       {shortcutNotice && (
         <div className="directory-shortcut-notice" role="status">

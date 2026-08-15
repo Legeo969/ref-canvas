@@ -556,6 +556,8 @@ export function SequencePreviewDialog({
 
   /** 长按 ←/→ 加速的按住状态（方向 + 起始时刻）；keyup/blur/卸载清除。 */
   const scrubHoldRef = useRef<{ direction: 1 | -1; startedAt: number } | null>(null);
+  /** 序列预览根：可聚焦，方向键按焦点归属路由（点击预览后接管 ←/→）。 */
+  const shellRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -566,6 +568,10 @@ export function SequencePreviewDialog({
         target.isContentEditable
       );
       if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        // 方向键按焦点归属路由：事件目标必须在本预览根内（点击画面后），
+        // 目录网格等全局方向键处理在目标进入预览区域后让位。
+        const root = shellRef.current;
+        if (!root || !(target instanceof Node) || !root.contains(target)) return;
         // ←/→ 逐帧：播放中先暂停再步进；长按加速（按住越久每键跳帧
         // 越多，最多 32 帧/键），与视频预览的扫览手感一致。
         event.preventDefault();
@@ -633,8 +639,22 @@ export function SequencePreviewDialog({
       onMouseDown={embedded ? undefined : onClose}
     >
       <section
+        ref={shellRef}
         className={`quick-preview-shell sequence-preview-shell${embedded ? " embedded" : ""}`}
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => {
+          // 点击预览内容把键盘焦点收进预览根：此后 ←/→ 由预览接管，
+          // 目录网格等全局方向键处理让位。交互控件保持原生焦点。
+          const target = event.target;
+          if (
+            target instanceof Element &&
+            target.closest("button, input, textarea, select, a, [tabindex]")
+          ) {
+            return;
+          }
+          shellRef.current?.focus({ preventScroll: true });
+        }}
       >
         {embeddedExportControls}
         {!embedded && <header className="quick-preview-header">
