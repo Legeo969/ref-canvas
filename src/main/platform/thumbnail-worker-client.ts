@@ -20,11 +20,16 @@ export class ThumbnailWorkerClient {
   private child: UtilityProcess | null = null;
   private readonly pending = new Map<string, PendingRequest>();
   private closed = false;
+  /** 最近一次配置的 libvips 并发；worker 未启动时记住，首次拉起后补发。 */
+  private pendingConcurrency: number | undefined;
 
   constructor(
     private readonly workerPath: string,
     private readonly cacheRoot: string,
-  ) {}
+    initialConcurrency?: number,
+  ) {
+    this.pendingConcurrency = initialConcurrency;
+  }
 
   async convert(
     sourcePath: string,
@@ -71,8 +76,9 @@ export class ThumbnailWorkerClient {
     this.child = null;
   }
 
-  /** 运行时调整 libvips 并发（阶段 5：性能偏好）。 */
+  /** 运行时调整 libvips 并发（阶段 5：性能偏好）。worker 未启动时记住该值，首次拉起后补发。 */
   setConcurrency(threads: number): void {
+    this.pendingConcurrency = threads;
     this.child?.postMessage({ type: "configure", concurrency: threads });
   }
 
@@ -99,6 +105,13 @@ export class ThumbnailWorkerClient {
     child.once("exit", () => {
       if (this.child === child) this.child = null;
       this.rejectPending(new Error("THUMBNAIL_WORKER_EXITED"));
+    });
+    // 启动期配置在 spawn 后补发：fork 后立刻 postMessage 可能落在 worker
+    // 模块求值之前；spawn 保证 IPC 通道已建立，configure 按序先于 convert。
+    child.once("spawn", () => {
+      if (this.pendingConcurrency !== undefined) {
+        child.postMessage({ type: "configure", concurrency: this.pendingConcurrency });
+      }
     });
     this.child = child;
     return child;

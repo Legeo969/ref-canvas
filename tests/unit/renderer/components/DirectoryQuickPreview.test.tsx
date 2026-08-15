@@ -3,48 +3,32 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DirectoryEntry, RefCanvasApi } from "../../../../src/shared/contracts";
+import type {
+  DirectoryEntry,
+  MediaProbeResult,
+  RefCanvasApi,
+} from "../../../../src/shared/contracts";
 import { DirectoryQuickPreview } from "../../../../src/renderer/components/DirectoryQuickPreview";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-vi.mock("../../../../src/renderer/components/ModelPreview", () => ({
-  ModelPreview: ({ asset }: { asset: { extension: string; previewUrl: string } }) => (
-    <div
-      className="model-preview-test"
-      data-extension={asset.extension}
-      data-source={asset.previewUrl}
-    />
-  ),
-}));
+function createEntry(extension: string): DirectoryEntry {
+  return {
+    path: `D:\\private\\sample.${extension}`,
+    name: `sample.${extension}`,
+    isDirectory: false,
+    extension,
+    size: 1024,
+  };
+}
 
-vi.mock("../../../../src/renderer/components/VideoPreview", () => ({
-  VideoPreview: ({ asset }: { asset: { path: string; previewUrl: string } }) => (
-    <div
-      className="video-preview-test"
-      data-path={asset.path}
-      data-source={asset.previewUrl}
-    />
-  ),
-}));
-
-vi.mock("../../../../src/renderer/components/AudioPreview", () => ({
-  AudioPreview: ({ asset }: { asset: { previewUrl: string } }) => (
-    <div className="audio-preview-test">
-      <audio src={asset.previewUrl} controls />
-    </div>
-  ),
-}));
-
-vi.mock("../../../../src/renderer/components/HdrPreview", () => ({
-  HdrPreview: ({ source, extension }: { source: string; extension: string }) => (
-    <div
-      className="hdr-preview-test"
-      data-extension={extension}
-      data-source={source}
-    />
-  ),
-}));
+function stubRefCanvas(probe: () => Promise<MediaProbeResult | null>): void {
+  Object.assign(window, {
+    refCanvas: {
+      media: { probe: vi.fn(probe) },
+    } as unknown as RefCanvasApi,
+  });
+}
 
 describe("DirectoryQuickPreview", () => {
   let root: Root | null = null;
@@ -56,21 +40,65 @@ describe("DirectoryQuickPreview", () => {
     vi.unstubAllGlobals();
   });
 
-  async function renderPreview(extension: string): Promise<HTMLElement> {
-    const entry: DirectoryEntry = {
-      path: `D:\\private\\sample.${extension}`,
-      name: `sample.${extension}`,
-      isDirectory: false,
-      extension,
-      size: 1024,
-    };
-    Object.assign(window, {
-      refCanvas: {
-        filesystem: {
-          previewToken: vi.fn(async () => "12345678-1234-1234-1234-123456789abc"),
-        },
-      } as unknown as RefCanvasApi,
+  async function renderPreview(
+    entry: DirectoryEntry,
+    handlers: {
+      files?: DirectoryEntry[];
+      onNavigate?: () => void;
+      onClose?: () => void;
+    } = {},
+  ): Promise<HTMLElement> {
+    stubRefCanvas(async () => null);
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root?.render(
+        <DirectoryQuickPreview
+          entry={entry}
+          files={handlers.files ?? [entry]}
+          query=""
+          onNavigate={handlers.onNavigate ?? vi.fn()}
+          onOpen={vi.fn()}
+          onReveal={vi.fn()}
+          onCopyPath={vi.fn()}
+          onTag={vi.fn()}
+          onTrash={vi.fn()}
+          onClose={handlers.onClose ?? vi.fn()}
+        />,
+      );
+      await Promise.resolve();
     });
+    return host;
+  }
+
+  it("shows only asset details and media info, without any media player", async () => {
+    const host = await renderPreview(createEntry("mp4"));
+    // 无播放舞台：视频/音频/PDF/图片预览全部移除。
+    expect(host.querySelector(".directory-preview-stage")).toBeNull();
+    expect(host.querySelector("video")).toBeNull();
+    expect(host.querySelector("audio")).toBeNull();
+    expect(host.querySelector("iframe")).toBeNull();
+    expect(host.querySelector(".model-preview")).toBeNull();
+    // 素材详细信息。
+    const info = host.querySelector<HTMLElement>(".directory-preview-info");
+    expect(info?.querySelector("h3")?.textContent).toContain("sample.mp4");
+    expect(info?.querySelector(".directory-preview-path")?.textContent).toContain(
+      "D:\\private\\sample.mp4",
+    );
+    expect(info?.querySelector(".directory-preview-meta")?.textContent).toContain(
+      "1 / 1",
+    );
+  });
+
+  it("renders media info from the probe when available", async () => {
+    const entry = createEntry("mp4");
+    stubRefCanvas(async () => ({
+      width: 1920,
+      height: 1080,
+      duration: 12.5,
+      extra: { codec: "h264", frameRate: 25 },
+    }));
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -91,102 +119,72 @@ describe("DirectoryQuickPreview", () => {
       );
       await Promise.resolve();
     });
-    return host;
-  }
-
-  it("uses raw streams for browser images, professional video, audio and PDF", async () => {
-    let host = await renderPreview("png");
-    expect(host.querySelector(".directory-preview-stage img")?.getAttribute("src"))
-      .toBe("refbrowse://preview/12345678-1234-1234-1234-123456789abc");
-
-    await act(async () => root?.unmount());
-    root = null;
-    host = await renderPreview("mp4");
-    expect(
-      host.querySelector<HTMLElement>(".video-preview-test")?.dataset.source,
-    ).toBe(
-      "refbrowse://preview/12345678-1234-1234-1234-123456789abc",
-    );
-
-    await act(async () => root?.unmount());
-    root = null;
-    host = await renderPreview("wav");
-    expect(host.querySelector("audio")?.getAttribute("src")).toContain(
-      "refbrowse://preview/",
-    );
-
-    await act(async () => root?.unmount());
-    root = null;
-    host = await renderPreview("pdf");
-    const pdfSource = host.querySelector("iframe")?.getAttribute("src") ?? "";
-    expect(pdfSource).toContain(
-      "refbrowse://preview/",
-    );
-    expect(pdfSource).not.toContain("D:\\private");
-  });
-
-  it.each(["exr", "hdr"])("uses WebGL tone mapping for %s", async (extension) => {
-    const host = await renderPreview(extension);
-    const preview = host.querySelector<HTMLElement>(".hdr-preview-test");
-    expect(preview?.dataset.extension).toBe(extension);
-    expect(preview?.dataset.source).toContain("refbrowse://thumbnail/");
-    expect(preview?.dataset.source).not.toContain("refbrowse://preview/");
-  });
-
-  it("uses proxy thumbnails for converted images and DCC files", async () => {
-    let host = await renderPreview("exr");
-    expect(host.querySelector(".hdr-preview-test")).toBeTruthy();
-
-    await act(async () => root?.unmount());
-    root = null;
-    host = await renderPreview("psd");
-    expect(host.querySelector(".directory-preview-stage img")?.getAttribute("src"))
-      .toContain("refbrowse://thumbnail/");
-  });
-
-  it.each(["glb", "gltf", "fbx", "obj", "stl"])(
-    "reuses ModelPreview for %s",
-    async (extension) => {
-      const host = await renderPreview(extension);
-      const model = host.querySelector<HTMLElement>(".model-preview-test");
-      expect(model?.dataset.extension).toBe(extension);
-      expect(model?.dataset.source).toBe(
-        `refbrowse://preview/12345678-1234-1234-1234-123456789abc/sample.${extension}`,
-      );
-    },
-  );
-
-  it("shows an explicit extension placeholder when Shell has no thumbnail", async () => {
-    const host = await renderPreview("abc");
-    const image = host.querySelector<HTMLImageElement>(
-      ".directory-preview-stage img",
-    );
     await act(async () => {
-      image?.dispatchEvent(new window.Event("error", { bubbles: true }));
+      await Promise.resolve();
     });
-    expect(host.querySelector(".asset-placeholder")?.textContent).toContain(
-      "ABC",
-    );
+    const section = host.querySelector<HTMLElement>(".media-info-section");
+    expect(section).toBeTruthy();
+    expect(section?.textContent).toContain("媒体信息");
+    expect(section?.textContent).toContain("h264");
+    expect(section?.textContent).toContain("1920 × 1080");
   });
 
-  it("keeps Space preview read-only with details, navigation and close only", async () => {
-    const host = await renderPreview("png");
-    expect(host.querySelector(".directory-preview-actions")).toBeNull();
+  it("hides media info silently when the probe fails", async () => {
+    const host = await renderPreview(createEntry("wav"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".media-info-section")).toBeNull();
+  });
+
+  it("navigates with the previous/next buttons", async () => {
+    const entry = createEntry("png");
+    const other = createEntry("jpg");
+    const onNavigate = vi.fn();
+    await renderPreview(entry, {
+      files: [other, entry],
+      onNavigate,
+    });
+    const next = document.querySelector<HTMLButtonElement>(
+      ".preview-nav.preview-next",
+    );
+    const prev = document.querySelector<HTMLButtonElement>(
+      ".preview-nav.preview-prev",
+    );
+    expect(prev).toBeTruthy();
+    expect(next).toBeTruthy();
+    await act(async () => {
+      next?.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith(1);
+    await act(async () => {
+      prev?.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith(-1);
+  });
+
+  it("closes via the close button and overlay pointer-down", async () => {
+    const onClose = vi.fn();
+    const host = await renderPreview(createEntry("png"), { onClose });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(".preview-close")?.click();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      host.querySelector<HTMLElement>(".directory-preview-overlay")?.dispatchEvent(
+        new window.MouseEvent("pointerdown", { bubbles: true }),
+      );
+    });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the info dialog read-only with details, navigation and close only", async () => {
+    const host = await renderPreview(createEntry("png"));
     expect(host.textContent).toContain("D:\\private\\sample.png");
     expect(host.querySelector(".preview-close")).toBeTruthy();
     expect(host.querySelector('[aria-label*="复制"]')).toBeNull();
     expect(host.querySelector('[aria-label*="删除"]')).toBeNull();
-  });
-
-  it("applies the shared focused class so focus changes the quick-preview layout", async () => {
-    const host = await renderPreview("png");
-    const preview = host.querySelector(".directory-preview");
-    expect(preview?.classList.contains("preview-session-focused")).toBe(false);
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
-    });
-    expect(preview?.classList.contains("preview-session-focused")).toBe(true);
-    expect(preview?.getAttribute("data-preview-focused")).toBe("true");
-    expect(host.querySelector('[aria-label="退出聚焦预览"]')?.getAttribute("aria-pressed")).toBe("true");
+    // 没有聚焦/全屏会话按钮（信息浮层无沉浸模式）。
+    expect(host.querySelector(".preview-session-mode-actions")).toBeNull();
   });
 });

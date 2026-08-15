@@ -94,6 +94,12 @@ import { registerTaskCenterIpc } from "./ipc/task-center-ipc";
 import { AiJobService } from "./services/ai/ai-job-service";
 import type { AiProvider } from "./services/ai/ai-provider";
 import type { AiProviderKind } from "../shared/contracts";
+import {
+  FOUND_SETTINGS_DEFAULTS,
+  type BoardDocument,
+  type FoundSettings,
+} from "../shared/contracts";
+import { mergeFoundSettings } from "./ipc/found-settings";
 import { MockAiProvider } from "./services/ai/mock-ai-provider";
 import { ComfyUiProvider } from "./services/ai/comfyui-provider";
 import { RemoteRestProvider } from "./services/ai/remote-ai-provider";
@@ -114,7 +120,6 @@ import {
   hardenWindowNavigation,
   secureWebPreferences,
 } from "./platform/window-security";
-import type { BoardDocument } from "../shared/contracts";
 import { TrustedWindowRegistry } from "./platform/trusted-window-registry";
 import { WriteAccessController } from "./platform/write-access-controller";
 
@@ -1330,9 +1335,17 @@ void app.whenReady().then(async () => {
   previewCacheIndex = new PreviewCacheIndex(
     path.join(userData, "cache", "preview-index.sqlite"),
   );
+  // 性能偏好（§10.2）启动回填：并发设置此前只在「改动时」套用，重启后
+  // 队列回到硬编码默认 4、worker 回到 sharp 默认核数，直到用户再次改动。
+  const foundSettings = mergeFoundSettings(
+    FOUND_SETTINGS_DEFAULTS,
+    database.getSetting<Partial<FoundSettings>>("foundSettings", {}),
+  );
+  thumbnailQueue.setConcurrency(foundSettings.previewConcurrency);
   thumbnailWorker = new ThumbnailWorkerClient(
     path.join(__dirname, "thumbnail-worker.js"),
     thumbnailCacheDirectory,
+    foundSettings.thumbnailWorkerThreads,
   );
   providerRegistry = new ProviderRegistry();
   // provider worker 不继承 process.defaultApp（undefined 会被误判为打包

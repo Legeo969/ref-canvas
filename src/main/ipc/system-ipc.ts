@@ -446,6 +446,10 @@ export function registerSystemIpc(
     state.thumbnailWorker = new ThumbnailWorkerClient(
       path.join(__dirname, "thumbnail-worker.js"),
       resolved,
+      mergeFoundSettings(
+        FOUND_SETTINGS_DEFAULTS,
+        database().getSetting<Partial<FoundSettings>>("foundSettings", {}),
+      ).thumbnailWorkerThreads,
     );
   });
   ipc.handleWithEvent("system:export-diagnostics", async (event) => {

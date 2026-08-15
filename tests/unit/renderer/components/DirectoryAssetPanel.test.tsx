@@ -417,6 +417,71 @@ describe("DirectoryAssetPanel", () => {
     expect(host.textContent).toContain("3 帧");
   });
 
+  it("opens the info-only preview on sequence double-click instead of the player", async () => {
+    const frames = [1, 2, 3].map((frame) => ({
+      path: `D:\\refs\\shot_${String(frame).padStart(4, "0")}.exr`,
+      name: `shot_${String(frame).padStart(4, "0")}.exr`,
+      isDirectory: false,
+      extension: "exr",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+        sequences: {
+          detect: vi.fn(async () => [
+            {
+              id: "sequence-1",
+              pattern: "shot_####.exr",
+              files: frames.map((frame) => frame.path),
+              frames: [1, 2, 3],
+              startFrame: 1,
+              endFrame: 3,
+              missingFrames: [],
+              fps: 24,
+            },
+          ]),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: frames,
+      directoryTotal: frames.length,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    const card = host.querySelector<HTMLButtonElement>(".sequence-card");
+    expect(card).toBeTruthy();
+    await act(async () => {
+      card?.dispatchEvent(
+        new window.MouseEvent("dblclick", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    // 打开的是信息浮层，不是序列播放器。
+    expect(document.querySelector(".directory-preview")).toBeTruthy();
+    expect(document.querySelector(".directory-preview-stage")).toBeNull();
+    expect(document.querySelector(".sequence-preview-shell")).toBeNull();
+    expect(
+      document.querySelector(".directory-preview-info h3")?.textContent,
+    ).toBe("shot_0001.exr");
+  });
+
   it("opens an instant preview with Space and navigates with arrow keys", async () => {
     Object.assign(window, {
       refCanvas: {

@@ -19,36 +19,31 @@ describe("preview session controls", () => {
     );
   });
 
-  it("contains focused layouts for directory quick preview and the active Found shell", async () => {
-    const dialogs = await readFile(
-      path.resolve("src/renderer/styles/dialogs.css"),
-      "utf8",
-    );
+  it("contains the focused layout for the active Found shell", async () => {
     const found = await readFile(
       path.resolve("src/renderer/styles/found-preview.css"),
       "utf8",
-    );
-    expect(dialogs).toMatch(
-      /\.directory-preview:is\(\.preview-session-focused, \.preview-session-window-fullscreen\)[^{]*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s,
-    );
-    expect(dialogs).toMatch(
-      /\.directory-preview:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.directory-preview-info,[^{]*\.preview-nav\s*{\s*display:\s*none;/s,
     );
     expect(found).toMatch(
       /\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar,[^{]*{\s*display:\s*none;/s,
     );
   });
 
-  it("makes focus and fullscreen previews media-first with transparent overlay controls", async () => {
+  it("makes focus and fullscreen previews media-first with legible frosted overlay controls", async () => {
     const found = await readFile(path.resolve("src/renderer/styles/found-preview.css"), "utf8");
     const shell = await readFile(path.resolve("src/renderer/styles/shell.css"), "utf8");
-    const dialogs = await readFile(path.resolve("src/renderer/styles/dialogs.css"), "utf8");
     const directory = await readFile(path.resolve("src/renderer/styles/directory.css"), "utf8");
     expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar,[^{]*\.workbench-external-action\s*{[^}]*display:\s*none/s);
     expect(found).toMatch(/\.found-preview-viewport[^}]*min-height:\s*0/s);
     expect(shell).toMatch(/\.preview-session-focused,\s*\.preview-session-window-fullscreen\s*{[^}]*inset:\s*0[^}]*height:\s*100vh/s);
     expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-preview-workspace\s*{[^}]*position:\s*absolute;[^}]*background:\s*transparent;[^}]*backdrop-filter:\s*none;/s);
-    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) :is\([^}]*\.found-toolbar-tail,[^}]*\.found-color-context-toolbar,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*border-color:\s*transparent;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;/s);
+    // 沉浸模式覆盖控件必须是可读的半透明毛玻璃，而不是全透明（回归：
+    // GIF/视频裁剪范围、进度条全透明时下层 UI 透出看不清）。
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) :is\([^}]*\.found-toolbar-tail,[^}]*\.found-color-context-toolbar,[^}]*\.found-preview-session-footer[^}]*\)\s*{[^}]*background:\s*rgba\(15, 18, 17, 0\.72\);[^}]*backdrop-filter:\s*blur\(14px\);/s);
+    // 资产备注是内容编辑工具：沉浸下保持接近不透明（可读性优先），且
+    // 不做 fixed 浮动（避免破坏聚焦模式的托盘布局）。
+    expect(found).toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.asset-notes-panel\s*{[^}]*background:\s*rgba\(17, 19, 18, 0\.96\);[^}]*backdrop-filter:\s*none;/s);
+    expect(found).not.toMatch(/found-context-tray-notes\s*{[^}]*position:\s*fixed/s);
     expect(found).toMatch(/\.found-preview-panel\.preview-session-window-fullscreen :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*hidden;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*transition:\s*none;/s);
     expect(found).toMatch(/\.found-preview-panel\.preview-session-window-fullscreen\.fullscreen-controls-visible :is\([^}]*\.found-preview-workspace,[^}]*\.found-preview-session-footer,[^}]*\)\s*{[^}]*visibility:\s*visible;[^}]*opacity:\s*1;[^}]*pointer-events:\s*auto;[^}]*transition-property:\s*opacity, transform;/s);
     expect(found).toMatch(/\.found-toolbar-tail\s*{[^}]*background:\s*var\(--found-toolbar\);[^}]*}/s);
@@ -56,7 +51,6 @@ describe("preview session controls", () => {
     expect(found).toMatch(/\.found-context-tray\s*{[^}]*max-height:\s*min\(38vh, 320px\);[^}]*overflow:\s*auto/s);
     expect(found).not.toMatch(/\.found-preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.found-tab-bar\s*{[^}]*position:\s*absolute/s);
     expect(shell).toMatch(/\.preview-window:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.preview-window-header\s*{[^}]*position:\s*static/s);
-    expect(dialogs).toMatch(/\.directory-preview:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.directory-preview-session-actions\s*{[^}]*position:\s*static/s);
     expect(directory).toMatch(/\.directory-workbench-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.workbench-header\s*{[^}]*position:\s*static/s);
   });
 

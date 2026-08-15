@@ -53,7 +53,6 @@ import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
 import { HighlightedText } from "./HighlightedText";
 import {
   SequenceCard,
-  SequencePreviewDialog,
 } from "./SequencePreview";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
 import { hoverScrubTime } from "../app/hover-scrub";
@@ -391,12 +390,10 @@ export function DirectoryAssetPanel() {
       }
     });
   }, []);
-  // 图片序列：目录级检测结果（按首帧路径索引）与预览对话框。
+  // 图片序列：目录级检测结果（按首帧路径索引）。
   const [sequenceGroups, setSequenceGroups] = useState<Map<string, SequenceGroupInfo>>(
     () => new Map(),
   );
-  const [sequencePreview, setSequencePreview] =
-    useState<SequenceGroupInfo | null>(null);
   const sequenceTokenCacheRef = useRef(new Map<string, string>());
   const formatFilterExtensions = useMemo(() => {
     if (formatFilter === "all") return undefined;
@@ -490,7 +487,6 @@ export function DirectoryAssetPanel() {
   // 目录切换时重新检测序列（全目录一次，含缺帧与 FPS 推断）。
   useEffect(() => {
     setSequenceGroups(new Map());
-    setSequencePreview(null);
     sequenceTokenCacheRef.current.clear();
     if (
       !foundSettings.collapseImageSequences ||
@@ -989,9 +985,6 @@ export function DirectoryAssetPanel() {
     if (entry.isDirectory) return;
     store.selectDirectoryEntry(entry);
     previewCoordinator.open(entry);
-    if (window.refCanvas.library?.getByPath) {
-      void previewCoordinator.materialize((path) => window.refCanvas.library.getByPath(path));
-    }
   };
 
   const toggleQuickAccess = async (entry: DirectoryEntry) => {
@@ -1934,7 +1927,7 @@ export function DirectoryAssetPanel() {
                           : selectedPaths.has(entry.path)
                       }
                       onSelect={(event) => selectEntry(entry, event)}
-                      onPreview={() => setSequencePreview(group)}
+                      onPreview={() => openPreview(entry)}
                     />
                   </div>
                 );
@@ -2244,13 +2237,6 @@ export function DirectoryAssetPanel() {
             void trashEntry(entry);
           }}
           onClose={closePreview}
-        />
-      )}
-
-      {sequencePreview && (
-        <SequencePreviewDialog
-          sequence={sequencePreview}
-          onClose={() => setSequencePreview(null)}
         />
       )}
     </section>
