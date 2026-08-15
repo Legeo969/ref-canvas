@@ -110,9 +110,12 @@ describe("OpenImageIO sidecar", () => {
     }, "D:\\cache\\preview.png");
     expect(args.slice(0, 3)).toEqual(["--colorconfig", "D:\\color\\config.ocio", "D:\\images\\studio.exr"]);
     const displayOption = args.findIndex((argument) => argument.startsWith("--ociodisplay:"));
-    expect(args.slice(displayOption, displayOption + 4)).toEqual([
-      "--ociodisplay:from=ACEScg", "ACES", "sRGB", "--resize",
+    expect(args.slice(displayOption, displayOption + 3)).toEqual([
+      "--ociodisplay:from=ACEScg", "ACES", "sRGB",
     ]);
+    // 先降采样再做颜色变换：ACES 显示变换按像素计费，4K→960 前置 resize 显著提速。
+    expect(args.indexOf("--resize")).toBeGreaterThan(-1);
+    expect(args.indexOf("--resize")).toBeLessThan(displayOption);
   });
 
   it("auto-adapts the sRGB scheme to the ACES display transform for ACEScg input", () => {
@@ -128,9 +131,10 @@ describe("OpenImageIO sidecar", () => {
       displayTransform: "linear-srgb",
     }, "D:\\cache\\preview.png");
     const displayOption = args.findIndex((argument) => argument.startsWith("--ociodisplay:"));
-    expect(args.slice(displayOption, displayOption + 4)).toEqual([
-      "--ociodisplay:from=ACEScg", "sRGB - Display", "ACES 1.0 - SDR Video", "--resize",
+    expect(args.slice(displayOption, displayOption + 3)).toEqual([
+      "--ociodisplay:from=ACEScg", "sRGB - Display", "ACES 1.0 - SDR Video",
     ]);
+    expect(args.indexOf("--resize")).toBeLessThan(displayOption);
     expect(args).not.toContain("--colorconvert");
   });
 
@@ -181,9 +185,10 @@ describe("OpenImageIO sidecar", () => {
       inputColorSpace: "ACEScg",
     }, "D:\\cache\\preview.png");
     const displayOption = args.findIndex((argument) => argument.startsWith("--ociodisplay:"));
-    expect(args.slice(displayOption, displayOption + 4)).toEqual([
-      "--ociodisplay:from=ACEScg", "sRGB - Display", "ACES 1.0 - SDR Video", "--resize",
+    expect(args.slice(displayOption, displayOption + 3)).toEqual([
+      "--ociodisplay:from=ACEScg", "sRGB - Display", "ACES 1.0 - SDR Video",
     ]);
+    expect(args.indexOf("--resize")).toBeLessThan(displayOption);
     expect(args).not.toContain("--colorconvert");
   });
 
@@ -201,9 +206,10 @@ describe("OpenImageIO sidecar", () => {
     const aces13 = buildOpenImageIoDecodeArgs({ ...common, displayTransform: "aces-1.3" }, "D:\\cache\\aces13.png");
     expect(aces13).toContain("ocio://cg-config-v1.0.0_aces-v1.3_ocio-v2.1");
     const displayOption = aces13.findIndex((argument) => argument.startsWith("--ociodisplay:"));
-    expect(aces13.slice(displayOption, displayOption + 4)).toEqual([
-      "--ociodisplay:from=ACEScg", "sRGB - Display", "ACES 1.0 - SDR Video", "--resize",
+    expect(aces13.slice(displayOption, displayOption + 3)).toEqual([
+      "--ociodisplay:from=ACEScg", "sRGB - Display", "ACES 1.0 - SDR Video",
     ]);
+    expect(aces13.indexOf("--resize")).toBeLessThan(displayOption);
     const aces20 = buildOpenImageIoDecodeArgs({ ...common, displayTransform: "aces-2.0" }, "D:\\cache\\aces20.png");
     expect(aces20).toContain("ocio://default");
     expect(aces20).toContain("--ociodisplay:from=ACEScg");

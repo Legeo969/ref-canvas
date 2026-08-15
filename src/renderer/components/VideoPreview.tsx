@@ -210,6 +210,27 @@ export function VideoPreview({
       });
   };
 
+  const stepRef = useRef(step);
+  stepRef.current = step;
+  // ←/→ 逐帧（与序列预览一致）：播放中自动暂停并步进；焦点在输入框时
+  // 不响应。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const typing = target instanceof HTMLElement && (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+      if (typing) return;
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      stepRef.current(event.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   usePreviewTransportRegistration({
     kind: "video",
     playing,

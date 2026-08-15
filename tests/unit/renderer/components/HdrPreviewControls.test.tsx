@@ -198,11 +198,12 @@ describe("HDR preview controls", () => {
       expect(base?.getAttribute("src")).toBe(source);
       expect(managed?.getAttribute("src")).toContain("inputColorSpace=lin_srgb");
       expect(managed?.getAttribute("src")).toContain("ocio=");
-      // 管理变体以 img 自身的 load 事件为准（jsdom 需手动触发）。
+      // 管理变体就绪后显示层切换；不再用 opacity 淡入（换帧保持旧帧
+      // 显示直至新变体就绪，避免第二圈循环闪屏）。
       await act(async () => {
         managed?.dispatchEvent(new Event("load"));
       });
-      expect(managed?.style.opacity).toBe("1");
+      expect(managed?.style.opacity).toBe("");
     } finally {
       vi.mocked(useFoundSettings).mockReturnValue(
         stubSettings(null) as ReturnType<typeof useFoundSettings>,

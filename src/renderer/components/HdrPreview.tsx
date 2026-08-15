@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   alphaBackgroundStyle,
@@ -87,6 +87,7 @@ export function HdrPreview({
   onEyedropActiveChange,
   onColorSample,
   onDisplayReady,
+  prefetchPaths,
 }: {
   source: string;
   extension: string;
@@ -102,6 +103,8 @@ export function HdrPreview({
   onColorSample?: (color: string) => void;
   /** 当前帧的可见画面就绪/定局时上报（序列播放据此推进帧）。 */
   onDisplayReady?: (framePath: string | undefined) => void;
+  /** 后续帧路径：以其色彩管理变体预热主进程缓存，缩短播放门控等待。 */
+  prefetchPaths?: string[];
 }) {
   const foundSettings = useFoundSettings();
   const fallbackRef = useRef<HTMLImageElement | null>(null);
@@ -113,6 +116,12 @@ export function HdrPreview({
   const channelMenuRef = useRef<HTMLDivElement | null>(null);
   const probedPathRef = useRef<string | undefined>(undefined);
   const multichannelWasOpenRef = useRef(multichannelOpen);
+  /** 渲染期最新帧路径：img load 事件据此上报正确的帧（回调闭包捕获的
+   *  path 可能滞后一帧，旧帧图的上报会冒充新帧就绪，见门控回归）。 */
+  const pathRef = useRef(path);
+  pathRef.current = path;
+  /** 已上报就绪的帧路径：同帧只上报一次，避免 effect/complete 兜底重复触发。 */
+  const reportedPathRef = useRef<string | null>(null);
   const [exposureEv, setExposureEv] = useState(0);
   const [scheme, setScheme] = useState<ColorSchemeName>("linear-srgb");
   const [ocioOpen, setOcioOpen] = useState(false);
@@ -270,38 +279,124 @@ export function HdrPreview({
   // 明显慢于默认变体（大 EXR 序列尤甚）。渐进增强：基础变体先行显示，
   // 色彩管理变体就绪后淡入覆盖，播放不被变体解码拖住（见序列卡死回归）。
   const managedMode = colorManagedSource !== displaySource;
-  // 就绪判断以 <img> 元素自身的 load 事件为准，而不是 useRetryingPreviewUrl
-  // 的 status：缓存命中时 load 事件可能先于 hook 的重置 effect 触发，
-  // status 会被重置回 "loading"，导致循环播放第二圈起门控永远等不到信号。
-  const [baseLoaded, setBaseLoaded] = useState(false);
-  const [managedLoaded, setManagedLoaded] = useState(false);
-  useEffect(() => {
-    setBaseLoaded(false);
-    setManagedLoaded(false);
-  }, [displaySource, requestSource]);
-  // 缓存命中时 load 事件可能在元素插入 DOM 前就触发（load 不冒泡，React
-  // 依赖根节点捕获，detached 阶段的 load 会永久丢失）：每次渲染后同步
-  // 检查 complete 兜底，避免第二圈循环起永远等不到加载完成。
-  useEffect(() => {
-    const managed = managedImageRef.current;
-    if (managedMode && managed?.complete && managed.naturalWidth > 0) {
-      setManagedLoaded(true);
-    }
-    const base = fallbackRef.current;
-    if (!managedMode && base?.complete && base.naturalWidth > 0) {
-      setBaseLoaded(true);
-    }
-  });
-  // 基础变体（默认变换，通常已缓存）先行显示；色彩管理变体就绪后淡入覆盖。
+  // 基础变体（默认变换，通常已缓存）先行显示；色彩管理变体就绪后覆盖。
   const visibleSource = managedMode ? displaySource : requestSource;
-  const visibleReady = managedMode ? managedLoaded : baseLoaded;
-
-  // 可见画面就绪/定局即上报：序列播放据此推进帧，保证色彩管理变体
-  // （OCIO/ACES/Raw）真正显示出来，而不是被下一帧跳过。
+  // 渐进增强：基础变体先行显示，色彩管理变体就绪后覆盖。已显示的图
+  // （displayed*Url）在换帧时保持旧帧画面，新图加载完成（load/预载兜底）
+  // 后才切换 src——否则 key 重挂载会让旧图立即卸载，新帧解码期间出现
+  // 空白 +「正在生成 HDR 预览…」反复闪现（第二圈循环播放闪屏回归）。
+  const [displayedBaseUrl, setDisplayedBaseUrl] = useState<string | null>(() => visibleSource);
+  // managed 显示层初始 null（跟随 requestSource）：首次渲染时 getPreferences
+  // 尚未生效（managedMode=false），若此时惰性初始化会锁定无参数 URL，OCIO
+  // 生效后显示层与请求层永不匹配；首次 managedMode 生效时经 effect 锁定。
+  const [displayedManagedUrl, setDisplayedManagedUrl] = useState<string | null>(null);
+  const fallbackVisible = displayedBaseUrl ?? visibleSource;
+  const managedVisible = displayedManagedUrl ?? requestSource;
+  const needsBasePreload = visibleSource !== fallbackVisible;
+  const needsManagedPreload = managedMode && requestSource !== managedVisible;
   useEffect(() => {
-    const settled = visibleReady || preview.status === "failed";
-    if (settled) onDisplayReady?.(path);
-  }, [onDisplayReady, path, preview.status, visibleReady]);
+    if (managedMode && displayedManagedUrl === null) {
+      setDisplayedManagedUrl(requestSource);
+    }
+  }, [displayedManagedUrl, managedMode, requestSource]);
+
+  // 可见画面就绪/定局即上报：序列播放据此推进帧。上报必须发生在「当前
+  // 帧对应的最终显示图」真正加载完成（或明确失败）之后——绝不能在换帧
+  // 时拿旧帧残留的 ready 状态冒充新帧就绪，否则播放门控提前放行，色彩
+  // 管理变体永远来不及显示（OCIO 不生效）、第二圈循环每帧闪回基础图。
+  // 去重只在同一帧内生效：循环/seek 回到同一帧时 path 重新变化，必须
+  // 允许再次上报，否则 SequencePreview 推进后 displayReadyPathRef 被置
+  // null 而重报被吞，播放第二圈起卡死。
+  const previousPathRef = useRef(path);
+  if (previousPathRef.current !== path) {
+    previousPathRef.current = path;
+    reportedPathRef.current = null;
+  }
+  const reportDisplayReady = useCallback(() => {
+    const currentPath = pathRef.current;
+    if (!currentPath || reportedPathRef.current === currentPath) return;
+    reportedPathRef.current = currentPath;
+    onDisplayReady?.(currentPath);
+  }, [onDisplayReady]);
+
+  // 源变化后的缓存命中兜底：load 事件可能在元素插入 DOM 前触发（load
+  // 不冒泡，React 依赖根节点捕获，detached 阶段的 load 会永久丢失），
+  // 或同 URL 复用（循环/seek 回帧）根本不触发 load。检查必须限定在源
+  // 变化这一渲染之后：换帧窗口（path 已变、displaySource 尚未更新）挂载
+  // 的仍是旧帧图，拿它的 complete 冒充新帧就绪会让门控提前放行。
+  // 已显示图与当前请求一致且 complete → 直接确认就绪；否则把已加载的
+  // 当前请求图切为显示层（预载 load 事件丢失时的兜底）。
+  useEffect(() => {
+    const base = fallbackRef.current;
+    if (
+      !managedMode &&
+      base?.complete &&
+      base.naturalWidth > 0 &&
+      base.src === visibleSource
+    ) {
+      if (fallbackVisible !== visibleSource) setDisplayedBaseUrl(visibleSource);
+      if (base.src === fallbackVisible) {
+        preview.markReady();
+        reportDisplayReady();
+      }
+    }
+    const managed = managedImageRef.current;
+    if (
+      managedMode &&
+      managed?.complete &&
+      managed.naturalWidth > 0 &&
+      managed.src === requestSource
+    ) {
+      if (managedVisible !== requestSource) setDisplayedManagedUrl(requestSource);
+      if (managed.src === managedVisible) {
+        preview.markReady();
+        reportDisplayReady();
+      }
+    }
+  }, [
+    displaySource,
+    fallbackVisible,
+    managedMode,
+    managedVisible,
+    preview.markReady,
+    reportDisplayReady,
+    requestSource,
+    visibleSource,
+  ]);
+  // 失败是终结状态：变体/基础图明确失败时也要放行（避免播放卡死），
+  // 上报的是当前帧路径（SequencePreview 侧 gateImageFailed 兜底）。
+  useEffect(() => {
+    if (preview.status === "failed") reportDisplayReady();
+  }, [preview.status, reportDisplayReady]);
+
+  // 下一帧（及再下一帧）色彩管理变体预取：变体解码明显慢于基础图
+  // （ACES/OCIO 每帧 oiiotool 变换），播放到目标帧时若变体已在主进程
+  // 缓存，门控等待大幅缩短。预取走 prefetch 优先级，不抢占显示请求；
+  // Image 引用保存在 effect 闭包中避免被 GC 提前 abort；即使请求被中止，
+  // 进行中的解码也会跑完并写入持久缓存（PreviewQueue 语义）。
+  useEffect(() => {
+    if (!prefetchPaths?.length || !window.refCanvas.filesystem.previewToken) return;
+    let cancelled = false;
+    const holders: HTMLImageElement[] = [];
+    void Promise.all(prefetchPaths.map((prefetchPath) =>
+      window.refCanvas.filesystem.previewToken(prefetchPath)
+        .then((token) => {
+          if (cancelled || !token) return;
+          const base = `refbrowse://thumbnail/${token}?priority=prefetch&size=${displaySize}`;
+          const variant = resolveHdrTransformSource(base, scheme, ocioConfigPath);
+          const colorVariant = ocioSignature
+            ? appendPreviewParameter(variant, "ocio", ocioSignature)
+            : variant;
+          const image = new Image();
+          holders.push(image);
+          image.src = colorVariant;
+        })
+        .catch(() => undefined),
+    )).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [displaySize, ocioConfigPath, ocioSignature, prefetchPaths, scheme]);
   const closeLocalPopovers = () => {
     setExposureOpen(false);
     setOcioOpen(false);
@@ -544,40 +639,73 @@ export function HdrPreview({
             onClick={(event) => void sampleDisplayedPixel(event)}
           >
             <img
-              key={visibleSource}
               ref={fallbackRef}
               className="hdr-preview-fallback"
-              src={visibleSource}
+              src={fallbackVisible}
               alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
               draggable={false}
               onLoad={(event) => {
-                // key 重挂载保证 load 事件晚于重置 effect；再校验元素仍是
-                // 当前元素，旧元素迟到的 load 不写入状态。
+                // 校验元素仍是当前元素，旧元素迟到的 load 不写入状态。
                 if (event.currentTarget !== fallbackRef.current) return;
-                setBaseLoaded(true);
-                if (!managedMode) preview.markReady();
+                // src 切换（预载完成）后这里只确认当前显示图就绪；
+                // 换帧后仍显示旧图时（visibleSource 与显示层不一致）
+                // 不上报，等预载完成切换后再报。
+                if (visibleSource !== fallbackVisible) return;
+                if (!managedMode) {
+                  preview.markReady();
+                  reportDisplayReady();
+                }
               }}
               onError={() => {
                 if (!managedMode) preview.markError();
               }}
             />
-            {managedMode && (
+            {needsBasePreload && (
               <img
-                key={requestSource}
-                ref={managedImageRef}
-                className="hdr-preview-managed"
-                src={requestSource}
-                alt=""
+                className="hdr-preview-preload"
                 aria-hidden="true"
-                draggable={false}
-                style={{ opacity: managedLoaded ? 1 : 0 }}
-                onLoad={(event) => {
-                  if (event.currentTarget !== managedImageRef.current) return;
-                  setManagedLoaded(true);
-                  preview.markReady();
+                src={visibleSource}
+                onLoad={() => {
+                  // 仅切换显示层；就绪上报由显示层切换后的 load 触发，
+                  // 否则图尚未显示就上报会让播放门控提前放行。
+                  setDisplayedBaseUrl(visibleSource);
                 }}
-                onError={preview.markError}
+                onError={() => {
+                  if (!managedMode) preview.markError();
+                }}
               />
+            )}
+            {managedMode && (
+              <>
+                <img
+                  ref={managedImageRef}
+                  className="hdr-preview-managed"
+                  src={managedVisible}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  onLoad={(event) => {
+                    if (event.currentTarget !== managedImageRef.current) return;
+                    if (requestSource !== managedVisible) return;
+                    preview.markReady();
+                    // 色彩管理变体真正显示后才放行播放推进。
+                    reportDisplayReady();
+                  }}
+                  onError={preview.markError}
+                />
+                {needsManagedPreload && (
+                  <img
+                    className="hdr-preview-preload"
+                    aria-hidden="true"
+                    src={requestSource}
+                    onLoad={() => {
+                      // 仅切换显示层；就绪上报由显示层切换后的 load 触发。
+                      setDisplayedManagedUrl(requestSource);
+                    }}
+                    onError={preview.markError}
+                  />
+                )}
+              </>
             )}
             {samplePoint && (
               <span
@@ -586,7 +714,7 @@ export function HdrPreview({
                 style={{ left: samplePoint.x, top: samplePoint.y, "--sample-color": samplePoint.color } as React.CSSProperties}
               />
             )}
-            {!managedMode && !baseLoaded && (preview.status === "loading" || preview.status === "waiting") && (
+            {!displayedBaseUrl && !displayedManagedUrl && (preview.status === "loading" || preview.status === "waiting") && (
               <span className="preview-message" role="status">
                 {preview.status === "waiting" ? "正在等待 EXR 预览…" : translate("hdr.generating")}
               </span>
