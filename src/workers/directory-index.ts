@@ -321,7 +321,9 @@ async function runSearch(
           if (entry.isDirectory) {
             if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
           } else if (
-            (!query || entry.name.toLocaleLowerCase("en-US").includes(query)) &&
+            (!query ||
+              entry.name.toLocaleLowerCase("en-US").includes(query) ||
+              entry.path.toLocaleLowerCase("en-US").includes(query)) &&
             (!allowedExtensions || allowedExtensions.has(entry.extension)) &&
             (!favoriteKeys ||
               favoriteKeys.has(path.normalize(entry.path).toLocaleLowerCase("en-US")))

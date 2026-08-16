@@ -84,6 +84,8 @@ export function VideoPreview({
   const [frameRate, setFrameRate] = useState<number | null>(null);
   const [stepping, setStepping] = useState(false);
   const [failed, setFailed] = useState(false);
+  /** 抓帧失败的具体原因（IPC reject 的 error message），悬停可见，便于定位。 */
+  const [failureReason, setFailureReason] = useState<string | null>(null);
   const [gifStudioOpen, setGifStudioOpen] = useState(false);
   const [framesDialogOpen, setFramesDialogOpen] = useState(false);
   const [looping, setLooping] = useState(true);
@@ -247,6 +249,7 @@ export function VideoPreview({
     setPlaying(false);
     setStepping(true);
     setFailed(false);
+    setFailureReason(null);
     const requestPath = asset.path;
     const epoch = ++grabEpochRef.current;
     void window.refCanvas.media
@@ -258,8 +261,13 @@ export function VideoPreview({
         onTimeChange?.(next);
         if (onOpenTool) schedulePalette(next, true);
       })
-      .catch(() => {
-        if (assetPathRef.current === requestPath && epoch === grabEpochRef.current) setFailed(true);
+      .catch((error: unknown) => {
+        if (assetPathRef.current === requestPath && epoch === grabEpochRef.current) {
+          setFailed(true);
+          setFailureReason(
+            error instanceof Error ? error.message : String(error ?? "unknown"),
+          );
+        }
       })
       .finally(() => {
         if (assetPathRef.current === requestPath && epoch === grabEpochRef.current) setStepping(false);
@@ -695,6 +703,7 @@ export function VideoPreview({
               }
               setFrameSource(null);
               setFailed(true);
+              setFailureReason("FRAME_IMAGE_LOAD_FAILED");
             }}
           />
         )}
@@ -706,7 +715,12 @@ export function VideoPreview({
           />
         )}
         {failed && (
-          <span className="video-frame-error">{translate("video.frameError")}</span>
+          <span
+            className="video-frame-error"
+            title={failureReason ?? undefined}
+          >
+            {translate("video.frameError")}
+          </span>
         )}
         {supremeOn && supremeState === "generating" && (
           <span className="video-supreme-chip" role="status">

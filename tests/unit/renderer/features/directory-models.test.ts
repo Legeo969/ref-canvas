@@ -33,6 +33,40 @@ describe("directory domain models", () => {
     expect(window.endIndex).toBe(30);
   });
 
+  it("list view forces a single column so the window tracks rows exactly", () => {
+    // 回归：网格布局按卡片宽自适应出多列；列表视图必须与渲染共用单列，
+    // 否则滚动后 startIndex 按多列行号推算、内容错位「丢失」。
+    const multiColumn = calculateDirectoryVirtualWindow({
+      width: 800,
+      height: 400,
+      scrollTop: 1600,
+      total: 10_000,
+      cardWidth: 148,
+      gap: 12,
+      rowHeight: 40,
+    });
+    expect(multiColumn.columns).toBe(5);
+
+    const listWindow = calculateDirectoryVirtualWindow({
+      width: 800,
+      height: 400,
+      scrollTop: 1600,
+      total: 10_000,
+      cardWidth: 148,
+      gap: 12,
+      rowHeight: 40,
+      columns: 1,
+    });
+    expect(listWindow.columns).toBe(1);
+    // 1600 / 40 = 第 40 行：首可见索引就是 40，而不是 40 × 5。
+    expect(listWindow.firstVisibleRow).toBe(40);
+    expect(listWindow.startIndex).toBe(38);
+    expect(listWindow.startIndex).toBeLessThan(40 * 5);
+    // (1600+400)/40 = 50 可见末行 + 3 overscan → endRow 53，索引 53。
+    expect(listWindow.endIndex).toBe(53);
+    expect(listWindow.endIndex).toBeLessThan(40 * 5);
+  });
+
   it("indexes sparse pages without copying Fabric or React state", () => {
     const indexed = indexDirectoryPages(new Map([
       [0, [entry("a"), entry("b")]],

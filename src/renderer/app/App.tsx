@@ -145,10 +145,11 @@ function WorkspaceApp() {
       const source = await window.refCanvas.system.prepareRegionCapture();
       if (source) setCaptureSource(source);
     } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "";
       setNotice(
-        reason instanceof Error && reason.message
-          ? reason.message
-          : translate("capture.error"),
+        message === "SCREEN_CAPTURE_UNAVAILABLE"
+          ? translate("capture.unavailable")
+          : message || translate("capture.error"),
       );
       window.setTimeout(() => setNotice(null), 4200);
     } finally {
@@ -579,7 +580,7 @@ function WorkspaceApp() {
             disabled={capturePreparing}
           >
             <Camera size={15} />
-            {translate("titlebar.region")}
+            {translate("titlebar.screenshot")}
           </button>
           {store.workspaceMode === "board" && (
             <>

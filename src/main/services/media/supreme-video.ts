@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PreviewTokenRegistry } from "../../platform/refbrowse";
 import { packagedFfmpegPath } from "./ffmpeg-tools";
@@ -81,6 +81,17 @@ function failedMarkerFor(cacheFile: string): string {
   return `${cacheFile}.failed`;
 }
 
+/** 读取失败标记内容（ffmpeg stderr 尾部），供状态接口透出可诊断原因。 */
+async function readFailedMarkerDetail(markerFile: string): Promise<string | null> {
+  try {
+    const content = await readFile(markerFile, "utf8");
+    const detail = content.trim().replace(/\s+/g, " ").slice(0, 200);
+    return detail || null;
+  } catch {
+    return null;
+  }
+}
+
 export class SupremeVideoService {
   private readonly jobs = new Map<string, SupremeJob>();
 
@@ -146,12 +157,15 @@ export class SupremeVideoService {
 
     const cacheFile = this.cachePathFor(resolved, info);
     if (await stat(failedMarkerFor(cacheFile)).catch(() => null)) {
+      const marker = await readFailedMarkerDetail(failedMarkerFor(cacheFile));
       return {
         state: "failed",
         progress: null,
         needsEnhancement: true,
         source: null,
-        error: "SUPREME_GENERATION_FAILED",
+        error: marker
+          ? `SUPREME_GENERATION_FAILED: ${marker}`
+          : "SUPREME_GENERATION_FAILED",
       };
     }
     if (await stat(cacheFile).catch(() => null)) {
@@ -243,6 +257,10 @@ export class SupremeVideoService {
     const args = [
       "-y",
       "-i", sourcePath,
+      // 只映射一条视频轨 +（可选）一条音频轨：字幕/数据轨不参与增强代理
+      // （位图字幕转 MP4 会因字幕编码失败导致整条命令失败）。
+      "-map", "0:v:0",
+      "-map", "0:a:0?",
       "-vf", filters.join(","),
       "-c:v", "libx264",
       "-preset", "veryfast",
@@ -250,14 +268,27 @@ export class SupremeVideoService {
       "-pix_fmt", "yuv420p",
       ...(options.hasAudio ? ["-c:a", "aac", "-b:a", "160k"] : []),
       "-movflags", "+faststart",
+      // 长视频 + minterpolate 输出缓冲可能溢出 muxing 队列，显式加大上限。
+      "-max_muxing_queue_size", "1024",
+      // 输出写 <cache>.<uuid>.part 临时文件：扩展名不是 .mp4，ffmpeg 无法
+      // 据此推断容器，必须显式指定格式（否则 muxer 初始化即失败）。
+      "-f", "mp4",
       "-progress", "pipe:1",
       "-nostats",
       partFile,
     ];
-    const child = spawn(packagedFfmpegPath(), args, {
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child: ReturnType<typeof spawn> | null;
+    try {
+      child = spawn(packagedFfmpegPath(), args, {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      // spawn 同步失败（二进制缺失等）：写失败标记而非悬空 generating。
+      const reason = error instanceof Error ? error.message : String(error);
+      await writeFile(failedMarkerFor(cacheFile), reason);
+      return;
+    }
     let stderrTail = "";
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");

@@ -124,4 +124,10 @@ export function applyBoardControls(object: FabricObject): void {
     transparentCorners: true,
     padding: 2,
   });
+  // 替换控件集后必须重算 oCoords：Fabric 的 findControl 按 oCoords 的键
+  // 直接取 this.controls[key].shouldActivate（无空值防护）。ActiveSelection
+  // 建立时 Fabric 先用默认控件（含 mtr）算好 oCoords，若这里只换 controls
+  // 不重算，下一次鼠标按下会命中残留的 mtr → TypeError 中断整条 mousedown
+  // 处理链，表现为框选后画布左键完全失灵；同时新控件的命中区域也从未生效。
+  if (object.canvas) object.setCoords();
 }

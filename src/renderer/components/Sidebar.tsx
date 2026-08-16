@@ -1,18 +1,25 @@
-import { PanelsTopLeft, Plus, Search, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { PanelsTopLeft, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
 import { DirectoryTreePane, QuickAccessPane } from "./DirectoryBrowser";
 import { CollectionsPanel } from "./CollectionsPanel";
-
-/** SplitPanes 默认/最小高度（设计规格 360×850：270 / 290 / 240，min 120 / 140 / 100）。 */
-const DEFAULT_QUICK_ACCESS_HEIGHT = 270;
-const DEFAULT_DIRECTORY_HEIGHT = 290;
-const MIN_QUICK_ACCESS = 120;
-const MIN_DIRECTORY = 140;
-const MIN_COLLECTIONS = 100;
-const SPLITTER_HEIGHT = 4;
+import {
+  SIDEBAR_LAYOUT_DEFAULTS,
+  type SidebarLayoutPreference,
+} from "../../shared/contracts";
+import {
+  MAX_BOARD,
+  MIN_BOARD,
+  MIN_DIRECTORY,
+  MIN_QUICK_ACCESS,
+  SPLITTER_COUNT,
+  SPLITTER_HEIGHT,
+  clampSidebarLayout,
+  collectionsFloor,
+  fitSidebarLayout,
+} from "../app/sidebar-layout";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -74,49 +81,127 @@ function SidebarSplitter({
   );
 }
 
-/** 底部搜索框：驱动 found 面板（DirectoryAssetPanel）的现有递归目录搜索。 */
-function SidebarSearchBox() {
-  const [value, setValue] = useState("");
-  return (
-    <div className="sidebar-search">
-      <Search size={13} />
-      <input
-        value={value}
-        onChange={(event) => {
-          const next = event.target.value;
-          setValue(next);
-          window.dispatchEvent(
-            new CustomEvent("refcanvas:directory-search", { detail: next }),
-          );
-        }}
-        placeholder={translate("sidebar.searchAssets")}
-        aria-label={translate("sidebar.searchAssets")}
-      />
-    </div>
-  );
-}
-
 /** Navigation for the disk browser and Fabric reference boards. */
 export function Sidebar() {
   const store = useAppStore();
   const dialog = useDialog();
-  const [quickAccessHeight, setQuickAccessHeight] = useState(
-    DEFAULT_QUICK_ACCESS_HEIGHT,
+  const [layout, setLayout] = useState<SidebarLayoutPreference>(
+    SIDEBAR_LAYOUT_DEFAULTS,
   );
-  const [directoryHeight, setDirectoryHeight] = useState(DEFAULT_DIRECTORY_HEIGHT);
+  // onDragEnd / 键盘调整是同步连续流：state 异步更新，ref 镜像保证
+  // 结束时读到的是最新高度。
+  const layoutRef = useRef(layout);
   const panesRef = useRef<HTMLDivElement | null>(null);
   const dragStartRef = useRef<{
     quickAccess: number;
     directory: number;
+    board: number;
     available: number;
+    collections: number;
   } | null>(null);
+
+  const applyLayout = (next: SidebarLayoutPreference) => {
+    layoutRef.current = next;
+    setLayout(next);
+  };
+
+  /** 集合面板当前实际占高与折叠态：拖动约束必须按实际渲染值预留，
+   * 否则集合被压到 min-height 后再拖会把参考板顶出容器（overflow
+   * hidden 裁剪），或出现「向下拖反而变小」的反弹。 */
+  const measureCollections = () => {
+    const section = panesRef.current?.querySelector<HTMLElement>(
+      ".collections-section",
+    );
+    if (!section) return collectionsFloor(0, false);
+    return collectionsFloor(
+      section.clientHeight,
+      section.classList.contains("collapsed"),
+    );
+  };
+  const measuredAvailable = () => {
+    const height = panesRef.current?.clientHeight ?? 0;
+    return height > 0 ? height : 720;
+  };
+
+  // 启动时恢复持久化高度并按当前窗口收紧（应用级偏好，主进程 settings 表）。
+  useEffect(() => {
+    // 真实布局下把固定面板总量压回可用高度，避免参考板被 overflow
+    // hidden 裁剪（jsdom 等无布局环境跳过，保留设计规格默认值）。
+    const fitNow = () => {
+      const available = panesRef.current?.clientHeight ?? 0;
+      if (available <= 0) return;
+      const fitted = fitSidebarLayout(
+        layoutRef.current,
+        available,
+        measureCollections(),
+      );
+      if (
+        fitted.quickAccessHeight !== layoutRef.current.quickAccessHeight ||
+        fitted.directoryHeight !== layoutRef.current.directoryHeight ||
+        fitted.boardHeight !== layoutRef.current.boardHeight
+      ) {
+        applyLayout(fitted);
+      }
+    };
+    const request = window.refCanvas?.system?.getPreferences?.();
+    if (!request) {
+      fitNow();
+      return;
+    }
+    void request
+      .then((preferences) => {
+        const stored = preferences.sidebarLayout;
+        if (stored) applyLayout(clampSidebarLayout(stored));
+        fitNow();
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // 窗口尺寸变化 / 集合折叠展开（占高变化）时收紧溢出，避免参考板被裁剪。
+  useEffect(() => {
+    const panes = panesRef.current;
+    if (!panes || typeof ResizeObserver === "undefined") return;
+    const refit = () => {
+      const available = panes.clientHeight;
+      if (available <= 0) return;
+      const fitted = fitSidebarLayout(
+        layoutRef.current,
+        available,
+        measureCollections(),
+      );
+      if (
+        fitted.quickAccessHeight !== layoutRef.current.quickAccessHeight ||
+        fitted.directoryHeight !== layoutRef.current.directoryHeight ||
+        fitted.boardHeight !== layoutRef.current.boardHeight
+      ) {
+        applyLayout(fitted);
+      }
+    };
+    const observer = new ResizeObserver(refit);
+    observer.observe(panes);
+    const section = panes.querySelector<HTMLElement>(".collections-section");
+    if (section) observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
   const snapshotDragStart = () => {
     dragStartRef.current = {
-      quickAccess: quickAccessHeight,
-      directory: directoryHeight,
-      available: panesRef.current?.clientHeight ?? 720,
+      quickAccess: layoutRef.current.quickAccessHeight,
+      directory: layoutRef.current.directoryHeight,
+      board: layoutRef.current.boardHeight,
+      // jsdom 等无布局环境 clientHeight 为 0：回退设计规格高度，保证
+      // 拖动钳制区间可用。
+      available: measuredAvailable(),
+      collections: measureCollections(),
     };
+  };
+
+  /** 拖动/键盘调整结束：清快照并持久化当前高度。 */
+  const endDrag = () => {
+    dragStartRef.current = null;
+    void window.refCanvas?.system?.setPreferences?.({
+      sidebarLayout: layoutRef.current,
+    })?.catch?.(() => undefined);
   };
 
   /** Splitter 1（快速访问 / 目录）：QA 吸收增量，目录反向补偿，总和不变。 */
@@ -126,90 +211,137 @@ export function Sidebar() {
     const sum = start.quickAccess + start.directory;
     const maxQuickAccess = Math.max(
       MIN_QUICK_ACCESS,
-      start.available - SPLITTER_HEIGHT * 2 - MIN_DIRECTORY - MIN_COLLECTIONS,
+      start.available -
+        SPLITTER_HEIGHT * SPLITTER_COUNT -
+        MIN_DIRECTORY -
+        start.collections -
+        MIN_BOARD,
     );
     const quickAccess = clamp(
       start.quickAccess + deltaY,
       MIN_QUICK_ACCESS,
       Math.min(maxQuickAccess, sum - MIN_DIRECTORY),
     );
-    setQuickAccessHeight(quickAccess);
-    setDirectoryHeight(sum - quickAccess);
+    applyLayout({
+      ...layoutRef.current,
+      quickAccessHeight: quickAccess,
+      directoryHeight: sum - quickAccess,
+    });
   };
 
-  /** Splitter 2（目录 / 收集）：目录吸收增量，收集面板（flex-grow）自适应。 */
+  /** Splitter 2（目录 / 收集）：目录吸收增量，集合面板（flex-grow）让出
+   * 实际富余（超出最小占位的部分）；集合到底后目录停下，不顶出参考板。 */
   const splitter2Drag = (deltaY: number) => {
     const start = dragStartRef.current;
     if (!start) return;
     const maxDirectory = Math.max(
       MIN_DIRECTORY,
-      start.available - SPLITTER_HEIGHT * 2 - start.quickAccess - MIN_COLLECTIONS,
+      start.available -
+        SPLITTER_HEIGHT * SPLITTER_COUNT -
+        start.quickAccess -
+        start.collections -
+        start.board,
     );
-    setDirectoryHeight(
-      clamp(start.directory + deltaY, MIN_DIRECTORY, maxDirectory),
+    applyLayout({
+      ...layoutRef.current,
+      directoryHeight: clamp(
+        start.directory + deltaY,
+        MIN_DIRECTORY,
+        maxDirectory,
+      ),
+    });
+  };
+
+  /** Splitter 3（收集 / 参考板）：参考板在分隔条下方，向下拖 = 收集变大、
+   * 参考板变小（分隔条跟随光标），与前两个分隔条方向一致。 */
+  const splitter3Drag = (deltaY: number) => {
+    const start = dragStartRef.current;
+    if (!start) return;
+    const maxBoard = Math.max(
+      MIN_BOARD,
+      start.available -
+        SPLITTER_HEIGHT * SPLITTER_COUNT -
+        start.quickAccess -
+        start.directory -
+        start.collections,
     );
+    applyLayout({
+      ...layoutRef.current,
+      boardHeight: clamp(
+        start.board - deltaY,
+        MIN_BOARD,
+        Math.min(MAX_BOARD, maxBoard),
+      ),
+    });
   };
 
   return (
     <aside className="sidebar">
       <div className="sidebar-panes" ref={panesRef}>
-        <QuickAccessPane style={{ height: quickAccessHeight }} />
+        <QuickAccessPane style={{ height: layout.quickAccessHeight }} />
         <SidebarSplitter
           onDragStart={snapshotDragStart}
           onDrag={splitter1Drag}
-          onDragEnd={() => (dragStartRef.current = null)}
+          onDragEnd={endDrag}
         />
-        <DirectoryTreePane style={{ height: directoryHeight }} />
+        <DirectoryTreePane style={{ height: layout.directoryHeight }} />
         <SidebarSplitter
           onDragStart={snapshotDragStart}
           onDrag={splitter2Drag}
-          onDragEnd={() => (dragStartRef.current = null)}
+          onDragEnd={endDrag}
         />
         <CollectionsPanel />
-      </div>
-      <div className="sidebar-section sidebar-board-section">
-        <div className="section-label row-label">
-          <span>{translate("sidebar.boards")}</span>
-          <button
-            className="mini-icon-button"
-            aria-label={translate("boards.new")}
-            onClick={() =>
-              void dialog.requestForm({
-                title: translate("boards.new"),
-                confirmLabel: translate("boards.createConfirm"),
-                fields: [
-                  {
-                    name: "title",
-                    label: translate("boards.nameLabel"),
-                    required: true,
-                    maxLength: 120,
-                  },
-                ],
-                onSubmit: ({ title }) => store.createBoard(title),
-              })
-            }
-          >
-            <Plus size={14} />
-          </button>
+        <SidebarSplitter
+          onDragStart={snapshotDragStart}
+          onDrag={splitter3Drag}
+          onDragEnd={endDrag}
+        />
+        <div
+          className="sidebar-section sidebar-board-section"
+          style={{ height: layout.boardHeight }}
+        >
+          <div className="section-label row-label">
+            <span>{translate("sidebar.boards")}</span>
+            <button
+              className="mini-icon-button"
+              aria-label={translate("boards.new")}
+              onClick={() =>
+                void dialog.requestForm({
+                  title: translate("boards.new"),
+                  confirmLabel: translate("boards.createConfirm"),
+                  fields: [
+                    {
+                      name: "title",
+                      label: translate("boards.nameLabel"),
+                      required: true,
+                      maxLength: 120,
+                    },
+                  ],
+                  onSubmit: ({ title }) => store.createBoard(title),
+                })
+              }
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+          {store.boards.map((board) => (
+            <button
+              className={`nav-row ${
+                store.workspaceMode === "board" &&
+                store.activeBoard?.id === board.id
+                  ? "active"
+                  : ""
+              }`}
+              key={board.id}
+              onClick={() => void store.switchBoard(board.id)}
+            >
+              <PanelsTopLeft size={16} strokeWidth={1.8} />
+              <span>{board.title}</span>
+            </button>
+          ))}
         </div>
-        {store.boards.map((board) => (
-          <button
-            className={`nav-row ${
-              store.workspaceMode === "board" &&
-              store.activeBoard?.id === board.id
-                ? "active"
-                : ""
-            }`}
-            key={board.id}
-            onClick={() => void store.switchBoard(board.id)}
-          >
-            <PanelsTopLeft size={16} strokeWidth={1.8} />
-            <span>{board.title}</span>
-          </button>
-        ))}
       </div>
       <div className="sidebar-footer">
-        <SidebarSearchBox />
         <button
           className="sidebar-recycle-button"
           onClick={() => void window.refCanvas.system.openRecycleBin()}

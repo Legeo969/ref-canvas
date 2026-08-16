@@ -64,6 +64,19 @@ describe("placeTriggerMenu", () => {
       viewport.height,
     );
   });
+
+  it("right-aligns the menu's right edge to the trigger with an align hint", () => {
+    const placement = placeTriggerMenu(
+      { left: 920, right: 1068, top: 100, bottom: 140 },
+      { width: 148, height: 112 },
+      viewport,
+      6,
+      8,
+      "right",
+    );
+    expect(placement.left).toBe(1068 - 148); // 920
+    expect(placement.left + 148).toBe(1068);
+  });
 });
 
 describe("submenuOpensLeft", () => {

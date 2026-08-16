@@ -1024,6 +1024,84 @@ describe("DirectoryAssetPanel", () => {
     expect(open).toHaveBeenCalledWith("D:\\refs\\concept.psd");
   });
 
+  it("offers move-to-trash in the folder context menu too", async () => {
+    // 回归：回收站入口曾在 !isDirectory 的文件专属分支里，文件夹右键没有。
+    const trash = vi.fn(async () => undefined);
+    const reloadDirectory = vi.fn(async () => undefined);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          previewToken: vi.fn(async () => "token-folder-trash"),
+          open: vi.fn(async () => undefined),
+          reveal: vi.fn(async () => undefined),
+          trash,
+        },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        {
+          path: "D:\\refs\\shot-alpha",
+          name: "shot-alpha",
+          isDirectory: true,
+          extension: "",
+        },
+      ],
+      directoryTotal: 1,
+      reloadDirectory,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+    });
+    const folderRow = document.querySelector<HTMLElement>(
+      ".directory-folder-row",
+    ) ?? document.querySelector<HTMLElement>(".directory-card-wrap");
+    await act(async () => {
+      folderRow?.dispatchEvent(
+        new window.MouseEvent("contextmenu", {
+          bubbles: true,
+          clientX: 40,
+          clientY: 40,
+        }),
+      );
+    });
+    const trashButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".asset-context-menu button",
+      ),
+    ).find((button) => button.textContent?.includes("回收站"));
+    expect(trashButton).toBeTruthy();
+    await act(async () => {
+      trashButton?.click();
+      await Promise.resolve();
+    });
+    // 确认对话框中点确认（danger 主按钮）。
+    const confirm = document.querySelector<HTMLButtonElement>(
+      ".primary-button",
+    );
+    await act(async () => {
+      confirm?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(trash).toHaveBeenCalledWith(["D:\\refs\\shot-alpha"], undefined);
+    expect(reloadDirectory).toHaveBeenCalled();
+  });
+
   it.each([
     { extension: "png", showDownscale: true, showGifWorkbench: false, showExportMp4: false, showFrames: false },
     { extension: "tiff", showDownscale: true, showGifWorkbench: false, showExportMp4: false, showFrames: false },
@@ -1871,6 +1949,379 @@ describe("DirectoryAssetPanel", () => {
     );
   });
 
+  it("opens the directory when a pasted absolute path is entered in the find field", async () => {
+    // 回归：查找框粘贴 D:\…\目录 这类完整地址时直接定位（打开该目录），
+    // 而不是把它当作搜索关键词（关键词搜索只匹配素材文件，目录搜不到）。
+    const listDirectory = vi.fn(async () => ({
+      entries: [],
+      total: 0,
+      nextCursor: null,
+    }));
+    const startSearch = vi.fn(async () => "search-1");
+    const openDirectory = vi.fn(async () => undefined);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          startSearch,
+          cancelSearch: vi.fn(async () => true),
+          getSearch: vi.fn(async () => null),
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+      openDirectory,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="搜索当前目录"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, "D:\\AiWork\\ref-canvas\\out\\RefCanvas-win32-x64");
+      input.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertFromPaste",
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listDirectory).toHaveBeenCalledWith(
+      "D:\\AiWork\\ref-canvas\\out\\RefCanvas-win32-x64",
+      { pageSize: 1 },
+    );
+    expect(openDirectory).toHaveBeenCalledWith(
+      "D:\\AiWork\\ref-canvas\\out\\RefCanvas-win32-x64",
+    );
+    expect(startSearch).not.toHaveBeenCalled();
+  });
+
+  it("opens the parent folder and selects the file when a pasted file path is entered", async () => {
+    const fileEntry = {
+      path: "D:\\refs\\concept.psd",
+      name: "concept.psd",
+      isDirectory: false,
+      extension: "psd",
+      size: 128,
+    };
+    const listDirectory = vi.fn(async (pathname: string) => {
+      if (pathname === "D:\\refs\\concept.psd") {
+        throw new Error("ENOTDIR");
+      }
+      return { entries: [fileEntry], total: 1, nextCursor: null };
+    });
+    const openDirectory = vi.fn(async (_pathname: string) => {
+      // 模拟真实 openDirectory：完成后首批条目进入 store。
+      useAppStore.setState({ directoryEntries: [fileEntry] });
+    });
+    const selectDirectoryEntry = vi.fn();
+    const originalActions = {
+      openDirectory: useAppStore.getState().openDirectory,
+      selectDirectoryEntry: useAppStore.getState().selectDirectoryEntry,
+    };
+    const startSearch = vi.fn(async () => "search-1");
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          startSearch,
+          cancelSearch: vi.fn(async () => true),
+          getSearch: vi.fn(async () => null),
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\other",
+      directoryEntries: [],
+      directoryTotal: 0,
+      openDirectory,
+      selectDirectoryEntry,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="搜索当前目录"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, "D:\\refs\\concept.psd");
+      input.dispatchEvent(new InputEvent("input", {
+        bubbles: true,
+        inputType: "insertFromPaste",
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // 打开的是所在目录，并选中该文件。
+    expect(openDirectory).toHaveBeenCalledWith("D:\\refs");
+    expect(selectDirectoryEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "D:\\refs\\concept.psd" }),
+    );
+    expect(startSearch).not.toHaveBeenCalled();
+    // 恢复被覆盖的 store action，避免污染后续用例。
+    useAppStore.setState(originalActions);
+  });
+
+  it("falls back to keyword search for non-path input and invalid paths", async () => {
+    const listDirectory = vi.fn(async (pathname: string) => {
+      if (pathname === "D:\\no\\such\\dir") throw new Error("NOT_A_DIRECTORY");
+      return { entries: [], total: 0, nextCursor: null };
+    });
+    const startSearch = vi.fn(async () => "search-1");
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          startSearch,
+          cancelSearch: vi.fn(async () => true),
+          getSearch: vi.fn(async () => null),
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="搜索当前目录"]',
+    )!;
+    // 组件挂载即会加载当前目录：先清掉这次调用，后续断言只看输入触发。
+    listDirectory.mockClear();
+    // 普通关键词：走关键词搜索，不做路径探测。
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, "concept");
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    });
+    expect(listDirectory).not.toHaveBeenCalled();
+    // 回车提交一个不存在的路径：探测失败后不跳转、不清空输入。
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, "D:\\no\\such\\dir");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listDirectory).toHaveBeenCalledWith("D:\\no\\such\\dir", {
+      pageSize: 1,
+    });
+    // 等待在途 debounce 到期：避免残留 timer 在后续用例中调用已被替换的
+    // window.refCanvas mock（跨用例污染）。
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+    });
+  });
+
+  it("re-runs the active search with the new favorites flag when toggling favorites-only", async () => {
+    // 回归：toggle 点击处理里同步重跑搜索时，本渲染闭包仍捕获旧的
+    // favoritesOnly；必须显式传新值，否则服务端收藏过滤不生效。
+    const snapshot = {
+      id: "search-1",
+      state: "completed" as const,
+      rootPath: "D:\\refs",
+      query: "asset",
+      entries: [],
+      totalFiles: 0,
+      revision: "search-revision-1",
+      order: "name" as const,
+      processedDirectories: 1,
+      totalDirectories: 1,
+      failedDirectories: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:01.000Z",
+    };
+    const startSearch = vi.fn(async () => "search-1");
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          startSearch,
+          getSearch: vi.fn(async () => snapshot),
+          getSearchPage: vi.fn(async () => ({
+            entries: [],
+            total: 0,
+            totalFiles: 0,
+            offset: 0,
+            revision: "search-revision-1",
+            scanState: "complete" as const,
+            order: "name" as const,
+            nextCursor: null,
+          })),
+          cancelSearch: vi.fn(async () => true),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+    const input = document.querySelector<HTMLInputElement>(
+      'input[aria-label="搜索当前目录"]',
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, "asset");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+    });
+    expect(startSearch).toHaveBeenCalledTimes(1);
+    expect(startSearch).toHaveBeenNthCalledWith(
+      1,
+      "D:\\refs",
+      "asset",
+      expect.objectContaining({ favoritesOnly: false }),
+    );
+
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('button[title="只看收藏"]')?.click();
+      await Promise.resolve();
+    });
+    expect(startSearch).toHaveBeenCalledTimes(2);
+    expect(startSearch).toHaveBeenNthCalledWith(
+      2,
+      "D:\\refs",
+      "asset",
+      expect.objectContaining({ favoritesOnly: true }),
+    );
+  });
+
+  it("exports only favorites when copying paths from a favorites-only select-all", async () => {
+    // 回归：收藏视图全选后导出路径清单，selection scope 必须带
+    // favoritesOnly，否则服务端按「全部文件」解析而非仅收藏。
+    const entries = Array.from({ length: 3 }, (_, index) => ({
+      path: `D:\\refs\\fav-${index}.png`,
+      name: `fav-${index}.png`,
+      isDirectory: false,
+      extension: "png",
+    }));
+    const listDirectory = vi.fn(async () => ({
+      entries,
+      total: 3,
+      totalFiles: 3,
+      revision: "favorites",
+      scanState: "complete" as const,
+      nextCursor: null,
+    }));
+    const exportPaths = vi.fn(async () => ({
+      id: "22222222-2222-4222-8222-222222222222",
+      state: "running" as const,
+      action: { type: "exportPaths" as const, destination: "D:\\paths.txt" },
+      total: 3,
+      processed: 0,
+      failed: [],
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          onSearchProgress: () => () => undefined,
+          onBatchProgress: () => () => undefined,
+          exportPaths,
+        },
+        system: { writeClipboard: vi.fn(async () => undefined) },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('button[title="只看收藏"]')?.click();
+      await Promise.resolve();
+    });
+    const panel = document.querySelector<HTMLElement>(".asset-panel")!;
+    await act(async () => {
+      panel.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "a",
+        ctrlKey: true,
+        bubbles: true,
+      }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>(
+        'button[title="导出 UTF-8 路径清单"]',
+      )?.click();
+      await Promise.resolve();
+    });
+    expect(exportPaths).toHaveBeenCalledWith({
+      mode: "all",
+      directoryPath: "D:\\refs",
+      revision: "favorites",
+      excludedPaths: [],
+      extensions: undefined,
+      favoritesOnly: true,
+    });
+  });
+
   it("renders folder group header with compact folder rows and no file header", async () => {
     Object.assign(window, {
       refCanvas: {
@@ -2022,6 +2473,83 @@ describe("DirectoryAssetPanel", () => {
     expect(host.querySelectorAll(".directory-row")).toHaveLength(0);
   });
 
+  it("keeps list rows in view while scrolling (single-column virtual window)", async () => {
+    // 回归：列表视图的虚拟窗口必须与渲染共用单列，否则滚动后索引按多列
+    // 行号推算，可见窗口整体偏移、内容「丢失」。
+    let resizeCallback: ResizeObserverCallback | undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeCallback = callback;
+        }
+        observe = vi.fn();
+        disconnect = vi.fn();
+        unobserve = vi.fn();
+      },
+    );
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback) => {
+        callback(performance.now());
+        return 1;
+      },
+    );
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    const entries = Array.from({ length: 60 }, (_, index) => ({
+      path: `D:\\refs\\f${String(index).padStart(2, "0")}.txt`,
+      name: `f${String(index).padStart(2, "0")}.txt`,
+      isDirectory: false,
+      extension: "txt",
+      size: 4,
+    }));
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: entries,
+      directoryTotal: 60,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+    // 800×400 视口：网格下内部会算多列（宽松复现窗口列数 ≠ 渲染列数）。
+    await act(async () => {
+      resizeCallback?.(
+        [{ contentRect: { width: 800, height: 400 } } as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+    });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="directory-view-list"]')?.click();
+      await Promise.resolve();
+    });
+
+    // 滚到第 40 行（40px 行高 × 40 = 1600px）。
+    const viewportNode = host.querySelector<HTMLElement>(".asset-viewport")!;
+    await act(async () => {
+      viewportNode.scrollTop = 1600;
+      viewportNode.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    const rowTops = Array.from(
+      host.querySelectorAll<HTMLElement>(".directory-row-wrap"),
+    ).map((node) => Number.parseInt(node.style.top, 10));
+    expect(rowTops.length).toBeGreaterThan(0);
+    // 行位置必须落在滚动视口附近（1600 ± 400 + overscan）；5 列错位时
+    // 窗口索引会跳到 8000px 之外甚至渲染为空。
+    expect(Math.min(...rowTops)).toBeGreaterThanOrEqual(1200);
+    expect(Math.max(...rowTops)).toBeLessThan(3200);
+  });
+
   it("zooms card size via the slider", async () => {
     Object.assign(window, {
       refCanvas: {
@@ -2116,9 +2644,9 @@ describe("DirectoryAssetPanel", () => {
       toggle?.click();
       await Promise.resolve();
     });
-    expect(host.querySelector(".dir-sort-popover")).toBeTruthy();
+    expect(document.querySelector(".dir-sort-popover")).toBeTruthy();
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('[data-testid="directory-sort-size"]')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="directory-sort-size"]')?.click();
       await Promise.resolve();
     });
     expect(names()).toEqual(["a.txt", "c.txt", "b.txt"]); // 大小升序 100/200/300
@@ -2128,7 +2656,7 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('[data-testid="directory-sort-mtime"]')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="directory-sort-mtime"]')?.click();
       await Promise.resolve();
     });
     expect(names()).toEqual(["b.txt", "c.txt", "a.txt"]); // 修改时间升序 1000/2000/3000
@@ -2284,6 +2812,6 @@ describe("DirectoryAssetPanel", () => {
     expect(field?.getAttribute("title")).toContain("含子目录");
     const input = host.querySelector<HTMLInputElement>('input[aria-label="搜索当前目录"]');
     expect(input).toBeTruthy();
-    expect(input?.getAttribute("placeholder")).toBe("查找…");
+    expect(input?.getAttribute("placeholder")).toBe("查找 / 粘贴路径…");
   });
 });

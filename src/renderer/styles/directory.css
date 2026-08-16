@@ -2203,19 +2203,21 @@
   color: #dbe3df;
 }
 
+/* 排序弹层：portal 到 body，fixed 定位逃逸 .dir-format-filter 的
+   overflow-x: auto 裁剪；left/top/maxHeight 由 placeTriggerMenu 计算注入。 */
 .dir-sort-popover {
-  position: absolute;
-  z-index: 90;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
+  z-index: 120;
   display: grid;
   gap: 2px;
   min-width: 148px;
+  width: max-content;
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #262b2c;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
 }
 
 .dir-sort-popover .dir-sort-option {

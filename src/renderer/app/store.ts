@@ -189,7 +189,6 @@ interface AppState
   goBackDirectory(): Promise<void>;
   /** 目录历史前进一步（不修改历史列表）。 */
   goForwardDirectory(): Promise<void>;
-  goUpDirectory(): Promise<void>;
   reloadDirectory(): Promise<void>;
   /** 批量按需建立本地索引（不指定文件夹）。 */
   materializeEntries(paths: string[]): Promise<void>;
@@ -1403,38 +1402,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const target = directoryHistory[nextIndex];
     if (nextIndex < 0 || !target) return;
     await moveDirectoryCursor(set, target, nextIndex);
-  },
-
-  goUpDirectory: async () => {
-    const current = get().directoryPath;
-    if (!current) return;
-    const mounts = await window.refCanvas.mounts.list();
-    const roots = await window.refCanvas.filesystem.listRoots();
-    const allowedRoots = [
-      ...roots.map((root) => root.path),
-      ...mounts
-        .filter((item) => item.state === "online")
-        .map((item) => item.path),
-    ];
-    const root = allowedRoots.find((item) => isPathInsideMount(current, item));
-    if (!root) return;
-    const normalizedCurrent = current.replace(/[\\/]+$/, "");
-    const normalizedMount = root.replace(/[\\/]+$/, "");
-    if (
-      normalizedCurrent.toLocaleLowerCase("en-US") ===
-      normalizedMount.toLocaleLowerCase("en-US")
-    ) {
-      return;
-    }
-    const separator = Math.max(
-      normalizedCurrent.lastIndexOf("\\"),
-      normalizedCurrent.lastIndexOf("/"),
-    );
-    if (separator < 0) return;
-    let parent = normalizedCurrent.slice(0, separator);
-    if (/^[A-Za-z]:$/.test(parent)) parent += "\\";
-    if (!isPathInsideMount(parent, root)) return;
-    await get().openDirectory(parent);
   },
 
   reloadDirectory: async () => {

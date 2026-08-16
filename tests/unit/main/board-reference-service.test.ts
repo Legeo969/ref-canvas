@@ -93,7 +93,8 @@ describe("BoardReferenceService（阶段 6：Board V4 引用解析）", () => {
       const movedDirectory = path.join(root, "moved");
       await mkdir(movedDirectory);
       const movedFile = path.join(movedDirectory, "concept.png");
-      await rename(file, movedFile);
+      // Windows 并行 worker 下句柄释放有延迟：rename 同样可能 EBUSY，带短重试。
+      await renameWithRetry(file, movedFile);
       // 索引扫描发现新位置（file_identities 新路径记录，无 asset 归属）。
       const asset = database.getAsset(assetId)!;
       const fileStat = await stat(movedFile);
@@ -179,6 +180,19 @@ async function rmWithRetry(filename: string): Promise<void> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       await rm(filename, { force: true });
+      return;
+    } catch (error) {
+      if (attempt === 4) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 30 * (attempt + 1)));
+    }
+  }
+}
+
+/** Windows 并行 worker 下句柄释放有延迟：rename 带短重试（EBUSY 安全）。 */
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await rename(from, to);
       return;
     } catch (error) {
       if (attempt === 4) throw error;

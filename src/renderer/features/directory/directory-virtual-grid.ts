@@ -40,16 +40,18 @@ export function calculateDirectoryVirtualWindow(input: {
   gap?: number;
   /** 行高（缺省 DIRECTORY_ROW_HEIGHT；列表视图用 DIRECTORY_LIST_ROW_HEIGHT）。 */
   rowHeight?: number;
+  /**
+   * 列数覆盖：列表视图强制单列（渲染与虚拟窗口必须用同一列数，否则滚动时
+   * 索引空间按多列推算、行位置错位数倍，视口内容「丢失」）。缺省按宽度自适应。
+   */
+  columns?: number;
 }): DirectoryVirtualWindow {
   const cardW = input.cardWidth ?? DIRECTORY_CARD_WIDTH;
   const gapW = input.gap ?? DIRECTORY_GRID_GAP;
   const rowH = input.rowHeight ?? DIRECTORY_ROW_HEIGHT;
   const columns = Math.max(
     1,
-    Math.floor(
-      (input.width + gapW) /
-        (cardW + gapW),
-    ),
+    input.columns ?? Math.floor((input.width + gapW) / (cardW + gapW)),
   );
   const rowCount = Math.ceil(Math.max(0, input.total) / columns);
   const firstVisibleRow = Math.max(

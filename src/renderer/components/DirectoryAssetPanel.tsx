@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUp,
   ArrowUpDown,
   Check,
   ChevronDown,
@@ -30,7 +29,8 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type {
   DirectoryBatchAction,
   DirectoryBatchSnapshot,
@@ -65,6 +65,7 @@ import {
 } from "../app/preview-settings";
 import { useAppStore } from "../app/store";
 import { translate } from "../app/i18n";
+import { placeTriggerMenu } from "../app/menu-position";
 import { useDialog } from "./DialogProvider";
 import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
 import { FolderGlyph } from "./FolderGlyph";
@@ -168,23 +169,34 @@ export function DirectoryCard({
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [hoverScrub, setHoverScrub] = useState(false);
   const hoverVideoRef = useRef<HTMLVideoElement | null>(null);
+  /** 失败后已自动换过 token（防坏文件无限换 token 重试）。 */
+  const tokenRefreshedRef = useRef(false);
+  const requestToken = useCallback(
+    (priorityValue: "visible" | "overscan") => {
+      if (entry.isDirectory) return;
+      const request = window.refCanvas.filesystem.previewToken?.(entry.path);
+      if (!request) return;
+      let cancelled = false;
+      void request
+        .then((token) => {
+          if (!cancelled) {
+            setThumbnailUrl(
+              `refbrowse://thumbnail/${token}?priority=${priorityValue}`,
+            );
+          }
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    },
+    [entry.path, entry.isDirectory],
+  );
   useEffect(() => {
     setThumbnailUrl(null);
-    if (entry.isDirectory) return;
-    const request = window.refCanvas.filesystem.previewToken?.(entry.path);
-    if (!request) return;
-    let cancelled = false;
-    void request
-      .then((token) => {
-        if (!cancelled) {
-          setThumbnailUrl(`refbrowse://thumbnail/${token}?priority=${priority}`);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [entry.path, entry.isDirectory, entry.extension, priority]);
+    tokenRefreshedRef.current = false;
+    return requestToken(priority);
+  }, [priority, requestToken]);
 
   const preview = useRetryingPreviewUrl(
     directoryThumbnailSource(thumbnailUrl, thumbnailOverride),
@@ -192,6 +204,13 @@ export function DirectoryCard({
     // 用更长重试窗口避免缩略图被快速判死「不见」。
     { dccSlowAsset: /\.(blend|abc)$/i.test(entry.extension) },
   );
+  // 大目录滚动时 token 注册表会淘汰旧 token：失败卡片自动换新 token
+  // （新 token 重新注册即可恢复），避免「Token expired」404 卡死在占位图。
+  useEffect(() => {
+    if (preview.status !== "failed" || tokenRefreshedRef.current) return;
+    tokenRefreshedRef.current = true;
+    requestToken(priority);
+  }, [preview.status, priority, requestToken]);
   const canPreview = !entry.isDirectory && preview.url && preview.status !== "failed";
   const isVideo = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(entry.extension);
   const hoverVideoUrl = thumbnailUrl?.replace("refbrowse://thumbnail/", "refbrowse://preview/").replace(/\?.*$/, "") ?? null;
@@ -209,7 +228,12 @@ export function DirectoryCard({
         video.currentTime = hoverScrubTime(event.clientX, bounds.left, bounds.width, video.duration);
       }}
       onClick={(event) => {
-        if (preview.status === "failed") preview.retry();
+        if (preview.status === "failed") {
+          // 手动重试：换新 token（若旧 token 已被淘汰）再重试。
+          tokenRefreshedRef.current = false;
+          requestToken(priority);
+          preview.retry();
+        }
         if (entry.isDirectory && folderClickMode === "single") onEnter();
         else onSelect(event);
       }}
@@ -535,6 +559,12 @@ export function DirectoryAssetPanel() {
   const [sortMode, setSortMode] = useState<DirectorySortMode>("name");
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
+  const [sortMenuPosition, setSortMenuPosition] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+  } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [viewport, setViewport] = useState({ width: 340, height: 600, top: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -761,24 +791,58 @@ export function DirectoryAssetPanel() {
     };
   }, [viewOptionsOpen]);
 
-  // 排序菜单：与视图选项 popover 一致的外部点击 / Escape 关闭模式。
+  // 排序菜单：portal 到 body 逃逸 .dir-format-filter 的 overflow-x: auto 裁剪。
+  // 外部点击 / Escape 关闭；滚动与窗口尺寸变化时重定位（fixed 坐标）。
+  const updateSortMenuPosition = useCallback(() => {
+    const trigger = sortRef.current;
+    if (!trigger) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuHeight = sortMenuRef.current?.offsetHeight ?? 112;
+    const placement = placeTriggerMenu(
+      triggerRect,
+      { width: 148, height: menuHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+      6,
+      8,
+      "right",
+    );
+    setSortMenuPosition(placement);
+  }, []);
+
   useEffect(() => {
     if (!sortOpen) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!sortRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !sortRef.current?.contains(target) &&
+        !sortMenuRef.current?.contains(target)
+      ) {
         setSortOpen(false);
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSortOpen(false);
     };
+    const reposition = () => updateSortMenuPosition();
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
     };
-  }, [sortOpen]);
+  }, [sortOpen, updateSortMenuPosition]);
+
+  useLayoutEffect(() => {
+    if (!sortOpen) {
+      setSortMenuPosition(null);
+      return;
+    }
+    updateSortMenuPosition();
+  }, [sortOpen, updateSortMenuPosition]);
 
   useLayoutEffect(() => {
     if (!contextMenu || !contextMenuRef.current) return;
@@ -850,7 +914,7 @@ export function DirectoryAssetPanel() {
     });
   }, [batchJob?.id]);
 
-  const runSearch = (value: string) => {
+  const runSearch = (value: string, favoritesFlag: boolean = favoritesOnly) => {
     directorySelection.clear();
     if (searchId) {
       void window.refCanvas.filesystem.cancelSearch(searchId);
@@ -863,7 +927,7 @@ export function DirectoryAssetPanel() {
       .startSearch(store.directoryPath, value.trim(), {
         collapseSequences: previewSettings.collapseImageSequences,
         extensions: formatFilterExtensions,
-        favoritesOnly,
+        favoritesOnly: favoritesFlag,
       })
       .then(async (id) => {
         activeSearchIdRef.current = id;
@@ -879,24 +943,71 @@ export function DirectoryAssetPanel() {
       });
   };
 
-  const onQueryChange = (value: string) => {
-    setQuery(value);
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => runSearch(value), 160);
+  /**
+   * 查找输入支持直接定位：粘贴（或回车提交）一个绝对路径
+   * （D:\work\refs 或 UNC）时打开该目录，而不是把它当作搜索关键词。
+   * 粘贴的是文件路径时，打开所在目录并选中该文件（在目录首批条目中
+   * 找得到才动作，避免无效路径误开目录）。
+   * 路径无效（不存在）时静默放行，落回原有关键词搜索。
+   */
+  const locatePathInput = (raw: string): boolean => {
+    const trimmed = raw.trim();
+    if (!/^[A-Za-z]:[\\/]/.test(trimmed) && !/^\\\\[^\\]/.test(trimmed)) {
+      return false;
+    }
+    // 去掉尾部分隔符；盘符根（D:\）保留一个分隔符。
+    let target = trimmed.replace(/[\\/]+$/, "");
+    if (/^[A-Za-z]:$/.test(target)) target += "\\";
+    const pathKey = (candidate: string) =>
+      candidate.replace(/\//g, "\\").replace(/\\\\+/g, "\\").toLowerCase();
+    void window.refCanvas.filesystem
+      .listDirectory(target, { pageSize: 1 })
+      .then(() => {
+        cancelSearch();
+        void store.openDirectory(target);
+      })
+      .catch(() => {
+        // 不是目录（ENOTDIR）：按文件路径处理——探测所在目录并选中。
+        const lastSeparator = Math.max(
+          target.lastIndexOf("\\"),
+          target.lastIndexOf("/"),
+        );
+        if (lastSeparator < 0) return;
+        let parent = target.slice(0, lastSeparator);
+        if (/^[A-Za-z]:$/.test(parent)) parent += "\\";
+        const wanted = pathKey(target);
+        void window.refCanvas.filesystem
+          .listDirectory(parent, { pageSize: 512 })
+          .then((page) => {
+            const match = page.entries.find(
+              (entry) =>
+                !entry.isDirectory && pathKey(entry.path) === wanted,
+            );
+            // 文件不在首批（超大目录）或不存在：不误开目录，落回搜索。
+            if (!match) return;
+            cancelSearch();
+            void store.openDirectory(parent).then(() => {
+              const loaded = useAppStore
+                .getState()
+                .directoryEntries.find(
+                  (entry) => pathKey(entry.path) === wanted,
+                );
+              const entry = loaded ?? match;
+              store.selectDirectoryEntry(entry);
+              directorySelection.selectOnly(entry.path);
+            });
+          })
+          .catch(() => undefined);
+      });
+    return true;
   };
 
-  // 侧栏底部搜索框 → 复用本面板现有搜索管线（目录索引 worker + 分页 + 取消）。
-  const onQueryChangeRef = useRef(onQueryChange);
-  onQueryChangeRef.current = onQueryChange;
-  useEffect(() => {
-    const onSidebarSearch = (event: Event) => {
-      const detail = (event as CustomEvent<string>).detail;
-      if (typeof detail === "string") onQueryChangeRef.current(detail);
-    };
-    window.addEventListener("refcanvas:directory-search", onSidebarSearch);
-    return () =>
-      window.removeEventListener("refcanvas:directory-search", onSidebarSearch);
-  }, []);
+  const onQueryChange = (value: string, inputType?: string) => {
+    setQuery(value);
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    if (inputType === "insertFromPaste" && locatePathInput(value)) return;
+    debounceRef.current = window.setTimeout(() => runSearch(value), 160);
+  };
 
   const cancelSearch = () => {
     if (searchId) {
@@ -916,9 +1027,10 @@ export function DirectoryAssetPanel() {
   const toggleFavoritesOnly = () => {
     const next = !favoritesOnly;
     setFavoritesOnly(next);
-    // 搜索中的结果跟随收藏过滤重新执行。
+    // 搜索中的结果跟随收藏过滤重新执行。必须显式传 next：本渲染的
+    // runSearch 闭包仍捕获旧的 favoritesOnly（setState 尚未生效）。
     if (query.trim() && searchId) {
-      void runSearch(query);
+      void runSearch(query, next);
     }
   };
 
@@ -1100,6 +1212,8 @@ export function DirectoryAssetPanel() {
     cardWidth: zoomCardWidth,
     gap: zoomGap,
     rowHeight: effectiveRowHeight,
+    // 列表视图强制单列：虚拟窗口与渲染必须用同一列数，否则滚动错位。
+    columns: viewMode === "list" ? 1 : undefined,
   });
   const columns = viewMode === "list" ? 1 : baseWindow.columns;
   // 文件夹区列数：按视口宽度自适应（列表视图退化为单列，与文件区一致）。
@@ -1188,6 +1302,7 @@ export function DirectoryAssetPanel() {
           cardWidth: folderRowWidth,
           gap,
           rowHeight: folderRowHeight,
+          columns: viewMode === "list" ? 1 : undefined,
         })
       : null;
   const fileWindow =
@@ -1200,6 +1315,7 @@ export function DirectoryAssetPanel() {
           cardWidth: zoomCardWidth,
           gap: zoomGap,
           rowHeight: effectiveRowHeight,
+          columns: viewMode === "list" ? 1 : undefined,
         })
       : null;
   const visibleFolderItems = folderWindow
@@ -1819,6 +1935,7 @@ export function DirectoryAssetPanel() {
         directoryRevision,
         excludedPaths,
         extensions: formatFilterExtensions,
+        favoritesOnly,
       });
       if (!selection) return;
       const snapshot = await window.refCanvas.filesystem.exportPaths(selection);
@@ -2483,7 +2600,15 @@ export function DirectoryAssetPanel() {
         <Search size={14} />
         <input
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={(event) =>
+            onQueryChange(
+              event.target.value,
+              (event.nativeEvent as InputEvent).inputType,
+            )
+          }
+          onKeyDown={(event) => {
+            if (event.key === "Enter") locatePathInput(query);
+          }}
           placeholder={translate("directory.searchPlaceholderShort")}
           aria-label={translate("directory.searchCurrent")}
         />
@@ -2585,15 +2710,6 @@ export function DirectoryAssetPanel() {
       })()}
 
       <div className="dir-path-bar">
-        <button
-          className="secondary-button"
-          aria-label={translate("directory.up")}
-          disabled={!store.directoryPath}
-          onClick={() => void store.goUpDirectory()}
-        >
-          <ArrowUp size={14} />
-          {translate("directory.up")}
-        </button>
         <div className="dir-crumbs">
           {crumbs.map((crumb, index) => (
             <span className="dir-crumb" key={crumb.path}>
@@ -2771,8 +2887,18 @@ export function DirectoryAssetPanel() {
             </span>
             <ChevronDown size={12} />
           </button>
-          {sortOpen && (
-            <div className="dir-sort-popover" role="menu">
+          {sortOpen && typeof document !== "undefined" && createPortal(
+            <div
+              ref={sortMenuRef}
+              className="dir-sort-popover"
+              role="menu"
+              style={{
+                left: sortMenuPosition?.left ?? 0,
+                top: sortMenuPosition?.top ?? 0,
+                maxHeight: sortMenuPosition?.maxHeight ?? 220,
+                visibility: sortMenuPosition ? "visible" : "hidden",
+              }}
+            >
               {(["name", "mtime", "size"] as const).map((mode) => (
                 <button
                   type="button"
@@ -2793,7 +2919,8 @@ export function DirectoryAssetPanel() {
                       : translate("directory.sortName")}
                 </button>
               ))}
-            </div>
+            </div>,
+            document.body,
           )}
         </div>
         <div
@@ -3049,6 +3176,17 @@ export function DirectoryAssetPanel() {
             <FolderOpen size={16} />
             {translate("directory.moveTo")}
           </button>
+          <span className="context-menu-divider" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              setContextMenu(null);
+              void trashEntry(contextMenu.entry);
+            }}
+          >
+            <Trash2 size={16} />
+            {translate("preview.moveToTrash")}
+          </button>
           {!contextMenu.entry.isDirectory && (
             <>
               <button
@@ -3144,16 +3282,6 @@ export function DirectoryAssetPanel() {
                   ))}
                 </>
               )}
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setContextMenu(null);
-                  void trashEntry(contextMenu.entry);
-                }}
-              >
-                <Trash2 size={16} />
-                {translate("preview.moveToTrash")}
-              </button>
             </>
           )}
         </div>

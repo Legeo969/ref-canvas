@@ -142,6 +142,19 @@ describe("SupremeVideoService（至臻画质增强代理）", () => {
     expect(args).toContain("-progress");
     expect(args[args.indexOf("-progress") + 1]).toBe("pipe:1");
     expect(args.at(-1)).toMatch(/\.part$/);
+    // 显式只映射一条视频轨 + 可选音频轨：字幕/数据轨不参与代理转码。
+    const mapIndex = args.indexOf("-map");
+    expect(args.slice(mapIndex, mapIndex + 4)).toEqual([
+      "-map", "0:v:0",
+      "-map", "0:a:0?",
+    ]);
+    // 长视频 muxing 队列上限显式加大，防「Too many packets buffered」。
+    expect(args[args.indexOf("-max_muxing_queue_size") + 1]).toBe("1024");
+    // 输出是 .part 临时文件（非 .mp4 扩展名）：ffmpeg 无法按扩展名推断
+    // 容器，必须显式 -f mp4，否则 muxer 初始化即失败（生成必败）。
+    expect(args[args.indexOf("-f") + 1]).toBe("mp4");
+    expect(args[args.indexOf("-f") + 1]).toBeDefined();
+    expect(args.indexOf("-f")).toBeLessThan(args.length - 1);
 
     // 进度：out_time_us 推进 → 轮询拿到 0..1。
     child.stdout.write("out_time_us=2500000\nprogress=continue\n");
@@ -208,7 +221,7 @@ describe("SupremeVideoService（至臻画质增强代理）", () => {
     children[0]!.emit("close", 1);
 
     const failed = await waitForState("failed");
-    expect(failed.error).toBe("SUPREME_GENERATION_FAILED");
+    expect(failed.error).toContain("SUPREME_GENERATION_FAILED");
     expect(spawnMock).toHaveBeenCalledTimes(1);
 
     // 失败标记防重试风暴：再次 status 仍 failed，不重启生成。
@@ -247,5 +260,18 @@ describe("SupremeVideoService（至臻画质增强代理）", () => {
     expect(status.state).toBe("failed");
     expect(status.error).toBe("SOURCE_UNAVAILABLE");
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it("spawn 同步失败（二进制缺失等）：写失败标记并透出原因，不悬空 generating", async () => {
+    spawnMock.mockImplementationOnce(() => {
+      throw new Error("SPAWN_FAILED");
+    });
+    const first = await service.status(sourcePath);
+    expect(first.state).toBe("generating");
+    const failed = await waitForState("failed");
+    expect(failed.error).toContain("SUPREME_GENERATION_FAILED");
+    expect(failed.error).toContain("SPAWN_FAILED");
+    // 失败标记防重试风暴：不会无限重启。
+    expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 });

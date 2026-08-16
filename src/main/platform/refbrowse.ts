@@ -31,7 +31,7 @@ export class PreviewTokenRegistry {
   >();
   private readonly maxTokens: number;
 
-  constructor(maxTokens = 2_000) {
+  constructor(maxTokens = 5_000) {
     this.maxTokens = maxTokens;
   }
 

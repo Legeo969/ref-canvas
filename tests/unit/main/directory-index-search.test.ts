@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -25,6 +25,10 @@ describe("directory index search", () => {
     }
     await writeFile(path.join(directory, "model.glb"), "model");
     await writeFile(path.join(directory, "notes.txt"), "notes");
+    // 路径搜索：子目录里的文件用「目录+文件名」片段也能命中（仅路径可匹配）。
+    const nested = path.join(directory, "art");
+    await mkdir(nested);
+    await writeFile(path.join(nested, "scene.png"), "scene");
 
     type ParentPort = {
       postMessage(message: unknown): void;
@@ -186,8 +190,65 @@ describe("directory index search", () => {
         entries: Array<{ name: string; isDirectory: boolean }>;
         total: number;
       };
-      expect(filteredData.entries.map((entry) => entry.name)).toEqual(["model.glb"]);
-      expect(filteredData.total).toBe(1);
+      expect(filteredData.entries.map((entry) => entry.name)).toEqual(["art", "model.glb"]);
+      expect(filteredData.total).toBe(2);
+
+      // 路径片段搜索：输入 art\scene 只命中路径（文件名 scene.png 不含
+      // 「art\scene」），证明地址路径可作为搜索内容。
+      receive?.({
+        data: {
+          id: "start-path",
+          type: "start-search",
+          searchId: "search-path",
+          directoryPath: directory,
+          query: path.join("art", "scene"),
+        },
+      });
+      await new Promise<void>((resolve) => {
+        const timer = setInterval(() => {
+          const completed = messages.some(
+            (message) =>
+              typeof message === "object" &&
+              message !== null &&
+              (message as { type?: string }).type === "search-progress" &&
+              (message as { search?: { id?: string; state?: string } }).search
+                ?.id === "search-path" &&
+              (message as { search?: { state?: string } }).search?.state ===
+                "completed",
+          );
+          if (!completed) return;
+          clearInterval(timer);
+          resolve();
+        }, 5);
+      });
+      receive?.({
+        data: {
+          id: "page-path",
+          type: "search-page",
+          searchId: "search-path",
+          pageSize: 512,
+          offset: 0,
+        },
+      });
+      const pathPage = await new Promise<Record<string, unknown>>((resolve) => {
+        const timer = setInterval(() => {
+          const response = messages.find(
+            (message) =>
+              typeof message === "object" &&
+              message !== null &&
+              (message as { id?: string }).id === "page-path",
+          );
+          if (!response) return;
+          clearInterval(timer);
+          resolve(response as Record<string, unknown>);
+        }, 5);
+      });
+      const pathData = pathPage.page as {
+        entries: Array<{ path: string }>;
+        total: number;
+      };
+      expect(pathData.total).toBe(1);
+      expect(pathData.entries[0]?.path).toContain("scene.png");
 
       receive?.({
         data: {

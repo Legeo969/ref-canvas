@@ -43,11 +43,18 @@ export function placeTriggerMenu(
   viewport: Viewport,
   gap = GAP,
   margin = MARGIN,
+  align: "left" | "right" = "left",
 ): MenuPlacement {
-  const left = Math.max(
-    margin,
-    Math.min(trigger.left, viewport.width - menu.width - margin),
-  );
+  const left =
+    align === "right"
+      ? Math.max(
+          margin,
+          Math.min(trigger.right - menu.width, viewport.width - menu.width - margin),
+        )
+      : Math.max(
+          margin,
+          Math.min(trigger.left, viewport.width - menu.width - margin),
+        );
   const spaceBelow = viewport.height - trigger.bottom - gap - margin;
   const spaceAbove = trigger.top - gap - margin;
 

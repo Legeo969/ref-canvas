@@ -18,6 +18,8 @@ import { isProtectedSystemDirectory } from "../../shared/system-directory-filter
 const QUICK_ACCESS_KEY = "quickAccessEntries";
 const MAX_QUICK_ACCESS = 64;
 const ROOT_PROBE_TIMEOUT_MS = 250;
+/** 「只看收藏」视图的伪 revision：收藏枚举实时取自数据库，无需扫描校验。 */
+const FAVORITES_ONLY_REVISION = "favorites";
 
 export interface ListDirectoryOptions {
   cursor?: string;
@@ -90,6 +92,12 @@ function filterExtensions(
 /** 与数据库 path_key 同规则归一化（大小写不敏感比较）。 */
 function favoritePathKey(filename: string): string {
   return path.normalize(filename).toLocaleLowerCase("en-US");
+}
+
+/** 收藏子树范围前缀：根目录（d:\）归一化后已带分隔符，不得重复拼接，
+ * 否则根目录下任何收藏都匹配不到（「只看收藏」在磁盘根目录显示为空）。 */
+function favoriteScopePrefix(scopeKey: string): string {
+  return scopeKey.endsWith(path.sep) ? scopeKey : `${scopeKey}${path.sep}`;
 }
 
 /** 只保留已收藏的素材条目（文件夹一并隐藏）。 */
@@ -232,14 +240,85 @@ export class FilesystemService {
     recursive: boolean,
   ): string[] {
     const scopeKey = favoritePathKey(path.resolve(directoryPath));
+    const prefix = favoriteScopePrefix(scopeKey);
     return this.database
       .getFavoriteAssetPaths()
       .map(favoritePathKey)
       .filter((key) =>
         recursive
-          ? key.startsWith(`${scopeKey}${path.sep}`)
+          ? key.startsWith(prefix)
           : path.dirname(key) === scopeKey,
       );
+  }
+
+  /** 当前目录子树下全部收藏素材的原始路径（大小写不敏感比较）。 */
+  private favoriteAssetPathsUnder(directoryPath: string): string[] {
+    const prefix = favoriteScopePrefix(
+      favoritePathKey(path.resolve(directoryPath)),
+    );
+    return this.database
+      .getFavoriteAssetPaths()
+      .filter((assetPath) =>
+        favoritePathKey(assetPath).startsWith(prefix),
+      );
+  }
+
+  /**
+   * 只看收藏：直接从素材库收藏集枚举当前目录子树（递归），根目录与任意
+   * 层级一致——收藏在子文件夹里也能在父目录显示，与搜索/flatten 的
+   * recursive 语义对齐；文件夹一律隐藏。
+   */
+  private async listFavoriteEntries(
+    directoryPath: string,
+    showHidden: boolean,
+    collapseSequences: boolean,
+    extensions?: string[],
+    pageSize = 500,
+    cursor?: string,
+    offset?: number,
+  ): Promise<DirectoryPage> {
+    const entries: DirectoryEntry[] = this.favoriteAssetPathsUnder(directoryPath)
+      .filter((assetPath) => {
+        const name = path.basename(assetPath);
+        return showHidden || !name.startsWith(".");
+      })
+      .map((assetPath) => ({
+        path: assetPath,
+        name: path.basename(assetPath),
+        isDirectory: false,
+        extension: extensionFor(path.basename(assetPath), false),
+        favorite: true,
+      }));
+    let visible = sortDirectory(entries);
+    visible = filterExtensions(visible, extensions);
+    if (collapseSequences) {
+      const sequences = detectFileSequences(visible);
+      for (const entry of visible) {
+        entry.sequence = sequences.get(entry.path);
+      }
+      visible = collapseSequenceEntries(visible);
+    }
+    const start = (() => {
+      const cursorNumber = Number.parseInt(cursor ?? "0", 10);
+      if (Number.isFinite(cursorNumber)) return Math.max(0, cursorNumber);
+      return Math.max(0, offset ?? 0);
+    })();
+    const pageSizeClamped = Math.max(1, Math.min(10_000, pageSize));
+    return {
+      entries: visible.slice(start, start + pageSizeClamped),
+      total: visible.length,
+      // 收藏枚举来自数据库、一次即完整：标记扫描完成并给出稳定
+      // revision，让渲染端的「全选/跨页批量」门槛（scanComplete &&
+      // revision）可通过；resolveSelection/locate 的收藏分支不校验
+      // revision，伪值仅用于放行。
+      totalFiles: visible.length,
+      revision: FAVORITES_ONLY_REVISION,
+      scanState: "complete",
+      nextCursor:
+        start + pageSizeClamped < visible.length
+          ? String(start + pageSizeClamped)
+          : null,
+    };
   }
 
   /** 展开目录下一层；目录内容按名称缓存，游标分页。 */
@@ -251,6 +330,17 @@ export class FilesystemService {
     const showHidden = options.showHidden ?? false;
     const collapseSequences = options.collapseSequences ?? true;
     const flattenDepth = Math.max(0, Math.min(8, options.flattenDepth ?? 0));
+    if (options.favoritesOnly) {
+      return this.listFavoriteEntries(
+        resolved,
+        showHidden,
+        collapseSequences,
+        options.extensions,
+        options.pageSize,
+        options.cursor,
+        options.offset,
+      );
+    }
     if (flattenDepth > 0) {
       // §10.1：flatten 用递归 readdir 汇总素材（深度受限），目录只参与遍历。
       const flattened = await this.listFlattened(
@@ -419,6 +509,29 @@ export class FilesystemService {
     extensions?: string[],
     favoritesOnly?: boolean,
   ): Promise<{ paths: string[]; nextOffset: number | null; total: number }> {
+    if (favoritesOnly) {
+      // 只看收藏视图由素材库收藏集枚举（递归）：批量选择用同一数据源，
+      // 与列表展示保持一致（worker 目录扫描不含子目录收藏）。
+      const excluded = new Set(excludedPaths.map((item) => path.resolve(item)));
+      const allowed = extensions?.length ? new Set(extensions) : null;
+      const candidates = this.favoriteAssetPathsUnder(path.resolve(directoryPath))
+        .filter((candidate) => {
+          if (excluded.has(candidate)) return false;
+          if (!allowed) return true;
+          return allowed.has(extensionFor(path.basename(candidate), false));
+        })
+        .sort((left, right) =>
+          path.basename(left).localeCompare(path.basename(right), "zh-CN"),
+        );
+      const start = Math.max(0, offset);
+      const slice = candidates.slice(start, start + pageSize);
+      return Promise.resolve({
+        paths: slice,
+        nextOffset:
+          start + slice.length < candidates.length ? start + slice.length : null,
+        total: candidates.length,
+      });
+    }
     if (!this.indexClient) throw new Error("DIRECTORY_INDEX_UNAVAILABLE");
     return this.indexClient.resolveSelection(
       path.resolve(directoryPath),
@@ -457,6 +570,15 @@ export class FilesystemService {
     revision: string,
     favoritesOnly?: boolean,
   ): Promise<number | null> {
+    if (favoritesOnly) {
+      // 只看收藏视图：位置基于收藏集枚举（与 listFavoriteEntries 同一排序）。
+      const candidates = this.favoriteAssetPathsUnder(path.resolve(directoryPath))
+        .sort((left, right) =>
+          path.basename(left).localeCompare(path.basename(right), "zh-CN"),
+        );
+      const index = candidates.indexOf(path.resolve(entryPath));
+      return Promise.resolve(index >= 0 ? index : null);
+    }
     if (!this.indexClient) return Promise.resolve(null);
     return this.indexClient.locate(
       path.resolve(directoryPath),
@@ -792,8 +914,9 @@ export class FilesystemService {
     extensions?: string[],
     favorites?: Set<string> | null,
   ): Promise<void> {
-    const matchName = (name: string) =>
-      !query || name.toLocaleLowerCase("en-US").includes(query);
+    const matchPath = (entryPath: string) =>
+      !query ||
+      entryPath.toLocaleLowerCase("en-US").includes(query);
     const allowedExtensions = extensions?.length ? new Set(extensions) : null;
     const pending: string[] = [root];
     let offset = 0;
@@ -816,7 +939,7 @@ export class FilesystemService {
                 );
                 if (entry.isDirectory) {
                   if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
-                } else if (matchName(entry.name) &&
+                } else if (matchPath(entry.path) &&
                   (!allowedExtensions || allowedExtensions.has(entry.extension)) &&
                   (!favorites || favorites.has(favoritePathKey(entry.path)))) {
                   matches.push(entry);

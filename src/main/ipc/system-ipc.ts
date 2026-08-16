@@ -17,7 +17,9 @@ import type {
   AppLanguage,
   AppPreferences,
   BoardSettings,
+  SidebarLayoutPreference,
 } from "../../shared/contracts";
+import { SIDEBAR_LAYOUT_DEFAULTS } from "../../shared/contracts";
 import { mergePreviewSettings, readPreviewSettings } from "./preview-settings";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryManager } from "../services/library-manager";
@@ -394,8 +396,9 @@ export function registerSystemIpc(
         sources.find((item) => item.display_id === String(display.id)) ??
         sources[0];
       if (!source || source.thumbnail.isEmpty()) {
-        dependencies.restoreCaptureWindow();
-        return null;
+        // 拿不到屏幕快照（系统策略/驱动限制等）必须显式抛错：静默返回
+        // null 会让渲染端毫无反馈，用户只看到窗口闪一下（“点了没反应”）。
+        throw new Error("SCREEN_CAPTURE_UNAVAILABLE");
       }
       window.setFullScreen(true);
       window.show();
@@ -416,10 +419,8 @@ export function registerSystemIpc(
       const [captureDirectory] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
         { path: path.join(app.getPath("pictures"), "RefCanvas Captures"), mode: "destination" },
       ]);
-      const filename = await dependencies.saveCapture(
-        dependencies.pngDataUrlToBuffer(z.string().parse(dataUrl)),
-        captureDirectory,
-      );
+      const png = dependencies.pngDataUrlToBuffer(z.string().parse(dataUrl));
+      const filename = await dependencies.saveCapture(png, captureDirectory);
       await library().importPaths([filename]);
       return database().getAssetByPath(filename);
     } finally {
@@ -497,6 +498,14 @@ export function registerSystemIpc(
       undoLimit: 99,
     }),
     previewSettings: readPreviewSettings(database()),
+    // 旧库无该键或字段缺失时回退默认（读取时合并，写入总是完整对象）。
+    sidebarLayout: {
+      ...SIDEBAR_LAYOUT_DEFAULTS,
+      ...database().getSetting<Partial<SidebarLayoutPreference> | null>(
+        "sidebarLayout",
+        null,
+      ),
+    },
   });
   ipc.handle("system:get-preferences", readAppPreferences);
   ipc.handle("system:set-preferences", (prefs) => {
@@ -517,6 +526,13 @@ export function registerSystemIpc(
           })
           .optional(),
         previewSettings: previewSettingsPatchSchema.optional(),
+        sidebarLayout: z
+          .object({
+            quickAccessHeight: z.number().int().min(80).max(8192).optional(),
+            directoryHeight: z.number().int().min(80).max(8192).optional(),
+            boardHeight: z.number().int().min(80).max(8192).optional(),
+          })
+          .optional(),
       })
       .parse(prefs);
     if (parsed.globalShortcuts !== undefined) {
@@ -532,6 +548,12 @@ export function registerSystemIpc(
       database().setSetting("boardSettings", {
         ...readAppPreferences().boardSettings,
         ...parsed.boardSettings,
+      });
+    }
+    if (parsed.sidebarLayout !== undefined) {
+      database().setSetting("sidebarLayout", {
+        ...readAppPreferences().sidebarLayout,
+        ...parsed.sidebarLayout,
       });
     }
     if (parsed.previewSettings !== undefined) {

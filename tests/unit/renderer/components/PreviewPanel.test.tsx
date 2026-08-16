@@ -108,9 +108,10 @@ describe("PreviewPanel smoke", () => {
     });
 
     const tabs = host.querySelectorAll('[role="tab"]');
-    expect(tabs.length).toBe(2);
+    // AI 设计总监入口由顶部功能图标承担（事件联动切模式），
+    // 预览面板旁不再放 AI tab。
+    expect(tabs.length).toBe(1);
     expect(tabs[0]?.textContent).toContain("预览");
-    expect(tabs[1]?.textContent).toContain("AI");
   });
 
   it("shows empty state when no asset is loaded", async () => {

@@ -335,6 +335,19 @@ export interface BoardSettings {
 /** 应用级偏好（非资料库级），存主进程 settings 表。 */
 export type AppLanguage = "zh-CN" | "en";
 
+/** 主窗口侧栏 SplitPanes 各板块高度（px）。 */
+export interface SidebarLayoutPreference {
+  quickAccessHeight: number;
+  directoryHeight: number;
+  boardHeight: number;
+}
+
+export const SIDEBAR_LAYOUT_DEFAULTS: SidebarLayoutPreference = {
+  quickAccessHeight: 270,
+  directoryHeight: 290,
+  boardHeight: 180,
+};
+
 export interface AppPreferences {
   globalShortcuts: boolean;
   /** 后台驻留：关闭窗口后保留主进程与托盘。 */
@@ -344,6 +357,8 @@ export interface AppPreferences {
   language: AppLanguage;
   /** 预览高级功能设置（阶段 5），默认值见 PREVIEW_SETTINGS_DEFAULTS。 */
   previewSettings: PreviewSettings;
+  /** 侧栏板块高度（拖动分隔条后持久化）。 */
+  sidebarLayout: SidebarLayoutPreference;
 }
 
 /** 序列检测自定义规则（阶段 5 §10.1 Sequence rules）。 */
@@ -532,6 +547,7 @@ export interface AppPreferencesPatch {
   boardSettings?: Partial<BoardSettings>;
   language?: AppLanguage;
   previewSettings?: Partial<PreviewSettings>;
+  sidebarLayout?: Partial<SidebarLayoutPreference>;
 }
 
 export interface PanelLayoutPreference {

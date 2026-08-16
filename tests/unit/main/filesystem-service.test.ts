@@ -621,6 +621,71 @@ describe("listDirectory favoritesOnly", () => {
     }
   });
 
+  it("根目录只看收藏：子文件夹内的收藏无需 flatten 也在根目录显示（递归）", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
+    temporaryDirectories.push(root);
+    const sub = path.join(root, "art");
+    await mkdir(sub);
+    await Promise.all([
+      writeFile(path.join(root, "top.png"), Buffer.alloc(4)),
+      writeFile(path.join(sub, "inner.png"), Buffer.alloc(4)),
+      writeFile(path.join(sub, "skip.png"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    const library = new LibraryService(database);
+    try {
+      const inner = await library.materializePath(path.join(sub, "inner.png"));
+      await library.materializePath(path.join(sub, "skip.png"));
+      database.updateAsset(inner.asset.id, { favorite: true });
+
+      // 不开启 flatten（默认 0）：只看收藏仍应枚举整个子树。
+      const page = await directory.listDirectory(root, { favoritesOnly: true });
+      expect(page.entries.map((entry) => entry.name)).toEqual(["inner.png"]);
+      expect(page.total).toBe(1);
+      expect(page.entries[0]?.favorite).toBe(true);
+      expect(page.entries[0]?.isDirectory).toBe(false);
+      // 枚举一次即完整：标记扫描完成 + 稳定 revision + 文件计数，
+      // 否则渲染端「全选/跨页批量」门槛（scanComplete && revision）永远不过。
+      expect(page.scanState).toBe("complete");
+      expect(page.revision).toBeTruthy();
+      expect(page.totalFiles).toBe(1);
+    } finally {
+      await directory.close?.();
+      await library.close();
+      database.close();
+    }
+  });
+
+  it("磁盘根目录只看收藏：全盘收藏可见（根路径前缀不多拼分隔符）", async () => {
+    // 回归：favoritePathKey("D:\") 归一化后已带尾部反斜杠，范围前缀若再拼
+    // path.sep 会变成 "d:\\"，任何收藏都匹配不到——根目录下「只看收藏」
+    // 永远显示为空。
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
+    temporaryDirectories.push(root);
+    const sub = path.join(root, "art");
+    await mkdir(sub);
+    await writeFile(path.join(sub, "drive-fav.png"), Buffer.alloc(4));
+    const { database, directory } = createService();
+    const library = new LibraryService(database);
+    try {
+      const favorited = await library.materializePath(
+        path.join(sub, "drive-fav.png"),
+      );
+      database.updateAsset(favorited.asset.id, { favorite: true });
+
+      const driveRoot = path.parse(root).root; // 如 C:\
+      const page = await directory.listDirectory(driveRoot, {
+        favoritesOnly: true,
+      });
+      expect(page.entries.map((entry) => entry.name)).toContain("drive-fav.png");
+      expect(page.total).toBeGreaterThanOrEqual(1);
+    } finally {
+      await directory.close?.();
+      await library.close();
+      database.close();
+    }
+  });
+
   it("搜索同样只返回收藏素材", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
     temporaryDirectories.push(root);

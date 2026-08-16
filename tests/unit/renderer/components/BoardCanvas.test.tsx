@@ -228,4 +228,79 @@ describe("BoardCanvas selection persistence", () => {
     expect(canvas.getActiveObject()).toBeInstanceOf(BoardActiveSelection);
     expect(canvas.getActiveObjects()).toHaveLength(2);
   });
+
+  it("keeps left-button interaction after a marquee multi-select", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const loadFromJSON = vi.spyOn(FabricCanvas.prototype, "loadFromJSON");
+    vi.spyOn(FabricCanvas.prototype, "requestRenderAll").mockImplementation(() => undefined);
+
+    await act(async () => {
+      root?.render(
+        <DialogProvider>
+          <BoardCanvas
+            board={board}
+            document={boardDocument}
+            assets={[]}
+            boards={[board]}
+            onSelectAsset={vi.fn()}
+            onSave={vi.fn(async () => ({ ...board, revision: board.revision + 1 }))}
+            onSwitchBoard={async () => undefined}
+            onCreateBoard={async () => undefined}
+            onRenameBoard={async () => undefined}
+            onDeleteBoard={async () => undefined}
+            onLibraryChanged={async () => undefined}
+          />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const initialLoad = loadFromJSON.mock.results[0]?.value;
+    await act(async () => {
+      await initialLoad;
+      await Promise.resolve();
+    });
+
+    const canvas = loadFromJSON.mock.instances[0] as FabricCanvas;
+    const marqueeCanvas = canvas as FabricCanvas & {
+      _groupSelector: {
+        x: number;
+        y: number;
+        deltaX: number;
+        deltaY: number;
+      } | null;
+      handleSelection(event: MouseEvent): boolean;
+    };
+    await act(async () => {
+      marqueeCanvas._groupSelector = { x: 0, y: 0, deltaX: 200, deltaY: 100 };
+      marqueeCanvas.handleSelection(new MouseEvent("mouseup"));
+    });
+    expect(canvas.getActiveObject()).toBeInstanceOf(BoardActiveSelection);
+
+    // 回归：applyBoardControls 替换控件集后必须重算 oCoords，否则
+    // findControl 按 oCoords 残留键（如 mtr）取 undefined 抛 TypeError，
+    // 下一次左键按下中断整条 mousedown 链（框选后左键失灵）。
+    const active = canvas.getActiveObject() as unknown as {
+      oCoords?: Record<string, unknown>;
+      controls?: Record<string, unknown>;
+    };
+    const controlKeys = new Set(Object.keys(active.controls ?? {}));
+    for (const key of Object.keys(active.oCoords ?? {})) {
+      expect(controlKeys.has(key)).toBe(true);
+    }
+
+    // 框选后左键按下必须走通（修复前在 findTarget→findControl 抛 TypeError）。
+    expect(() =>
+      canvas.upperCanvasEl.dispatchEvent(new MouseEvent("mousedown", {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+        bubbles: true,
+      })),
+    ).not.toThrow();
+    expect(canvas.selection).toBe(true);
+    expect(canvas.skipTargetFind).toBe(false);
+  });
 });

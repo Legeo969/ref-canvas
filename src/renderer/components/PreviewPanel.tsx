@@ -2,7 +2,6 @@ import {
   Eye,
   FolderOpen,
   LoaderCircle,
-  Sparkles,
   SquareArrowOutUpRight,
   X,
   Globe2,
@@ -385,7 +384,8 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         fullscreen={previewSession.fullscreen}
         className={`preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
       >
-        {/* Preview tab bar */}
+        {/* Preview tab bar：AI 设计总监入口由顶部功能图标承担
+            （refcanvas:open-ai-workbench 事件切模式），旁侧不再放 tab。 */}
         <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
           <button
             role="tab"
@@ -395,15 +395,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
           >
             <Eye size={13} />
             {translate("preview.tab.preview")}
-          </button>
-          <button
-            role="tab"
-            aria-selected={!isPreview}
-            className={!isPreview ? "active" : ""}
-            onClick={() => setMode("ai")}
-          >
-            <Sparkles size={13} />
-            {translate("preview.tab.ai")}
           </button>
           <span className="preview-toolbar-spacer" />
         </header>
@@ -432,7 +423,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       fullscreen={previewSession.fullscreen}
       className={`preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""} mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
     >
-      {/* Preview tab bar */}
+      {/* Preview tab bar：AI 入口由顶部功能图标承担，此处仅保留预览。 */}
       <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
         <button
           role="tab"
@@ -442,15 +433,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         >
           <Eye size={13} />
           {translate("preview.tab.preview")}
-        </button>
-        <button
-          role="tab"
-          aria-selected={!isPreview}
-          className={!isPreview ? "active" : ""}
-          onClick={() => setMode("ai")}
-        >
-          <Sparkles size={13} />
-          {translate("preview.tab.ai")}
         </button>
         <span className="preview-toolbar-spacer" />
         <div className="workbench-file-actions">

@@ -662,43 +662,6 @@ body.sidebar-resizing {
   border-top: 1px solid var(--line);
 }
 
-.sidebar-search {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  height: 28px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 9px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  color: #68716d;
-  transition-property: box-shadow, background-color;
-  transition-duration: 120ms;
-  transition-timing-function: ease-out;
-}
-
-.sidebar-search:focus-within {
-  background: rgba(0, 0, 0, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(58, 178, 143, 0.45);
-  color: #8cdec5;
-}
-
-.sidebar-search input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: 11px;
-}
-
-.sidebar-search input::placeholder {
-  color: #68716d;
-}
-
 .sidebar-footer .sidebar-recycle-button {
   flex: 0 0 auto;
   min-height: 28px;
@@ -707,13 +670,11 @@ body.sidebar-resizing {
   font-size: 11px;
 }
 
-/* 参考板区：三面板之下的固定块，超高时内部滚动。 */
+/* 参考板区：第四个可调高面板（Splitter 3 之下），超高时内部滚动。 */
 .sidebar-board-section {
   flex: 0 0 auto;
-  max-height: 180px;
-  margin-top: 10px;
+  min-height: 0;
   overflow-y: auto;
-  border-top: 1px solid var(--line);
 }
 
 .section-label {
