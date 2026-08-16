@@ -489,7 +489,11 @@ export function registerSystemIpc(
   const readAppPreferences = (): AppPreferences => ({
     globalShortcuts: database().getSetting("globalShortcuts", false),
     backgroundResidency: database().getSetting("backgroundResidency", false),
-    language: database().getSetting<AppLanguage>("language", "en"),
+    // 历史版本可能存过 zh-TW/ja 等已下线语言：读取时钳制回 en，避免渲染层
+    // 拿到 catalog 之外的键。
+    language: ["zh-CN", "en"].includes(database().getSetting("language", "en"))
+      ? database().getSetting<AppLanguage>("language", "en")
+      : "en",
     boardSettings: database().getSetting<BoardSettings>("boardSettings", {
       interactionPreset: "pureref",
       snapEnabled: true,
@@ -509,7 +513,7 @@ export function registerSystemIpc(
         globalShortcuts: z.boolean().optional(),
         backgroundResidency: z.boolean().optional(),
         language: z
-          .enum(["zh-CN", "zh-TW", "en", "ja", "ko", "es", "fr"])
+          .enum(["zh-CN", "en"])
           .optional(),
         boardSettings: z
           .object({

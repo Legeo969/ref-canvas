@@ -333,14 +333,14 @@ export interface BoardSettings {
 }
 
 /** 应用级偏好（非资料库级），存主进程 settings 表。 */
-export type AppLanguage = "zh-CN" | "zh-TW" | "en" | "ja" | "ko" | "es" | "fr";
+export type AppLanguage = "zh-CN" | "en";
 
 export interface AppPreferences {
   globalShortcuts: boolean;
   /** 后台驻留：关闭窗口后保留主进程与托盘。 */
   backgroundResidency: boolean;
   boardSettings: BoardSettings;
-  /** 界面语言（FND-011 七语言；en 为回退基准）。 */
+  /** 界面语言（双语：zh-CN / en；en 为回退基准）。 */
   language: AppLanguage;
   /** Found 高级功能设置（阶段 5），默认值见 FOUND_SETTINGS_DEFAULTS。 */
   foundSettings: FoundSettings;

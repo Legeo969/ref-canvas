@@ -1,8 +1,8 @@
 /**
  * 内部 i18n runtime（FND-011）。
  *
- * - 七语言 catalog（zh-CN / zh-TW / en / ja / ko / es / fr）。
- * - `en` 为完整基 catalog（覆盖全部 MessageKey）；其余语言 spread en 并覆盖
+ * - 双语 catalog（zh-CN / en）。
+ * - `en` 为完整基 catalog（覆盖全部 MessageKey）；zh-CN spread en 并覆盖
  *   已翻译项——key 集合与英文一致，值可回退但 key 不可缺失（自动测试校验）。
  * - 缺失 key 回退英文，绝不显示 raw key；开发期 console 缺 key 报告。
  * - 语言选择存主进程 settings（AppPreferences.language），切换即时生效。
@@ -51,12 +51,7 @@ export function useAppLanguage(): AppLanguage {
 
 export const APP_LANGUAGES: Array<{ code: AppLanguage; label: string }> = [
   { code: "zh-CN", label: "简体中文" },
-  { code: "zh-TW", label: "繁體中文" },
   { code: "en", label: "English" },
-  { code: "ja", label: "日本語" },
-  { code: "ko", label: "한국어" },
-  { code: "es", label: "Español" },
-  { code: "fr", label: "Français" },
 ];
 
 export type MessageKey =
@@ -507,7 +502,8 @@ const CATALOGS: Record<AppLanguage, Catalog> = catalogsByLanguage;
 let currentLanguage: AppLanguage = "en";
 
 export function setLanguage(language: AppLanguage): void {
-  currentLanguage = language;
+  // 防御：历史偏好可能携带已下线语言（如 zh-TW）→ 钳制回 en。
+  currentLanguage = language === "zh-CN" || language === "en" ? language : "en";
 }
 
 export function getLanguage(): AppLanguage {

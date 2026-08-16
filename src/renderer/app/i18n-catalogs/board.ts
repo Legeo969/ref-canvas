@@ -13,15 +13,4 @@ export const catalog = {
     "boards.createConfirm": "创建",
     "boards.nameLabel": "白板名称",
   },
-  zhTW: {
-    "boards.unavailable": "無法開啟白板",
-  },
-  ja: {
-  },
-  ko: {
-  },
-  es: {
-  },
-  fr: {
-  },
 } satisfies Record<string, Partial<Record<MessageKey, string>>>;
