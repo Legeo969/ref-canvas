@@ -101,6 +101,16 @@ function directoryThumbnailSize(url: URL): 480 | 960 | 1920 {
 }
 
 /**
+ * refasset://thumbnail 的 ?size= 参数：只接受 480/960/1920，缺省保持传统
+ * 480×320 composite 缩略图。预览面板用 1920，避免 provider 扁平化图
+ * （PSD/PSB 等）放大显示发糊。
+ */
+export function assetPreviewSize(url: URL): 480 | 960 | 1920 | null {
+  const size = Number(url.searchParams.get("size"));
+  return size === 480 || size === 960 || size === 1920 ? size : null;
+}
+
+/**
  * 用户手动设置的自定义缩略图（ModelPreview「设为缩略图」），按磁盘真实
  * 路径查库命中后直接读取返回。refasset://thumbnail 与 refbrowse://thumbnail
  * 两条协议路径都必须消费它，否则目录卡片（走 refbrowse token）只能在
@@ -343,6 +353,9 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
       let failedCacheKey: string | null = null;
       try {
         const proxySize = asset.kind === "image" ? boardProxySize(url) : null;
+        // 预览面板大图（PSD/PSB 扁平化预览等）：?size= 指定生成分辨率，
+        // 缺省保持传统 480×320 composite。
+        const previewSize = assetPreviewSize(url);
         // A user-chosen thumbnail overrides the generated cache when present.
         if (!proxySize && asset.customThumbnailPath) {
           const custom = await readFile(asset.customThumbnailPath).catch(
@@ -373,10 +386,12 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         } else {
           const channel = url.searchParams.get("channel")?.trim() || null;
           const colorVariant = hdrColorVariant(url);
+          // 尺寸变体纳入缓存键：preview-1920 与默认 composite 分开缓存。
+          const sizeVariant = previewSize ? `preview-${previewSize}` : null;
           const cacheFilename = thumbnailCacheFilename(
             asset,
-            channel || colorVariant
-              ? `${channel ? `channel:${channel}` : "default"}${colorVariant}`
+            sizeVariant || channel || colorVariant
+              ? `${sizeVariant ? `${sizeVariant}:` : ""}${channel ? `channel:${channel}` : "default"}${colorVariant}`
               : undefined,
           );
           cacheKey = `asset:${cacheFilename}`;
@@ -409,7 +424,9 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
             signal,
             proxySize
               ? { width: proxySize, height: proxySize }
-              : undefined,
+              : previewSize
+                ? { width: previewSize, height: previewSize }
+                : undefined,
             url.searchParams.get("channel") ?? undefined,
             dependencies.getDatabase().getSetting<Partial<FoundSettings>>("foundSettings", {}).ocioConfigPath ?? undefined,
             hdrInputColorSpace(url),

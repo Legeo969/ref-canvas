@@ -101,7 +101,7 @@ describe("AssetPreview lightweight mode", () => {
 
     expect(host.querySelector(".image-review")).toBeTruthy();
     expect(host.querySelector(".image-review-img")?.getAttribute("src")).toBe(
-      "refasset://thumbnail/dcc-1?priority=preview",
+      "refasset://thumbnail/dcc-1?size=1920&priority=preview",
     );
     expect(host.querySelector(".preview-unavailable")).toBeNull();
   });

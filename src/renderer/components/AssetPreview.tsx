@@ -170,13 +170,14 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
     case "dcc":
       // PSD/PSB 由 image-provider 生成扁平化 PNG 预览（thumbnailUrl），
       // 按图片审阅展示：contain 适配、缩放/旋转、取色、色板、图层入口，
-      // 而不是「缩略图贴顶 + 无工具栏」的降级壳。
+      // 而不是「缩略图贴顶 + 无工具栏」的降级壳。?size=1920 请求高分辨率
+      // 扁平化图，避免 480×320 默认缩略图放大发糊。
       if (asset.extension.toLowerCase() === "psd" || asset.extension.toLowerCase() === "psb") {
         return (
           <ImageReviewPreview
             asset={{
               ...asset,
-              previewUrl: `${asset.thumbnailUrl}?priority=preview`,
+              previewUrl: `${asset.thumbnailUrl}?size=1920&priority=preview`,
             }}
             onPaletteChange={onPaletteChange}
             managed={managed}
