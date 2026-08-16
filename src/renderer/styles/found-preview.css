@@ -1617,3 +1617,14 @@ button.found-color-palette-status {
 .video-preview .video-supreme-chip.is-error {
   color: #e0b178;
 }
+
+/* Found 传输条（右侧预览窗口）的至臻画质触发键。 */
+.found-toolbar .found-supreme-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.found-toolbar .found-supreme-trigger.generating {
+  color: #9fd0ba;
+}

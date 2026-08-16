@@ -528,6 +528,9 @@ export function VideoPreview({
     looping,
     muted,
     volume,
+    supremeOn,
+    supremeGenerating: supremeState === "generating",
+    supremeProgress,
   }, {
     togglePlaying: () => {
       const video = videoRef.current;
@@ -563,6 +566,7 @@ export function VideoPreview({
       setVolume(next);
       if (next > 0) setMuted(false);
     },
+    toggleSupreme,
   });
 
   const content = (

@@ -645,6 +645,10 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onStepFrames={(delta) => transport.actions?.stepFrames(delta)}
                     muted={transport.snapshot?.muted ?? false}
                     onMutedToggle={() => transport.actions?.setMuted(!(transport.snapshot?.muted ?? false))}
+                    supremeOn={transport.snapshot?.supremeOn ?? false}
+                    supremeGenerating={transport.snapshot?.supremeGenerating ?? false}
+                    supremeProgress={transport.snapshot?.supremeProgress ?? null}
+                    onSupremeToggle={() => transport.actions?.toggleSupreme?.()}
                     rateLabel={toolbarVariant === "video"
                       ? `${Number((transport.snapshot?.playbackRate ?? 1).toFixed(2))}×`
                       : toolbarVariant === "sequence"

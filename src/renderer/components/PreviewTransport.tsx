@@ -21,6 +21,12 @@ export interface PreviewTransportSnapshot {
   looping: boolean;
   muted: boolean;
   volume: number;
+  /** 至臻画质（仅视频）：开启状态。 */
+  supremeOn?: boolean;
+  /** 至臻画质（仅视频）：代理生成中。 */
+  supremeGenerating?: boolean;
+  /** 至臻画质（仅视频）：生成进度 0..1；时长未知为 null。 */
+  supremeProgress?: number | null;
 }
 
 export interface PreviewTransportActions {
@@ -32,6 +38,8 @@ export interface PreviewTransportActions {
   setMuted(value: boolean): void;
   setVolume(value: number): void;
   exportGif?(): void;
+  /** 至臻画质开关（仅视频）。 */
+  toggleSupreme?(): void;
 }
 
 interface PreviewTransportValue {
@@ -105,6 +113,7 @@ export function usePreviewTransportRegistration(
       setMuted: (value) => actionsRef.current.setMuted(value),
       setVolume: (value) => actionsRef.current.setVolume(value),
       exportGif: () => actionsRef.current.exportGif?.(),
+      toggleSupreme: () => actionsRef.current.toggleSupreme?.(),
     };
   }
   const snapshotKey = [
@@ -119,6 +128,9 @@ export function usePreviewTransportRegistration(
     snapshot.looping,
     snapshot.muted,
     snapshot.volume,
+    snapshot.supremeOn,
+    snapshot.supremeGenerating,
+    snapshot.supremeProgress,
   ].join("|");
   useEffect(() => {
     if (!register || !unregister) return;

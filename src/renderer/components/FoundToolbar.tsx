@@ -8,6 +8,7 @@ import {
   Scissors,
   SkipBack,
   SkipForward,
+  Sparkles,
   Volume2,
   VolumeX,
   Grid3x3,
@@ -105,6 +106,14 @@ export interface FoundToolbarProps {
   multichannelActive?: boolean;
   /** Actions pinned to the right edge, outside the horizontally scrolling tools. */
   trailingActions?: ReactNode;
+  /** 至臻画质开启状态（仅视频）。 */
+  supremeOn?: boolean;
+  /** 至臻画质代理生成中（仅视频）。 */
+  supremeGenerating?: boolean;
+  /** 至臻画质生成进度 0..1（仅视频；时长未知为 null）。 */
+  supremeProgress?: number | null;
+  /** 至臻画质开关（仅视频）。 */
+  onSupremeToggle?: () => void;
 }
 
 export function FoundToolbar({
@@ -156,6 +165,10 @@ export function FoundToolbar({
   multichannelButtonRef,
   multichannelActive = false,
   trailingActions,
+  supremeOn = false,
+  supremeGenerating = false,
+  supremeProgress = null,
+  onSupremeToggle,
 }: FoundToolbarProps) {
   const capabilities = foundToolbarCapabilities(variant);
   const hasTimeline = capabilities.timeline && showUpperRow;
@@ -321,6 +334,20 @@ export function FoundToolbar({
             title={rateAriaLabel}
             onClick={onRateToggle}
           >{rateLabel}</button>}
+          {capabilities.supreme && <button
+            type="button"
+            className={`found-tool-label found-supreme-trigger${supremeOn ? " active" : ""}${supremeGenerating ? " generating" : ""}`}
+            aria-label="至臻画质"
+            aria-pressed={supremeOn}
+            title={supremeGenerating && supremeProgress != null
+              ? `至臻画质生成中 ${Math.round(supremeProgress * 100)}%`
+              : "超高分辨率（4K 上采样）+ 60 帧流畅播放"}
+            onClick={onSupremeToggle}
+            disabled={!onSupremeToggle}
+          >
+            <Sparkles size={13} />
+            至臻
+          </button>}
           {onGridToggle && <button
             className={`found-tool-btn${gridActive ? " active" : ""}`}
             title="网格"

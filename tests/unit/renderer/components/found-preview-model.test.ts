@@ -55,6 +55,14 @@ describe("Found toolbar model", () => {
     expect(foundToolbarCapabilities("video")).toMatchObject({ timeline: true, volume: true, trim: true, gifExport: true });
     expect(foundToolbarCapabilities("sequence")).toMatchObject({ timeline: true, volume: false, gifExport: true });
   });
+
+  it("reserves the supreme quality toggle for video only (sequences excluded)", () => {
+    expect(foundToolbarCapabilities("video").supreme).toBe(true);
+    expect(foundToolbarCapabilities("sequence").supreme).toBe(false);
+    expect(foundToolbarCapabilities("gif").supreme).toBe(false);
+    expect(foundToolbarCapabilities("image").supreme).toBe(false);
+    expect(foundToolbarCapabilities("svg").supreme).toBe(false);
+  });
 });
 
 describe("formatFoundTimecode", () => {

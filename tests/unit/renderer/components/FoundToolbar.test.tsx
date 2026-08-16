@@ -281,4 +281,48 @@ describe("FoundToolbar variants", () => {
     expect(videoHost.querySelector('[aria-label="播放速度"]')?.textContent).toBe("1.5×");
     expect(videoHost.querySelector('[aria-label="帧率"]')).toBeNull();
   });
+
+  it("shows the supreme quality toggle for video only and routes the command", async () => {
+    const toggle = vi.fn();
+    const videoHost = document.createElement("div");
+    document.body.append(videoHost);
+    const videoRoot = createRoot(videoHost);
+    roots.push(videoRoot);
+    await act(async () => videoRoot.render(
+      <FoundToolbar variant="video" onSupremeToggle={toggle} />,
+    ));
+    const button = videoHost.querySelector<HTMLButtonElement>('[aria-label="至臻画质"]')!;
+    expect(button).toBeTruthy();
+    await act(async () => button.click());
+    expect(toggle).toHaveBeenCalledOnce();
+
+    const sequenceHost = document.createElement("div");
+    document.body.append(sequenceHost);
+    const sequenceRoot = createRoot(sequenceHost);
+    roots.push(sequenceRoot);
+    await act(async () => sequenceRoot.render(
+      <FoundToolbar variant="sequence" onSupremeToggle={toggle} />,
+    ));
+    expect(sequenceHost.querySelector('[aria-label="至臻画质"]')).toBeNull();
+  });
+
+  it("reflects supreme quality active and generating states", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => root.render(
+      <FoundToolbar
+        variant="video"
+        supremeOn
+        supremeGenerating
+        supremeProgress={0.4}
+        onSupremeToggle={() => undefined}
+      />,
+    ));
+    const button = host.querySelector<HTMLButtonElement>('[aria-label="至臻画质"]')!;
+    expect(button.classList.contains("active")).toBe(true);
+    expect(button.classList.contains("generating")).toBe(true);
+    expect(button.getAttribute("title")).toContain("40%");
+  });
 });

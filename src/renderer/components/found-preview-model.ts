@@ -23,6 +23,8 @@ export interface FoundToolbarCapabilities {
   trim: boolean;
   gifExport: boolean;
   layers: boolean;
+  /** 至臻画质（仅视频）：4K 上采样 + 60fps 补帧代理开关。 */
+  supreme: boolean;
 }
 
 export function classifyFoundPreview(
@@ -56,6 +58,7 @@ export function foundToolbarCapabilities(
     trim: variant === "video",
     gifExport: variant === "video" || variant === "sequence",
     layers: variant === "svg",
+    supreme: variant === "video",
   };
 }
 
