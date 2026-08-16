@@ -7,7 +7,10 @@ import type {
   BoardSummary,
   RefCanvasApi,
 } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { useAppStore } from "../../../../src/renderer/app/store";
+
+setLanguage("zh-CN"); // 默认白板标题已迁移到 i18n key；断言基于简体中文 catalog。
 
 const board: BoardSummary = {
   id: "22222222-2222-4222-8222-222222222222",

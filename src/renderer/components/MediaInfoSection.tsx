@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AssetRecord, MediaProbeResult } from "../../shared/contracts";
 import { formatDuration } from "../app/format-duration";
+import { translate } from "../app/i18n";
 
 type MediaInfoAsset = Pick<
   AssetRecord,
@@ -87,44 +88,44 @@ function fieldsFor(asset: MediaInfoAsset, probe: MediaProbeResult): FieldDef[] {
   // 文案既误导又无操作价值。其余无解码器格式（JXL/RAW/PDF 等）保留。
   const isDcc = asset.kind === "dcc";
   if (typeof unsupportedReason === "string" && !isDcc) {
-    return [{ label: "说明", value: unsupportedReason }];
+    return [{ label: translate("mediaInfo.note"), value: unsupportedReason }];
   }
   if (isDcc) return [];
   switch (asset.kind) {
     case "video": {
       const audioTracks = extra.audioTracks as number | undefined;
       const fields: FieldDef[] = [
-        { label: "编码", value: extra.codec ?? "—" },
-        { label: "配置", value: extra.profile ?? "—" },
-        { label: "级别", value: extra.level ?? "—" },
+        { label: translate("mediaInfo.codec"), value: extra.codec ?? "—" },
+        { label: translate("mediaInfo.profile"), value: extra.profile ?? "—" },
+        { label: translate("mediaInfo.level"), value: extra.level ?? "—" },
         {
-          label: "分辨率",
+          label: translate("mediaInfo.resolution"),
           value:
             probe.width && probe.height
               ? `${probe.width} × ${probe.height}`
               : "—",
         },
         {
-          label: "帧率",
+          label: translate("mediaInfo.frameRate"),
           value: extra.frameRate != null ? `${formatNumber(extra.frameRate)} fps` : "—",
         },
-        { label: "时间基", value: extra.timeBase ?? "—" },
-        { label: "像素格式", value: extra.pixelFormat ?? "—" },
-        { label: "位深", value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
-        { label: "时长", value: probe.duration != null ? formatDuration(probe.duration) : "—" },
-        { label: "码率", value: extra.bitRate != null ? formatSize(extra.bitRate) : "—" },
-        { label: "色彩原色", value: extra.colorPrimaries ?? "—" },
-        { label: "色彩空间", value: extra.colorSpace ?? "—" },
-        { label: "色深范围", value: extra.colorRange ?? "—" },
-        { label: "色彩传输", value: extra.colorTransfer ?? "—" },
+        { label: translate("mediaInfo.timeBase"), value: extra.timeBase ?? "—" },
+        { label: translate("mediaInfo.pixelFormat"), value: extra.pixelFormat ?? "—" },
+        { label: translate("mediaInfo.bitDepth"), value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
+        { label: translate("mediaInfo.duration"), value: probe.duration != null ? formatDuration(probe.duration) : "—" },
+        { label: translate("mediaInfo.bitRate"), value: extra.bitRate != null ? formatSize(extra.bitRate) : "—" },
+        { label: translate("mediaInfo.colorPrimaries"), value: extra.colorPrimaries ?? "—" },
+        { label: translate("mediaInfo.colorSpace"), value: extra.colorSpace ?? "—" },
+        { label: translate("mediaInfo.colorRange"), value: extra.colorRange ?? "—" },
+        { label: translate("mediaInfo.colorTransfer"), value: extra.colorTransfer ?? "—" },
         {
-          label: "音轨",
+          label: translate("mediaInfo.audioTracks"),
           value:
             audioTracks != null
-              ? `${audioTracks} 轨${extra.audioCodec ? ` · ${extra.audioCodec}` : ""}`
+              ? `${translate("mediaInfo.audioTracksValue").replace("{count}", String(audioTracks))}${extra.audioCodec ? translate("mediaInfo.audioTracksCodec").replace("{codec}", String(extra.audioCodec)) : ""}`
               : "—",
         },
-        { label: "显示宽高比", value: extra.displayAspectRatio ?? "—" },
+        { label: translate("mediaInfo.displayAspectRatio"), value: extra.displayAspectRatio ?? "—" },
       ];
       return fields;
     }
@@ -140,56 +141,56 @@ function fieldsFor(asset: MediaInfoAsset, probe: MediaProbeResult): FieldDef[] {
           ? `${formatNumber(box.max[0] - box.min[0])} × ${formatNumber(box.max[1] - box.min[1])} × ${formatNumber(box.max[2] - box.min[2])}`
           : "—";
       return [
-        { label: "顶点数", value: extra.vertexCount ?? "—" },
-        { label: "三角面", value: extra.triangleCount ?? "—" },
-        { label: "网格", value: extra.meshCount ?? "—" },
-        { label: "材质", value: extra.materialCount ?? "—" },
-        { label: "纹理", value: extra.textureCount ?? "—" },
-        { label: "动画", value: extra.animationCount ?? "—" },
-        { label: "尺寸", value: sizeText },
+        { label: translate("mediaInfo.vertexCount"), value: extra.vertexCount ?? "—" },
+        { label: translate("mediaInfo.triangleCount"), value: extra.triangleCount ?? "—" },
+        { label: translate("mediaInfo.meshCount"), value: extra.meshCount ?? "—" },
+        { label: translate("mediaInfo.materialCount"), value: extra.materialCount ?? "—" },
+        { label: translate("mediaInfo.textureCount"), value: extra.textureCount ?? "—" },
+        { label: translate("mediaInfo.animationCount"), value: extra.animationCount ?? "—" },
+        { label: translate("mediaInfo.size"), value: sizeText },
         {
-          label: "顶点色",
-          value: extra.hasVertexColors ? "有" : "无",
+          label: translate("mediaInfo.vertexColors"),
+          value: extra.hasVertexColors ? translate("mediaInfo.has") : translate("mediaInfo.none"),
         },
         {
           label: "UV",
-          value: extra.hasUvs ? "有" : "无",
+          value: extra.hasUvs ? translate("mediaInfo.has") : translate("mediaInfo.none"),
         },
         {
-          label: "法线",
-          value: extra.hasNormals ? "有" : "无",
+          label: translate("mediaInfo.normals"),
+          value: extra.hasNormals ? translate("mediaInfo.has") : translate("mediaInfo.none"),
         },
       ];
     }
     case "audio": {
       const fields: FieldDef[] = [
-        { label: "编码", value: extra.codecLongName ?? extra.codec ?? "—" },
-        { label: "采样率", value: extra.sampleRate != null ? `${formatNumber(extra.sampleRate)} Hz` : "—" },
-        { label: "声道", value: extra.channels != null ? `${extra.channels}${extra.channelLayout ? ` (${extra.channelLayout})` : ""}` : "—" },
-        { label: "位深", value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
-        { label: "码率", value: extra.bitRate != null ? formatSize(extra.bitRate) : "—" },
-        { label: "时长", value: probe.duration != null ? formatDuration(probe.duration) : "—" },
-        { label: "封面", value: extra.hasCoverArt ? "有" : "无" },
+        { label: translate("mediaInfo.codec"), value: extra.codecLongName ?? extra.codec ?? "—" },
+        { label: translate("mediaInfo.sampleRate"), value: extra.sampleRate != null ? `${formatNumber(extra.sampleRate)} Hz` : "—" },
+        { label: translate("mediaInfo.channels"), value: extra.channels != null ? `${extra.channels}${extra.channelLayout ? ` (${extra.channelLayout})` : ""}` : "—" },
+        { label: translate("mediaInfo.bitDepth"), value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
+        { label: translate("mediaInfo.bitRate"), value: extra.bitRate != null ? formatSize(extra.bitRate) : "—" },
+        { label: translate("mediaInfo.duration"), value: probe.duration != null ? formatDuration(probe.duration) : "—" },
+        { label: translate("mediaInfo.coverArt"), value: extra.hasCoverArt ? translate("mediaInfo.has") : translate("mediaInfo.none") },
       ];
       if (typeof extra.formatName === "string" && extra.formatName) {
-        fields.unshift({ label: "容器", value: extra.formatName });
+        fields.unshift({ label: translate("mediaInfo.container"), value: extra.formatName });
       }
       return fields;
     }
     case "font": {
       const axes = extra.variableAxes as Array<{ tag: string; name: string; min: number; default: number; max: number }> | undefined;
       return [
-        { label: "字族", value: extra.family ?? "—" },
-        { label: "样式", value: extra.subfamily ?? "—" },
-        { label: "字重", value: extra.weightClass != null ? String(extra.weightClass) : "—" },
-        { label: "斜体", value: extra.italic ? "是" : "否" },
-        { label: "字形数", value: extra.glyphCount ?? "—" },
-        { label: "字体类型", value: extra.flavor ?? "—" },
+        { label: translate("mediaInfo.family"), value: extra.family ?? "—" },
+        { label: translate("mediaInfo.style"), value: extra.subfamily ?? "—" },
+        { label: translate("mediaInfo.weight"), value: extra.weightClass != null ? String(extra.weightClass) : "—" },
+        { label: translate("mediaInfo.italic"), value: extra.italic ? translate("mediaInfo.yes") : translate("mediaInfo.no") },
+        { label: translate("mediaInfo.glyphCount"), value: extra.glyphCount ?? "—" },
+        { label: translate("mediaInfo.flavor"), value: extra.flavor ?? "—" },
         {
-          label: "可变轴",
+          label: translate("mediaInfo.variableAxes"),
           value: Array.isArray(axes) && axes.length
             ? axes.map((axis) => `${axis.tag} ${axis.min}-${axis.max}`).join(", ")
-            : "无",
+            : translate("mediaInfo.none"),
         },
       ];
     }
@@ -198,27 +199,27 @@ function fieldsFor(asset: MediaInfoAsset, probe: MediaProbeResult): FieldDef[] {
       if (asset.extension === "exr" || asset.extension === "hdr") {
         return [
           {
-            label: "通道",
+            label: translate("mediaInfo.channels"),
             value: formatChannels(extra.channels),
           },
-          { label: "位深", value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
-          { label: "压缩", value: extra.compression ?? "—" },
-          { label: "色彩空间", value: extra.colorSpace ?? "—" },
+          { label: translate("mediaInfo.bitDepth"), value: extra.bitDepth != null ? `${formatNumber(extra.bitDepth)} bit` : "—" },
+          { label: translate("mediaInfo.compression"), value: extra.compression ?? "—" },
+          { label: translate("mediaInfo.colorSpace"), value: extra.colorSpace ?? "—" },
           {
-            label: "分辨率",
+            label: translate("mediaInfo.resolution"),
             value:
               probe.width && probe.height
                 ? `${probe.width} × ${probe.height}`
                 : "—",
           },
-          { label: "数据窗口", value: formatWindow(extra.dataWindow) },
-          { label: "显示窗口", value: formatWindow(extra.displayWindow) },
+          { label: translate("mediaInfo.dataWindow"), value: formatWindow(extra.dataWindow) },
+          { label: translate("mediaInfo.displayWindow"), value: formatWindow(extra.displayWindow) },
           {
-            label: "色度坐标",
+            label: translate("mediaInfo.chromaticities"),
             value: formatChromaticities(extra.chromaticities),
           },
           {
-            label: "像素宽高比",
+            label: translate("mediaInfo.pixelAspectRatio"),
             value:
               extra.pixelAspectRatio != null
                 ? formatNumber(extra.pixelAspectRatio)
@@ -229,11 +230,11 @@ function fieldsFor(asset: MediaInfoAsset, probe: MediaProbeResult): FieldDef[] {
       const textFormat = extra.format === "text";
       if (textFormat) {
         return [
-          { label: "格式", value: "文本" },
-          { label: "编码", value: extra.encoding ?? "—" },
-          { label: "行数", value: extra.lineCount ?? "—" },
-          { label: "字符数", value: extra.charCount ?? "—" },
-          { label: "首行", value: extra.firstLine ?? "—" },
+          { label: translate("video.format"), value: translate("mediaInfo.text") },
+          { label: translate("mediaInfo.codec"), value: extra.encoding ?? "—" },
+          { label: translate("mediaInfo.lineCount"), value: extra.lineCount ?? "—" },
+          { label: translate("mediaInfo.charCount"), value: extra.charCount ?? "—" },
+          { label: translate("mediaInfo.firstLine"), value: extra.firstLine ?? "—" },
         ];
       }
       return [];
@@ -269,7 +270,7 @@ export function MediaInfoSection({ asset }: { asset: MediaInfoAsset }) {
 
   return (
     <div className="media-info-section">
-      <span className="field-label">媒体信息</span>
+      <span className="field-label">{translate("mediaInfo.title")}</span>
       {fields.map((field) => (
         <div className="media-info-row" key={field.label}>
           <span>{field.label}</span>

@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { FolderOpen, X } from "lucide-react";
+import { translate } from "../app/i18n";
 
 export interface FormDialogField {
   name: string;
@@ -180,17 +181,17 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       const value = (values[field.name] ?? "").trim();
       normalized[field.name] = value;
       if (field.required && !value) {
-        nextErrors[field.name] = `请输入${field.label}`;
+        nextErrors[field.name] = translate("dialogs.required").replace("{label}", field.label);
       } else if (field.maxLength && value.length > field.maxLength) {
-        nextErrors[field.name] = `最多 ${field.maxLength} 个字符`;
+        nextErrors[field.name] = translate("dialogs.maxLength").replace("{max}", String(field.maxLength));
       } else if (field.type === "number" && value) {
         const number = Number(value);
         if (!Number.isFinite(number)) {
-          nextErrors[field.name] = "请输入有效数字";
+          nextErrors[field.name] = translate("dialogs.invalidNumber");
         } else if (field.min !== undefined && number < field.min) {
-          nextErrors[field.name] = `不能小于 ${field.min}`;
+          nextErrors[field.name] = translate("dialogs.min").replace("{min}", String(field.min));
         } else if (field.max !== undefined && number > field.max) {
-          nextErrors[field.name] = `不能大于 ${field.max}`;
+          nextErrors[field.name] = translate("dialogs.max").replace("{max}", String(field.max));
         }
       }
     }
@@ -203,7 +204,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       close(normalized);
     } catch (error) {
       setFormError(
-        error instanceof Error ? error.message : "操作未完成，请重试",
+        error instanceof Error ? error.message : translate("app.operationFailed"),
       );
       setSubmitting(false);
     }
@@ -237,7 +238,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               <button
                 className="icon-button"
                 type="button"
-                aria-label="关闭"
+                aria-label={translate("dialogs.close")}
                 onClick={() => close(null)}
                 disabled={submitting}
               >
@@ -332,7 +333,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                           onClick={async () => {
                             const selected =
                               await window.refCanvas.system.pickDirectory({
-                                title: `选择${field.label}`,
+                                title: translate("dialogs.pickDirectoryFor").replace("{label}", field.label),
                                 defaultPath:
                                   values[field.name]?.trim() || undefined,
                               });
@@ -345,7 +346,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                           }}
                         >
                           <FolderOpen size={15} />
-                          浏览
+                          {translate("dialogs.browse")}
                         </button>
                       )}
                     </div>
@@ -370,14 +371,14 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                   onClick={() => close(null)}
                   disabled={submitting}
                 >
-                  取消
+                  {translate("dialogs.cancel")}
                 </button>
                 <button
                   type="submit"
                   className="primary-button"
                   disabled={submitting}
                 >
-                  {submitting ? "处理中…" : config.confirmLabel ?? "确认"}
+                  {submitting ? translate("dialogs.processing") : config.confirmLabel ?? translate("dialogs.confirm")}
                 </button>
               </footer>
             </form>
@@ -407,7 +408,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               <button
                 className="icon-button"
                 type="button"
-                aria-label="关闭"
+                aria-label={translate("dialogs.close")}
                 onClick={() => closeConfirm(false)}
               >
                 <X size={17} />
@@ -419,7 +420,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 className="secondary-button"
                 onClick={() => closeConfirm(false)}
               >
-                取消
+                {translate("dialogs.cancel")}
               </button>
               <button
                 type="button"
@@ -427,7 +428,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                 className={`primary-button${confirmConfig.danger ? " danger-button" : ""}`}
                 onClick={() => closeConfirm(true)}
               >
-                {confirmConfig.confirmLabel ?? "确认"}
+                {confirmConfig.confirmLabel ?? translate("dialogs.confirm")}
               </button>
             </footer>
           </section>

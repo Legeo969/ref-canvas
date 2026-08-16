@@ -12,6 +12,7 @@ import {
 import type { AssetRecord, BoardDocumentV3, BoardSettings } from "../../../shared/contracts";
 import { flattenHierarchy } from "../../app/board-hierarchy";
 import { inspectorMetrics, inspectorPatch, type InspectorMetrics } from "../../app/board-inspector";
+import { translate } from "../../app/i18n";
 import type { BoardCanvasObject } from "./board-fabric-kernel";
 
 export interface BoardLayerRowSnapshot {
@@ -540,7 +541,7 @@ export class BoardCanvasController {
       capabilities,
       zoom: Math.round(canvas.getZoom() * 100),
       saved: this.snapshot.saved,
-      inspector: selected.length === 1 && active ? { name: active.data?.name ?? active.data?.type ?? "对象", metrics: inspectorMetrics(active) } : null,
+      inspector: selected.length === 1 && active ? { name: active.data?.name ?? active.data?.type ?? translate("board.objectDefaultName"), metrics: inspectorMetrics(active) } : null,
     });
   }
 
@@ -556,7 +557,7 @@ export class BoardCanvasController {
       activeComment: this.snapshot.capabilities.activeHasComment ? active?.data?.comment ?? null : null,
       zoom: Math.round(canvas.getZoom() * 100),
       inspector: this.snapshot.selectionCount === 1 && active
-        ? { name: active.data?.name ?? active.data?.type ?? "对象", metrics: inspectorMetrics(active) }
+        ? { name: active.data?.name ?? active.data?.type ?? translate("board.objectDefaultName"), metrics: inspectorMetrics(active) }
         : null,
     });
   }
@@ -581,7 +582,7 @@ export class BoardCanvasController {
       if (!object) return [];
       return [{
         id,
-        name: object.data?.name ?? object.data?.type ?? `对象 ${objects.length - index}`,
+        name: object.data?.name ?? object.data?.type ?? translate("board.objectIndexName").replace("{index}", String(objects.length - index)),
         depth,
         hasChildren,
         visible: object.visible,
@@ -598,7 +599,7 @@ export class BoardCanvasController {
       const image = object as BoardCanvasObject & FabricImage;
       if (!id || !(object instanceof FabricImage) || image.data?.guideAxis) return [];
       const asset = this.assets.find((item) => item.id === image.data?.assetId);
-      return [{ id, assetId: image.data?.assetId ?? null, title: image.data?.name ?? asset?.title ?? "白板素材" } satisfies BoardFocusItemSnapshot];
+      return [{ id, assetId: image.data?.assetId ?? null, title: image.data?.name ?? asset?.title ?? translate("board.boardAssetDefaultTitle") } satisfies BoardFocusItemSnapshot];
     });
     this.publishStructure({
       layers,

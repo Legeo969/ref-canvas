@@ -5,8 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../../../../src/renderer/app/App";
 import { useAppStore } from "../../../../src/renderer/app/store";
 import { DialogProvider } from "../../../../src/renderer/components/DialogProvider";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 
 const BOARD_ID = "123e4567-e89b-12d3-a456-426614174000";
+
+setLanguage("zh-CN"); // 白板加载文案已迁移到 i18n；断言基于简体中文。
 
 describe("App auxiliary-window routing", () => {
   afterEach(() => {

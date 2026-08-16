@@ -4,8 +4,11 @@ import { createRoot } from "react-dom/client";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardObjectComment } from "../../../../src/renderer/components/BoardObjectComment";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
 
 describe("BoardObjectComment", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];

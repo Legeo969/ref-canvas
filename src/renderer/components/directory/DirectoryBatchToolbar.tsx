@@ -8,6 +8,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { translate } from "../../app/i18n";
 
 export function DirectoryBatchToolbar({
   selectedCount,
@@ -41,19 +42,19 @@ export function DirectoryBatchToolbar({
   if (selectedCount <= 0) return null;
   return (
     <div className="batch-toolbar">
-      <span>{selectedCount} 项已选</span>
-      <button onClick={onAddToBoard} title="加入参考板" aria-label="加入参考板"><PanelsTopLeft size={14} /></button>
-      <button onClick={onCopyPaths} title={allMatchingSelected ? "导出 UTF-8 路径清单" : "复制选中文件路径"}><Copy size={14} /></button>
+      <span>{translate("directory.itemsSelected").replace("{count}", String(selectedCount))}</span>
+      <button onClick={onAddToBoard} title={translate("directory.addToBoard")} aria-label={translate("directory.addToBoard")}><PanelsTopLeft size={14} /></button>
+      <button onClick={onCopyPaths} title={allMatchingSelected ? translate("directory.exportUtf8PathList") : translate("directory.copySelectedPaths")}><Copy size={14} /></button>
       {selectedVideoCount > 0 && (
-        <button onClick={onOpenVideoGif} title={`用 ${selectedVideoCount} 个视频片段生成 GIF`} aria-label="打开多视频 GIF 工作台"><Film size={14} /></button>
+        <button onClick={onOpenVideoGif} title={translate("directory.gifFromVideos").replace("{count}", String(selectedVideoCount))} aria-label={translate("directory.openMultiVideoGifWorkbench")}><Film size={14} /></button>
       )}
-      <button onClick={onCopyTo} title="复制到…"><Copy size={14} /></button>
-      <button onClick={onMoveTo} title="移动到…"><FolderOpen size={14} /></button>
-      <button onClick={onClipboardCopy} title="复制（到剪贴板）"><Copy size={14} /></button>
-      <button onClick={onClipboardCut} title="剪切"><Scissors size={14} /></button>
-      <button onClick={onTag} title="设置标签"><Tags size={14} /></button>
-      <button className="danger" onClick={onTrash} title="移入回收站"><Trash2 size={14} /></button>
-      <button className="danger" onClick={onClear} title="清除选择"><X size={14} /></button>
+      <button onClick={onCopyTo} title={translate("directory.copyTo")}><Copy size={14} /></button>
+      <button onClick={onMoveTo} title={translate("directory.moveTo")}><FolderOpen size={14} /></button>
+      <button onClick={onClipboardCopy} title={translate("directory.copyToClipboard")}><Copy size={14} /></button>
+      <button onClick={onClipboardCut} title={translate("directory.cut")}><Scissors size={14} /></button>
+      <button onClick={onTag} title={translate("preview.setTags")}><Tags size={14} /></button>
+      <button className="danger" onClick={onTrash} title={translate("preview.moveToTrash")}><Trash2 size={14} /></button>
+      <button className="danger" onClick={onClear} title={translate("directory.clearSelection")}><X size={14} /></button>
     </div>
   );
 }

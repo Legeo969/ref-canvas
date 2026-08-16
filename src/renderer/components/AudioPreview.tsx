@@ -121,10 +121,10 @@ export function AudioPreview({
         </audio>
         <div className="audio-meta">
           <Headphones size={15} aria-hidden="true" />
-          <span><small>Name</small><strong>{asset.title || asset.path.split(/[\\/]/).at(-1) || "—"}</strong></span>
-          <span><small>Format</small><strong>{asset.extension.toUpperCase()}</strong></span>
-          <span><small>Length</small><strong>{formatDuration(duration ?? asset.duration ?? null)}</strong></span>
-          <span><small>Author</small><strong>{asset.customFields?.author || "—"}</strong></span>
+          <span><small>{translate("audio.metaName")}</small><strong>{asset.title || asset.path.split(/[\\/]/).at(-1) || "—"}</strong></span>
+          <span><small>{translate("audio.metaFormat")}</small><strong>{asset.extension.toUpperCase()}</strong></span>
+          <span><small>{translate("audio.metaLength")}</small><strong>{formatDuration(duration ?? asset.duration ?? null)}</strong></span>
+          <span><small>{translate("audio.metaAuthor")}</small><strong>{asset.customFields?.author || "—"}</strong></span>
         </div>
       </div>
     </MediaNotesOverlay>

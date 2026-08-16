@@ -16,6 +16,7 @@ import type {
   WatchRoot,
 } from "../../shared/contracts";
 import { useAppStore } from "../app/store";
+import { translate } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
 
 interface MaintenancePanelProps {
@@ -77,11 +78,11 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
           <div>
             <Gauge size={18} />
             <div>
-              <h2>维护与数据安全</h2>
-              <p>备份只包含数据库、白板和设置，不复制源素材。</p>
+              <h2>{translate("settings.maintenanceTitle")}</h2>
+              <p>{translate("settings.maintenanceSubtitle")}</p>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <button className="icon-button" onClick={onClose} aria-label={translate("dialogs.close")}>
             <X size={17} />
           </button>
         </header>
@@ -94,21 +95,21 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
             }}
           >
             <DatabaseBackup size={16} />
-            立即备份
+            {translate("settings.backupNow")}
           </button>
           <button
             className="secondary-button"
             onClick={() => void window.refCanvas.system.rebuildThumbnailCache()}
           >
             <ArchiveRestore size={16} />
-            重建缩略图缓存
+            {translate("settings.rebuildThumbnails")}
           </button>
           <button
             className="secondary-button"
             onClick={() => void window.refCanvas.system.exportDiagnostics()}
           >
             <FileWarning size={16} />
-            导出诊断
+            {translate("settings.exportDiagnostics")}
           </button>
           <button
             className="secondary-button"
@@ -119,28 +120,28 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
           >
             <ScanLine size={16} />
             {mediaMetadata.state === "running"
-              ? "正在解析媒体"
-              : "重建媒体元数据"}
+              ? translate("settings.parsingMedia")
+              : translate("settings.rebuildMediaMetadata")}
           </button>
           <button
             className="secondary-button"
             onClick={() =>
               void dialog.requestForm({
-                title: "迁移素材路径",
+                title: translate("settings.migratePaths"),
                 description:
-                  "将原根目录下的素材路径映射到新目录，不移动源文件。",
-                confirmLabel: "开始迁移",
+                  translate("settings.migratePathsDescription"),
+                confirmLabel: translate("settings.startMigration"),
                 fields: [
                   {
                     name: "fromRoot",
-                    label: "原素材根目录",
+                    label: translate("settings.migrateFromRoot"),
                     type: "directory",
                     required: true,
                     maxLength: 32_768,
                   },
                   {
                     name: "toRoot",
-                    label: "新素材根目录",
+                    label: translate("settings.migrateToRoot"),
                     type: "directory",
                     required: true,
                     maxLength: 32_768,
@@ -153,14 +154,18 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
                       toRoot,
                     );
                   setMigrationResult(
-                    `路径迁移完成：已迁移 ${report.updated}，断链 ${report.missing}，冲突 ${report.conflicts}，跳过 ${report.skipped}。`,
+                    translate("settings.migrateResult")
+                      .replace("{updated}", String(report.updated))
+                      .replace("{missing}", String(report.missing))
+                      .replace("{conflicts}", String(report.conflicts))
+                      .replace("{skipped}", String(report.skipped)),
                   );
                 },
               })
             }
           >
             <FolderSync size={16} />
-            迁移素材路径
+            {translate("settings.migratePaths")}
           </button>
         </div>
         {mediaMetadata.state !== "idle" && mediaMetadata.total > 0 && (
@@ -168,10 +173,10 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
             <div>
               <span>
                 {mediaMetadata.state === "running"
-                  ? "正在离线解析视频与音频"
+                  ? translate("settings.parsingMediaOffline")
                   : mediaMetadata.state === "cancelled"
-                    ? "媒体元数据重建已取消"
-                    : "媒体元数据重建完成"}
+                    ? translate("settings.mediaRebuildCancelled")
+                    : translate("settings.mediaRebuildCompleted")}
               </span>
               <strong>
                 {mediaMetadata.processed} / {mediaMetadata.total}
@@ -182,7 +187,9 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
               value={mediaMetadata.processed}
             />
             <small>
-              已更新 {mediaMetadata.updated}，失败 {mediaMetadata.failed}
+              {translate("settings.mediaRebuildSummary")
+                .replace("{updated}", String(mediaMetadata.updated))
+                .replace("{failed}", String(mediaMetadata.failed))}
             </small>
             {mediaMetadata.state === "running" && (
               <button
@@ -191,7 +198,7 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
                   void window.refCanvas.library.cancelMediaMetadataRebuild()
                 }
               >
-                取消
+                {translate("dialogs.cancel")}
               </button>
             )}
           </div>
@@ -211,15 +218,15 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
             }}
           />
           <span>
-            启用全局快捷键
-            <small>Ctrl+Shift+C 捕获剪贴板，Ctrl+Shift+R 区域截图</small>
+            {translate("settings.globalShortcuts")}
+            <small>{translate("settings.globalShortcutsHint")}</small>
           </span>
         </label>
-        <h3>监控挂载根</h3>
+        <h3>{translate("settings.watchRoots")}</h3>
         <div className="watch-root-list">
           {watchRoots.length === 0 && (
             <p className="watch-root-empty">
-              当前没有持续监控的挂载根。
+              {translate("settings.noWatchRoots")}
             </p>
           )}
           {watchRoots.map((root) => (
@@ -227,7 +234,7 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
               <div>
                 <strong title={root.path}>{root.path}</strong>
                 <span>
-                  添加于 {new Date(root.createdAt).toLocaleString()}
+                  {translate("settings.addedAt").replace("{date}", new Date(root.createdAt).toLocaleString())}
                 </span>
               </div>
               <div className="watch-root-actions">
@@ -238,14 +245,14 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
                   }
                 >
                   <FolderOpen size={14} />
-                  定位
+                  {translate("settings.preview.locate")}
                 </button>
                 <button
                   className="secondary-button"
                   onClick={() => {
                     if (
                       window.confirm(
-                        `停止监控“${root.path}”？已建立的文件索引会保留，源文件不会被修改。`,
+                        translate("settings.stopWatchConfirm").replace("{path}", root.path),
                       )
                     ) {
                       void window.refCanvas.library
@@ -255,18 +262,18 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
                   }}
                 >
                   <FolderX size={14} />
-                  停止监控
+                  {translate("settings.stopWatch")}
                 </button>
               </div>
             </div>
           ))}
         </div>
-        <h3>本地备份</h3>
+        <h3>{translate("settings.localBackups")}</h3>
         <div className="backup-list">
           {backups.map((backup) => (
             <div className="backup-row" key={backup.path}>
               <div>
-                <strong>{backup.automatic ? "自动备份" : "手动备份"}</strong>
+                <strong>{backup.automatic ? translate("settings.automaticBackup") : translate("settings.manualBackup")}</strong>
                 <span>
                   {new Date(backup.createdAt).toLocaleString()} · {formatBytes(backup.size)}
                 </span>
@@ -276,14 +283,14 @@ export function MaintenancePanel({ onClose }: MaintenancePanelProps) {
                 onClick={() => {
                   if (
                     window.confirm(
-                      "恢复会替换当前数据库并重启 RefCanvas。当前数据库会保留回滚副本，继续吗？",
+                      translate("settings.restoreConfirm"),
                     )
                   ) {
                     void window.refCanvas.backups.restore(backup.path);
                   }
                 }}
               >
-                恢复
+                {translate("settings.restore")}
               </button>
             </div>
           ))}

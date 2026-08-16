@@ -1,5 +1,6 @@
 import { RotateCcw, X } from "lucide-react";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { translate } from "../app/i18n";
 
 export interface CropRect {
   x: number;
@@ -121,15 +122,15 @@ export function CropDialog({
         className="modal-panel crop-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label={`裁切 ${title}`}
+        aria-label={translate("crop.named").replace("{title}", title)}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
           <div>
-            <h2>裁切图片</h2>
+            <h2>{translate("crop.title")}</h2>
             <p>{title}</p>
           </div>
-          <button className="icon-button" aria-label="关闭" onClick={onClose}>
+          <button className="icon-button" aria-label={translate("preview.close")} onClick={onClose}>
             <X size={17} />
           </button>
         </header>
@@ -169,16 +170,16 @@ export function CropDialog({
             onClick={() => setRect({ x: 0, y: 0, width: 1, height: 1 })}
           >
             <RotateCcw size={15} />
-            重置
+            {translate("crop.reset")}
           </button>
           <span>
             {Math.round(rect.width * 100)}% × {Math.round(rect.height * 100)}%
           </span>
           <button className="secondary-button" onClick={onClose}>
-            取消
+            {translate("crop.cancel")}
           </button>
           <button className="primary-button" onClick={() => onApply(rect)}>
-            应用裁切
+            {translate("crop.apply")}
           </button>
         </footer>
       </section>

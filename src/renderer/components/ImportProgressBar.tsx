@@ -1,4 +1,5 @@
 import { useAppStore } from "../app/store";
+import { translate } from "../app/i18n";
 
 /**
  * 后台建索引任务进度条（目录浏览模式共用）。
@@ -11,7 +12,7 @@ export function ImportProgressBar() {
   return (
     <div className="import-progress">
       <div>
-        <span>正在建立索引</span>
+        <span>{translate("import.indexing")}</span>
         <span>
           {store.importJob.processed} / {store.importJob.discovered}
         </span>
@@ -20,7 +21,7 @@ export function ImportProgressBar() {
         max={Math.max(1, store.importJob.discovered)}
         value={store.importJob.processed}
       />
-      <button onClick={() => void store.cancelImport()}>取消</button>
+      <button onClick={() => void store.cancelImport()}>{translate("dialogs.cancel")}</button>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import type {
   SimilarAsset,
   SimilarityIndexSnapshot,
 } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 
 interface SimilarPanelProps {
   source: AssetRecord;
@@ -36,18 +37,18 @@ export function SimilarPanel({
         className="modal-panel similar-panel"
         role="dialog"
         aria-modal="true"
-        aria-label={`查找与 ${source.title} 相似的图片`}
+        aria-label={translate("similar.findFor").replace("{title}", source.title)}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
           <div className="similar-heading">
             <img src={source.thumbnailUrl} alt="" />
             <div>
-              <h2>相似图片</h2>
+              <h2>{translate("similar.title")}</h2>
               <p>{source.title}</p>
             </div>
           </div>
-          <button className="icon-button" aria-label="关闭" onClick={onClose}>
+          <button className="icon-button" aria-label={translate("dialogs.close")} onClick={onClose}>
             <X size={17} />
           </button>
         </header>
@@ -55,7 +56,7 @@ export function SimilarPanel({
         {index.state === "running" && (
           <div className="similar-index-progress">
             <div>
-              <span>正在后台建立视觉索引</span>
+              <span>{translate("similar.indexing")}</span>
               <span>
                 {index.processed} / {index.total}
               </span>
@@ -64,16 +65,16 @@ export function SimilarPanel({
               max={Math.max(1, index.total)}
               value={index.processed}
             />
-            <button onClick={onCancelIndex}>取消索引</button>
+            <button onClick={onCancelIndex}>{translate("similar.cancelIndex")}</button>
           </div>
         )}
 
         <div className="similar-toolbar">
           <span>
-            {loading ? "正在比较…" : `${results.length} 个相似结果`}
+            {loading ? translate("similar.comparing") : translate("similar.results").replace("{count}", String(results.length))}
           </span>
           <label>
-            相似度
+            {translate("similar.similarity")}
             <input
               type="range"
               min="50"
@@ -86,7 +87,7 @@ export function SimilarPanel({
           </label>
           <button className="secondary-button" onClick={onRefresh} disabled={loading}>
             <RefreshCw size={14} />
-            刷新结果
+            {translate("similar.refresh")}
           </button>
         </div>
 
@@ -109,11 +110,11 @@ export function SimilarPanel({
         ) : (
           <div className="similar-empty">
             <SearchX size={28} />
-            <h3>{loading ? "正在分析图片" : "尚未找到相似图片"}</h3>
+            <h3>{loading ? translate("similar.analyzing") : translate("similar.noResults")}</h3>
             <p>
               {index.state === "running"
-                ? "视觉索引完成后刷新，结果会逐步增加。"
-                : "可以降低相似度要求后再次搜索。"}
+                ? translate("similar.indexingHint")
+                : translate("similar.lowerThresholdHint")}
             </p>
           </div>
         )}

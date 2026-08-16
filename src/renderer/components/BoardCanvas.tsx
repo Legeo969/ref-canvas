@@ -63,6 +63,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { BoardObjectComment } from "./BoardObjectComment";
+import { translate } from "../app/i18n";
 import {
   createBoardActiveSelection,
   installBoardActiveSelection,
@@ -270,14 +271,13 @@ export function BoardCanvas({
   ) => {
     if (error instanceof Error && error.message === "BOARD_CONFLICT") {
       const saveCopy = await dialog.requestConfirm({
-        title: "白板已在其他窗口更新",
-        description:
-          "此窗口的未保存修改仍保留在画布上。可将本地版本另存为新白板；取消则继续保留当前画布。",
-        confirmLabel: "另存本地副本",
+        title: translate("board.conflictTitle"),
+        description: translate("board.conflictDescription"),
+        confirmLabel: translate("board.conflictSaveCopy"),
       });
       if (saveCopy && snapshot) {
         const copy = await window.refCanvas.boards.create(
-          `${board.title}（冲突副本）`.slice(0, 120),
+          translate("board.conflictCopyName").replace("{title}", board.title).slice(0, 120),
         );
         await window.refCanvas.boards.save(
           copy.id,
@@ -675,7 +675,7 @@ export function BoardCanvas({
     const original = target.getOriginalSize();
     setCropTarget({
       id,
-      title: boardObject.data?.name ?? "图片",
+      title: boardObject.data?.name ?? translate("board.imageDefaultName"),
       src: target.getSrc(),
       initial: {
         x: (target.cropX ?? 0) / original.width,
@@ -829,7 +829,7 @@ export function BoardCanvas({
           windowMode: "normal",
         };
         scheduleSaveRef.current?.();
-        setDropNotice("已通过紧急快捷键退出透明穿透模式");
+        setDropNotice(translate("board.exitClickThroughNotice"));
       }),
     [],
   );
@@ -1014,7 +1014,7 @@ export function BoardCanvas({
           name:
             target.data?.name ??
             target.data?.type ??
-            `对象 ${canvas.getObjects().length}`,
+            translate("board.objectIndexName").replace("{index}", String(canvas.getObjects().length)),
         });
         if (changed && loadingRef.current) migratedIdentity = true;
         if (target.data?.objectId) {
@@ -1056,7 +1056,7 @@ export function BoardCanvas({
       path.data = {
         ...(path.data ?? {}),
         type: "drawing-pencil",
-        name: "自由绘制",
+        name: translate("board.drawingNamePencil"),
       };
       path.set({
         strokeDashArray: style.dashed
@@ -1227,7 +1227,7 @@ export function BoardCanvas({
       const target = event.target as CanvasObjectWithData | undefined;
       if (target) {
         propagateHierarchyTransform(canvas, target);
-        setHudMessage(`旋转 ${Math.round(normalizeSignedAngle(target.angle ?? 0))}°`);
+        setHudMessage(translate("board.hudRotate").replace("{angle}", String(Math.round(normalizeSignedAngle(target.angle ?? 0)))));
       }
     });
     controller.onCanvas(canvas, "mouse:dblclick", (event) => {
@@ -1564,9 +1564,9 @@ export function BoardCanvas({
               .join("")
               .toUpperCase()}`;
             void navigator.clipboard.writeText(hex).catch(() => undefined);
-            showHud(`${hex} · 已复制`);
+            showHud(translate("board.hudColorCopied").replace("{hex}", hex));
           } catch {
-            showHud("无法读取该像素");
+            showHud(translate("board.hudPixelReadFailed"));
           }
         } else {
           const image = pointedObject instanceof FabricImage ? pointedObject : null;
@@ -1578,11 +1578,15 @@ export function BoardCanvas({
             const sourceX = (image.cropX ?? 0) + local.x + image.width / 2;
             const sourceY = (image.cropY ?? 0) + local.y + image.height / 2;
             showHud(
-              `图片坐标 X ${sourceX.toFixed(1)} · Y ${sourceY.toFixed(1)}`,
+              translate("board.hudImageCoords")
+                .replace("{x}", sourceX.toFixed(1))
+                .replace("{y}", sourceY.toFixed(1)),
             );
           } else {
             showHud(
-              `画布坐标 X ${scenePoint.x.toFixed(1)} · Y ${scenePoint.y.toFixed(1)}`,
+              translate("board.hudCanvasCoords")
+                .replace("{x}", scenePoint.x.toFixed(1))
+                .replace("{y}", scenePoint.y.toFixed(1)),
             );
           }
         }
@@ -1617,7 +1621,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "move";
         canvas.setCursor("move");
         canvas.requestRenderAll();
-        showHud("左右拖动水平翻转 · 上下拖动垂直翻转");
+        showHud(translate("board.hudFlipHint"));
         return;
       }
 
@@ -1649,7 +1653,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "ew-resize";
         canvas.setCursor("ew-resize");
         canvas.requestRenderAll();
-        showHud(`透明度 ${Math.round((opacityTarget.opacity ?? 1) * 100)}%`);
+        showHud(translate("board.hudOpacity").replace("{percent}", String(Math.round((opacityTarget.opacity ?? 1) * 100))));
         return;
       }
 
@@ -1690,7 +1694,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "ew-resize";
         canvas.setCursor("ew-resize");
         canvas.requestRenderAll();
-        showHud("左右拖动缩放选中对象");
+        showHud(translate("board.hudScaleHint"));
         return;
       }
 
@@ -1730,7 +1734,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "grabbing";
         canvas.setCursor("grabbing");
         canvas.requestRenderAll();
-        showHud(`旋转 ${Math.round(normalizeSignedAngle(rotateTarget.angle ?? 0))}°`);
+        showHud(translate("board.hudRotate").replace("{angle}", String(Math.round(normalizeSignedAngle(rotateTarget.angle ?? 0)))));
         return;
       }
 
@@ -1775,7 +1779,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "crosshair";
         canvas.setCursor("crosshair");
         canvas.requestRenderAll();
-        showHud("拖动选择裁切区域");
+        showHud(translate("board.hudCropHint"));
         return;
       }
 
@@ -1813,7 +1817,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "ew-resize";
         canvas.setCursor("ew-resize");
         canvas.requestRenderAll();
-        showHud("左右拖动缩放裁切内容");
+        showHud(translate("board.hudCropZoomHint"));
         return;
       }
 
@@ -1847,7 +1851,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "move";
         canvas.setCursor("move");
         canvas.requestRenderAll();
-        showHud("拖动裁切内容");
+        showHud(translate("board.hudCropPanHint"));
         return;
       }
 
@@ -1876,7 +1880,7 @@ export function BoardCanvas({
         canvas.defaultCursor = "ns-resize";
         canvas.setCursor("ns-resize");
         canvas.requestRenderAll();
-        showHud("上下拖动连续缩放");
+        showHud(translate("board.hudZoomHint"));
         return;
       }
 
@@ -1965,7 +1969,7 @@ export function BoardCanvas({
           gesture.target.setCoords();
           gesture.changed = Math.abs(transform.accumulatedAngle) > 0.05;
           scheduleRender();
-          showHud(`旋转 ${Math.round(normalizeSignedAngle(angle))}°`);
+          showHud(translate("board.hudRotate").replace("{angle}", String(Math.round(normalizeSignedAngle(angle)))));
         } else if (gesture.kind === "scale") {
           const transform = gesture.transform;
           if (!transform) return;
@@ -1979,7 +1983,7 @@ export function BoardCanvas({
           gesture.changed = Math.abs(pointerEvent.clientX - gesture.startX) > 0.5;
           scheduleRender();
           showHud(
-            `缩放 ${Math.round((scale.scaleX / transform.baseScaleX) * 100)}%`,
+            translate("board.hudZoomPercent").replace("{percent}", String(Math.round((scale.scaleX / transform.baseScaleX) * 100))),
           );
         } else if (gesture.kind === "opacity") {
           const next = clampOpacity(
@@ -1989,7 +1993,7 @@ export function BoardCanvas({
           gesture.target.set("opacity", next);
           gesture.changed = Math.abs(next - gesture.baseOpacity) > 0.001;
           scheduleRender();
-          showHud(`透明度 ${Math.round(next * 100)}%`);
+          showHud(translate("board.hudOpacity").replace("{percent}", String(Math.round(next * 100))));
         } else if (gesture.kind === "cropPan") {
           const image = gesture.target as FabricImage;
           const delta = cropPanDelta(
@@ -2040,7 +2044,7 @@ export function BoardCanvas({
           gesture.changed = Math.abs(pointerEvent.clientX - gesture.startX) > 0.5;
           scheduleRender();
           showHud(
-            `裁切内容 ${Math.round((next.scaleX / snapshot.scaleX) * 100)}%`,
+            translate("board.hudCropZoomPercent").replace("{percent}", String(Math.round((next.scaleX / snapshot.scaleX) * 100))),
           );
         } else if (gesture.kind === "flip") {
           const snapshot = gesture.snapshot;
@@ -2056,7 +2060,7 @@ export function BoardCanvas({
           gesture.target.setCoords();
           gesture.changed = axis !== null;
           scheduleRender();
-          if (axis) showHud(axis === "x" ? "水平翻转" : "垂直翻转");
+          if (axis) showHud(axis === "x" ? translate("board.flipH") : translate("board.flipV"));
         }
         gesture.lastX = pointerEvent.clientX;
         gesture.lastY = pointerEvent.clientY;
@@ -2079,7 +2083,7 @@ export function BoardCanvas({
         scheduleZoomState(Math.round(nextZoom * 100));
         scheduleProxyRefresh();
         gesture.lastY = pointerEvent.clientY;
-        showHud(`缩放 ${Math.round(nextZoom * 100)}%`);
+        showHud(translate("board.hudZoomPercent").replace("{percent}", String(Math.round(nextZoom * 100))));
         return;
       }
       if (gesture.kind === "crop" && cropRectRef.current) {
@@ -2915,7 +2919,7 @@ export function BoardCanvas({
     (group as CanvasObjectWithData).data = {
       type: "group",
       objectId: crypto.randomUUID(),
-      name: "组合",
+      name: translate("board.groupDefaultName"),
     };
     canvas.add(group);
     canvas.setActiveObject(group);
@@ -3026,12 +3030,12 @@ export function BoardCanvas({
     if (!canvas) return;
     const active = canvas.getActiveObject();
     await dialog.requestForm({
-      title: "设置透明度",
-      confirmLabel: "应用",
+      title: translate("board.opacityTitle"),
+      confirmLabel: translate("board.apply"),
       fields: [
         {
           name: "opacity",
-          label: "透明度（0–100）",
+          label: translate("board.opacityLabel"),
           type: "number",
           initialValue: String(Math.round((active?.opacity ?? 1) * 100)),
           required: true,
@@ -3054,19 +3058,19 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     const object = target ?? (canvas?.getActiveObject() as CanvasObjectWithData);
     if (!canvas || !object || object instanceof ActiveSelection) return;
-    const name = object.data?.name ?? object.data?.type ?? "对象";
+    const name = object.data?.name ?? object.data?.type ?? translate("board.objectDefaultName");
     await dialog.requestForm({
-      title: object.data?.comment ? "编辑对象评论" : "添加对象评论",
-      description: `“${name}” · 评论随白板保存，不修改源文件。`,
-      confirmLabel: "保存评论",
+      title: object.data?.comment ? translate("board.commentEdit") : translate("board.commentAdd"),
+      description: translate("board.commentDescription").replace("{name}", name),
+      confirmLabel: translate("board.commentSave"),
       fields: [
         {
           name: "comment",
-          label: "评论",
+          label: translate("board.commentLabel"),
           type: "textarea",
           rows: 7,
           initialValue: object.data?.comment ?? "",
-          placeholder: "记录构图、材质、修改意见或来源说明…",
+          placeholder: translate("board.commentPlaceholder"),
           maxLength: 5000,
         },
       ],
@@ -3092,13 +3096,13 @@ export function BoardCanvas({
 
   const editBoardAppearance = async () => {
     await dialog.requestForm({
-      title: "白板外观",
-      description: "设置仅应用于当前白板，并随白板文档保存。",
-      confirmLabel: "应用",
+      title: translate("board.appearanceTitle"),
+      description: translate("board.appearanceDescription"),
+      confirmLabel: translate("board.apply"),
       fields: [
         {
           name: "backgroundColor",
-          label: "背景颜色（Hex）",
+          label: translate("board.appearanceBackgroundLabel"),
           initialValue: runtime.appearance.backgroundColor,
           required: true,
           maxLength: 7,
@@ -3106,7 +3110,7 @@ export function BoardCanvas({
         },
         {
           name: "gridSize",
-          label: "网格间距（8–96 px）",
+          label: translate("board.appearanceGridLabel"),
           type: "number",
           initialValue: String(runtime.appearance.gridSize),
           required: true,
@@ -3116,7 +3120,7 @@ export function BoardCanvas({
       ],
       onSubmit: ({ backgroundColor, gridSize }) => {
         if (!/^#[0-9a-f]{6}$/i.test(backgroundColor)) {
-          throw new Error("背景颜色必须是 6 位 Hex，例如 #202426");
+          throw new Error(translate("board.appearanceHexError"));
         }
         updateAppearance({
           ...runtime.appearance,
@@ -3208,7 +3212,7 @@ export function BoardCanvas({
   /** Arms one-shot canvas pixel sampling; the next canvas click reports color and scene coordinates. */
   const sampleColor = () => {
     setColorSampling(true);
-    setDropNotice("取色模式：点击白板上的图片或对象，Esc 取消");
+    setDropNotice(translate("board.samplingNotice"));
   };
 
   const sampleCanvasPixel = async (
@@ -3267,20 +3271,20 @@ export function BoardCanvas({
       const point = canvas.getScenePoint(event.nativeEvent);
       await navigator.clipboard.writeText(hex).catch(() => undefined);
       await dialog.requestForm({
-        title: "画布取色结果",
-        description: "颜色已复制到剪贴板。",
-        confirmLabel: "关闭",
+        title: translate("board.samplingResultTitle"),
+        description: translate("board.samplingResultDescription"),
+        confirmLabel: translate("preview.close"),
         fields: [
-          { name: "color", label: "颜色（Hex）", initialValue: hex, maxLength: 7 },
+          { name: "color", label: translate("board.samplingColorLabel"), initialValue: hex, maxLength: 7 },
           {
             name: "x",
-            label: "X（画布 px）",
+            label: translate("board.samplingXLabel"),
             initialValue: point.x.toFixed(1),
             maxLength: 16,
           },
           {
             name: "y",
-            label: "Y（画布 px）",
+            label: translate("board.samplingYLabel"),
             initialValue: point.y.toFixed(1),
             maxLength: 16,
           },
@@ -3288,7 +3292,7 @@ export function BoardCanvas({
         onSubmit: () => undefined,
       });
     } catch {
-      setDropNotice("无法读取该像素；素材可能不允许画布取样");
+      setDropNotice(translate("board.samplingReadFailed"));
     }
   };
 
@@ -3314,13 +3318,13 @@ export function BoardCanvas({
     if (!resolution) return;
     if (resolution.candidates && resolution.candidates.length > 1) {
       const values = await dialog.requestForm({
-        title: "重新连接引用（多个候选）",
-        description: "该文件在多个位置匹配 fingerprint，请选择目标。",
-        confirmLabel: "连接",
+        title: translate("board.relinkTitle"),
+        description: translate("board.relinkDescription"),
+        confirmLabel: translate("board.relinkConfirm"),
         fields: [
           {
             name: "target",
-            label: "候选文件",
+            label: translate("board.relinkCandidateLabel"),
             type: "select" as const,
             required: true,
             options: resolution.candidates.map((candidate) => ({
@@ -3339,7 +3343,7 @@ export function BoardCanvas({
       );
     } else {
       const target = await window.refCanvas.system.pickFile({
-        title: "选择原文件的新位置",
+        title: translate("board.relinkPickTitle"),
         defaultPath: resolution.path ?? undefined,
       });
       if (!target[0]) return;
@@ -3532,7 +3536,7 @@ export function BoardCanvas({
         await window.refCanvas.system.setAlwaysOnBottom(false);
         await window.refCanvas.system.setWindowTransparent(true);
         await window.refCanvas.system.setClickThrough(true);
-        setDropNotice("透明穿透已开启；Ctrl+Alt+Shift+R 紧急退出");
+        setDropNotice(translate("board.clickThroughNotice"));
       } else if (mode === "locked") {
         toggleCanvasLock();
       }
@@ -3542,7 +3546,7 @@ export function BoardCanvas({
         scheduleSaveRef.current?.();
       }
     } catch {
-      setDropNotice("窗口模式切换失败，已保留当前安全状态");
+      setDropNotice(translate("board.windowModeFailed"));
     }
   };
 
@@ -4206,8 +4210,8 @@ export function BoardCanvas({
     scheduleSaveRef.current?.();
     setDropNotice(
       assetIds.length > 500
-        ? `已放入前 ${ids.length} 项；单次拖放最多 500 项`
-        : `已将 ${added.length} 项放入白板`,
+        ? translate("board.dropLimited").replace("{count}", String(ids.length))
+        : translate("board.dropPlaced").replace("{count}", String(added.length)),
     );
     window.setTimeout(() => setDropNotice(null), 2400);
     return added.length;
@@ -4240,7 +4244,7 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const center = sceneCenter(canvas);
-    const text = new Textbox("输入文字", {
+    const text = new Textbox(translate("board.textDefaultContent"), {
       left: center.x - 70,
       top: center.y - 20,
       width: 180,
@@ -4262,20 +4266,20 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const values = await dialog.requestForm({
-      title: "新建便签",
-      description: "便签支持富文本、链接与清单，随白板一起保存。",
-      confirmLabel: "创建",
+      title: translate("board.noteNewTitle"),
+      description: translate("board.noteNewDescription"),
+      confirmLabel: translate("boards.createConfirm"),
       fields: [
         {
           name: "text",
-          label: "便签内容",
+          label: translate("board.noteContentLabel"),
           type: "textarea",
           rows: 4,
           required: true,
           maxLength: 4_000,
         },
-        { name: "link", label: "链接（可选）", maxLength: 512 },
-        { name: "width", label: "宽度 px（留空自动）", initialValue: "240", maxLength: 4 },
+        { name: "link", label: translate("board.noteLinkOptionalLabel"), maxLength: 512 },
+        { name: "width", label: translate("board.noteWidthLabel"), initialValue: "240", maxLength: 4 },
       ],
       onSubmit: () => undefined,
     });
@@ -4320,20 +4324,20 @@ export function BoardCanvas({
       link: string | null;
     };
     const values = await dialog.requestForm({
-      title: "编辑便签",
-      confirmLabel: "保存",
+      title: translate("board.noteEditTitle"),
+      confirmLabel: translate("collections.save"),
       fields: [
         {
           name: "text",
-          label: "内容",
+          label: translate("board.noteEditContentLabel"),
           type: "textarea",
           rows: 4,
           initialValue: note.text,
           required: true,
           maxLength: 4_000,
         },
-        { name: "link", label: "链接", initialValue: note.link ?? "", maxLength: 512 },
-        { name: "checklist", label: "清单项（每行一项，[x] 表示已完成）", type: "textarea", rows: 4, initialValue: note.checklist.map((item) => `${item.checked ? "[x]" : "[ ]"} ${item.text}`).join("\n"), maxLength: 4_000 },
+        { name: "link", label: translate("board.noteLinkLabel"), initialValue: note.link ?? "", maxLength: 512 },
+        { name: "checklist", label: translate("board.noteChecklistLabel"), type: "textarea", rows: 4, initialValue: note.checklist.map((item) => `${item.checked ? "[x]" : "[ ]"} ${item.text}`).join("\n"), maxLength: 4_000 },
       ],
       onSubmit: () => undefined,
     });
@@ -4371,13 +4375,13 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const values = await dialog.requestForm({
-      title: "新建清单",
-      description: "每行一项；以 [x] 开头表示已完成。",
-      confirmLabel: "创建",
+      title: translate("board.checklistNewTitle"),
+      description: translate("board.checklistNewDescription"),
+      confirmLabel: translate("boards.createConfirm"),
       fields: [
         {
           name: "items",
-          label: "清单项",
+          label: translate("board.checklistItemsLabel"),
           type: "textarea",
           rows: 5,
           required: true,
@@ -4491,7 +4495,7 @@ export function BoardCanvas({
     (guide as CanvasObjectWithData).data = {
       type: "guide",
       guideAxis: axis,
-      name: axis === "x" ? "垂直参考线" : "水平参考线",
+      name: axis === "x" ? translate("board.guideVertical") : translate("board.guideHorizontal"),
     };
     canvas.add(guide);
     canvas.setActiveObject(guide);
@@ -4506,15 +4510,15 @@ export function BoardCanvas({
   const boardCommands: BoardCommand[] = [
     {
       id: "tool-select",
-      label: "选择工具",
-      group: "工具",
+      label: translate("board.toolSelect"),
+      group: translate("board.groupTools"),
       keywords: ["select pointer"],
       run: () => setTool("select"),
     },
     {
       id: "tool-pencil",
-      label: "自由画笔",
-      group: "工具",
+      label: translate("board.drawingToolPencil"),
+      group: translate("board.groupTools"),
       keywords: ["draw pencil brush"],
       run: () => {
         setLastDrawingTool("pencil");
@@ -4523,8 +4527,8 @@ export function BoardCanvas({
     },
     {
       id: "tool-line",
-      label: "绘制直线",
-      group: "工具",
+      label: translate("board.drawLine"),
+      group: translate("board.groupTools"),
       keywords: ["draw line"],
       run: () => {
         setLastDrawingTool("line");
@@ -4533,8 +4537,8 @@ export function BoardCanvas({
     },
     {
       id: "tool-rectangle",
-      label: "绘制矩形",
-      group: "工具",
+      label: translate("board.drawRectangle"),
+      group: translate("board.groupTools"),
       keywords: ["draw rectangle"],
       run: () => {
         setLastDrawingTool("rectangle");
@@ -4543,8 +4547,8 @@ export function BoardCanvas({
     },
     {
       id: "tool-ellipse",
-      label: "绘制圆形",
-      group: "工具",
+      label: translate("board.drawEllipse"),
+      group: translate("board.groupTools"),
       keywords: ["draw ellipse circle"],
       run: () => {
         setLastDrawingTool("ellipse");
@@ -4553,121 +4557,121 @@ export function BoardCanvas({
     },
     {
       id: "drawing-settings",
-      label: "绘图工具设置",
-      group: "工具",
+      label: translate("board.drawingSettings"),
+      group: translate("board.groupTools"),
       keywords: ["drawing style color width"],
       run: () => setDrawingPanelOpen(true),
     },
     {
       id: "add-text",
-      label: "添加文字",
-      group: "插入",
+      label: translate("board.addText"),
+      group: translate("board.groupInsert"),
       keywords: ["text"],
       run: addText,
     },
     {
       id: "add-arrow",
-      label: "添加箭头",
-      group: "插入",
+      label: translate("board.addArrow"),
+      group: translate("board.groupInsert"),
       keywords: ["arrow"],
       run: addArrow,
     },
     {
       id: "add-rectangle",
-      label: "添加矩形对象",
-      group: "插入",
+      label: translate("board.addRectangleObject"),
+      group: translate("board.groupInsert"),
       keywords: ["rectangle shape"],
       run: addRectangle,
     },
     {
       id: "add-guide-x",
-      label: "添加垂直参考线",
-      group: "插入",
+      label: translate("board.addGuideX"),
+      group: translate("board.groupInsert"),
       keywords: ["guide vertical"],
       run: () => addGuide("x"),
     },
     {
       id: "add-guide-y",
-      label: "添加水平参考线",
-      group: "插入",
+      label: translate("board.addGuideY"),
+      group: translate("board.groupInsert"),
       keywords: ["guide horizontal"],
       run: () => addGuide("y"),
     },
     {
       id: "move-back",
-      label: "移到最底层",
-      group: "排列",
+      label: translate("board.moveBottom"),
+      group: translate("board.groupArrange"),
       disabled: !hasSelection,
       keywords: ["send back"],
       run: () => moveSelection(false),
     },
     {
       id: "move-front",
-      label: "移到最顶层",
-      group: "排列",
+      label: translate("board.moveTop"),
+      group: translate("board.groupArrange"),
       disabled: !hasSelection,
       keywords: ["bring front"],
       run: () => moveSelection(true),
     },
     {
       id: "rotate-90",
-      label: "顺时针旋转 90°",
-      group: "变换",
+      label: translate("board.rotate90"),
+      group: translate("board.groupTransform"),
       disabled: !hasSelection,
       keywords: ["rotate"],
       run: () => transformSelection("rotate"),
     },
     {
       id: "flip-x",
-      label: "水平翻转",
-      group: "变换",
+      label: translate("board.flipH"),
+      group: translate("board.groupTransform"),
       disabled: !hasSelection,
       keywords: ["flip horizontal"],
       run: () => transformSelection("flipX"),
     },
     {
       id: "flip-y",
-      label: "垂直翻转",
-      group: "变换",
+      label: translate("board.flipV"),
+      group: translate("board.groupTransform"),
       disabled: !hasSelection,
       keywords: ["flip vertical"],
       run: () => transformSelection("flipY"),
     },
     ...([
-      ["align-left", "左对齐", "left"],
-      ["align-center-x", "水平居中", "centerX"],
-      ["align-right", "右对齐", "right"],
-      ["align-top", "顶部对齐", "top"],
-      ["align-center-y", "垂直居中", "centerY"],
-      ["align-bottom", "底部对齐", "bottom"],
-    ] as const).map(([id, label, mode]) => ({
+      ["align-left", "board.alignLeft", "left"],
+      ["align-center-x", "board.alignCenterX", "centerX"],
+      ["align-right", "board.alignRight", "right"],
+      ["align-top", "board.alignTop", "top"],
+      ["align-center-y", "board.alignCenterY", "centerY"],
+      ["align-bottom", "board.alignBottom", "bottom"],
+    ] as const).map(([id, labelKey, mode]) => ({
       id,
-      label,
-      group: "排列",
+      label: translate(labelKey),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 2,
       keywords: ["align"],
       run: () => alignSelection(mode),
     })),
     {
       id: "distribute-x",
-      label: "水平分布",
-      group: "排列",
+      label: translate("board.distributeX"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 3,
       keywords: ["distribute horizontal"],
       run: () => distributeSelection("x"),
     },
     {
       id: "distribute-y",
-      label: "垂直分布",
-      group: "排列",
+      label: translate("board.distributeY"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 3,
       keywords: ["distribute vertical"],
       run: () => distributeSelection("y"),
     },
     {
       id: "arrange-compact",
-      label: "紧凑排列",
-      group: "排列",
+      label: translate("board.arrangeCompact"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4676,8 +4680,8 @@ export function BoardCanvas({
     },
     {
       id: "arrange-by-name",
-      label: "按名称排列",
-      group: "排列",
+      label: translate("board.arrangeByName"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4686,8 +4690,8 @@ export function BoardCanvas({
     },
     {
       id: "arrange-by-added",
-      label: "按添加时间排列",
-      group: "排列",
+      label: translate("board.arrangeByAdded"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4696,8 +4700,8 @@ export function BoardCanvas({
     },
     {
       id: "arrange-by-layer",
-      label: "按图层顺序排列",
-      group: "排列",
+      label: translate("board.arrangeByLayer"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4706,8 +4710,8 @@ export function BoardCanvas({
     },
     {
       id: "arrange-by-path",
-      label: "按路径排列",
-      group: "排列",
+      label: translate("board.arrangeByPath"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4716,8 +4720,8 @@ export function BoardCanvas({
     },
     {
       id: "arrange-random",
-      label: "随机排列",
-      group: "排列",
+      label: translate("board.arrangeRandom"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4726,8 +4730,8 @@ export function BoardCanvas({
     },
     {
       id: "arrange-stack",
-      label: "堆叠排列",
-      group: "排列",
+      label: translate("board.arrangeStack"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount
         ? selectionCount < 2
         : !hasBoardObjects,
@@ -4736,62 +4740,62 @@ export function BoardCanvas({
     },
     {
       id: "uniform-area",
-      label: "统一面积",
-      group: "排列",
+      label: translate("board.uniformArea"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 2,
       keywords: ["same area"],
       run: () => uniformArea(),
     },
     {
       id: "uniform-scale",
-      label: "统一缩放",
-      group: "排列",
+      label: translate("board.uniformScale"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 2,
       keywords: ["same scale"],
       run: () => uniformScale(),
     },
     {
       id: "add-note",
-      label: "新建便签（富文本/链接/清单）",
-      group: "插入",
+      label: translate("board.addNote"),
+      group: translate("board.groupInsert"),
       keywords: ["sticky note checklist"],
       run: () => void addNote(),
     },
     {
       id: "add-checklist",
-      label: "新建清单",
-      group: "插入",
+      label: translate("board.addChecklist"),
+      group: translate("board.groupInsert"),
       keywords: ["todo checklist"],
       run: () => void addChecklistNote(),
     },
     {
       id: "edit-note",
-      label: "编辑便签内容",
-      group: "编辑",
+      label: translate("board.editNote"),
+      group: translate("board.groupEdit"),
       disabled: !capabilities.hasNote,
       keywords: ["edit note"],
       run: () => void editSelectedNote(),
     },
     {
       id: "normalize-width",
-      label: "统一宽度",
-      group: "排列",
+      label: translate("board.normalizeWidth"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 2,
       keywords: ["same width"],
       run: () => normalizeSize("width"),
     },
     {
       id: "normalize-height",
-      label: "统一高度",
-      group: "排列",
+      label: translate("board.normalizeHeight"),
+      group: translate("board.groupArrange"),
       disabled: selectionCount < 2,
       keywords: ["same height"],
       run: () => normalizeSize("height"),
     },
     {
       id: "reset-transform",
-      label: "重置尺寸、旋转和翻转",
-      group: "变换",
+      label: translate("board.resetTransform"),
+      group: translate("board.groupTransform"),
       shortcut: shortcutBindings.resetTransform || undefined,
       disabled: !hasSelection,
       keywords: ["reset transform"],
@@ -4799,16 +4803,16 @@ export function BoardCanvas({
     },
     {
       id: "lock",
-      label: "锁定或解锁",
-      group: "对象",
+      label: translate("board.toggleLock"),
+      group: translate("board.groupObject"),
       disabled: !hasSelection,
       keywords: ["lock unlock"],
       run: toggleLockSelection,
     },
     {
       id: "group",
-      label: "组合",
-      group: "对象",
+      label: translate("board.group"),
+      group: translate("board.groupObject"),
       shortcut: shortcutBindings.group || undefined,
       disabled: !capabilities.activeIsMultiSelection,
       keywords: ["group"],
@@ -4816,8 +4820,8 @@ export function BoardCanvas({
     },
     {
       id: "ungroup",
-      label: "取消组合",
-      group: "对象",
+      label: translate("board.ungroup"),
+      group: translate("board.groupObject"),
       shortcut: shortcutBindings.ungroup || undefined,
       disabled: !capabilities.activeIsGroup,
       keywords: ["ungroup"],
@@ -4825,8 +4829,8 @@ export function BoardCanvas({
     },
     {
       id: "parent",
-      label: "建立父子关系",
-      group: "对象",
+      label: translate("board.parent"),
+      group: translate("board.groupObject"),
       shortcut: shortcutBindings.parent || undefined,
       disabled: selectionCount < 2,
       keywords: ["parent hierarchy"],
@@ -4834,8 +4838,8 @@ export function BoardCanvas({
     },
     {
       id: "unparent",
-      label: "解除父级",
-      group: "对象",
+      label: translate("board.unparent"),
+      group: translate("board.groupObject"),
       shortcut: shortcutBindings.unparent || undefined,
       disabled: !capabilities.hasParent,
       keywords: ["unparent hierarchy"],
@@ -4843,24 +4847,24 @@ export function BoardCanvas({
     },
     {
       id: "mask-rect",
-      label: "应用矩形蒙版",
-      group: "图片",
+      label: translate("board.maskRect"),
+      group: translate("board.groupImage"),
       disabled: !hasSelection,
       keywords: ["mask rectangle"],
       run: () => applyMask("rect"),
     },
     {
       id: "mask-circle",
-      label: "应用圆形蒙版",
-      group: "图片",
+      label: translate("board.maskCircle"),
+      group: translate("board.groupImage"),
       disabled: !hasSelection,
       keywords: ["mask circle"],
       run: () => applyMask("circle"),
     },
     {
       id: "crop",
-      label: "裁切图片",
-      group: "图片",
+      label: translate("board.cropImage"),
+      group: translate("board.groupImage"),
       disabled: !capabilities.activeIsImage,
       keywords: ["crop"],
       run: () => {
@@ -4870,40 +4874,40 @@ export function BoardCanvas({
     },
     {
       id: "reset-crop",
-      label: "重置图片裁切",
-      group: "图片",
+      label: translate("board.resetCrop"),
+      group: translate("board.groupImage"),
       disabled: !hasImageSelection,
       keywords: ["reset crop"],
       run: resetSelectionCrop,
     },
     {
       id: "grayscale",
-      label: "切换图片灰度",
-      group: "图片",
+      label: translate("board.toggleGrayscale"),
+      group: translate("board.groupImage"),
       disabled: !hasImageSelection,
       keywords: ["black white grayscale"],
       run: () => setSelectionGrayscale("toggle"),
     },
     {
       id: "restore-color",
-      label: "恢复图片原色",
-      group: "图片",
+      label: translate("board.restoreColor"),
+      group: translate("board.groupImage"),
       disabled: !hasImageSelection,
       keywords: ["restore color"],
       run: () => setSelectionGrayscale(false),
     },
     {
       id: "opacity",
-      label: "设置透明度",
-      group: "对象",
+      label: translate("board.opacityTitle"),
+      group: translate("board.groupObject"),
       disabled: !hasSelection,
       keywords: ["opacity"],
       run: setSelectionOpacity,
     },
     {
       id: "duplicate",
-      label: "复制对象",
-      group: "编辑",
+      label: translate("board.duplicate"),
+      group: translate("board.groupEdit"),
       shortcut: shortcutBindings.duplicate || undefined,
       disabled: !hasSelection,
       keywords: ["duplicate"],
@@ -4911,8 +4915,8 @@ export function BoardCanvas({
     },
     {
       id: "copy",
-      label: "复制到白板剪贴板",
-      group: "编辑",
+      label: translate("board.copyClipboard"),
+      group: translate("board.groupEdit"),
       shortcut: shortcutBindings.copy || undefined,
       disabled: !hasSelection,
       keywords: ["copy"],
@@ -4920,8 +4924,8 @@ export function BoardCanvas({
     },
     {
       id: "paste",
-      label: "粘贴白板对象",
-      group: "编辑",
+      label: translate("board.pasteObject"),
+      group: translate("board.groupEdit"),
       shortcut: shortcutBindings.paste || undefined,
       disabled: boardClipboard.length === 0,
       keywords: ["paste"],
@@ -4929,8 +4933,8 @@ export function BoardCanvas({
     },
     {
       id: "comment",
-      label: activeHasComment ? "编辑对象评论" : "添加对象评论",
-      group: "对象",
+      label: activeHasComment ? translate("board.commentEdit") : translate("board.commentAdd"),
+      group: translate("board.groupObject"),
       shortcut: shortcutBindings.comment || undefined,
       disabled: !boardSnapshot.activeObjectId || capabilities.activeIsMultiSelection,
       keywords: ["comment note"],
@@ -4938,8 +4942,8 @@ export function BoardCanvas({
     },
     {
       id: "delete",
-      label: "删除对象",
-      group: "编辑",
+      label: translate("board.delete"),
+      group: translate("board.groupEdit"),
       shortcut: shortcutBindings.delete || undefined,
       disabled: !hasSelection,
       keywords: ["delete remove"],
@@ -4947,8 +4951,8 @@ export function BoardCanvas({
     },
     {
       id: "undo",
-      label: "撤销",
-      group: "编辑",
+      label: translate("board.undo"),
+      group: translate("board.groupEdit"),
       shortcut: shortcutBindings.undo || undefined,
       disabled: !historyControllerRef.current.canUndo,
       keywords: ["undo"],
@@ -4956,8 +4960,8 @@ export function BoardCanvas({
     },
     {
       id: "redo",
-      label: "重做",
-      group: "编辑",
+      label: translate("board.redo"),
+      group: translate("board.groupEdit"),
       shortcut: shortcutBindings.redo || undefined,
       disabled: !historyControllerRef.current.canRedo,
       keywords: ["redo"],
@@ -4965,8 +4969,8 @@ export function BoardCanvas({
     },
     {
       id: "fit-all",
-      label: "适应全部对象",
-      group: "视图",
+      label: translate("board.fitAll"),
+      group: translate("board.groupView"),
       shortcut: shortcutBindings.fitAll || undefined,
       disabled: !hasBoardObjects,
       keywords: ["fit all"],
@@ -4974,8 +4978,8 @@ export function BoardCanvas({
     },
     {
       id: "fit-selection",
-      label: "适应选区",
-      group: "视图",
+      label: translate("board.fitSelection"),
+      group: translate("board.groupView"),
       shortcut: shortcutBindings.fitSelection || undefined,
       disabled: !hasSelection,
       keywords: ["fit selection"],
@@ -4983,8 +4987,8 @@ export function BoardCanvas({
     },
     {
       id: "focus",
-      label: focusedObjectId ? "退出单图聚焦" : "聚焦选中图片",
-      group: "视图",
+      label: focusedObjectId ? translate("board.exitFocus") : translate("board.focusSelection"),
+      group: translate("board.groupView"),
       shortcut: shortcutBindings.focus || undefined,
       disabled:
         !focusedObjectId &&
@@ -4994,22 +4998,22 @@ export function BoardCanvas({
     },
     {
       id: "layers",
-      label: layersOpen ? "关闭图层面板" : "打开图层面板",
-      group: "视图",
+      label: layersOpen ? translate("board.closeLayers") : translate("board.openLayers"),
+      group: translate("board.groupView"),
       keywords: ["layers hierarchy"],
       run: () => setLayersOpen((value) => !value),
     },
     {
       id: "inspector",
-      label: inspectorOpen ? "关闭对象检查器" : "打开对象检查器",
-      group: "视图",
+      label: inspectorOpen ? translate("board.closeInspector") : translate("board.openInspector"),
+      group: translate("board.groupView"),
       keywords: ["inspector", "属性", "数值"],
       run: () => setInspectorOpen((value) => !value),
     },
     {
       id: "export-png-selection",
-      label: "导出选中对象 PNG",
-      group: "导出",
+      label: translate("board.exportPngSelection"),
+      group: translate("board.groupExport"),
       disabled: !hasSelection,
       keywords: ["export selection", "导出选区"],
       run: () => {
@@ -5018,8 +5022,8 @@ export function BoardCanvas({
     },
     {
       id: "grid",
-      label: appearance.gridVisible ? "隐藏网格" : "显示网格",
-      group: "视图",
+      label: appearance.gridVisible ? translate("board.hideGrid") : translate("board.showGrid"),
+      group: translate("board.groupView"),
       keywords: ["grid"],
       run: () =>
         updateAppearance({
@@ -5029,64 +5033,64 @@ export function BoardCanvas({
     },
     {
       id: "appearance",
-      label: "白板背景与网格设置",
-      group: "视图",
+      label: translate("board.appearanceTitle"),
+      group: translate("board.groupView"),
       keywords: ["appearance background grid"],
       run: editBoardAppearance,
     },
     {
       id: "window-normal",
-      label: "正常窗口模式",
-      group: "窗口",
+      label: translate("board.windowNormal"),
+      group: translate("board.groupWindow"),
       keywords: ["window normal"],
       run: () => void setWindowMode("normal"),
     },
     {
       id: "window-always-bottom",
-      label: "窗口保持最底（always-on-bottom）",
-      group: "窗口",
+      label: translate("board.windowAlwaysBottom"),
+      group: translate("board.groupWindow"),
       keywords: ["always on bottom window"],
       run: () => void setWindowMode("always-on-bottom"),
     },
     {
       id: "window-overlay",
-      label: "透明穿透浮动 Overlay",
-      group: "窗口",
+      label: translate("board.windowOverlay"),
+      group: translate("board.groupWindow"),
       keywords: ["transparent click through overlay floating"],
       run: () => void setWindowMode("transparent-overlay"),
     },
     {
       id: "window-locked",
-      label: "窗口锁定（画布锁定）",
-      group: "窗口",
+      label: translate("board.windowLocked"),
+      group: translate("board.groupWindow"),
       keywords: ["window locked canvas"],
       run: () => void setWindowMode("locked"),
     },
     {
       id: "shortcut-settings",
-      label: "白板快捷键设置",
-      group: "设置",
+      label: translate("board.shortcutSettingsTitle"),
+      group: translate("board.groupSettings"),
       keywords: ["keyboard shortcut keybinding hotkey"],
       run: () => setShortcutSettingsOpen(true),
     },
     {
       id: "new-board",
-      label: "新建白板",
-      group: "白板",
+      label: translate("boards.new"),
+      group: translate("board.groupBoard"),
       keywords: ["new board"],
       run: createBoard,
     },
     {
       id: "rename-board",
-      label: "重命名当前白板",
-      group: "白板",
+      label: translate("board.renameBoard"),
+      group: translate("board.groupBoard"),
       keywords: ["rename board"],
       run: () => onRenameBoard(board),
     },
     {
       id: "delete-board",
-      label: "删除当前白板",
-      group: "白板",
+      label: translate("board.deleteBoard"),
+      group: translate("board.groupBoard"),
       disabled: boards.length <= 1,
       keywords: ["delete board"],
       run: () => onDeleteBoard(board),
@@ -5174,7 +5178,7 @@ export function BoardCanvas({
   );
   const focusedObject =
     focusedIndex >= 0 ? focusSequence[focusedIndex] : undefined;
-  const focusedTitle = focusedObject?.title ?? "白板素材";
+  const focusedTitle = focusedObject?.title ?? translate("board.boardAssetDefaultTitle");
 
   return (
     <section
@@ -5236,7 +5240,7 @@ export function BoardCanvas({
               <button
                 className="icon-button"
                 onClick={() => setPreviewAsset(null)}
-                aria-label="关闭预览"
+                aria-label={translate("board.closePreview")}
               >
                 ×
               </button>
@@ -5253,7 +5257,7 @@ export function BoardCanvas({
               <button
                 className="icon-button"
                 onClick={() => setModelAsset(null)}
-                aria-label="关闭 3D 预览"
+                aria-label={translate("board.close3DPreview")}
               >
                 ×
               </button>
@@ -5315,12 +5319,12 @@ export function BoardCanvas({
       )}
       <header className="board-header">
         <div className="board-title-group">
-          <span className="eyebrow">当前白板</span>
+          <span className="eyebrow">{translate("board.currentBoard")}</span>
           <div className="board-switcher">
             <select
               value={board.id}
               onChange={(event) => void switchBoard(event.target.value)}
-              aria-label="切换白板"
+              aria-label={translate("board.switchBoard")}
             >
               {boards.map((item) => (
                 <option value={item.id} key={item.id}>
@@ -5328,25 +5332,25 @@ export function BoardCanvas({
                 </option>
               ))}
             </select>
-            <button onClick={() => void createBoard()} aria-label="新建白板">
+            <button onClick={() => void createBoard()} aria-label={translate("boards.new")}>
               <Plus size={14} />
             </button>
             <button
               onClick={() => void onRenameBoard(board)}
-              aria-label="重命名当前白板"
+              aria-label={translate("board.renameBoard")}
             >
               <Pencil size={13} />
             </button>
             <button
               onClick={() => void onDeleteBoard(board)}
-              aria-label="删除当前白板"
+              aria-label={translate("board.deleteBoard")}
               disabled={boards.length <= 1}
             >
               <Trash2 size={13} />
             </button>
             <button
               onClick={openCommandPalette}
-              aria-label="打开命令面板"
+              aria-label={translate("board.openCommandPalette")}
               data-shortcut={shortcutBindings.commandPalette}
             >
               <Search size={14} />
@@ -5355,7 +5359,7 @@ export function BoardCanvas({
         </div>
         <span className={`save-state ${boardSnapshot.saved ? "saved" : ""}`}>
           <span />
-          {boardSnapshot.saved ? "已保存" : "保存中"}
+          {boardSnapshot.saved ? translate("board.saved") : translate("board.saving")}
         </span>
       </header>
 
@@ -5411,7 +5415,7 @@ export function BoardCanvas({
           <aside
             className="board-toolbar-more"
             role="dialog"
-            aria-label="更多工具"
+            aria-label={translate("board.moreTools")}
             style={{
               left: toolbarMorePosition.x,
               top: toolbarMorePosition.y,
@@ -5419,10 +5423,10 @@ export function BoardCanvas({
             }}
           >
             <header>
-              <strong>更多工具</strong>
+              <strong>{translate("board.moreTools")}</strong>
               <button
                 onClick={() => setToolbarMoreOpen(false)}
-                aria-label="关闭更多工具"
+                aria-label={translate("board.closeMoreTools")}
               >
                 <X size={15} />
               </button>
@@ -5436,7 +5440,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Type size={15} />
-                  添加文字
+                  {translate("board.addText")}
                 </button>
                 <button
                   role="menuitem"
@@ -5446,7 +5450,7 @@ export function BoardCanvas({
                   }}
                 >
                   <ListTodo size={15} />
-                  新建清单
+                  {translate("board.addChecklist")}
                 </button>
                 <button
                   role="menuitem"
@@ -5456,7 +5460,7 @@ export function BoardCanvas({
                   }}
                 >
                   <ArrowUpRight size={15} />
-                  添加箭头
+                  {translate("board.addArrow")}
                 </button>
                 <button
                   role="menuitem"
@@ -5466,7 +5470,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Square size={15} />
-                  添加矩形
+                  {translate("board.addRectangle")}
                 </button>
                 <button
                   role="menuitem"
@@ -5476,7 +5480,7 @@ export function BoardCanvas({
                   }}
                 >
                   <span className="text-tool-icon">│</span>
-                  垂直参考线
+                  {translate("board.guideVertical")}
                 </button>
                 <button
                   role="menuitem"
@@ -5486,7 +5490,7 @@ export function BoardCanvas({
                   }}
                 >
                   <span className="text-tool-icon">—</span>
-                  水平参考线
+                  {translate("board.guideHorizontal")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button
@@ -5497,7 +5501,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Palette size={15} />
-                  背景与网格
+                  {translate("board.backgroundGrid")}
                 </button>
                 <button
                   role="menuitem"
@@ -5507,7 +5511,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Pipette size={15} />
-                  取色
+                  {translate("board.sampleColor")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button
@@ -5518,7 +5522,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Undo2 size={15} />
-                  撤销
+                  {translate("board.undo")}
                 </button>
                 <button
                   role="menuitem"
@@ -5528,7 +5532,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Redo2 size={15} />
-                  重做
+                  {translate("board.redo")}
                 </button>
                 <button
                   role="menuitem"
@@ -5538,7 +5542,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Maximize size={15} />
-                  适应全部对象
+                  {translate("board.fitAll")}
                 </button>
                 <button
                   role="menuitem"
@@ -5548,7 +5552,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Focus size={15} />
-                  适应选区
+                  {translate("board.fitSelection")}
                 </button>
                 <button
                   role="menuitem"
@@ -5558,7 +5562,7 @@ export function BoardCanvas({
                   }}
                 >
                   <ScanSearch size={15} />
-                  聚焦选中图片
+                  {translate("board.focusSelection")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button
@@ -5569,7 +5573,7 @@ export function BoardCanvas({
                   }}
                 >
                   <SlidersHorizontal size={15} />
-                  {inspectorOpen ? "关闭对象检查器" : "对象检查器"}
+                  {inspectorOpen ? translate("board.closeInspector") : translate("board.inspectorTitle")}
                 </button>
                 <button
                   role="menuitem"
@@ -5582,7 +5586,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Maximize size={15} />
-                  导出选中对象 PNG
+                  {translate("board.exportPngSelection")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button
@@ -5593,7 +5597,7 @@ export function BoardCanvas({
                   }}
                 >
                   {canvasLocked ? <LockOpen size={15} /> : <Lock size={15} />}
-                  {canvasLocked ? "解锁画布" : "锁定画布"}
+                  {canvasLocked ? translate("board.unlockCanvas") : translate("board.lockCanvas")}
                 </button>
                 <button
                   role="menuitem"
@@ -5602,8 +5606,8 @@ export function BoardCanvas({
                     setToolbarMoreOpen(false);
                   }}
                 >
-                  <span className="text-tool-icon">灰度</span>
-                  画布灰度
+                  <span className="text-tool-icon">{translate("board.grayscaleGlyph")}</span>
+                  {translate("board.canvasGrayscale")}
                 </button>
                 <button
                   role="menuitem"
@@ -5613,7 +5617,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Grid3X3 size={15} />
-                  网格样式
+                  {translate("board.gridStyle")}
                 </button>
                 <button
                   role="menuitem"
@@ -5622,49 +5626,52 @@ export function BoardCanvas({
                   }}
                 >
                   <Search size={15} />
-                  命令面板
+                  {translate("board.commandPaletteTitle")}
                 </button>
             </div>
           </aside>
         )}
         {drawingPanelOpen && (
-          <aside className="draw-settings-panel" aria-label="绘图工具设置">
+          <aside className="draw-settings-panel" aria-label={translate("board.drawingSettings")}>
             <header>
               <div>
-                <strong>绘图工具</strong>
-                <span>Shift 约束直线角度或绘制正方形、正圆</span>
+                <strong>{translate("board.drawingTools")}</strong>
+                <span>{translate("board.drawingShiftHint")}</span>
               </div>
               <button
                 onClick={() => setDrawingPanelOpen(false)}
-                aria-label="关闭绘图工具设置"
+                aria-label={translate("board.closeDrawingSettings")}
               >
                 <X size={15} />
               </button>
             </header>
-            <div className="draw-tool-options" role="group" aria-label="绘图类型">
+            <div className="draw-tool-options" role="group" aria-label={translate("board.drawingTypeGroup")}>
               {([
-                ["pencil", "自由画笔", <Paintbrush size={16} />],
-                ["line", "直线", <Minus size={17} />],
-                ["rectangle", "矩形", <Square size={15} />],
-                ["ellipse", "圆形", <CircleIcon size={15} />],
-              ] as const).map(([value, label, icon]) => (
-                <button
-                  className={tool === value ? "active" : ""}
-                  key={value}
-                  onClick={() => {
-                    setTool(value);
-                    setLastDrawingTool(value);
-                  }}
-                  aria-label={label}
-                >
-                  {icon}
-                  <span>{label}</span>
-                </button>
-              ))}
+                ["pencil", "board.drawingToolPencil" as const, <Paintbrush size={16} />],
+                ["line", "board.drawingToolLine" as const, <Minus size={17} />],
+                ["rectangle", "board.drawingToolRectangle" as const, <Square size={15} />],
+                ["ellipse", "board.drawingToolEllipse" as const, <CircleIcon size={15} />],
+              ] as const).map(([value, labelKey, icon]) => {
+                const label = translate(labelKey);
+                return (
+                  <button
+                    className={tool === value ? "active" : ""}
+                    key={value}
+                    onClick={() => {
+                      setTool(value);
+                      setLastDrawingTool(value);
+                    }}
+                    aria-label={label}
+                  >
+                    {icon}
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
             </div>
             <div className="draw-style-row">
               <label className="draw-color-field">
-                <span>颜色</span>
+                <span>{translate("board.drawingColor")}</span>
                 <input
                   type="color"
                   value={drawingStyle.color}
@@ -5677,7 +5684,7 @@ export function BoardCanvas({
                 />
               </label>
               <label className="draw-width-field">
-                <span>粗细</span>
+                <span>{translate("board.drawingWidth")}</span>
                 <input
                   type="range"
                   min="1"
@@ -5693,7 +5700,7 @@ export function BoardCanvas({
                 <output>{drawingStyle.width}px</output>
               </label>
             </div>
-            <div className="draw-line-options" role="group" aria-label="线型">
+            <div className="draw-line-options" role="group" aria-label={translate("board.drawingLineStyle")}>
               <button
                 className={drawingStyle.dashed ? "" : "active"}
                 onClick={() =>
@@ -5704,7 +5711,7 @@ export function BoardCanvas({
                 }
               >
                 <span className="line-preview solid" />
-                实线
+                {translate("board.drawingSolid")}
               </button>
               <button
                 className={drawingStyle.dashed ? "active" : ""}
@@ -5716,7 +5723,7 @@ export function BoardCanvas({
                 }
               >
                 <span className="line-preview dashed" />
-                虚线
+                {translate("board.drawingDashed")}
               </button>
             </div>
           </aside>
@@ -5740,9 +5747,9 @@ export function BoardCanvas({
             }}
             onRename={(row) => {
               void dialog.requestForm({
-                title: "重命名图层",
-                confirmLabel: "保存名称",
-                fields: [{ name: "name", label: "图层名称", initialValue: row.name, required: true, maxLength: 120 }],
+                title: translate("board.renameLayer"),
+                confirmLabel: translate("board.saveName"),
+                fields: [{ name: "name", label: translate("board.layerName"), initialValue: row.name, required: true, maxLength: 120 }],
                 onSubmit: ({ name }) => { controller.rename(row.id, name); },
               });
             }}
@@ -5786,7 +5793,7 @@ export function BoardCanvas({
               canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
               controller.setZoom(100);
             }}
-            aria-label="重置视图"
+            aria-label={translate("board.resetView")}
           >
             <RotateCcw size={14} />
           </button>
@@ -5799,7 +5806,7 @@ export function BoardCanvas({
         )}
         {selectedHasComment && boardSnapshot.activeComment && (
           <BoardObjectComment
-            name={boardSnapshot.activeObjectName ?? "对象"}
+            name={boardSnapshot.activeObjectName ?? translate("board.objectDefaultName")}
             comment={boardSnapshot.activeComment}
             onEdit={() => {
               const id = boardSnapshot.activeObjectId;
@@ -5839,7 +5846,7 @@ export function BoardCanvas({
                   }}
                 >
                   <AlignStartVertical size={16} />
-                  左对齐
+                  {translate("board.alignLeft")}
                 </button>
                 <button
                   role="menuitem"
@@ -5849,7 +5856,7 @@ export function BoardCanvas({
                   }}
                 >
                   <AlignCenterVertical size={16} />
-                  水平居中
+                  {translate("board.alignCenterX")}
                 </button>
                 <button
                   role="menuitem"
@@ -5859,7 +5866,7 @@ export function BoardCanvas({
                   }}
                 >
                   <LayoutGrid size={16} />
-                  水平分布
+                  {translate("board.distributeX")}
                 </button>
                 <button
                   role="menuitem"
@@ -5869,7 +5876,7 @@ export function BoardCanvas({
                   }}
                 >
                   <LayoutGrid size={16} />
-                  垂直分布
+                  {translate("board.distributeY")}
                 </button>
                 <button
                   role="menuitem"
@@ -5879,7 +5886,7 @@ export function BoardCanvas({
                   }}
                 >
                   <LayoutGrid size={16} />
-                  紧凑排列
+                  {translate("board.arrangeCompact")}
                 </button>
                 <button
                   role="menuitem"
@@ -5889,7 +5896,7 @@ export function BoardCanvas({
                   }}
                 >
                   <RotateCcw size={16} />
-                  统一宽度
+                  {translate("board.normalizeWidth")}
                 </button>
                 <button
                   role="menuitem"
@@ -5899,7 +5906,7 @@ export function BoardCanvas({
                   }}
                 >
                   <GroupIcon size={16} />
-                  组合
+                  {translate("board.group")}
                 </button>
               </>
             )}
@@ -5914,7 +5921,7 @@ export function BoardCanvas({
                   }}
                 >
                   <ScanSearch size={16} />
-                  聚焦
+                  {translate("board.focus")}
                 </button>
                 <button
                   role="menuitem"
@@ -5925,7 +5932,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Crop size={16} />
-                  裁切
+                  {translate("board.crop")}
                 </button>
                 <button
                   role="menuitem"
@@ -5935,7 +5942,7 @@ export function BoardCanvas({
                   }}
                 >
                   <span className="text-tool-icon">%</span>
-                  透明度
+                  {translate("board.opacity")}
                 </button>
                 <button
                   role="menuitem"
@@ -5945,7 +5952,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Lock size={16} />
-                  锁定 / 解锁
+                  {translate("board.lockUnlock")}
                 </button>
                 <button
                   role="menuitem"
@@ -5955,7 +5962,7 @@ export function BoardCanvas({
                   }}
                 >
                   <CopyPlus size={16} />
-                  复制
+                  {translate("board.duplicate")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button
@@ -5967,7 +5974,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Trash2 size={16} />
-                  删除
+                  {translate("board.delete")}
                 </button>
               </>
             )}
@@ -5982,7 +5989,7 @@ export function BoardCanvas({
                   }}
                 >
                   <ScanSearch size={16} />
-                  聚焦
+                  {translate("board.focus")}
                 </button>
                 <button
                   role="menuitem"
@@ -5993,7 +6000,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Crop size={16} />
-                  裁切
+                  {translate("board.crop")}
                 </button>
                 <button
                   role="menuitem"
@@ -6003,7 +6010,7 @@ export function BoardCanvas({
                   }}
                 >
                   <span className="text-tool-icon">B/W</span>
-                  切换灰度
+                  {translate("board.toggleGrayscaleShort")}
                 </button>
                 {boardContextMenu.target.hasGif && (
                   <button
@@ -6020,8 +6027,8 @@ export function BoardCanvas({
                       <Play size={16} />
                     )}
                     {boardContextMenu.target.gifPlaying
-                      ? "暂停 GIF"
-                      : "播放 GIF"}
+                      ? translate("board.gifPause")
+                      : translate("board.gifPlay")}
                   </button>
                 )}
                 <button
@@ -6032,7 +6039,7 @@ export function BoardCanvas({
                   }}
                 >
                   <span className="text-tool-icon">NN</span>
-                  切换采样
+                  {translate("board.toggleSampling")}
                 </button>
                 {eventBindingsRef.current.onLocateAsset && (
                   <button
@@ -6050,7 +6057,7 @@ export function BoardCanvas({
                     }}
                   >
                     <FolderOpen size={16} />
-                    在磁盘索引中定位
+                    {translate("board.locateInIndex")}
                   </button>
                 )}
                 <button
@@ -6060,10 +6067,10 @@ export function BoardCanvas({
                     setBoardContextMenu(null);
                     if (assetId) void relinkBoardReference(assetId);
                   }}
-                  title="文件移动/丢失后按 fingerprint 搜索或手动选择"
+                  title={translate("board.relinkTitleHint")}
                 >
                   <Link2 size={16} />
-                  重新连接引用…
+                  {translate("board.relink")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button
@@ -6075,7 +6082,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Trash2 size={16} />
-                  删除
+                  {translate("board.delete")}
                 </button>
               </>
             )}
@@ -6090,7 +6097,7 @@ export function BoardCanvas({
                   }}
                 >
                   <ClipboardIcon size={16} />
-                  粘贴
+                  {translate("board.paste")}
                 </button>
                 <button
                   role="menuitem"
@@ -6100,7 +6107,7 @@ export function BoardCanvas({
                   }}
                 >
                   <Maximize size={16} />
-                  适应全部对象
+                  {translate("board.fitAll")}
                 </button>
                 <button
                   role="menuitem"
@@ -6113,19 +6120,19 @@ export function BoardCanvas({
                   }}
                 >
                   <Grid3X3 size={16} />
-                  {appearance.gridVisible ? "隐藏网格" : "显示网格"}
+                  {appearance.gridVisible ? translate("board.hideGrid") : translate("board.showGrid")}
                 </button>
                 <button
                   role="menuitem"
                   onClick={() => void editBoardAppearance()}
                 >
                   <Palette size={16} />
-                  白板背景与网格设置
+                  {translate("board.appearanceTitle")}
                 </button>
                 <div className="folder-menu-separator" />
                 <button role="menuitem" onClick={openCommandPalette}>
                   <Search size={16} />
-                  命令面板
+                  {translate("board.commandPaletteTitle")}
                 </button>
               </>
             )}

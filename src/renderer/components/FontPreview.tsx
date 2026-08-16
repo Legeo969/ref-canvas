@@ -137,7 +137,7 @@ export function FontPreview({ asset }: { asset: AssetRecord }) {
     context.font = "12px Segoe UI, sans-serif";
     const axesText = axes.length
       ? translate("font.variableAxes").replace("{axes}", axes.map((axis) => `${axis.name} ${axis.value.toFixed(2)}`).join(" · "))
-      : `${probe.glyphCount ?? "?"} glyphs`;
+      : translate("font.glyphCount").replace("{count}", String(probe.glyphCount ?? "?"));
     context.fillText(axesText, 24, height - 42);
   }, [loaded, probe, axes, failed, asset.title]);
 

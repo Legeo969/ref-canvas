@@ -4,6 +4,7 @@ import {
   extractDominantPalette,
   type PaletteColor,
 } from "../app/color-palette";
+import { translate } from "../app/i18n";
 
 export type PreviewColorSource = HTMLImageElement | HTMLVideoElement | HTMLCanvasElement;
 
@@ -26,7 +27,7 @@ export function PreviewColorBar({
   compact = false,
   live = false,
   headless = false,
-  label = "提取当前画面色彩",
+  label = translate("preview.extractColors"),
   onSelect,
   onPaletteChange,
 }: {
@@ -132,7 +133,7 @@ export function PreviewColorBar({
       {!live && <button
         type="button"
         className="mini-icon-button preview-color-refresh"
-        aria-label="吸取颜色"
+        aria-label={translate("preview.sampleColor")}
         title={label}
         disabled={loading}
         onClick={() => void refresh()}
@@ -142,26 +143,26 @@ export function PreviewColorBar({
       {palette.length > 0 && !live && <button
         type="button"
         className="mini-icon-button"
-        aria-label="清空颜色"
-        title="清空颜色"
+        aria-label={translate("preview.clearColors")}
+        title={translate("preview.clearColors")}
         onClick={() => { setPalette([]); onPaletteChange?.([]); }}
       ><Trash2 size={14} /></button>}
       {palette.length > 0 && !live && <button
         type="button"
         className="mini-icon-button"
-        aria-label={expanded ? "收起图片颜色" : "展开图片颜色"}
-        title={expanded ? "收起图片颜色" : "展开图片颜色"}
+        aria-label={expanded ? translate("preview.collapseColors") : translate("preview.expandColors")}
+        title={expanded ? translate("preview.collapseColors") : translate("preview.expandColors")}
         onClick={() => setExpanded((value) => !value)}
       >{expanded ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}</button>}
       {palette.length > 0 && expanded && (
-        <div className="preview-color-swatches" aria-label="当前画面色彩栏">
+        <div className="preview-color-swatches" aria-label={translate("preview.colorBar")}>
           {palette.map((color) => (
             <button
               type="button"
               key={color.hex}
               className="preview-color-swatch"
-              title={`${color.hex} · RGB ${color.rgb.join(", ")} · ${onSelect ? "点击查看" : "点击复制"}`}
-              aria-label={`${onSelect ? "查看" : "复制"}颜色 ${color.hex}`}
+              title={`${color.hex} · RGB ${color.rgb.join(", ")} · ${onSelect ? translate("preview.clickToView") : translate("preview.clickToCopy")}`}
+              aria-label={`${onSelect ? translate("preview.viewColor").replace("{color}", color.hex) : translate("preview.copyColor").replace("{color}", color.hex)}`}
               onClick={() => onSelect ? onSelect(color) : void copy(color)}
             >
               <span className="preview-color-swatch-chip" style={{ backgroundColor: color.hex }} />
@@ -170,7 +171,7 @@ export function PreviewColorBar({
           ))}
         </div>
       )}
-      {error && !live && <span className="preview-color-error">当前画面无法取色</span>}
+      {error && !live && <span className="preview-color-error">{translate("preview.colorExtractFailed")}</span>}
     </div>
   );
 }

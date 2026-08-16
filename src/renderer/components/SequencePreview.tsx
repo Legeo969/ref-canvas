@@ -469,36 +469,36 @@ export function SequencePreviewDialog({
       className="sequence-inline-menu sequence-export-popover anchored"
       data-placement="top-start"
       style={{ left: presetMenuPosition.left, bottom: presetMenuPosition.bottom }}
-      aria-label={optionsDrawer === "mp4" ? "MP4 导出设置" : "GIF 导出设置"}
+      aria-label={optionsDrawer === "mp4" ? translate("sequence.mp4ExportSettings") : translate("sequence.gifExportSettings")}
     >
       {optionsDrawer === "mp4" ? <>
         <header className="sequence-export-popover-header">
-          <div><strong>导出 MP4</strong><span>选择转换预设</span></div>
-          <button type="button" aria-label="关闭 MP4 导出设置" onClick={closeExportPopover}><X size={14} /></button>
+          <div><strong>{translate("sequence.exportMp4")}</strong><span>{translate("sequence.chooseConvertPreset")}</span></div>
+          <button type="button" aria-label={translate("sequence.closeMp4Export")} onClick={closeExportPopover}><X size={14} /></button>
         </header>
-        <div className="sequence-export-preset-list" role="radiogroup" aria-label="MP4 转换预设">
+        <div className="sequence-export-preset-list" role="radiogroup" aria-label={translate("sequence.mp4PresetGroup")}>
           {availableMp4Presets.map((preset) => (
             <button key={preset.id} role="radio" aria-checked={preset.id === exportPresetId} className={preset.id === exportPresetId ? "active" : ""} onClick={() => setExportPresetId(preset.id)}>
-              <span><strong>{preset.label}</strong><small>{preset.codec === "h265" ? "H.265" : "H.264"} · {preset.resolution === "original" ? "原始" : preset.resolution === "half" ? "1/2" : "1/4"}</small></span>
+              <span><strong>{preset.label}</strong><small>{preset.codec === "h265" ? "H.265" : "H.264"} · {preset.resolution === "original" ? translate("sequence.resolutionOriginal") : preset.resolution === "half" ? "1/2" : "1/4"}</small></span>
               {preset.id === exportPresetId && <span aria-hidden="true">✓</span>}
             </button>
           ))}
         </div>
-        <button type="button" className="sequence-export-confirm" aria-label="确认导出 MP4" disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => void exportMp4()}>
-          <Download size={14} /> {exportState === "running" ? translate("sequence.exporting") : `导出 · ${activePresetLabel}`}
+        <button type="button" className="sequence-export-confirm" aria-label={translate("sequence.confirmExportMp4")} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => void exportMp4()}>
+          <Download size={14} /> {exportState === "running" ? translate("sequence.exporting") : translate("sequence.exportWithPreset").replace("{preset}", activePresetLabel)}
         </button>
       </> : <>
         <header className="sequence-export-popover-header">
-          <div><strong>导出 GIF</strong><span>拖动原进度条两端选择帧</span></div>
-          <button type="button" aria-label="关闭 GIF 导出设置" onClick={closeExportPopover}><X size={14} /></button>
+          <div><strong>{translate("sequence.exportGif")}</strong><span>{translate("sequence.dragRangeHint")}</span></div>
+          <button type="button" aria-label={translate("sequence.closeGifExport")} onClick={closeExportPopover}><X size={14} /></button>
         </header>
         <div className="sequence-gif-range-summary">
-          <span>起始帧 <strong>{frameLabel(Math.round(resolvedGifRange.start * Math.max(0, frames.length - 1)))}</strong></span>
-          <span>结束帧 <strong>{frameLabel(Math.round(resolvedGifRange.end * Math.max(0, frames.length - 1)))}</strong></span>
-          <small>{sequenceGifFrameSlice(frames, resolvedGifRange).length} 帧 · {fps} FPS</small>
+          <span>{translate("sequence.gifStartFrame")}<strong>{frameLabel(Math.round(resolvedGifRange.start * Math.max(0, frames.length - 1)))}</strong></span>
+          <span>{translate("sequence.gifEndFrame")}<strong>{frameLabel(Math.round(resolvedGifRange.end * Math.max(0, frames.length - 1)))}</strong></span>
+          <small>{translate("sequence.gifFramesSummary").replace("{count}", String(sequenceGifFrameSlice(frames, resolvedGifRange).length)).replace("{fps}", String(fps))}</small>
         </div>
-        <button type="button" className="sequence-export-confirm" aria-label="导出所选 GIF 帧" disabled={gifState === "running" || frames.length === 0} onClick={() => void exportGif()}>
-          <Film size={14} /> {gifState === "running" ? translate("sequence.exporting") : "导出所选帧"}
+        <button type="button" className="sequence-export-confirm" aria-label={translate("sequence.confirmExportGif")} disabled={gifState === "running" || frames.length === 0} onClick={() => void exportGif()}>
+          <Film size={14} /> {gifState === "running" ? translate("sequence.exporting") : translate("sequence.exportSelectedFrames")}
         </button>
       </>}
     </section>,
@@ -509,7 +509,7 @@ export function SequencePreviewDialog({
       className="sequence-inline-menu anchored sequence-fps-popover"
       data-placement="top-start"
       style={{ left: presetMenuPosition.left, bottom: presetMenuPosition.bottom }}
-      aria-label="FPS 预设菜单"
+      aria-label={translate("sequence.fpsPresetMenu")}
     >
       {fpsPresets.map((candidate) => (
         <button
@@ -637,10 +637,10 @@ export function SequencePreviewDialog({
 
   const embeddedExportControls = embedded && controlsTarget ? createPortal(
     <div className="sequence-inline-export-controls">
-      <button ref={mp4ButtonRef} type="button" className={`preview-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label="导出 MP4" aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")} title={translate("sequence.exportMp4Title")}>
+      <button ref={mp4ButtonRef} type="button" className={`preview-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label={translate("sequence.exportMp4")} aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")} title={translate("sequence.exportMp4Title")}>
         <Download size={13} /> {exportState === "running" ? translate("sequence.exporting") : "MP4"}
       </button>
-      <button ref={gifButtonRef} type="button" className={`preview-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label="选择 GIF 帧范围" aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")} title="在进度条上选择 GIF 帧范围">
+      <button ref={gifButtonRef} type="button" className={`preview-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label={translate("sequence.selectGifRange")} aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")} title={translate("sequence.selectGifRangeTitle")}>
         <Film size={13} /> {gifState === "running" ? translate("sequence.exporting") : "GIF"}
       </button>
       {exportPopover}
@@ -708,7 +708,7 @@ export function SequencePreviewDialog({
             ref={setDialogToolbar}
             className="sequence-dialog-toolbar"
             role="toolbar"
-            aria-label="HDR 预览工具"
+            aria-label={translate("hdr.toolbar")}
           />
         )}
         {exportState === "running" && (
@@ -856,7 +856,7 @@ export function SequencePreviewDialog({
             <button
               ref={mp4ButtonRef}
               className={`secondary-button sequence-export-button${optionsDrawer === "mp4" ? " active" : ""}`}
-              aria-label="导出 MP4"
+              aria-label={translate("sequence.exportMp4")}
               aria-expanded={optionsDrawer === "mp4"}
               disabled={exportState === "running" || availableMp4Presets.length === 0}
               onClick={() => toggleExportPopover("mp4")}
@@ -868,12 +868,12 @@ export function SequencePreviewDialog({
             <button
               ref={gifButtonRef}
               className={`secondary-button sequence-export-button sequence-gif-button${resolvedGifRangeActive ? " active" : ""}`}
-              aria-label="选择 GIF 帧范围"
+              aria-label={translate("sequence.selectGifRange")}
               aria-expanded={optionsDrawer === "gif"}
               aria-pressed={resolvedGifRangeActive}
               disabled={gifState === "running" || frames.length === 0}
               onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")}
-              title="在进度条上选择 GIF 帧范围"
+              title={translate("sequence.selectGifRangeTitle")}
             >
               <Film size={14} />
               {gifState === "running" ? translate("sequence.exporting") : translate("sequence.exportGif")}
@@ -961,7 +961,7 @@ export function SequenceCard({
               : <Film size={26} strokeWidth={1.35} />}
             <span>
               {preview.status === "failed"
-                ? "点击重试预览"
+                ? translate("sequence.retryPreview")
                 : translate("sequence.cardLabel")}
             </span>
           </span>
@@ -969,7 +969,7 @@ export function SequenceCard({
         {(preview.status === "loading" || preview.status === "waiting") && (
           <span className="preview-cache-loading" role="status">
             <RefreshCw size={15} />
-            {preview.status === "waiting" ? "正在等待预览…" : "正在生成预览…"}
+            {preview.status === "waiting" ? translate("preview.waiting") : translate("preview.generating")}
           </span>
         )}
         <span className="sequence-badge">

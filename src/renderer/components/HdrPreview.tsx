@@ -412,7 +412,7 @@ export function HdrPreview({
     try {
       const validation = await window.refCanvas.media?.validateOcioConfig?.(configPath);
       if (validation && !validation.ok) {
-        setOcioError(`无法加载该 OCIO 配置：${validation.detail ?? "未知错误"}`);
+        setOcioError(translate("hdr.ocioLoadFailedDetail").replace("{detail}", validation.detail ?? translate("hdr.unknownError")));
         return false;
       }
       const next = await window.refCanvas.system.setPreferences({ foundSettings: { ocioConfigPath: configPath } });
@@ -421,8 +421,9 @@ export function HdrPreview({
       setOcioOpen(false);
       return true;
     } catch (error) {
-      const detail = error instanceof Error && error.message ? `：${error.message}` : "";
-      setOcioError(`无法加载该 OCIO 配置${detail}`);
+      setOcioError(error instanceof Error && error.message
+        ? translate("hdr.ocioLoadFailedDetail").replace("{detail}", error.message)
+        : translate("hdr.ocioLoadFailed"));
       return false;
     }
   };
@@ -430,7 +431,7 @@ export function HdrPreview({
   const exportChannel = async () => {
     if (!path || exporting) return;
     const directory = await window.refCanvas.system.pickDirectory({
-      title: "导出当前 EXR/HDR 通道",
+      title: translate("hdr.exportChannelTitle"),
       defaultPath: path.replace(/[\\/][^\\/]*$/, ""),
     });
     if (!directory) return;
@@ -445,7 +446,7 @@ export function HdrPreview({
       });
       setExportedPath(result.outputPath);
     } catch (error) {
-      setExportError(error instanceof Error ? error.message : "通道导出失败");
+      setExportError(error instanceof Error ? error.message : translate("hdr.exportChannelFailed"));
     } finally {
       setExporting(false);
     }
@@ -544,7 +545,7 @@ export function HdrPreview({
       if (exposureOpen) place(exposureButtonRef.current, exposureMenuRef.current, 196, "center", setExposureMenuPosition);
       if (ocioOpen) place(ocioButtonRef.current, ocioMenuRef.current, 210, "start", setOcioMenuPosition);
       if (multichannelOpen) {
-        const toolbarAnchor = multichannelAnchor ?? controlsTarget?.parentElement?.querySelector<HTMLElement>('[aria-label="提取多通道"]');
+        const toolbarAnchor = multichannelAnchor ?? controlsTarget?.parentElement?.querySelector<HTMLElement>('[data-preview-multichannel]');
         place(toolbarAnchor, channelMenuRef.current, 360, "start", setChannelMenuPosition);
       }
     };
@@ -716,15 +717,15 @@ export function HdrPreview({
             )}
             {!displayedBaseUrl && !displayedManagedUrl && (preview.status === "loading" || preview.status === "waiting") && (
               <span className="preview-message" role="status">
-                {preview.status === "waiting" ? "正在等待 EXR 预览…" : translate("hdr.generating")}
+                {preview.status === "waiting" ? translate("hdr.waiting") : translate("hdr.generating")}
               </span>
             )}
             {!managedMode && preview.status === "failed" && (
               <span className="preview-message preview-message-retry">
                 <span>{translate("hdr.failed")}</span>
-                <button type="button" onClick={preview.retry} aria-label="重试 EXR 预览">
+                <button type="button" onClick={preview.retry} aria-label={translate("hdr.retry")}>
                   <RefreshCw size={15} />
-                  重试
+                  {translate("tasks.retry")}
                 </button>
               </span>
             )}
@@ -734,10 +735,10 @@ export function HdrPreview({
       <ControlsMount target={controlsTarget}>
         <div className="hdr-preview-controls">
         <div className="hdr-exposure-control">
-          <button ref={exposureButtonRef} type="button" className={`mini-icon-button${exposureOpen ? " active" : ""}`} aria-label="调整曝光" aria-expanded={exposureOpen} title="调整曝光" onClick={() => { const next = !exposureOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setExposureOpen(next); }}><SunMedium size={15} /></button>
+          <button ref={exposureButtonRef} type="button" className={`mini-icon-button${exposureOpen ? " active" : ""}`} aria-label={translate("hdr.adjustExposure")} aria-expanded={exposureOpen} title={translate("hdr.adjustExposure")} onClick={() => { const next = !exposureOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setExposureOpen(next); }}><SunMedium size={15} /></button>
         </div>
         <div className="hdr-ocio-control">
-          <button ref={ocioButtonRef} type="button" className={`preview-tool-label${ocioOpen ? " active" : ""}`} aria-label="OCIO 色彩管理" aria-expanded={ocioOpen} onClick={() => { const next = !ocioOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setOcioOpen(next); }}>OCIO</button>
+          <button ref={ocioButtonRef} type="button" className={`preview-tool-label${ocioOpen ? " active" : ""}`} aria-label={translate("hdr.ocioColorManagement")} aria-expanded={ocioOpen} onClick={() => { const next = !ocioOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setOcioOpen(next); }}>OCIO</button>
         </div>
         {path && (
           <button
@@ -745,10 +746,10 @@ export function HdrPreview({
             className="secondary-button"
             disabled={exporting}
             onClick={() => void exportChannel()}
-            title="将当前层/通道以显示转换后的全分辨率 PNG 导出"
+            title={translate("hdr.exportChannelHint")}
           >
             <Download size={14} />
-            {exporting ? "正在导出…" : "导出当前通道"}
+            {exporting ? translate("hdr.exporting") : translate("hdr.exportCurrentChannel")}
           </button>
         )}
         {exportedPath && (
@@ -756,7 +757,7 @@ export function HdrPreview({
             type="button"
             className="mini-icon-button"
             title={exportedPath}
-            aria-label="在资源管理器中显示导出的通道"
+            aria-label={translate("hdr.revealExported")}
             draggable
             onDragStart={(event) => {
               event.preventDefault();
@@ -779,17 +780,17 @@ export function HdrPreview({
         >
           <div className="hdr-exposure-popover">
             <SunMedium size={14} aria-hidden="true" />
-            <input aria-label="曝光值" type="range" min="-5" max="5" step="0.1" value={exposureEv} onInput={(event) => setExposureEv(Number(event.currentTarget.value))} onChange={(event) => setExposureEv(Number(event.currentTarget.value))} />
+            <input aria-label={translate("hdr.exposureValue")} type="range" min="-5" max="5" step="0.1" value={exposureEv} onInput={(event) => setExposureEv(Number(event.currentTarget.value))} onChange={(event) => setExposureEv(Number(event.currentTarget.value))} />
             <output>{`${exposureEv >= 0 ? "+" : ""}${exposureEv.toFixed(1)} EV`}</output>
-            <button type="button" aria-label="重置曝光" title="重置曝光" onClick={() => setExposureEv(0)}><RotateCcw size={13} /></button>
+            <button type="button" aria-label={translate("hdr.resetExposure")} title={translate("hdr.resetExposure")} onClick={() => setExposureEv(0)}><RotateCcw size={13} /></button>
           </div>
         </div>,
         document.body,
       )}
       {ocioOpen && typeof document !== "undefined" && createPortal(
         <div ref={ocioMenuRef} className="hdr-ocio-anchor-menu" data-placement="top-start" style={{ left: ocioMenuPosition.left, top: ocioMenuPosition.top ?? undefined, bottom: ocioMenuPosition.bottom ?? undefined }}>
-          <div className="hdr-ocio-menu" role="menu" aria-label="OCIO 色彩管理菜单">
-            <span className="hdr-ocio-group">色彩管理</span>
+          <div className="hdr-ocio-menu" role="menu" aria-label={translate("hdr.ocioMenu")}>
+            <span className="hdr-ocio-group">{translate("hdr.colorManagement")}</span>
             {([['linear-srgb', 'sRGB'], ['aces-1.3', 'ACES 1.3'], ['aces-2.0', 'ACES 2.0'], ['raw', 'Raw']] as const).map(([value, label]) => (
               <button type="button" role="menuitemradio" aria-checked={scheme === value} className={scheme === value ? "active" : ""} key={value} onClick={() => setScheme(value)}><span className="lut-radio" />{label}</button>
             ))}
@@ -798,13 +799,13 @@ export function HdrPreview({
             {ocioConfigPath && <button type="button" role="menuitemradio" aria-checked className="active" title={ocioConfigPath} onClick={() => setOcioOpen(false)}><span className="lut-radio" />{ocioConfigPath.split(/[\\/]/).pop()}</button>}
             <button type="button" role="menuitem" onClick={async () => {
               try {
-                const [filename] = await window.refCanvas.system.pickFile({ title: "添加新的 config.ocio", multiSelections: false, filters: [{ name: "OCIO Config", extensions: ["ocio"] }] });
+                const [filename] = await window.refCanvas.system.pickFile({ title: translate("hdr.addOcioConfigTitle"), multiSelections: false, filters: [{ name: "OCIO Config", extensions: ["ocio"] }] });
                 if (!filename) return;
                 await applyOcioConfig(filename);
               } catch {
-                setOcioError("无法加载该 OCIO 配置");
+                setOcioError(translate("hdr.ocioLoadFailed"));
               }
-            }}>添加新的 config.ocio…</button>
+            }}>{translate("hdr.addOcioConfig")}</button>
             {ocioError && <span className="hdr-ocio-error" role="alert">{ocioError}</span>}
           </div>
         </div>,
@@ -812,7 +813,7 @@ export function HdrPreview({
       )}
       {multichannelOpen && typeof document !== "undefined" && createPortal(
         <div ref={channelMenuRef} className="hdr-channel-anchor-menu" data-placement="top-start" style={{ left: channelMenuPosition.left, top: channelMenuPosition.top ?? undefined, bottom: channelMenuPosition.bottom ?? undefined }}>
-          <div className="hdr-channel-control" role="group" aria-label="提取多通道">
+          <div className="hdr-channel-control" role="group" aria-label={translate("preview.multichannel")}>
             <label className="hdr-layer-select">
               <span>{translate("hdr.layers")}</span>
               <select aria-label={translate("hdr.layersSelect")} value={layer} onChange={(event) => { setLayer(event.target.value); setComponent("composite"); }}>
@@ -825,7 +826,7 @@ export function HdrPreview({
               <button type="button" className={component === "composite" ? "active" : ""} aria-pressed={component === "composite"} onClick={() => setComponent("composite")}>{translate("hdr.composite")}</button>
               {(selectedLayer?.components ?? ["R", "G", "B", "A"]).map((item) => <button type="button" key={item} className={component === item ? "active" : ""} aria-pressed={component === item} onClick={() => setComponent(item)}>{item}</button>)}
             </div>
-            {layers.length === 0 && <span className="hdr-channel-hint">未检测到额外分层，可预览 Main RGBA 通道</span>}
+            {layers.length === 0 && <span className="hdr-channel-hint">{translate("hdr.noExtraLayers")}</span>}
           </div>
         </div>,
         document.body,

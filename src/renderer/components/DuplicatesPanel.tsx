@@ -1,5 +1,6 @@
 import { CopyCheck, FolderSearch, Merge, X } from "lucide-react";
 import type { DuplicateGroup } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 
 interface DuplicatesPanelProps {
   groups: DuplicateGroup[];
@@ -26,11 +27,11 @@ export function DuplicatesPanel({
           <div>
             <CopyCheck size={18} />
             <div>
-              <h2>精确重复项</h2>
-              <p>已使用完整 SHA-256 校验，合并前不会自动删除。</p>
+              <h2>{translate("duplicates.title")}</h2>
+              <p>{translate("duplicates.subtitle")}</p>
             </div>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭">
+          <button className="icon-button" onClick={onClose} aria-label={translate("dialogs.close")}>
             <X size={17} />
           </button>
         </header>
@@ -42,7 +43,7 @@ export function DuplicatesPanel({
               return (
                 <article className="duplicate-group" key={group.contentHash}>
                   <div className="duplicate-summary">
-                    <strong>{group.assets.length} 个相同文件</strong>
+                    <strong>{translate("duplicates.count").replace("{count}", String(group.assets.length))}</strong>
                     <span>{formatBytes(group.size)} · {group.contentHash.slice(0, 12)}…</span>
                   </div>
                   {group.assets.map((asset, index) => (
@@ -53,14 +54,14 @@ export function DuplicatesPanel({
                         <span title={asset.path}>{asset.path}</span>
                       </div>
                       {index === 0 ? (
-                        <span className="keep-badge">保留</span>
+                        <span className="keep-badge">{translate("duplicates.keep")}</span>
                       ) : (
                         <button
                           className="icon-button"
                           onClick={() =>
                             window.refCanvas.system.revealInFolder(asset.path)
                           }
-                          aria-label="在资源管理器中显示"
+                          aria-label={translate("preview.revealInExplorer")}
                         >
                           <FolderSearch size={15} />
                         </button>
@@ -72,7 +73,9 @@ export function DuplicatesPanel({
                     onClick={() => {
                       if (
                         window.confirm(
-                          `保留“${keep.title}”，并将其余 ${remove.length} 个源文件移入应用回收站？`,
+                          translate("duplicates.mergeConfirm")
+                            .replace("{title}", keep.title)
+                            .replace("{count}", String(remove.length)),
                         )
                       ) {
                         void onMerge(keep.id, remove.map((asset) => asset.id));
@@ -80,7 +83,7 @@ export function DuplicatesPanel({
                     }}
                   >
                     <Merge size={15} />
-                    合并到第一项
+                    {translate("duplicates.merge")}
                   </button>
                 </article>
               );
@@ -88,8 +91,8 @@ export function DuplicatesPanel({
           ) : (
             <div className="empty-state compact-empty">
               <CopyCheck size={28} />
-              <h3>没有精确重复项</h3>
-              <p>快速指纹相同的候选已完成完整文件校验。</p>
+              <h3>{translate("duplicates.empty")}</h3>
+              <p>{translate("duplicates.emptyHint")}</p>
             </div>
           )}
         </div>

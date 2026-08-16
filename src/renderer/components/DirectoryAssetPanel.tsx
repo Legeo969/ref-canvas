@@ -254,16 +254,16 @@ export function DirectoryCard({
         {entry.isDirectory ? (
           <span className="asset-placeholder">
             <FolderGlyph size={30} />
-            <span>文件夹</span>
+            <span>{translate("directory.folder")}</span>
           </span>
         ) : preview.status !== "ready" && (
           <span className="asset-placeholder">
-            <span>{entry.extension.toUpperCase() || "FILE"}</span>
+            <span>{entry.extension.toUpperCase() || translate("directory.fileFallback")}</span>
           </span>
         )}
         {!entry.isDirectory && (
           <span className="directory-extension-badge" title={entry.path}>
-            {entry.extension.toUpperCase() || "FILE"}
+            {entry.extension.toUpperCase() || translate("directory.fileFallback")}
           </span>
         )}
         {selected && !entry.isDirectory && (
@@ -272,14 +272,14 @@ export function DirectoryCard({
           </span>
         )}
         {!entry.isDirectory && (entry.favorite || (entry.rating ?? 0) > 0) && (
-          <span className="directory-metadata-badges" aria-label="素材元数据">
+          <span className="directory-metadata-badges" aria-label={translate("directory.assetMetadata")}>
             {entry.favorite && (
-              <span title="已收藏">
+              <span title={translate("directory.favorited")}>
                 <Star size={12} fill="currentColor" />
               </span>
             )}
             {(entry.rating ?? 0) > 0 && (
-              <span className="directory-rating-badge" title={`${entry.rating} 星`}>
+              <span className="directory-rating-badge" title={translate("directory.ratingStars").replace("{count}", String(entry.rating))}>
                 {entry.rating}
               </span>
             )}
@@ -295,7 +295,7 @@ export function DirectoryCard({
         <HighlightedText text={displayName ?? entry.name} query={query} />
       </span>
       <span className="asset-meta">
-        {entry.isDirectory ? "目录" : formatBytes(entry.size, "…")}
+        {entry.isDirectory ? translate("directory.directoryLabel") : formatBytes(entry.size, "…")}
       </span>
     </button>
   );
@@ -449,9 +449,9 @@ export function DirectoryRow({
       </span>
       <span className="directory-row-meta">
         {entry.isDirectory
-          ? "目录"
+          ? translate("directory.directoryLabel")
           : sequenceFrameCount
-            ? `${sequenceFrameCount} 帧`
+            ? translate("sequence.framesShort").replace("{count}", String(sequenceFrameCount))
             : formatBytes(entry.size, "…")}
       </span>
     </button>
@@ -1443,13 +1443,13 @@ export function DirectoryAssetPanel() {
   const tagEntry = async (entry: DirectoryEntry) => {
     const indexed = await window.refCanvas.library.getByPath(entry.path);
     const values = await dialog.requestForm({
-      title: "设置标签",
-      description: "标签保存在本地索引中；留空保存可清除标签。",
-      confirmLabel: "保存",
+      title: translate("preview.setTags"),
+      description: translate("directory.tagDescription"),
+      confirmLabel: translate("collections.save"),
       fields: [
         {
           name: "tags",
-          label: "标签（逗号分隔）",
+          label: translate("directory.tagsLabel"),
           initialValue: indexed?.tags.join(", ") ?? "",
           maxLength: 500,
         },
@@ -1470,16 +1470,17 @@ export function DirectoryAssetPanel() {
   const downscaleEntry = async (entry: DirectoryEntry) => {
     if (entry.isDirectory) return;
     const values = await dialog.requestForm({
-      title: "Downscale",
-      description: `模式：${foundSettings.downscaleMode === "suffix"
-        ? `文件名追加 _${foundSettings.downscaleSuffix || "2k"}`
+      title: translate("directory.downscale"),
+      description: `${translate("directory.downscaleMode")}${foundSettings.downscaleMode === "suffix"
+        ? translate("directory.downscaleModeSuffix").replace("{suffix}", foundSettings.downscaleSuffix || "2k")
         : foundSettings.downscaleMode === "subdirectory"
-          ? `输出到 ${foundSettings.downscaleSubdirectory || "downscaled"} 子目录`
-          : "保持原名并备份原文件"}`,      confirmLabel: "开始",
+          ? translate("directory.downscaleModeSubdirectory").replace("{directory}", foundSettings.downscaleSubdirectory || "downscaled")
+          : translate("directory.downscaleModeBackup")}`,
+      confirmLabel: translate("directory.start"),
       fields: [
         {
           name: "maxDimension",
-          label: "最大边像素（64–16384）",
+          label: translate("directory.maxDimensionLabel"),
           required: true,
           maxLength: 6,
         },
@@ -1495,9 +1496,12 @@ export function DirectoryAssetPanel() {
       // §10.4：backup 模式修改原路径，执行前展示源/备份/输出。
       const backupPath = `${entry.path.slice(0, -(entry.extension.length + 1))}.bak.${entry.extension}`;
       const confirmed = await dialog.requestConfirm({
-        title: "备份并覆盖原文件？",
-        description: `源：${entry.path}\n备份：${backupPath}\n输出：${entry.path}（覆盖）`,
-        confirmLabel: "备份并 Downscale",
+        title: translate("directory.backupOverwriteTitle"),
+        description: translate("directory.backupOverwriteDescription")
+          .replace("{source}", entry.path)
+          .replace("{backup}", backupPath)
+          .replace("{output}", entry.path),
+        confirmLabel: translate("directory.backupAndDownscale"),
         danger: true,
       });
       if (!confirmed) return;
@@ -1524,9 +1528,9 @@ export function DirectoryAssetPanel() {
       : foundSettings.mp4Presets.slice(0, 1);
     if (!presets.length) {
       await dialog.requestConfirm({
-        title: "无法导出 MP4",
-        description: "设置中没有可用的 MP4 转换预设。",
-        confirmLabel: "知道了",
+        title: translate("directory.exportMp4Failed"),
+        description: translate("directory.exportMp4NoPresets"),
+        confirmLabel: translate("collections.acknowledge"),
       });
       return;
     }
@@ -1539,16 +1543,19 @@ export function DirectoryAssetPanel() {
     const baseName = sequenceGroup?.baseName ?? pathStemOf(entry.path);
     const defaultDirectory = sequenceGroup?.directory ?? dirnameOf(entry.path);
     const description = isVideo
-      ? `将「${pathNameOf(entry.path)}」转码为 MP4`
-      : `将图片序列「${baseName}」导出为 MP4（${frameCount} 帧 · ${fps} FPS）`;
+      ? translate("directory.transcodeToMp4").replace("{name}", pathNameOf(entry.path))
+      : translate("directory.exportSequenceToMp4")
+          .replace("{name}", baseName)
+          .replace("{count}", String(frameCount))
+          .replace("{fps}", String(fps));
     await dialog.requestForm({
       title: translate("directory.exportMp4"),
       description,
-      confirmLabel: "导出",
+      confirmLabel: translate("directory.export"),
       fields: [
         {
           name: "preset",
-          label: "转换预设",
+          label: translate("directory.convertPreset"),
           type: "select",
           options: presets.map((preset) => ({
             value: preset.id,
@@ -1558,7 +1565,7 @@ export function DirectoryAssetPanel() {
         },
         {
           name: "outputDirectory",
-          label: "输出目录",
+          label: translate("directory.outputDirectory"),
           type: "directory",
           required: true,
           initialValue: defaultDirectory,
@@ -1572,7 +1579,7 @@ export function DirectoryAssetPanel() {
             baseName,
             presetId: values.preset,
           });
-          showShortcutNotice(`已导出 MP4：${pathNameOf(result.outputPath)}`);
+          showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
         } else {
           const result = await window.refCanvas.sequences.exportMp4({
             files: sequenceGroup ? sequenceGroup.files : [entry.path],
@@ -1581,7 +1588,7 @@ export function DirectoryAssetPanel() {
             outputDirectory: values.outputDirectory,
             baseName,
           });
-          showShortcutNotice(`已导出 MP4：${pathNameOf(result.outputPath)}`);
+          showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
         }
       },
     });
@@ -1598,28 +1605,30 @@ export function DirectoryAssetPanel() {
         cwd: entry.isDirectory ? entry.path : dirnameOf(entry.path),
       });
       const summary = result.timedOut
-        ? `${script.name}：超时终止`
-        : `${script.name}：退出码 ${result.exitCode ?? "?"}（${result.durationMs}ms）`;
+        ? translate("directory.scriptTimedOut").replace("{name}", script.name)
+        : translate("directory.scriptExitCode")
+            .replace("{name}", script.name)
+            .replace("{code}", String(result.exitCode ?? "?"))
+            .replace("{duration}", String(result.durationMs));
       await dialog.requestConfirm({
         title: summary,
         description:
-          result.output.trim().slice(0, 4000) || "（无输出）",
-        confirmLabel: "关闭",
+          result.output.trim().slice(0, 4000) || translate("directory.scriptNoOutput"),
+        confirmLabel: translate("preview.close"),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "运行失败";
+      const message = error instanceof Error ? error.message : translate("directory.scriptRunFailed");
       if (message === "SCRIPT_HASH_CHANGED") {
         await dialog.requestConfirm({
-          title: "脚本已被修改",
-          description:
-            "文件内容与注册时的 sha256 不一致，为安全起见已拒绝运行。请在设置中重新注册该脚本。",
-          confirmLabel: "知道了",
+          title: translate("directory.scriptHashChanged"),
+          description: translate("directory.scriptHashChangedDescription"),
+          confirmLabel: translate("collections.acknowledge"),
         });
       } else {
         await dialog.requestConfirm({
-          title: "脚本运行失败",
+          title: translate("directory.scriptRunFailedTitle"),
           description: message,
-          confirmLabel: "关闭",
+          confirmLabel: translate("preview.close"),
         });
       }
     }
@@ -1627,10 +1636,9 @@ export function DirectoryAssetPanel() {
 
   const trashEntry = async (entry: DirectoryEntry) => {
     const confirmed = await dialog.requestConfirm({
-      title: `删除“${entry.name}”？`,
-      description:
-        "文件会移入 Windows 回收站。若该文件已建立索引，记录将同步标记为断链。",
-      confirmLabel: "移入回收站",
+      title: translate("directory.deleteNamed").replace("{name}", entry.name),
+      description: translate("directory.trashDescription"),
+      confirmLabel: translate("preview.moveToTrash"),
       danger: true,
     });
     if (!confirmed) return;
@@ -1655,7 +1663,7 @@ export function DirectoryAssetPanel() {
   ) => {
     setContextMenu(null);
     const target = await window.refCanvas.system.pickDirectory({
-      title: kind === "copy" ? "选择复制目标目录" : "选择移动目标目录",
+      title: kind === "copy" ? translate("directory.pickCopyTarget") : translate("directory.pickMoveTarget"),
       defaultPath: store.directoryPath ?? undefined,
     });
     if (!target) return;
@@ -1672,7 +1680,10 @@ export function DirectoryAssetPanel() {
     await store.reloadDirectory();
     const failed = report.failed[0];
     if (failed) {
-      window.alert(`无法${kind === "copy" ? "复制" : "移动"}：${failed.reason}`);
+      window.alert(
+        (kind === "copy" ? translate("directory.copyFailed") : translate("directory.moveFailed"))
+          .replace("{reason}", failed.reason),
+      );
     }
   };
 
@@ -1718,7 +1729,7 @@ export function DirectoryAssetPanel() {
   ) => {
     const entry = focusedFile();
     if (!entry) {
-      showShortcutNotice("当前没有可操作的素材");
+      showShortcutNotice(translate("directory.noActionableAssets"));
       return;
     }
     try {
@@ -1735,15 +1746,20 @@ export function DirectoryAssetPanel() {
       showShortcutNotice(
         action === "favorite"
           ? updated.favorite
-            ? `已收藏 ${entry.name}`
-            : `已取消收藏 ${entry.name}`
+            ? translate("directory.favoritedNamed").replace("{name}", entry.name)
+            : translate("directory.unfavoritedNamed").replace("{name}", entry.name)
           : updated.rating
-            ? `${entry.name} 已设为 ${updated.rating} 星`
-            : `已清除 ${entry.name} 的评分`,
+            ? translate("directory.ratedNamed")
+                .replace("{name}", entry.name)
+                .replace("{rating}", String(updated.rating))
+            : translate("directory.ratingClearedNamed").replace("{name}", entry.name),
       );
     } catch (error) {
       showShortcutNotice(
-        `操作失败：${error instanceof Error ? error.message : "无法更新素材"}`,
+        translate("directory.operationFailed").replace(
+          "{reason}",
+          error instanceof Error ? error.message : translate("directory.failedToUpdateAsset"),
+        ),
       );
     }
   };
@@ -1819,13 +1835,13 @@ export function DirectoryAssetPanel() {
 
   const batchTag = async () => {
     const values = await dialog.requestForm({
-      title: "设置标签",
-      description: `给选中的 ${selectedCount} 个文件打标签时会先建立链接索引。`,
-      confirmLabel: "保存",
+      title: translate("preview.setTags"),
+      description: translate("directory.batchTagDescription").replace("{count}", String(selectedCount)),
+      confirmLabel: translate("collections.save"),
       fields: [
         {
           name: "tags",
-          label: "标签（逗号分隔）",
+          label: translate("directory.tagsLabel"),
           required: true,
           maxLength: 500,
         },
@@ -1857,10 +1873,9 @@ export function DirectoryAssetPanel() {
 
   const batchTrash = async () => {
     const confirmed = await dialog.requestConfirm({
-      title: `删除选中的 ${selectedCount} 个文件？`,
-      description:
-        "文件会移入 Windows 回收站。若已建立索引，记录将同步标记为断链。",
-      confirmLabel: "移入回收站",
+      title: translate("directory.deleteSelectedCount").replace("{count}", String(selectedCount)),
+      description: translate("directory.trashBatchDescription"),
+      confirmLabel: translate("preview.moveToTrash"),
       danger: true,
     });
     if (!confirmed) return;
@@ -1877,19 +1892,19 @@ export function DirectoryAssetPanel() {
     "skip" | "rename" | "replace" | null
   > => {
     const values = await dialog.requestForm({
-      title: "遇到同名文件",
-      description: "目标目录已有同名文件时如何处理？选择会应用到本次全部冲突。",
-      confirmLabel: "继续",
+      title: translate("directory.conflictTitle"),
+      description: translate("directory.conflictDescription"),
+      confirmLabel: translate("directory.continue"),
       fields: [
         {
           name: "strategy",
-          label: "冲突处理",
+          label: translate("directory.conflictStrategy"),
           type: "select",
           initialValue: "rename",
           options: [
-            { value: "rename", label: "自动改名（保留两者）" },
-            { value: "replace", label: "覆盖现有文件" },
-            { value: "skip", label: "跳过现有文件" },
+            { value: "rename", label: translate("directory.conflictRename") },
+            { value: "replace", label: translate("directory.conflictReplace") },
+            { value: "skip", label: translate("directory.conflictSkip") },
           ],
         },
       ],
@@ -1904,7 +1919,7 @@ export function DirectoryAssetPanel() {
     const paths = selectedFilePaths();
     if (!paths.length) return;
     const target = await window.refCanvas.system.pickDirectory({
-      title: kind === "copy" ? "选择复制目标目录" : "选择移动目标目录",
+      title: kind === "copy" ? translate("directory.pickCopyTarget") : translate("directory.pickMoveTarget"),
       defaultPath: store.directoryPath ?? undefined,
     });
     if (!target) return;
@@ -1922,7 +1937,9 @@ export function DirectoryAssetPanel() {
     clearSelection();
     if (report.failed.length) {
       window.alert(
-        `${kind === "copy" ? "复制" : "移动"}失败 ${report.failed.length} 项，例如：${report.failed[0].reason}`,
+        (kind === "copy" ? translate("directory.copyFailedCount") : translate("directory.moveFailedCount"))
+          .replace("{count}", String(report.failed.length))
+          .replace("{reason}", report.failed[0].reason),
       );
     }
   };
@@ -1966,7 +1983,9 @@ export function DirectoryAssetPanel() {
     clearSelection();
     if (report.failed.length) {
       window.alert(
-        `粘贴失败 ${report.failed.length} 项，例如：${report.failed[0].reason}`,
+        translate("directory.pasteFailedCount")
+          .replace("{count}", String(report.failed.length))
+          .replace("{reason}", report.failed[0].reason),
       );
     }
   };
@@ -2480,24 +2499,26 @@ export function DirectoryAssetPanel() {
       </div>
       {searchSnapshot && !searching && (
         <p className="directory-search-status">
-          搜索完成：{searchSnapshot.totalFiles ?? searchSnapshot.entries.length} 项
+          {translate("directory.searchComplete").replace("{count}", String(searchSnapshot.totalFiles ?? searchSnapshot.entries.length))}
           {searchSnapshot.failedDirectories.length
-            ? `，${searchSnapshot.failedDirectories.length} 个目录无法访问`
+            ? translate("directory.searchFailedDirectories").replace("{count}", String(searchSnapshot.failedDirectories.length))
             : ""}
         </p>
       )}
       {searchSnapshot?.failedDirectories.length ? (
         <p className="directory-search-status">
-          无权限目录：{searchSnapshot.failedDirectories.length} 个（已跳过）
+          {translate("directory.noPermissionDirectories").replace("{count}", String(searchSnapshot.failedDirectories.length))}
         </p>
       ) : null}
 
       {batchJob?.state === "running" && (
         <div className="directory-search-status">
-          正在处理 {batchJob.processed} / {batchJob.total || selectedCount}
+          {translate("directory.batchProcessing")
+            .replace("{processed}", String(batchJob.processed))
+            .replace("{total}", String(batchJob.total || selectedCount))}
           <button
             className="search-cancel"
-            aria-label="取消批量任务"
+            aria-label={translate("directory.cancelBatch")}
             onClick={() => void window.refCanvas.filesystem.cancelBatch(batchJob.id)}
           >
             <X size={14} />
@@ -2507,10 +2528,10 @@ export function DirectoryAssetPanel() {
       {batchJob && batchJob.state !== "running" && (
         <div className="directory-search-status" role="status">
           {batchJob.state === "completed"
-            ? `处理完成：${batchJob.processed} 项`
+            ? translate("directory.batchCompleted").replace("{count}", String(batchJob.processed))
             : batchJob.state === "cancelled"
-              ? `已取消：完成 ${batchJob.processed} 项`
-              : `处理失败：${batchJob.failed.length} 项`}
+              ? translate("directory.batchCancelled").replace("{count}", String(batchJob.processed))
+              : translate("directory.batchFailed").replace("{count}", String(batchJob.failed.length))}
         </div>
       )}
 
@@ -2544,10 +2565,10 @@ export function DirectoryAssetPanel() {
         return (
           <div className="batch-toolbar">
             <span>
-              剪贴板：{clipboard.paths.length} 项
-              {clipboard.mode === "cut" ? "（剪切）" : "（复制）"}
+              {translate("directory.clipboardCount").replace("{count}", String(clipboard.paths.length))}
+              {clipboard.mode === "cut" ? translate("directory.clipboardCut") : translate("directory.clipboardCopy")}
             </span>
-            <button onClick={() => void pasteClipboard()} title="粘贴到当前目录">
+            <button onClick={() => void pasteClipboard()} title={translate("directory.pasteToCurrent")}>
               <Copy size={14} />
             </button>
             <button
@@ -2555,7 +2576,7 @@ export function DirectoryAssetPanel() {
               onClick={() => {
                 setDirectoryClipboard(null);
               }}
-              title="清除剪贴板"
+              title={translate("directory.clearClipboard")}
             >
               <X size={14} />
             </button>
@@ -2719,7 +2740,7 @@ export function DirectoryAssetPanel() {
           title={translate("directory.extensionCount").replace("{count}", String(foundSettings.formatWhitelist.length))}
           onClick={() => setFormatFilter("other")}
         >
-          OTHER
+          {translate("directory.other")}
         </button>
         <button
           type="button"
@@ -2927,7 +2948,7 @@ export function DirectoryAssetPanel() {
               }}
             >
               <FolderOpen size={16} />
-              打开目录
+              {translate("directory.openDirectory")}
             </button>
           ) : (
             <>
@@ -2939,7 +2960,7 @@ export function DirectoryAssetPanel() {
                 }}
               >
                 <Eye size={16} />
-                打开
+                {translate("directory.open")}
               </button>
               <button
                 role="menuitem"
@@ -2949,7 +2970,7 @@ export function DirectoryAssetPanel() {
                 }}
               >
                 <FolderOpen size={16} />
-                在资源管理器中显示
+                {translate("preview.reveal")}
               </button>
             </>
           )}
@@ -2967,7 +2988,7 @@ export function DirectoryAssetPanel() {
             }}
           >
             <SquareArrowOutUpRight size={16} />
-            在新标签打开
+            {translate("directory.newTab")}
           </button>
           {contextMenu.entry.isDirectory && (
             <button
@@ -2982,7 +3003,7 @@ export function DirectoryAssetPanel() {
               />
               {store.quickAccess.some(
                 (item) => normalizeQuickAccessPath(item.path) === normalizeQuickAccessPath(contextMenu.entry.path),
-              ) ? "取消收藏" : "收藏目录"}
+              ) ? translate("directory.unfavorite") : translate("directory.favoriteDir")}
             </button>
           )}
           <button
@@ -2993,7 +3014,7 @@ export function DirectoryAssetPanel() {
             }}
           >
             <Copy size={16} />
-            复制路径
+            {translate("preview.copyPath")}
           </button>
           <button
             role="menuitem"
@@ -3007,7 +3028,7 @@ export function DirectoryAssetPanel() {
             }}
           >
             <Scissors size={16} />
-            剪切
+            {translate("directory.cut")}
           </button>
           <span className="context-menu-divider" />
           <button
@@ -3017,7 +3038,7 @@ export function DirectoryAssetPanel() {
             }}
           >
             <Copy size={16} />
-            复制到…
+            {translate("directory.copyTo")}
           </button>
           <button
             role="menuitem"
@@ -3026,7 +3047,7 @@ export function DirectoryAssetPanel() {
             }}
           >
             <FolderOpen size={16} />
-            移动到…
+            {translate("directory.moveTo")}
           </button>
           {!contextMenu.entry.isDirectory && (
             <>
@@ -3038,7 +3059,7 @@ export function DirectoryAssetPanel() {
                 }}
               >
                 <Tags size={16} />
-                设置标签
+                {translate("preview.setTags")}
               </button>
               {(menuEntryIsDownscalableImage || menuEntryIsVideo || menuEntryIsSequenceImage) && (
                 <span className="context-menu-divider" />
@@ -3052,7 +3073,7 @@ export function DirectoryAssetPanel() {
                   }}
                 >
                   <Shrink size={16} />
-                  Downscale…
+                  {translate("directory.downscaleEllipsis")}
                 </button>
               )}
               {(menuEntryIsExportableVideo || menuEntryIsSequenceImage) && (
@@ -3072,7 +3093,7 @@ export function DirectoryAssetPanel() {
                     }}
                   >
                     <Film size={16} />
-                    GIF 工作台…
+                    {translate("directory.gifWorkbench")}
                   </button>
                   <button
                     role="menuitem"
@@ -3098,7 +3119,7 @@ export function DirectoryAssetPanel() {
                       }}
                     >
                       <Film size={16} />
-                      导出 PNG/JPG 序列帧…
+                      {translate("directory.exportFrames")}
                     </button>
                   )}
                 </>
@@ -3106,7 +3127,7 @@ export function DirectoryAssetPanel() {
               {registeredScripts.length > 0 && (
                 <>
                   <span className="context-menu-divider" />
-                  <span className="context-menu-label">运行脚本</span>
+                  <span className="context-menu-label">{translate("directory.runScript")}</span>
                   {registeredScripts.map((script) => (
                     <button
                       role="menuitem"
@@ -3131,7 +3152,7 @@ export function DirectoryAssetPanel() {
                 }}
               >
                 <Trash2 size={16} />
-                移入回收站
+                {translate("preview.moveToTrash")}
               </button>
             </>
           )}

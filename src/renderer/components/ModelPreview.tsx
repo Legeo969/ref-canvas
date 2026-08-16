@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AssetRecord } from "../../shared/contracts";
 import { useFoundSettings } from "../app/found-settings";
+import { translate } from "../app/i18n";
 import {
   modelPresetView,
   sanitizeModelView,
@@ -88,6 +89,7 @@ export function ModelPreview({
   );
   const [uvReady, setUvReady] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const feedbackPersistRef = useRef(false);
   const displayModeRef = useRef<ModelDisplayMode>("solid");
   const onCameraChangeRef = useRef(onCameraChange);
   onCameraChangeRef.current = onCameraChange;
@@ -326,7 +328,7 @@ export function ModelPreview({
   }, [displayMode]);
 
   useEffect(() => {
-    if (!feedback || feedback.startsWith("正在")) return;
+    if (!feedback || feedbackPersistRef.current) return;
     const timer = window.setTimeout(() => setFeedback(null), 2_500);
     return () => window.clearTimeout(timer);
   }, [feedback]);
@@ -334,39 +336,42 @@ export function ModelPreview({
   const saveRenderedImage = async (mode: "export" | "thumbnail") => {
     const dataUrl = captureRef.current();
     if (!dataUrl) return;
-    setFeedback(mode === "export" ? "正在保存…" : "正在设置缩略图…");
+    feedbackPersistRef.current = true;
+    setFeedback(mode === "export" ? translate("model.saving") : translate("model.settingThumbnail"));
     try {
       const result = await window.refCanvas.system.saveRenderedImage(dataUrl, {
         mode,
         assetId: mode === "thumbnail" ? asset.id : undefined,
         defaultName: `RefCanvas-3D-${asset.id.slice(0, 8)}`,
       });
-      setFeedback(result ? (mode === "export" ? "视图已保存" : "缩略图已更新") : null);
+      feedbackPersistRef.current = false;
+      setFeedback(result ? (mode === "export" ? translate("model.saved") : translate("model.thumbnailUpdated")) : null);
     } catch {
-      setFeedback(mode === "export" ? "视图保存失败" : "缩略图设置失败");
+      feedbackPersistRef.current = false;
+      setFeedback(mode === "export" ? translate("model.saveFailed") : translate("model.thumbnailFailed"));
     }
   };
 
   const presets: Array<{ id: ModelCameraPreset; label: string }> = [
-    { id: "default", label: "默认" },
-    { id: "top", label: "顶视" },
-    { id: "front", label: "前视" },
-    { id: "left", label: "左视" },
-    { id: "right", label: "右视" },
+    { id: "default", label: translate("collections.default") },
+    { id: "top", label: translate("model.viewTop") },
+    { id: "front", label: translate("model.viewFront") },
+    { id: "left", label: translate("model.viewLeft") },
+    { id: "right", label: translate("model.viewRight") },
   ];
 
-  const controls = <div className="model-managed-controls"><div className="model-camera-panel" aria-label="相机视角">
-    <span>Camera (5)</span>
+  const controls = <div className="model-managed-controls"><div className="model-camera-panel" aria-label={translate("model.camera")}>
+    <span>{translate("model.cameraCount").replace("{count}", String(presets.length))}</span>
     {presets.map((preset) => <button key={preset.id} type="button" className={cameraSelection === preset.id ? "active" : ""} aria-pressed={cameraSelection === preset.id} onClick={() => setPresetRef.current(preset.id)}>{preset.label}</button>)}
-  </div><div className="model-preview-toolbar" role="group" aria-label="3D 显示模式">
-    <button type="button" className={displayMode === "wireframe" ? "active" : ""} aria-label="线框模式" aria-pressed={displayMode === "wireframe"} title="显示线框" onClick={() => setDisplayMode("wireframe")}><ScanLine size={16} /></button>
-    <button type="button" className={displayMode === "solid" ? "active" : ""} aria-label="实体模式" aria-pressed={displayMode === "solid"} title="实体材质" onClick={() => setDisplayMode("solid")}><Box size={16} /></button>
-    <button type="button" className={displayMode === "uv" ? "active" : ""} aria-label="UV 检查模式" aria-pressed={displayMode === "uv"} title="显示 UV Checker" disabled={!uvReady} onClick={() => setDisplayMode("uv")}><Grid3X3 size={16} /></button>
+  </div><div className="model-preview-toolbar" role="group" aria-label={translate("model.displayMode")}>
+    <button type="button" className={displayMode === "wireframe" ? "active" : ""} aria-label={translate("model.wireframe")} aria-pressed={displayMode === "wireframe"} title={translate("model.showWireframe")} onClick={() => setDisplayMode("wireframe")}><ScanLine size={16} /></button>
+    <button type="button" className={displayMode === "solid" ? "active" : ""} aria-label={translate("model.solid")} aria-pressed={displayMode === "solid"} title={translate("model.solidMaterial")} onClick={() => setDisplayMode("solid")}><Box size={16} /></button>
+    <button type="button" className={displayMode === "uv" ? "active" : ""} aria-label={translate("model.uvCheck")} aria-pressed={displayMode === "uv"} title={translate("model.showUvChecker")} disabled={!uvReady} onClick={() => setDisplayMode("uv")}><Grid3X3 size={16} /></button>
     <span className="model-toolbar-separator" />
-    <button type="button" aria-label="恢复默认视角" title="默认视角" onClick={() => setPresetRef.current("default")}><Rotate3D size={16} /></button>
-  </div><div className="model-preview-actions" role="group" aria-label="3D 视图操作">
-    <button type="button" aria-label="保存 3D 视图" title="保存当前视图" onClick={() => void saveRenderedImage("export")}><Camera size={16} /></button>
-    {allowCustomThumbnail && <button type="button" aria-label="设为缩略图" title="设为素材缩略图" onClick={() => void saveRenderedImage("thumbnail")}><ImageDown size={16} /></button>}
+    <button type="button" aria-label={translate("model.resetView")} title={translate("model.defaultView")} onClick={() => setPresetRef.current("default")}><Rotate3D size={16} /></button>
+  </div><div className="model-preview-actions" role="group" aria-label={translate("model.viewActions")}>
+    <button type="button" aria-label={translate("model.saveView")} title={translate("model.saveCurrentView")} onClick={() => void saveRenderedImage("export")}><Camera size={16} /></button>
+    {allowCustomThumbnail && <button type="button" aria-label={translate("model.setThumbnail")} title={translate("model.setAssetThumbnail")} onClick={() => void saveRenderedImage("thumbnail")}><ImageDown size={16} /></button>}
   </div></div>;
 
   return (
@@ -376,7 +381,7 @@ export function ModelPreview({
       {feedback && <span className="model-preview-feedback">{feedback}</span>}
       {failed && (
         <span className="preview-message">
-          此模型无法实时预览，可使用“打开”交给关联软件。
+          {translate("model.previewFailed")}
         </span>
       )}
     </div>

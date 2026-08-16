@@ -19,6 +19,7 @@ import type {
   BoardLayerRowSnapshot,
 } from "../../features/board/board-canvas-controller";
 import { placeTriggerMenu, type MenuPlacement } from "../../app/menu-position";
+import { translate } from "../../app/i18n";
 
 const ROW_HEIGHT = 44;
 const VIEWPORT_HEIGHT = 352;
@@ -91,10 +92,10 @@ export function BoardLayerPanel({
 
   return (
     <aside className="layers-panel">
-      <header><strong>图层</strong><span>拖到中间建立父级，拖到边缘重排</span></header>
+      <header><strong>{translate("board.layersTitle")}</strong><span>{translate("board.layerDragHint")}</span></header>
       <label className="layer-search">
         <Search size={13} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索图层" aria-label="搜索图层" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate("board.layerSearch")} aria-label={translate("board.layerSearch")} />
       </label>
       <div
         className="layer-root-drop"
@@ -112,7 +113,7 @@ export function BoardLayerPanel({
           setDropTarget(null);
         }}
       >
-        <Unlink size={13} />拖到这里解除父级
+        <Unlink size={13} />{translate("board.layerUnparentDrop")}
       </div>
       <div className="layer-list-viewport" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
         <div className="layer-list-spacer" style={{ height: filtered.length * ROW_HEIGHT }}>
@@ -152,15 +153,15 @@ export function BoardLayerPanel({
                   <span className="layer-tree-marker">{row.depth > 0 ? "↳" : row.hasChildren ? <GitBranch size={12} /> : null}</span>
                   <span>{row.name}</span>
                 </button>
-                <button onClick={() => onCommand("toggle-visible", row.id)} aria-label={row.visible ? "隐藏图层" : "显示图层"}>
+                <button onClick={() => onCommand("toggle-visible", row.id)} aria-label={row.visible ? translate("board.layerHide") : translate("board.layerShow")}>
                   {row.visible ? <Eye size={14} /> : <EyeOff size={14} />}
                 </button>
-                <button onClick={() => onCommand("toggle-locked", row.id)} aria-label={row.locked ? "解锁图层" : "锁定图层"}>
+                <button onClick={() => onCommand("toggle-locked", row.id)} aria-label={row.locked ? translate("board.layerUnlock") : translate("board.layerLock")}>
                   {row.locked ? <Lock size={14} /> : <LockOpen size={14} />}
                 </button>
                 <div className="layer-row-more">
                   <button
-                    aria-label={`${row.name} 更多操作`}
+                    aria-label={translate("board.layerMoreActions").replace("{name}", row.name)}
                     aria-haspopup="menu"
                     aria-expanded={menuId === row.id}
                     onClick={(event) => {
@@ -171,10 +172,10 @@ export function BoardLayerPanel({
                   ><MoreHorizontal size={14} /></button>
                   {menuId === row.id && createPortal(
                     <div ref={menuRef} className="folder-actions-popover layer-row-menu" role="menu" style={{ left: menuPlacement?.left ?? 0, top: menuPlacement?.top ?? 0, visibility: menuPlacement ? "visible" : "hidden" }} onPointerDown={(event) => event.stopPropagation()}>
-                      <button role="menuitem" onClick={() => { onComment(row.id); closeMenu(); }}><MessageSquareText size={15} />{row.hasComment ? "编辑评论" : "添加评论"}</button>
-                      <button role="menuitem" onClick={() => { onCommand("move-up", row.id); closeMenu(); }}><ChevronUp size={15} />上移一层</button>
-                      <button role="menuitem" onClick={() => { onCommand("move-down", row.id); closeMenu(); }}><ChevronDown size={15} />下移一层</button>
-                      <button role="menuitem" onClick={() => { onCommand("select", row.id); closeMenu(); }}><ScanSearch size={15} />定位并选中</button>
+                      <button role="menuitem" onClick={() => { onComment(row.id); closeMenu(); }}><MessageSquareText size={15} />{row.hasComment ? translate("board.commentEditShort") : translate("board.commentAddShort")}</button>
+                      <button role="menuitem" onClick={() => { onCommand("move-up", row.id); closeMenu(); }}><ChevronUp size={15} />{translate("board.layerMoveUp")}</button>
+                      <button role="menuitem" onClick={() => { onCommand("move-down", row.id); closeMenu(); }}><ChevronDown size={15} />{translate("board.layerMoveDown")}</button>
+                      <button role="menuitem" onClick={() => { onCommand("select", row.id); closeMenu(); }}><ScanSearch size={15} />{translate("board.layerLocateSelect")}</button>
                     </div>,
                     window.document.body,
                   )}

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { useFoundSettings } from "../app/found-settings";
 import { AssetPreview } from "./AssetPreview";
 import { AiDesignSupervisorPanel } from "./AiDesignSupervisor";
@@ -113,9 +114,9 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
     return (
       <aside className={`details-panel directory-details-panel directory-workbench-panel mode-${mode}`}>
         <header className="panel-header workbench-header">
-          <div className="workbench-mode-tabs" role="tablist" aria-label="右侧工作区">
-            <button className={mode === "preview" ? "active" : ""} role="tab" aria-selected={mode === "preview"} onClick={() => setMode("preview")}><Eye size={14} />预览</button>
-            <button className={mode === "ai" ? "active" : ""} role="tab" aria-selected={mode === "ai"} onClick={() => setMode("ai")}><Sparkles size={14} />AI 设计监督</button>
+          <div className="workbench-mode-tabs" role="tablist" aria-label={translate("directory.workbenchTabs")}>
+            <button className={mode === "preview" ? "active" : ""} role="tab" aria-selected={mode === "preview"} onClick={() => setMode("preview")}><Eye size={14} />{translate("preview.tab.preview")}</button>
+            <button className={mode === "ai" ? "active" : ""} role="tab" aria-selected={mode === "ai"} onClick={() => setMode("ai")}><Sparkles size={14} />{translate("directory.aiDesignSupervisor")}</button>
           </div>
         </header>
         {mode === "ai" ? (
@@ -123,8 +124,8 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
         ) : (
           <div className="details-empty workbench-empty-state">
             <SlidersHorizontal size={20} />
-            <strong>素材工作台</strong>
-            <span>{entry?.isDirectory ? "请选择一个素材" : "选择素材后可在这里预览、取色和导出"}</span>
+            <strong>{translate("directory.assetWorkbench")}</strong>
+            <span>{entry?.isDirectory ? translate("directory.selectAssetFirst") : translate("directory.workbenchEmptyHint")}</span>
           </div>
         )}
       </aside>
@@ -143,9 +144,9 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
       className={`details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" ? "tool-open" : ""} mode-${mode}`}
     >
       <header className="panel-header workbench-header">
-        <div className="workbench-mode-tabs" role="tablist" aria-label="右侧工作区">
-          <button className={mode === "preview" ? "active" : ""} role="tab" aria-selected={mode === "preview"} onClick={() => { setMode("preview"); setTool("preview"); }}><Eye size={14} />预览</button>
-          <button className={mode === "ai" ? "active" : ""} role="tab" aria-selected={mode === "ai"} onClick={() => setMode("ai")}><Sparkles size={14} />AI 设计监督</button>
+        <div className="workbench-mode-tabs" role="tablist" aria-label={translate("directory.workbenchTabs")}>
+          <button className={mode === "preview" ? "active" : ""} role="tab" aria-selected={mode === "preview"} onClick={() => { setMode("preview"); setTool("preview"); }}><Eye size={14} />{translate("preview.tab.preview")}</button>
+          <button className={mode === "ai" ? "active" : ""} role="tab" aria-selected={mode === "ai"} onClick={() => setMode("ai")}><Sparkles size={14} />{translate("directory.aiDesignSupervisor")}</button>
         </div>
         <div className="workbench-file-actions">
           {mode === "preview" && (
@@ -156,17 +157,17 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
               onToggleFullscreen={() => void previewSession.toggleFullscreen()}
             />
           )}
-          <button className="workbench-external-action" type="button" aria-label="打开素材" title="打开素材" onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} title={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
             <SquareArrowOutUpRight size={15} />
           </button>
-          <button className="workbench-external-action" type="button" aria-label="在资源管理器中显示" title="在资源管理器中显示" onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.revealInExplorer")} title={translate("preview.revealInExplorer")} onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
             <FolderOpen size={15} />
           </button>
         </div>
       </header>
 
-      {mode === "preview" && loading && <div className="workbench-status"><LoaderCircle className="spin" size={18} />正在准备预览…</div>}
-      {mode === "preview" && error && <div className="workbench-status error">无法读取这个素材。</div>}
+      {mode === "preview" && loading && <div className="workbench-status"><LoaderCircle className="spin" size={18} />{translate("preview.panelLoading")}</div>}
+      {mode === "preview" && error && <div className="workbench-status error">{translate("preview.panelError")}</div>}
       {mode === "ai" && (
         <AiDesignSupervisorPanel
           variant="embedded"
@@ -198,10 +199,10 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
             <div className="workbench-tool-drawer-header">
               <div className="workbench-tool-switcher">
                 {isVideo && <button className={tool === "gif" ? "active" : ""} onClick={() => selectTool("gif")}><Film size={14} />GIF</button>}
-                {isVideo && <button className={tool === "frames" ? "active" : ""} onClick={() => selectTool("frames")}><Images size={14} />序列帧</button>}
+                {isVideo && <button className={tool === "frames" ? "active" : ""} onClick={() => selectTool("frames")}><Images size={14} />{translate("directory.sequenceFrames")}</button>}
                 {isVideo && <button className={tool === "fps" ? "active" : ""} onClick={() => selectTool("fps")}><Gauge size={14} />FPS</button>}
               </div>
-              <button className="workbench-drawer-close" aria-label="关闭工具" title="关闭工具" onClick={() => setTool("preview")}><X size={15} /></button>
+              <button className="workbench-drawer-close" aria-label={translate("preview.closeTool")} title={translate("preview.closeTool")} onClick={() => setTool("preview")}><X size={15} /></button>
             </div>
             {tool === "gif" && isVideo && (
               <GifExportStudio
@@ -223,19 +224,19 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
               />
             )}
             {tool === "fps" && isVideo && (
-              <section className="workbench-fps-tool" aria-label="FPS 预设抽屉">
+              <section className="workbench-fps-tool" aria-label={translate("directory.fpsPresetDrawer")}>
                 <div className="workbench-color-heading">
                   <Gauge size={17} />
-                  <div><strong>帧率基准</strong><p>控制逐帧步进与时间线刻度；视频播放速度不变</p></div>
+                  <div><strong>{translate("directory.fpsBaseline")}</strong><p>{translate("directory.fpsBaselineHint")}</p></div>
                 </div>
                 <div className="workbench-fps-grid">
                   <button className={playbackFps === null ? "active" : ""} onClick={() => setPlaybackFps(null)}>
-                    <span>自动</span>
+                    <span>{translate("preview.auto")}</span>
                     <strong>{frameRate ? frameRate.toFixed(frameRate % 1 ? 2 : 0) : "—"} FPS</strong>
                   </button>
                   {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
                     <button key={fps} className={playbackFps === fps ? "active" : ""} onClick={() => setPlaybackFps(fps)}>
-                      <span>预设</span>
+                      <span>{translate("directory.preset")}</span>
                       <strong>{fps} FPS</strong>
                     </button>
                   ))}

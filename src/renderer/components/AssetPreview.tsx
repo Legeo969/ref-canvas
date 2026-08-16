@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
 import { browserImageExtensions } from "../../shared/asset-kind";
+import { translate } from "../app/i18n";
 import { AudioPreview } from "./AudioPreview";
 import { FontPreview } from "./FontPreview";
 import { GIFPreview } from "./GIFPreview";
@@ -37,7 +38,7 @@ function SystemThumbnail({ asset }: { asset: AssetRecord }) {
     return (
       <span className="preview-message preview-file">
         <Shapes size={34} strokeWidth={1.25} />
-        {asset.extension.toUpperCase()} 文件
+        {translate("preview.extensionFile").replace("{ext}", asset.extension.toUpperCase())}
       </span>
     );
   }
@@ -55,7 +56,7 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
     refCanvas?: { media?: { probe?: unknown } };
   }).refCanvas;
   if (asset.linkState !== "online") {
-    return <span className="preview-message">原文件当前不可访问</span>;
+    return <span className="preview-message">{translate("preview.originalUnavailable")}</span>;
   }
   if (lightweight) return <SystemThumbnail asset={asset} />;
 

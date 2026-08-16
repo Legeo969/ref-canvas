@@ -6,6 +6,7 @@ import {
 import { useEffect, useMemo } from "react";
 import type { AssetColorLabel, AssetRecord } from "../../shared/contracts";
 import { formatDuration } from "../app/format-duration";
+import { translate } from "../app/i18n";
 import { AssetPreview } from "./AssetPreview";
 import { MediaInfoSection } from "./MediaInfoSection";
 import {
@@ -142,7 +143,7 @@ export function QuickPreview({
       className="quick-preview-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label={`快速预览 ${asset.title}`}
+      aria-label={translate("preview.quickNamed").replace("{name}", asset.title)}
       onMouseDown={onClose}
     >
       <PreviewSessionShell
@@ -170,7 +171,7 @@ export function QuickPreview({
               onToggleFocus={previewSession.toggleFocus}
               onToggleFullscreen={() => void previewSession.toggleFullscreen()}
             />
-            <button aria-label="关闭快速预览 Esc" onClick={onClose}>
+            <button aria-label={translate("preview.closeQuick")} onClick={onClose}>
               <X size={18} />
             </button>
           </div>
@@ -187,13 +188,13 @@ export function QuickPreview({
           </div>
         </PreviewSurface>
 
-        <section className="quick-preview-details" aria-label="素材详细信息">
+        <section className="quick-preview-details" aria-label={translate("preview.assetDetails")}>
           <dl>
-            <div><dt>路径</dt><dd title={asset.path}>{asset.path}</dd></div>
-            <div><dt>类型</dt><dd>{asset.kind} · {asset.extension.toUpperCase()}</dd></div>
-            <div><dt>大小</dt><dd>{formatSize(asset.size)}</dd></div>
-            <div><dt>分辨率</dt><dd>{dimensions ?? "—"}</dd></div>
-            <div><dt>时长</dt><dd>{asset.duration != null ? formatDuration(asset.duration) : "—"}</dd></div>
+            <div><dt>{translate("preview.path")}</dt><dd title={asset.path}>{asset.path}</dd></div>
+            <div><dt>{translate("preview.type")}</dt><dd>{asset.kind} · {asset.extension.toUpperCase()}</dd></div>
+            <div><dt>{translate("preview.size")}</dt><dd>{formatSize(asset.size)}</dd></div>
+            <div><dt>{translate("preview.resolution")}</dt><dd>{dimensions ?? "—"}</dd></div>
+            <div><dt>{translate("preview.duration")}</dt><dd>{asset.duration != null ? formatDuration(asset.duration) : "—"}</dd></div>
           </dl>
           <MediaInfoSection
             asset={{
@@ -207,7 +208,7 @@ export function QuickPreview({
 
         <footer className="quick-preview-footer">
           <button
-            aria-label="上一个素材 ←"
+            aria-label={translate("preview.previousAsset")}
             disabled={!canGoBack}
             onClick={() => navigateTo(absoluteIndex - 1)}
           >
@@ -217,7 +218,7 @@ export function QuickPreview({
             {absoluteIndex + 1} / {total}
           </span>
           <button
-            aria-label="下一个素材 →"
+            aria-label={translate("preview.nextAsset")}
             disabled={!canGoForward}
             onClick={() => navigateTo(absoluteIndex + 1)}
           >

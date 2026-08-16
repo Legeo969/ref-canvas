@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Pause, Play, X } from "lucide-react";
+import { translate } from "../../app/i18n";
 
 export function BoardFocusOverlay({
   title,
@@ -27,30 +28,32 @@ export function BoardFocusOverlay({
   onModeChange(mode: "order" | "shuffle" | "random"): void;
   onExit(): void;
 }) {
+  const intervalSeconds = (seconds: number) =>
+    translate("board.focusIntervalSeconds").replace("{seconds}", String(seconds));
   return (
-    <div className="board-focus-controls" role="group" aria-label="单图聚焦">
+    <div className="board-focus-controls" role="group" aria-label={translate("board.focusOverlayLabel")}>
       <div className="board-focus-copy" aria-live="polite">
         <strong title={title}>{title}</strong><span>{index + 1} / {count}</span>
       </div>
-      <button onClick={onPrevious} aria-label="上一张" data-shortcut="←"><ChevronLeft size={17} /></button>
-      <button className={`focus-play-toggle ${playing ? "active" : ""}`} onClick={onTogglePlaying} aria-label={playing ? "暂停幻灯片" : "播放幻灯片"}>
+      <button onClick={onPrevious} aria-label={translate("board.focusPrevious")} data-shortcut="←"><ChevronLeft size={17} /></button>
+      <button className={`focus-play-toggle ${playing ? "active" : ""}`} onClick={onTogglePlaying} aria-label={playing ? translate("board.focusPause") : translate("board.focusPlay")}>
         <span className={`focus-icon-state ${playing ? "" : "shown"}`}><Play size={16} /></span>
         <span className={`focus-icon-state ${playing ? "shown" : ""}`}><Pause size={16} /></span>
       </button>
-      <button onClick={onNext} aria-label="下一张" data-shortcut="→"><ChevronRight size={17} /></button>
+      <button onClick={onNext} aria-label={translate("board.focusNext")} data-shortcut="→"><ChevronRight size={17} /></button>
       <label>
-        <span className="sr-only">幻灯片间隔</span>
-        <select value={interval} onChange={(event) => onIntervalChange(Number(event.target.value))} aria-label="幻灯片间隔">
-          <option value="3">3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option>
+        <span className="sr-only">{translate("board.focusInterval")}</span>
+        <select value={interval} onChange={(event) => onIntervalChange(Number(event.target.value))} aria-label={translate("board.focusInterval")}>
+          <option value="3">{intervalSeconds(3)}</option><option value="5">{intervalSeconds(5)}</option><option value="10">{intervalSeconds(10)}</option>
         </select>
       </label>
       <label>
-        <span className="sr-only">幻灯片顺序</span>
-        <select value={mode} onChange={(event) => onModeChange(event.target.value as "order" | "shuffle" | "random")} aria-label="幻灯片顺序">
-          <option value="order">顺序</option><option value="shuffle">洗牌</option><option value="random">随机</option>
+        <span className="sr-only">{translate("board.focusOrder")}</span>
+        <select value={mode} onChange={(event) => onModeChange(event.target.value as "order" | "shuffle" | "random")} aria-label={translate("board.focusOrder")}>
+          <option value="order">{translate("board.focusOrderMode")}</option><option value="shuffle">{translate("board.focusShuffle")}</option><option value="random">{translate("board.focusRandom")}</option>
         </select>
       </label>
-      <button onClick={onExit} aria-label="退出单图聚焦"><X size={16} /></button>
+      <button onClick={onExit} aria-label={translate("board.exitFocus")}><X size={16} /></button>
     </div>
   );
 }

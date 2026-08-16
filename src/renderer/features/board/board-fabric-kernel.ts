@@ -7,6 +7,7 @@ import {
 import type { BoardDocumentV3 } from "../../../shared/contracts";
 import { boardToolInteractionState, type BoardTool } from "./controllers/drawing-controller";
 import type { BoardRuntimeController } from "./board-runtime-controller";
+import { translate } from "../../app/i18n";
 
 export type BoardCanvasObject = FabricObject & {
   data?: {
@@ -42,7 +43,7 @@ export function ensureBoardObjectIdentity(
   const objectId = options.fresh || !previous.objectId
     ? crypto.randomUUID()
     : previous.objectId;
-  const name = options.name ?? previous.name ?? previous.type ?? "对象";
+  const name = options.name ?? previous.name ?? previous.type ?? translate("board.objectDefaultName");
   const baseScaleX = previous.baseScaleX ?? object.scaleX ?? 1;
   const baseScaleY = previous.baseScaleY ?? object.scaleY ?? 1;
   let changed = previous.objectId !== objectId || previous.name !== name ||

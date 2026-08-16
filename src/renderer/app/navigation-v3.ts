@@ -11,6 +11,7 @@
  *   本模块负责 local 与 durable 两侧的读写与版本迁移。
  */
 import type { NavigationStateV2 } from "./navigation-state";
+import { translate } from "./i18n";
 
 const STORAGE_KEY_V3 = "refcanvas.navigation.v3";
 const DEFAULT_GRID_SIZE = 200;
@@ -49,7 +50,7 @@ export function createBrowserTab(
     id: crypto.randomUUID(),
     kind,
     targetId,
-    title: title.slice(0, 256) || "未命名",
+    title: title.slice(0, 256) || translate("directory.untitled"),
     backStack: [],
     forwardStack: [],
     query: "",
@@ -99,7 +100,7 @@ function parseTab(value: Record<string, unknown>): BrowserTabState | null {
     id: boundedString(value.id, 64) || crypto.randomUUID(),
     kind,
     targetId,
-    title: title || targetId.split(/[\\/]/).pop() || "未命名",
+    title: title || targetId.split(/[\\/]/).pop() || translate("directory.untitled"),
     backStack: stringList(value.backStack, 500).filter(
       (item) => item !== targetId,
     ),
@@ -148,7 +149,7 @@ export function migrateV2ToV3(v2: NavigationStateV2): NavigationStateV3 {
     targetId !== ""
       ? createBrowserTab("directory", targetId, targetId.split(/[\\/]/).pop() ?? targetId)
       : null;
-  const fallbackTab = createBrowserTab("directory", "browser://empty", "浏览");
+  const fallbackTab = createBrowserTab("directory", "browser://empty", translate("browser.empty"));
   const tabs = directoryTab ? [directoryTab] : [fallbackTab];
   const active = tabs[0];
   if (targetId !== "" && directoryTab) {
@@ -165,7 +166,7 @@ export function migrateV2ToV3(v2: NavigationStateV2): NavigationStateV3 {
 }
 
 function defaultV3(): NavigationStateV3 {
-  const tab = createBrowserTab("directory", "browser://empty", "浏览");
+  const tab = createBrowserTab("directory", "browser://empty", translate("browser.empty"));
   return {
     schemaVersion: 3,
     activeWorkspace: "browser",

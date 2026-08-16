@@ -7,6 +7,7 @@ import type {
 } from "../../shared/contracts";
 import { useDialog } from "./DialogProvider";
 import { BoardCanvas } from "./BoardCanvas";
+import { translate } from "../app/i18n";
 
 interface BoardWindowProps {
   boardId: string;
@@ -95,12 +96,12 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
 
   const createBoard = async () => {
     const values = await dialog.requestForm({
-      title: "新建白板",
-      confirmLabel: "创建",
+      title: translate("boards.new"),
+      confirmLabel: translate("boards.createConfirm"),
       fields: [
         {
           name: "title",
-          label: "白板名称",
+          label: translate("boards.nameLabel"),
           required: true,
           maxLength: 120,
         },
@@ -114,12 +115,12 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
 
   const renameBoard = async (target: BoardSummary) => {
     const values = await dialog.requestForm({
-      title: "重命名白板",
-      confirmLabel: "保存",
+      title: translate("board.renameBoardTitle"),
+      confirmLabel: translate("collections.save"),
       fields: [
         {
           name: "title",
-          label: "白板名称",
+          label: translate("boards.nameLabel"),
           initialValue: target.title,
           required: true,
           maxLength: 120,
@@ -139,9 +140,9 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
 
   const deleteBoard = async (target: BoardSummary) => {
     const confirmed = await dialog.requestConfirm({
-      title: `删除白板“${target.title}”？`,
-      description: "白板文档与素材数据相互独立，删除不会影响素材。",
-      confirmLabel: "删除",
+      title: translate("board.deleteBoardConfirm").replace("{title}", target.title),
+      description: translate("board.deleteBoardDescription"),
+      confirmLabel: translate("board.delete"),
       danger: true,
     });
     if (!confirmed) return;
@@ -156,19 +157,19 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
   if (failed) {
     return (
       <div className="board-window-mode board-window-error">
-        <p>无法打开白板</p>
+        <p>{translate("boards.unavailable")}</p>
         <button
           className="primary-button"
           onClick={() => void window.refCanvas.boards.closeWindow()}
         >
-          关闭窗口
+          {translate("board.closeWindow")}
         </button>
       </div>
     );
   }
 
   if (!board || !document) {
-    return <div className="board-window-mode board-window-loading">正在加载白板…</div>;
+    return <div className="board-window-mode board-window-loading">{translate("board.loading")}</div>;
   }
 
   return (
@@ -179,16 +180,16 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
         </span>
         <button
           className="icon-button"
-          aria-label="导出 PNG"
-          title="导出 PNG"
+          aria-label={translate("titlebar.exportPng")}
+          title={translate("titlebar.exportPng")}
           onClick={() => window.dispatchEvent(new Event("refcanvas:export-png"))}
         >
           <ImageDown size={15} />
         </button>
         <button
           className="icon-button"
-          aria-label="关闭窗口"
-          title="关闭窗口"
+          aria-label={translate("board.closeWindow")}
+          title={translate("board.closeWindow")}
           onClick={() => void window.refCanvas.boards.closeWindow()}
         >
           <X size={15} />

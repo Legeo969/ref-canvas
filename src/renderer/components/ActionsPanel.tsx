@@ -9,16 +9,27 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssetActionSnapshot } from "../../shared/contracts";
+import { translate, type MessageKey } from "../app/i18n";
 
-const actionLabels: Record<AssetActionSnapshot["type"], string> = {
-  convert: "格式转换",
-  "merge-images": "图片合并",
-  webp: "WebP 转换",
-  compress: "无损压缩",
-  "video-to-gif": "视频转 GIF",
-  "change-extension": "扩展名修改",
-  "export-csv": "CSV 导出",
-  "export-folder": "文件夹导出",
+const actionLabels: Record<AssetActionSnapshot["type"], MessageKey> = {
+  convert: "directory.actionConvert",
+  "merge-images": "directory.actionMergeImages",
+  webp: "directory.actionWebp",
+  compress: "directory.actionCompress",
+  "video-to-gif": "directory.actionVideoToGif",
+  "change-extension": "directory.actionChangeExtension",
+  "export-csv": "directory.actionExportCsv",
+  "export-folder": "directory.actionExportFolder",
+};
+
+const actionStateLabels: Record<string, MessageKey> = {
+  queued: "tasks.state.queued",
+  preparing: "directory.statePreparing",
+  running: "tasks.state.running",
+  reviewing: "directory.stateReviewing",
+  completed: "tasks.state.completed",
+  failed: "tasks.state.failed",
+  cancelled: "tasks.state.cancelled",
 };
 
 /**
@@ -54,26 +65,26 @@ export function ActionsPanel() {
       <button
         className="actions-toggle"
         onClick={() => setOpen((value) => !value)}
-        title={open ? "收起任务面板" : "打开任务面板"}
+        title={open ? translate("directory.collapseTasksPanel") : translate("directory.openTasksPanel")}
       >
         {running ? <Pause size={14} /> : <Play size={14} />}
-        任务
+        {translate("directory.tasks")}
         {reviewing > 0 && <span className="actions-badge">{reviewing}</span>}
       </button>
       {open && (
-        <section className="actions-panel" aria-label="后台任务">
+        <section className="actions-panel" aria-label={translate("directory.backgroundTasks")}>
           {jobs.length === 0 && (
-            <p className="actions-empty">还没有后台任务。</p>
+            <p className="actions-empty">{translate("directory.noBackgroundTasks")}</p>
           )}
           {jobs.map((job) => (
             <div className="action-job" key={job.id}>
               <div className="action-job-header">
-                <strong>{actionLabels[job.type] ?? job.type}</strong>
-                <span className={`action-state ${job.state}`}>{job.state}</span>
+                <strong>{translate(actionLabels[job.type])}</strong>
+                <span className={`action-state ${job.state}`}>{translate((actionStateLabels[job.state] ?? job.state) as MessageKey)}</span>
               </div>
               <div className="action-job-meta">
-                {job.processed} / {job.total} · 已生成 {job.created}
-                {job.failed > 0 && <span className="action-failed"> 失败 {job.failed}</span>}
+                {job.processed} / {job.total} · {translate("directory.generated").replace("{count}", String(job.created))}
+                {job.failed > 0 && <span className="action-failed"> {translate("directory.failedCount").replace("{count}", String(job.failed))}</span>}
               </div>
               <div className="action-job-bar">
                 <div
@@ -87,7 +98,7 @@ export function ActionsPanel() {
               {job.state === "reviewing" && job.conflicts.length > 0 && (
                 <div className="action-conflicts">
                   <p className="action-conflict-title">
-                    输出文件已存在，选择是否覆盖：
+                    {translate("directory.conflictOverwritePrompt")}
                   </p>
                   {job.conflicts.map((conflict) => (
                     <div className="action-conflict-row" key={conflict}>
@@ -103,7 +114,7 @@ export function ActionsPanel() {
                           )
                         }
                       >
-                        覆盖
+                        {translate("directory.overwrite")}
                       </button>
                       <button
                         onClick={() =>
@@ -114,7 +125,7 @@ export function ActionsPanel() {
                           )
                         }
                       >
-                        跳过
+                        {translate("directory.skip")}
                       </button>
                     </div>
                   ))}
@@ -124,7 +135,7 @@ export function ActionsPanel() {
                 {["queued", "preparing", "running", "reviewing"].includes(job.state) && (
                   <button
                     onClick={() => void window.refCanvas.actions.cancel(job.id)}
-                    title="取消任务"
+                    title={translate("directory.cancelTask")}
                   >
                     <X size={13} />
                   </button>
@@ -132,7 +143,7 @@ export function ActionsPanel() {
                 {["failed", "cancelled"].includes(job.state) && (
                   <button
                     onClick={() => void window.refCanvas.actions.retry(job.id)}
-                    title="重试失败项"
+                    title={translate("directory.retryFailedItems")}
                   >
                     <RotateCcw size={13} />
                   </button>
@@ -144,7 +155,7 @@ export function ActionsPanel() {
                         job.outputDirectory!,
                       )
                     }
-                    title="在文件夹中显示"
+                    title={translate("directory.revealInFolder")}
                   >
                     <FolderOpen size={13} />
                   </button>
@@ -154,7 +165,7 @@ export function ActionsPanel() {
                   onClick={() =>
                     setJobs((current) => current.filter((item) => item.id !== job.id))
                   }
-                  title="从列表移除"
+                  title={translate("directory.removeFromList")}
                 >
                   <Trash2 size={13} />
                 </button>

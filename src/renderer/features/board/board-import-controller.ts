@@ -1,4 +1,5 @@
 import type { AssetRecord } from "../../../shared/contracts";
+import { translate } from "../../app/i18n";
 
 export interface BoardFileImportGateway {
   pathsForFiles(files: File[]): string[];
@@ -26,8 +27,10 @@ export class BoardImportController {
     await onLibraryChanged();
     const count = result.imported + result.reused;
     return assets.length
-      ? `已加入 ${count} 项，并将 ${assets.length} 项放入白板`
-      : "没有可放入白板的受支持文件";
+      ? translate("board.importPlaced")
+          .replace("{count}", String(count))
+          .replace("{placed}", String(assets.length))
+      : translate("board.importUnsupported");
   }
 
   scheduleProxyRefresh(refresh: () => void, delay = 180): void {

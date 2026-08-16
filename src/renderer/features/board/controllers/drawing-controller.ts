@@ -1,5 +1,6 @@
 import { Ellipse, FabricObject, Line, Rect } from "fabric";
 import { constrainedEndPoint, drawingBounds } from "../../../app/board-drawing";
+import { translate } from "../../../app/i18n";
 
 export type BoardTool =
   | "select"
@@ -97,7 +98,11 @@ export function createBoardShape(
   const drawingObject = object as BoardDrawingObject;
   drawingObject.data = {
     type: `drawing-${tool}`,
-    name: tool === "line" ? "直线" : tool === "rectangle" ? "矩形绘制" : "圆形绘制",
+    name: tool === "line"
+      ? translate("board.drawingNameLine")
+      : tool === "rectangle"
+        ? translate("board.drawingNameRectangle")
+        : translate("board.drawingNameEllipse"),
   };
   return drawingObject;
 }

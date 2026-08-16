@@ -8,29 +8,30 @@ import {
   type BoardShortcutBindings,
   type BoardShortcutId,
 } from "../app/board-shortcuts";
+import { translate, type MessageKey } from "../app/i18n";
 
 export const boardShortcutDefinitions: Array<{
   id: BoardShortcutId;
-  label: string;
-  group: string;
+  labelKey: MessageKey;
+  groupKey: MessageKey;
 }> = [
-  { id: "commandPalette", label: "打开命令面板", group: "界面" },
-  { id: "undo", label: "撤销", group: "编辑" },
-  { id: "redo", label: "重做", group: "编辑" },
-  { id: "duplicate", label: "复制对象", group: "编辑" },
-  { id: "copy", label: "复制到白板剪贴板", group: "编辑" },
-  { id: "paste", label: "粘贴白板对象", group: "编辑" },
-  { id: "delete", label: "删除对象", group: "编辑" },
-  { id: "group", label: "组合", group: "对象" },
-  { id: "ungroup", label: "取消组合", group: "对象" },
-  { id: "parent", label: "建立父子关系", group: "对象" },
-  { id: "unparent", label: "解除父级", group: "对象" },
-  { id: "resetTransform", label: "重置变换", group: "变换" },
-  { id: "comment", label: "添加或编辑对象评论", group: "对象" },
-  { id: "fitAll", label: "适应全部对象", group: "视图" },
-  { id: "fitSelection", label: "适应选区", group: "视图" },
-  { id: "focus", label: "聚焦选中图片", group: "视图" },
-  { id: "toggleGrid", label: "显示或隐藏网格", group: "视图" },
+  { id: "commandPalette", labelKey: "board.openCommandPalette", groupKey: "board.shortcutGroupInterface" },
+  { id: "undo", labelKey: "board.undo", groupKey: "board.groupEdit" },
+  { id: "redo", labelKey: "board.redo", groupKey: "board.groupEdit" },
+  { id: "duplicate", labelKey: "board.duplicate", groupKey: "board.groupEdit" },
+  { id: "copy", labelKey: "board.copyClipboard", groupKey: "board.groupEdit" },
+  { id: "paste", labelKey: "board.pasteObject", groupKey: "board.groupEdit" },
+  { id: "delete", labelKey: "board.delete", groupKey: "board.groupEdit" },
+  { id: "group", labelKey: "board.group", groupKey: "board.groupObject" },
+  { id: "ungroup", labelKey: "board.ungroup", groupKey: "board.groupObject" },
+  { id: "parent", labelKey: "board.parent", groupKey: "board.groupObject" },
+  { id: "unparent", labelKey: "board.unparent", groupKey: "board.groupObject" },
+  { id: "resetTransform", labelKey: "board.shortcutResetTransform", groupKey: "board.groupTransform" },
+  { id: "comment", labelKey: "board.shortcutComment", groupKey: "board.groupObject" },
+  { id: "fitAll", labelKey: "board.fitAll", groupKey: "board.groupView" },
+  { id: "fitSelection", labelKey: "board.fitSelection", groupKey: "board.groupView" },
+  { id: "focus", labelKey: "board.focusSelection", groupKey: "board.groupView" },
+  { id: "toggleGrid", labelKey: "board.shortcutToggleGrid", groupKey: "board.groupView" },
 ];
 
 interface BoardShortcutSettingsProps {
@@ -53,7 +54,11 @@ export function BoardShortcutSettings({
       const definition = boardShortcutDefinitions.find(
         (item) => item.id === conflict,
       );
-      setError(`“${shortcut}”已用于“${definition?.label ?? conflict}”`);
+      setError(
+        translate("board.shortcutConflict")
+          .replace("{shortcut}", shortcut)
+          .replace("{label}", definition ? translate(definition.labelKey) : conflict),
+      );
       return;
     }
     onChange({ ...bindings, [id]: shortcut });
@@ -77,11 +82,11 @@ export function BoardShortcutSettings({
       >
         <header>
           <div>
-            <span className="eyebrow">白板设置</span>
-            <h2 id="shortcut-settings-title">快捷键</h2>
-            <p>覆盖白板触发命令；鼠标拖动和连续操作保持原有方式。</p>
+            <span className="eyebrow">{translate("board.shortcutSettingsEyebrow")}</span>
+            <h2 id="shortcut-settings-title">{translate("board.shortcuts")}</h2>
+            <p>{translate("board.shortcutSettingsDescription")}</p>
           </div>
-          <button type="button" onClick={close} aria-label="关闭快捷键设置">
+          <button type="button" onClick={close} aria-label={translate("board.shortcutSettingsClose")}>
             <X size={17} />
           </button>
         </header>
@@ -94,12 +99,16 @@ export function BoardShortcutSettings({
           {boardShortcutDefinitions.map((definition) => {
             const recording = recordingId === definition.id;
             const shortcut = bindings[definition.id];
+            const label = translate(definition.labelKey);
+            const group = translate(definition.groupKey);
             return (
               <div className="shortcut-settings-row" key={definition.id}>
                 <span>
-                  <strong>{definition.label}</strong>
+                  <strong>{label}</strong>
                   <small>
-                    {definition.group} · 默认 {defaultBoardShortcuts[definition.id]}
+                    {translate("board.shortcutDefault")
+                      .replace("{group}", group)
+                      .replace("{default}", defaultBoardShortcuts[definition.id])}
                   </small>
                 </span>
                 <button
@@ -123,19 +132,19 @@ export function BoardShortcutSettings({
                       ["Tab", "F11", "Ctrl+K", "Ctrl+Shift+C", "Ctrl+Shift+R"]
                         .includes(next)
                     ) {
-                      setError(`“${next}”由全应用或系统功能保留`);
+                      setError(translate("board.shortcutReserved").replace("{shortcut}", next));
                       return;
                     }
                     assign(definition.id, next);
                   }}
-                  aria-label={`修改${definition.label}快捷键`}
+                  aria-label={translate("board.shortcutModify").replace("{label}", label)}
                 >
-                  {recording ? "请按新组合键…" : shortcut || "未设置"}
+                  {recording ? translate("board.shortcutRecording") : shortcut || translate("board.shortcutUnset")}
                 </button>
                 <button
                   type="button"
                   onClick={() => assign(definition.id, "")}
-                  aria-label={`清除${definition.label}快捷键`}
+                  aria-label={translate("board.shortcutClear").replace("{label}", label)}
                   disabled={!shortcut}
                 >
                   <X size={14} />
@@ -145,7 +154,7 @@ export function BoardShortcutSettings({
           })}
         </div>
         <footer>
-          <span>点击当前键位后直接按新组合键，Esc 取消录入。</span>
+          <span>{translate("board.shortcutHint")}</span>
           <button
             type="button"
             onClick={() => {
@@ -155,7 +164,7 @@ export function BoardShortcutSettings({
             }}
           >
             <RotateCcw size={15} />
-            恢复全部默认值
+            {translate("board.shortcutResetAll")}
           </button>
         </footer>
       </section>

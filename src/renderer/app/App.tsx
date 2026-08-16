@@ -170,7 +170,7 @@ function WorkspaceApp() {
       setNotice(
         reason instanceof Error && reason.message
           ? reason.message
-          : "工作区初始化失败，请重试。",
+          : translate("app.workspaceInitFailed"),
       );
     });
   }, [recoveryMode]);
@@ -342,17 +342,17 @@ function WorkspaceApp() {
       <div className="recovery-screen">
         <div className="recovery-card">
           <span className="brand-mark">R</span>
-          <h1>数据库升级未完成</h1>
+          <h1>{translate("app.recoveryTitle")}</h1>
           <p>
-            RefCanvas 升级数据库时失败，已停止在恢复页，没有改动原数据库文件。
+            {translate("app.recoveryDescription")}
           </p>
           <dl>
             <div>
-              <dt>数据库文件</dt>
+              <dt>{translate("app.recoveryDatabaseFile")}</dt>
               <dd>{migrationFailure?.databasePath ?? "…"}</dd>
             </div>
             <div>
-              <dt>迁移备份目录</dt>
+              <dt>{translate("app.recoveryBackupDirectory")}</dt>
               <dd>{migrationFailure?.backupDirectory ?? "…"}</dd>
             </div>
           </dl>
@@ -376,10 +376,10 @@ function WorkspaceApp() {
                 }
               }}
             >
-              打开备份目录
+              {translate("app.openBackupDirectory")}
             </button>
             <button className="primary-button" onClick={() => window.close()}>
-              退出
+              {translate("app.quit")}
             </button>
           </div>
         </div>
@@ -401,17 +401,17 @@ function WorkspaceApp() {
     let index = 1;
     let defaultTitle: string;
     do {
-      defaultTitle = `参考板 ${String(index).padStart(2, "0")}`;
+      defaultTitle = translate("workspace.boardDefault").replace("{number}", String(index).padStart(2, "0"));
       index += 1;
     } while (titles.has(defaultTitle));
     await dialog.requestForm({
-      title: "新建白板",
-      description: "为新的参考白板命名，创建后会自动切换过去。",
-      confirmLabel: "创建白板",
+      title: translate("boards.new"),
+      description: translate("app.newBoardDescription"),
+      confirmLabel: translate("app.createBoardConfirm"),
       fields: [
         {
           name: "title",
-          label: "白板名称",
+          label: translate("boards.nameLabel"),
           initialValue: defaultTitle,
           required: true,
           maxLength: 120,
@@ -423,12 +423,12 @@ function WorkspaceApp() {
 
   const renameBoard = async (board: BoardSummary) => {
     await dialog.requestForm({
-      title: "重命名白板",
-      confirmLabel: "保存",
+      title: translate("board.renameBoardTitle"),
+      confirmLabel: translate("collections.save"),
       fields: [
         {
           name: "title",
-          label: "白板名称",
+          label: translate("boards.nameLabel"),
           initialValue: board.title,
           required: true,
           maxLength: 120,
@@ -441,7 +441,7 @@ function WorkspaceApp() {
   const deleteBoard = async (board: BoardSummary) => {
     if (
       store.boards.length > 1 &&
-      window.confirm(`删除白板“${board.title}”？此操作不会删除素材源文件。`)
+      window.confirm(translate("app.deleteBoardConfirm").replace("{name}", board.title))
     ) {
       await store.deleteBoard(board.id);
     }
@@ -683,7 +683,7 @@ function WorkspaceApp() {
             }}
             aria-label={translate("titlebar.ai")}
             aria-pressed={aiPanelOpen}
-            title="AI Design Supervisor"
+            title={translate("directory.aiDesignSupervisor")}
           >
             <Sparkles size={16} />
           </button>

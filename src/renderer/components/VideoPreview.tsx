@@ -726,7 +726,7 @@ export function VideoPreview({
         {onOpenTool && (
           <input
             className="video-workbench-seek"
-            aria-label="视频时间线"
+            aria-label={translate("video.timeline")}
             type="range"
             min={0}
             max={duration || 0}
@@ -783,16 +783,16 @@ export function VideoPreview({
           {onOpenTool && (
             <button
               className="video-fps-button"
-              aria-label="打开 FPS 预设"
-              title="选择逐帧与时间线 FPS"
+              aria-label={translate("video.fpsPreset")}
+              title={translate("video.fpsPresetTitle")}
               onClick={() => onOpenTool("fps", timecode)}
             >
-              {playbackFps == null ? "自动 " : ""}
+              {playbackFps == null ? `${translate("preview.auto")} ` : ""}
               {(effectiveFrameRate ?? 0).toFixed(effectiveFrameRate && effectiveFrameRate % 1 ? 2 : 0)} FPS
             </button>
           )}
-          {onOpenTool && <button className={looping ? "active" : ""} aria-label="循环播放" title="循环播放" onClick={() => setLooping((value) => !value)}><Repeat2 size={15} /></button>}
-          {onOpenTool && <button aria-label={muted ? "取消静音" : "静音"} title={muted ? "取消静音" : "静音"} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>}
+          {onOpenTool && <button className={looping ? "active" : ""} aria-label={translate("preview.loop")} title={translate("preview.loop")} onClick={() => setLooping((value) => !value)}><Repeat2 size={15} /></button>}
+          {onOpenTool && <button aria-label={muted ? translate("preview.mute") : translate("video.mute")} title={muted ? translate("preview.mute") : translate("video.mute")} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>}
           <button
             type="button"
             className={`video-supreme-button${supremeOn ? " active" : ""}`}
@@ -801,13 +801,13 @@ export function VideoPreview({
             onClick={toggleSupreme}
           >
             <Sparkles size={14} />
-            至臻
+            {translate("preview.supremeShort")}
           </button>
           <button
             type="button"
             className="video-gif-button"
             onClick={() => onOpenTool ? onOpenTool("gif", timecode) : setGifStudioOpen(true)}
-            title="打开 GIF 导出工作台"
+            title={translate("video.gifExport")}
           >
             <Film size={14} />
             GIF
@@ -816,10 +816,10 @@ export function VideoPreview({
             type="button"
             className="video-gif-button"
             onClick={() => onOpenTool ? onOpenTool("frames", timecode) : setFramesDialogOpen(true)}
-            title="导出 PNG/JPG 序列帧"
+            title={translate("video.framesExport")}
           >
             <Images size={14} />
-            序列帧
+            {translate("video.framesExportShort")}
           </button>
           {onOpenTool ? (
             <PreviewColorBar

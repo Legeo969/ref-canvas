@@ -4,9 +4,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AssetActionSnapshot, RefCanvasApi } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { ActionsPanel } from "../../../../src/renderer/components/ActionsPanel";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 面板按钮文案已迁移到 i18n key；断言基于简体中文 catalog。
 
 describe("ActionsPanel", () => {
   let root: ReturnType<typeof createRoot> | null = null;

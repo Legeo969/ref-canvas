@@ -228,7 +228,7 @@ export function AiProviderSettings() {
     setBindingMessage("");
     const picked = await window.refCanvas.system.pickFile({
       title: translate("aiSettings.importWorkflow"),
-      filters: [{ name: "API workflow JSON", extensions: ["json"] }],
+      filters: [{ name: translate("aiSettings.fileFilterWorkflow"), extensions: ["json"] }],
     });
     if (!picked[0]) return;
     try {

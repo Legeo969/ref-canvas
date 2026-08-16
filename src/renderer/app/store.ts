@@ -48,6 +48,7 @@ import {
   createPreferencesSliceState,
   type PreferencesSliceState,
 } from "../features/preferences/preferences-slice";
+import { translate } from "./i18n";
 import {
   selectAssetId,
   selectionStateFromScope,
@@ -1075,7 +1076,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let index = 1;
       let title: string;
       do {
-        title = `参考板 ${String(index).padStart(2, "0")}`;
+        title = translate("workspace.boardDefault").replace("{number}", String(index).padStart(2, "0"));
         index += 1;
       } while (titles.has(title));
       await get().createBoard(title);
@@ -1346,7 +1347,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const index = state.browserTabs.findIndex((tab) => tab.id === id);
     if (index < 0) return;
     const remaining = state.browserTabs.filter((tab) => tab.id !== id);
-    const nextTabs = remaining.length > 0 ? remaining : [createBrowserTab("directory", "browser://empty", "浏览")];
+    const nextTabs = remaining.length > 0 ? remaining : [createBrowserTab("directory", "browser://empty", translate("browser.empty"))];
     const wasActive = state.activeTabId === id;
     const nextActiveId = wasActive
       ? nextTabs[Math.min(index, nextTabs.length - 1)].id

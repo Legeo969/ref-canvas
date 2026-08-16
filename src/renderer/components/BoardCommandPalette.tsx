@@ -5,6 +5,7 @@ import {
   recordRecentCommand,
   type CommandSearchItem,
 } from "../app/command-palette";
+import { translate } from "../app/i18n";
 
 export interface BoardCommand extends CommandSearchItem {
   disabled?: boolean;
@@ -94,7 +95,7 @@ export function BoardCommandPalette({
         className="command-palette"
         role="dialog"
         aria-modal="true"
-        aria-label="白板命令"
+        aria-label={translate("board.commandPaletteLabel")}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="command-palette-search">
@@ -119,8 +120,8 @@ export function BoardCommandPalette({
               }
               event.stopPropagation();
             }}
-            placeholder="搜索命令，例如“适应全部”或“align”"
-            aria-label="搜索白板命令"
+            placeholder={translate("board.commandPalettePlaceholder")}
+            aria-label={translate("board.commandPaletteSearchLabel")}
             role="combobox"
             aria-expanded="true"
             aria-controls="board-command-results"
@@ -143,8 +144,8 @@ export function BoardCommandPalette({
           {!results.length && (
             <div className="command-palette-empty">
               <Search size={18} />
-              <strong>没有匹配的命令</strong>
-              <span>可搜索中文名称、功能分组或英文关键词</span>
+              <strong>{translate("board.commandPaletteEmpty")}</strong>
+              <span>{translate("board.commandPaletteEmptyHint")}</span>
             </div>
           )}
           {results.map((command, index) => (
@@ -166,7 +167,7 @@ export function BoardCommandPalette({
                 <strong>{command.label}</strong>
                 <span>
                   {command.group}
-                  {!query && recentSet.has(command.id) && <em>最近</em>}
+                  {!query && recentSet.has(command.id) && <em>{translate("board.commandPaletteRecent")}</em>}
                 </span>
               </span>
               {command.shortcut && <kbd>{command.shortcut}</kbd>}
@@ -174,9 +175,9 @@ export function BoardCommandPalette({
           ))}
         </div>
         <footer className="command-palette-footer">
-          <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
-          <span><kbd>Enter</kbd> 执行</span>
-          <span><kbd>Esc</kbd> 关闭</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> {translate("board.commandPaletteSelect")}</span>
+          <span><kbd>Enter</kbd> {translate("board.commandPaletteExecute")}</span>
+          <span><kbd>Esc</kbd> {translate("preview.close")}</span>
           <button
             type="button"
             onClick={() => {
@@ -185,9 +186,9 @@ export function BoardCommandPalette({
             }}
           >
             <Keyboard size={13} />
-            快捷键设置
+            {translate("board.commandPaletteShortcutSettings")}
           </button>
-          <span>{results.length} 个命令</span>
+          <span>{translate("board.commandPaletteCount").replace("{count}", String(results.length))}</span>
         </footer>
       </section>
     </div>

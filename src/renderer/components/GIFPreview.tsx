@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
 import { usePreviewTransportRegistration } from "./PreviewTransport";
 
@@ -224,7 +225,7 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
   });
 
   if (error) {
-    return <span className="preview-message">无法解码 GIF</span>;
+    return <span className="preview-message">{translate("gif.decodeFailed")}</span>;
   }
 
   const count = gif?.frames.length ?? 0;
@@ -235,26 +236,26 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
       {!managed && count > 1 && (
         <div className="gif-controls">
           <button
-            aria-label={playing ? "暂停" : "播放"}
+            aria-label={playing ? translate("preview.pause") : translate("preview.play")}
             onClick={() => setPlaying((value) => !value)}
           >
             {playing ? <Pause size={14} /> : <Play size={14} />}
           </button>
-          <button aria-label="上一帧" onClick={() => step(-1)}>
+          <button aria-label={translate("preview.previousFrame")} onClick={() => step(-1)}>
             <SkipBack size={14} />
           </button>
-          <button aria-label="下一帧" onClick={() => step(1)}>
+          <button aria-label={translate("preview.nextFrame")} onClick={() => step(1)}>
             <SkipForward size={14} />
           </button>
           <button
-            aria-label="减速"
+            aria-label={translate("gif.slower")}
             onClick={() => setRate((value) => Math.max(0.25, value / 2))}
           >
             <Rewind size={14} />
           </button>
           <span className="gif-rate">{rate}×</span>
           <button
-            aria-label="加速"
+            aria-label={translate("gif.faster")}
             onClick={() => setRate((value) => Math.min(8, value * 2))}
           >
             <FastForward size={14} />
@@ -265,7 +266,7 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
             min={0}
             max={count - 1}
             value={frameIndex}
-            aria-label="GIF 帧时间轴"
+            aria-label={translate("gif.timeline")}
             onChange={(event) => {
               const index = Number(event.target.value);
               frameIndexRef.current = index;
@@ -275,7 +276,7 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
           <span className="gif-frame-count">
             {frameIndex + 1}/{count}
           </span>
-          <button aria-label="导出当前帧" onClick={() => void exportFrame()}>
+          <button aria-label={translate("gif.exportFrame")} onClick={() => void exportFrame()}>
             <Download size={14} />
           </button>
         </div>

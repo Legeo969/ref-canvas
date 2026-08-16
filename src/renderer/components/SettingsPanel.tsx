@@ -194,14 +194,14 @@ export function SettingsPanel({
     if (!appInfo) return "";
     const lines = [
       `RefCanvas ${appInfo.appVersion}`,
-      `安装渠道：${appInfo.installChannel}`,
+      `${translate("settings.about.installChannel")}：${appInfo.installChannel}`,
       `Electron ${appInfo.electronVersion}`,
       `Node ${appInfo.nodeVersion}`,
-      `数据库 schema ${appInfo.databaseSchemaVersion}`,
+      `${translate("settings.about.databaseSchema")} ${appInfo.databaseSchemaVersion}`,
       appInfo.libraryPath
-        ? `索引数据库：${appInfo.libraryPath}`
-        : "索引数据库：未打开",
-      `数据目录：${appInfo.userDataPath}`,
+        ? `${translate("settings.about.indexDatabase")}：${appInfo.libraryPath}`
+        : `${translate("settings.about.indexDatabase")}：${translate("settings.about.libraryNotOpen")}`,
+      `${translate("settings.about.dataDirectory")}：${appInfo.userDataPath}`,
     ];
     return lines.join("\n");
   }, [appInfo]);
@@ -332,19 +332,19 @@ export function SettingsPanel({
                 <h3>{translate("settings.board")}</h3>
                 <label className="settings-row">
                   <span>
-                    控制方式
+                    {translate("settings.board.controls")}
                     <small>
-                      PureRef 2.1 默认映射：Alt/中键平移、Z 缩放、Ctrl 旋转、C/V 裁切
+                      {translate("settings.board.controlsHint")}
                     </small>
                   </span>
                   <SelectMenu
                     value={
                       appPreferences?.boardSettings.interactionPreset ?? "pureref"
                     }
-                    ariaLabel="控制方式"
+                    ariaLabel={translate("settings.board.controls")}
                     options={[
-                      { value: "pureref", label: "PureRef 2.1 默认控制" },
-                      { value: "standard", label: "标准参考板" },
+                      { value: "pureref", label: translate("settings.board.controlsPureRef") },
+                      { value: "standard", label: translate("settings.board.controlsStandard") },
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -366,8 +366,8 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    对象吸附
-                    <small>拖动时显示临时参考线与目标边缘高亮</small>
+                    {translate("settings.board.snap")}
+                    <small>{translate("settings.board.snapHint")}</small>
                   </span>
                 </label>
                 <label className="settings-toggle">
@@ -386,23 +386,23 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    选中图片时置顶
-                    <small>点击图片对象自动移到图层最前</small>
+                    {translate("settings.board.bringToFront")}
+                    <small>{translate("settings.board.bringToFrontHint")}</small>
                   </span>
                 </label>
                 <label className="settings-row">
                   <span>
-                    图片采样
-                    <small>近邻采样适合像素美术</small>
+                    {translate("settings.board.sampling")}
+                    <small>{translate("settings.board.samplingHint")}</small>
                   </span>
                   <SelectMenu
                     value={
                       appPreferences?.boardSettings.sampling ?? "bilinear"
                     }
-                    ariaLabel="图片采样"
+                    ariaLabel={translate("settings.board.sampling")}
                     options={[
-                      { value: "bilinear", label: "双线性" },
-                      { value: "nearest", label: "近邻" },
+                      { value: "bilinear", label: translate("settings.board.samplingBilinear") },
+                      { value: "nearest", label: translate("settings.board.samplingNearest") },
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -415,15 +415,15 @@ export function SettingsPanel({
                 </label>
                 <label className="settings-row">
                   <span>
-                    撤销历史上限
-                    <small>超出后丢弃最早的记录</small>
+                    {translate("settings.board.undoLimit")}
+                    <small>{translate("settings.board.undoLimitHint")}</small>
                   </span>
                   <SelectMenu
                     value={appPreferences?.boardSettings.undoLimit ?? 99}
-                    ariaLabel="撤销历史上限"
+                    ariaLabel={translate("settings.board.undoLimit")}
                     options={[20, 50, 99, 200].map((value) => ({
                       value,
-                      label: `${value} 步`,
+                      label: translate("settings.board.undoSteps").replace("{value}", String(value)),
                     }))}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -440,8 +440,8 @@ export function SettingsPanel({
                 <h3>{translate("settings.options")}</h3>
                 <label className="settings-row">
                   <span>
-                    显示隐藏文件
-                    <small>目录视图中显示以 . 开头的文件</small>
+                    {translate("settings.preview.showHiddenFiles")}
+                    <small>{translate("settings.preview.showHiddenFilesHint")}</small>
                   </span>
                   <input
                     type="checkbox"
@@ -457,15 +457,15 @@ export function SettingsPanel({
                 </label>
                 <label className="settings-row">
                   <span>
-                    文件夹打开方式
-                    <small>单击直接进入，或双击进入</small>
+                    {translate("settings.preview.folderOpenMode")}
+                    <small>{translate("settings.preview.folderOpenModeHint")}</small>
                   </span>
                   <SelectMenu
                     value={appPreferences?.foundSettings.folderClickMode ?? "double"}
-                    ariaLabel="文件夹打开方式"
+                    ariaLabel={translate("settings.preview.folderOpenMode")}
                     options={[
-                      { value: "single", label: "单击" },
-                      { value: "double", label: "双击" },
+                      { value: "single", label: translate("settings.preview.folderOpenSingle") },
+                      { value: "double", label: translate("settings.preview.folderOpenDouble") },
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -476,13 +476,13 @@ export function SettingsPanel({
                     }
                   />
                 </label>
-                <h3>格式支持</h3>
+                <h3>{translate("settings.preview.formatSupport")}</h3>
                 <div className="format-groups-editor">
                   {foundSettings.formatGroups.map((group) => (
                     <section className="format-group-editor" key={group.id}>
                       <header>
                         <strong>{group.label}</strong>
-                        <span>{group.extensions.length} 个扩展名</span>
+                        <span>{translate("directory.extensionCount").replace("{count}", String(group.extensions.length))}</span>
                       </header>
                       <div className="format-extension-chips">
                         {group.extensions.map((extension) => (
@@ -490,8 +490,8 @@ export function SettingsPanel({
                             .{extension}
                             <button
                               type="button"
-                              aria-label={`移除 .${extension}`}
-                              title="移除"
+                              aria-label={translate("settings.preview.removeExtension").replace("{extension}", extension)}
+                              title={translate("settings.preview.remove")}
                               onClick={() => removeFormatExtension(group.id, extension)}
                             >
                               <X size={12} />
@@ -502,8 +502,8 @@ export function SettingsPanel({
                       <input
                         className="format-extension-input"
                         type="text"
-                        placeholder="输入扩展名后按 Enter"
-                        aria-label={`为 ${group.label} 添加扩展名`}
+                        placeholder={translate("settings.preview.extensionPlaceholder")}
+                        aria-label={translate("settings.preview.addExtensionFor").replace("{group}", group.label)}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter") return;
                           event.preventDefault();
@@ -515,18 +515,18 @@ export function SettingsPanel({
                   ))}
                   <section className="format-group-editor format-whitelist-editor">
                     <header>
-                      <strong>OTHER 白名单</strong>
-                      <span>{foundSettings.formatWhitelist.length} 个扩展名</span>
+                      <strong>{translate("settings.preview.otherWhitelist")}</strong>
+                      <span>{translate("directory.extensionCount").replace("{count}", String(foundSettings.formatWhitelist.length))}</span>
                     </header>
-                    <p>纳入 OTHER 筛选的非视觉文件；全部视图仍保留未知文件。</p>
+                    <p>{translate("settings.preview.whitelistHint")}</p>
                     <div className="format-extension-chips">
                       {foundSettings.formatWhitelist.map((extension) => (
                         <span className="format-extension-chip" key={extension}>
                           .{extension}
                           <button
                             type="button"
-                            aria-label={`移除白名单 .${extension}`}
-                            title="移除"
+                            aria-label={translate("settings.preview.removeWhitelistExtension").replace("{extension}", extension)}
+                            title={translate("settings.preview.remove")}
                             onClick={() => removeWhitelistExtension(extension)}
                           >
                             <X size={12} />
@@ -537,8 +537,8 @@ export function SettingsPanel({
                     <input
                       className="format-extension-input"
                       type="text"
-                      placeholder="输入扩展名后按 Enter"
-                      aria-label="添加 OTHER 白名单扩展名"
+                      placeholder={translate("settings.preview.extensionPlaceholder")}
+                      aria-label={translate("settings.preview.addWhitelistExtension")}
                       onKeyDown={(event) => {
                         if (event.key !== "Enter") return;
                         event.preventDefault();
@@ -548,7 +548,7 @@ export function SettingsPanel({
                     />
                   </section>
                 </div>
-                <h3>高级预览</h3>
+                <h3>{translate("settings.preview.advancedPreview")}</h3>
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
@@ -560,8 +560,8 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    视频自动播放
-                    <small>打开视频预览时立即播放</small>
+                    {translate("settings.preview.autoplayVideo")}
+                    <small>{translate("settings.preview.autoplayVideoHint")}</small>
                   </span>
                 </label>
                 <label className="settings-toggle">
@@ -575,8 +575,8 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    图片序列自动播放
-                    <small>打开序列预览时立即播放</small>
+                    {translate("settings.preview.autoplaySequence")}
+                    <small>{translate("settings.preview.autoplaySequenceHint")}</small>
                   </span>
                 </label>
                 <label className="settings-toggle">
@@ -590,18 +590,18 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    3D 模型自动旋转
-                    <small>无交互时缓慢旋转模型</small>
+                    {translate("settings.preview.autoplayModel3d")}
+                    <small>{translate("settings.preview.autoplayModel3dHint")}</small>
                   </span>
                 </label>
                 <div className="settings-row fps-preset-select-row">
                   <span>
-                    图片序列 FPS 预设
-                    <small>选择打开图片序列时使用的默认播放与导出帧率</small>
+                    {translate("settings.preview.sequenceFpsPresets")}
+                    <small>{translate("settings.preview.sequenceFpsPresetsHint")}</small>
                   </span>
                   <SelectMenu
                     value={foundSettings.defaultSequenceFps}
-                    ariaLabel="图片序列 FPS 预设"
+                    ariaLabel={translate("settings.preview.sequenceFpsPresets")}
                     options={foundSettings.sequenceFpsPresets.map((preset) => ({
                       value: preset,
                       label: `${preset} FPS`,
@@ -613,17 +613,17 @@ export function SettingsPanel({
                 </div>
                 <label className="settings-row">
                   <span>
-                    Alpha 背景
-                    <small>透明图片预览的棋盘格/纯色背景</small>
+                    {translate("settings.preview.alphaBackground")}
+                    <small>{translate("settings.preview.alphaBackgroundHint")}</small>
                   </span>
                   <SelectMenu
                     value={appPreferences?.foundSettings.alphaBackground ?? "checker"}
-                    ariaLabel="Alpha 背景"
+                    ariaLabel={translate("settings.preview.alphaBackground")}
                     options={[
-                      { value: "checker", label: "棋盘格" },
-                      { value: "black", label: "黑色" },
-                      { value: "white", label: "白色" },
-                      { value: "custom", label: "自定义" },
+                      { value: "checker", label: translate("settings.preview.alphaChecker") },
+                      { value: "black", label: translate("settings.preview.alphaBlack") },
+                      { value: "white", label: translate("settings.preview.alphaWhite") },
+                      { value: "custom", label: translate("settings.preview.alphaCustom") },
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -637,7 +637,7 @@ export function SettingsPanel({
                 {(appPreferences?.foundSettings.alphaBackground ?? "checker") ===
                   "custom" && (
                   <label className="settings-row">
-                    <span>自定义 Alpha 背景色</span>
+                    <span>{translate("settings.preview.customAlphaColor")}</span>
                     <input
                       type="color"
                       value={appPreferences?.foundSettings.alphaCustomColor ?? "#404040"}
@@ -651,8 +651,8 @@ export function SettingsPanel({
                 )}
                 <label className="settings-row">
                   <span>
-                    UI 缩放
-                    <small>0.8–1.5，界面整体缩放</small>
+                    {translate("settings.preview.uiScale")}
+                    <small>{translate("settings.preview.uiScaleHint")}</small>
                   </span>
                   <input
                     type="number"
@@ -670,11 +670,11 @@ export function SettingsPanel({
                   />
                 </label>
 
-                <h3>性能</h3>
+                <h3>{translate("settings.preview.performance")}</h3>
                 <label className="settings-row">
                   <span>
-                    预览队列并发
-                    <small>同时生成的缩略图数量（1–16）</small>
+                    {translate("settings.preview.previewConcurrency")}
+                    <small>{translate("settings.preview.previewConcurrencyHint")}</small>
                   </span>
                   <input
                     type="number"
@@ -693,8 +693,8 @@ export function SettingsPanel({
                 </label>
                 <label className="settings-row">
                   <span>
-                    缩略图 worker 线程
-                    <small>libvips 并发线程（1–8）</small>
+                    {translate("settings.preview.thumbnailWorkerThreads")}
+                    <small>{translate("settings.preview.thumbnailWorkerThreadsHint")}</small>
                   </span>
                   <input
                     type="number"
@@ -712,19 +712,19 @@ export function SettingsPanel({
                   />
                 </label>
 
-                <h3>输出工作流</h3>
+                <h3>{translate("settings.preview.outputWorkflow")}</h3>
                 <label className="settings-row">
                   <span>
-                    Downscale 命名模式
-                    <small>后缀追加 / 分辨率子目录 / 备份原文件</small>
+                    {translate("settings.preview.downscaleMode")}
+                    <small>{translate("settings.preview.downscaleModeHint")}</small>
                   </span>
                   <SelectMenu
                     value={appPreferences?.foundSettings.downscaleMode ?? "suffix"}
-                    ariaLabel="Downscale 命名模式"
+                    ariaLabel={translate("settings.preview.downscaleMode")}
                     options={[
-                      { value: "suffix", label: "文件名追加分辨率" },
-                      { value: "subdirectory", label: "输出到分辨率子目录" },
-                      { value: "backup", label: "保持原名并备份原文件" },
+                      { value: "suffix", label: translate("settings.preview.downscaleSuffixMode") },
+                      { value: "subdirectory", label: translate("settings.preview.downscaleSubdirMode") },
+                      { value: "backup", label: translate("settings.preview.downscaleBackupMode") },
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -736,7 +736,7 @@ export function SettingsPanel({
                   />
                 </label>
                 <label className="settings-row">
-                  <span>分辨率后缀（suffix 模式）</span>
+                  <span>{translate("settings.preview.downscaleSuffix")}</span>
                   <input
                     type="text"
                     maxLength={32}
@@ -749,7 +749,7 @@ export function SettingsPanel({
                   />
                 </label>
                 <label className="settings-row">
-                  <span>分辨率子目录名（subdirectory 模式）</span>
+                  <span>{translate("settings.preview.downscaleSubdirectory")}</span>
                   <input
                     type="text"
                     maxLength={128}
@@ -765,8 +765,8 @@ export function SettingsPanel({
                 <div className="settings-editor">
                   <div className="settings-editor-heading">
                     <span>
-                      MP4 转换预设
-                      <small>最多 3 个；导出窗口只显示启用的预设</small>
+                      {translate("settings.preview.mp4Presets")}
+                      <small>{translate("settings.preview.mp4PresetsHint")}</small>
                     </span>
                     <button
                       type="button"
@@ -778,7 +778,7 @@ export function SettingsPanel({
                           ...foundSettings.mp4Presets,
                           {
                             id: `convert-${Date.now()}`,
-                            label: `转换 ${index}`,
+                            label: translate("settings.preview.mp4PresetDefault").replace("{index}", String(index)),
                             enabled: false,
                             codec: "h264",
                             quality: "high",
@@ -788,7 +788,7 @@ export function SettingsPanel({
                       }}
                     >
                       <Plus size={14} />
-                      添加
+                      {translate("settings.preview.add")}
                     </button>
                   </div>
                   <div className="mp4-preset-list">
@@ -797,7 +797,7 @@ export function SettingsPanel({
                         <input
                           type="checkbox"
                           checked={preset.enabled}
-                          aria-label={`${preset.label} 启用`}
+                          aria-label={translate("settings.preview.presetEnabled").replace("{label}", preset.label)}
                           onChange={(event) => {
                             const next = [...foundSettings.mp4Presets];
                             next[index] = { ...preset, enabled: event.target.checked };
@@ -807,7 +807,7 @@ export function SettingsPanel({
                         <input
                           type="text"
                           value={preset.label}
-                          aria-label={`${preset.label} 名称`}
+                          aria-label={translate("settings.preview.presetName").replace("{label}", preset.label)}
                           onChange={(event) => {
                             const next = [...foundSettings.mp4Presets];
                             next[index] = { ...preset, label: event.target.value || preset.label };
@@ -816,7 +816,7 @@ export function SettingsPanel({
                         />
                         <SelectMenu
                           value={preset.codec}
-                          ariaLabel={`${preset.label} 编码器`}
+                          ariaLabel={translate("settings.preview.presetCodec").replace("{label}", preset.label)}
                           options={[
                             { value: "h264", label: "H.264" },
                             { value: "h265", label: "H.265" },
@@ -829,11 +829,11 @@ export function SettingsPanel({
                         />
                         <SelectMenu
                           value={preset.quality}
-                          ariaLabel={`${preset.label} 质量`}
+                          ariaLabel={translate("settings.preview.presetQuality").replace("{label}", preset.label)}
                           options={[
-                            { value: "medium", label: "中" },
-                            { value: "high", label: "高" },
-                            { value: "best", label: "最佳" },
+                            { value: "medium", label: translate("settings.preview.qualityMedium") },
+                            { value: "high", label: translate("settings.preview.qualityHigh") },
+                            { value: "best", label: translate("settings.preview.qualityBest") },
                           ]}
                           onValueChange={(value) => {
                             const next = [...foundSettings.mp4Presets];
@@ -843,11 +843,11 @@ export function SettingsPanel({
                         />
                         <SelectMenu
                           value={preset.resolution}
-                          ariaLabel={`${preset.label} 分辨率`}
+                          ariaLabel={translate("settings.preview.presetResolution").replace("{label}", preset.label)}
                           options={[
-                            { value: "original", label: "原始" },
-                            { value: "half", label: "1/2" },
-                            { value: "quarter", label: "1/4" },
+                            { value: "original", label: translate("settings.preview.resolutionOriginal") },
+                            { value: "half", label: translate("settings.preview.resolutionHalf") },
+                            { value: "quarter", label: translate("settings.preview.resolutionQuarter") },
                           ]}
                           onValueChange={(value) => {
                             const next = [...foundSettings.mp4Presets];
@@ -858,8 +858,8 @@ export function SettingsPanel({
                         <button
                           type="button"
                           className={preset.id === foundSettings.defaultMp4PresetId ? "active" : ""}
-                          aria-label={`设 ${preset.label} 为默认`}
-                          title="设为默认"
+                          aria-label={translate("settings.preview.setDefaultPreset").replace("{label}", preset.label)}
+                          title={translate("settings.preview.setAsDefault")}
                           disabled={!preset.enabled}
                           onClick={() =>
                             void setAppPreference({
@@ -873,7 +873,7 @@ export function SettingsPanel({
                         </button>
                         <button
                           type="button"
-                          aria-label={`删除 ${preset.label}`}
+                          aria-label={translate("settings.preview.deletePreset").replace("{label}", preset.label)}
                           disabled={foundSettings.mp4Presets.length === 1}
                           onClick={() =>
                             updateMp4Presets(
@@ -888,20 +888,20 @@ export function SettingsPanel({
                   </div>
                 </div>
 
-                <h3>色彩管理</h3>
+                <h3>{translate("settings.preview.colorManagement")}</h3>
                 <p className="settings-hint">
                   {colorStatus?.detectedOcio
-                    ? `自动检测 $OCIO：${colorStatus.detectedOcio}`
-                    : "未检测到 $OCIO 环境变量"}
+                    ? translate("settings.preview.ocioDetected").replace("{path}", colorStatus.detectedOcio)
+                    : translate("settings.preview.ocioNotDetected")}
                   {colorStatus?.activeLut && !colorStatus.activeLutExists
-                    ? "；当前 LUT 文件不存在"
+                    ? translate("settings.preview.lutMissing")
                     : ""}
-                  ；LUT 变化会自动失效缩略图缓存
+                  {translate("settings.preview.lutCacheInvalidate")}
                 </p>
                 <label className="settings-row">
                   <span>
-                    OCIO config 路径
-                    <small>留空自动检测 $OCIO；颜色设置缓存键包含 config</small>
+                    {translate("settings.preview.ocioConfigPath")}
+                    <small>{translate("settings.preview.ocioConfigPathHint")}</small>
                   </span>
                   <div className="settings-path-control">
                     <input
@@ -918,8 +918,8 @@ export function SettingsPanel({
                     <button
                       type="button"
                       className="icon-button"
-                      aria-label="定位 OCIO config"
-                      title="定位"
+                      aria-label={translate("settings.preview.locateOcioConfig")}
+                      title={translate("settings.preview.locate")}
                       disabled={!appPreferences?.foundSettings.ocioConfigPath}
                       onClick={() => {
                         const value = appPreferences?.foundSettings.ocioConfigPath;
@@ -931,11 +931,11 @@ export function SettingsPanel({
                   </div>
                 </label>
                 <label className="settings-row">
-                  <span>当前 LUT（.cube/.3dl）</span>
+                  <span>{translate("settings.preview.currentLut")}</span>
                   <div className="settings-path-control">
                     <input
                       type="text"
-                      placeholder="绝对路径，留空关闭"
+                      placeholder={translate("settings.preview.lutPlaceholder")}
                       value={appPreferences?.foundSettings.activeLut ?? ""}
                       onChange={(event) =>
                         void setAppPreference({
@@ -948,8 +948,8 @@ export function SettingsPanel({
                     <button
                       type="button"
                       className="icon-button"
-                      aria-label="定位当前 LUT"
-                      title="定位"
+                      aria-label={translate("settings.preview.locateLut")}
+                      title={translate("settings.preview.locate")}
                       disabled={!appPreferences?.foundSettings.activeLut}
                       onClick={() => {
                         const value = appPreferences?.foundSettings.activeLut;
@@ -961,14 +961,14 @@ export function SettingsPanel({
                   </div>
                 </label>
 
-                <h3>脚本（Python/Shell）</h3>
+                <h3>{translate("settings.preview.scripts")}</h3>
                 <p className="settings-hint">
-                  注册时记录 sha256 信任锚点；脚本被修改后需重新注册才能运行。
+                  {translate("settings.preview.scriptsHint")}
                 </p>
                 <div className="watch-root-list">
                   {scripts.length === 0 && (
                     <p className="watch-root-empty">
-                      还没有注册脚本。目录右键菜单可运行已注册脚本。
+                      {translate("settings.preview.noScripts")}
                     </p>
                   )}
                   {scripts.map((script) => (
@@ -976,9 +976,10 @@ export function SettingsPanel({
                       <div>
                         <strong title={script.path}>{script.name}</strong>
                         <span title={script.hash}>
-                          {script.kind.toUpperCase()} · 超时{" "}
-                          {Math.round(script.timeoutMs / 1000)}s · sha256{" "}
-                          {script.hash.slice(0, 12)}…
+                          {translate("settings.preview.scriptMeta")
+                            .replace("{kind}", script.kind.toUpperCase())
+                            .replace("{seconds}", String(Math.round(script.timeoutMs / 1000)))
+                            .replace("{hash}", script.hash.slice(0, 12))}
                         </span>
                       </div>
                       <div className="watch-root-actions">
@@ -991,7 +992,7 @@ export function SettingsPanel({
                           }
                         >
                           <FolderOpen size={14} />
-                          定位
+                          {translate("settings.preview.locate")}
                         </button>
                         <button
                           className="secondary-button"
@@ -1004,7 +1005,7 @@ export function SettingsPanel({
                           }}
                         >
                           <X size={14} />
-                          移除
+                          {translate("settings.preview.remove")}
                         </button>
                       </div>
                     </div>
@@ -1014,19 +1015,19 @@ export function SettingsPanel({
                   className="secondary-button"
                   onClick={async () => {
                     const values = await dialog.requestForm({
-                      title: "注册脚本",
-                      description: "脚本将在目录右键菜单中运行（带信任校验与超时）。",
-                      confirmLabel: "注册",
+                      title: translate("settings.preview.registerScript"),
+                      description: translate("settings.preview.registerScriptDescription"),
+                      confirmLabel: translate("settings.preview.register"),
                       fields: [
                         {
                           name: "path",
-                          label: "脚本绝对路径（.py / .ps1）",
+                          label: translate("settings.preview.scriptPathLabel"),
                           required: true,
                           maxLength: 4096,
                         },
                         {
                           name: "timeout",
-                          label: "超时秒数（默认 60）",
+                          label: translate("settings.preview.scriptTimeoutLabel"),
                           required: false,
                           maxLength: 6,
                         },
@@ -1043,16 +1044,16 @@ export function SettingsPanel({
                       setScripts(next);
                     } catch (error) {
                       window.alert(
-                        error instanceof Error ? error.message : "注册失败",
+                        error instanceof Error ? error.message : translate("settings.preview.registerFailed"),
                       );
                     }
                   }}
                 >
                   <Plus size={14} />
-                  注册脚本…
+                  {translate("settings.preview.registerScriptEllipsis")}
                 </button>
 
-                <h3>本地</h3>
+                <h3>{translate("settings.preview.local")}</h3>
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
@@ -1064,21 +1065,21 @@ export function SettingsPanel({
                     }
                   />
                   <span>
-                    Debug 日志
-                    <small>主进程输出详细日志</small>
+                    {translate("settings.preview.debugLogging")}
+                    <small>{translate("settings.preview.debugLoggingHint")}</small>
                   </span>
                 </label>
                 <label className="settings-row">
                   <span>
-                    关闭行为
-                    <small>关闭窗口时完全退出或最小化到托盘</small>
+                    {translate("settings.preview.closeBehavior")}
+                    <small>{translate("settings.preview.closeBehaviorHint")}</small>
                   </span>
                   <SelectMenu
                     value={appPreferences?.foundSettings.closeBehavior ?? "quit"}
-                    ariaLabel="关闭行为"
+                    ariaLabel={translate("settings.preview.closeBehavior")}
                     options={[
-                      { value: "quit", label: "完全退出" },
-                      { value: "tray", label: "最小化到托盘" },
+                      { value: "quit", label: translate("settings.preview.closeQuit") },
+                      { value: "tray", label: translate("settings.preview.closeTray") },
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
@@ -1103,9 +1104,9 @@ export function SettingsPanel({
                 }}
                 onRestoreBackup={(backup) => {
                   void dialog.requestConfirm({
-                    title: "恢复备份？",
-                    description: "恢复会替换当前数据库并重启 RefCanvas。当前数据库会保留回滚副本。",
-                    confirmLabel: "恢复",
+                    title: translate("settings.restoreBackupTitle"),
+                    description: translate("settings.restoreBackupDescription"),
+                    confirmLabel: translate("settings.restore"),
                   }).then((confirmed) => {
                     if (confirmed) void window.refCanvas.backups.restore(backup.path);
                   });

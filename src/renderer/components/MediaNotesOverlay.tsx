@@ -1,6 +1,7 @@
 import { NotebookPen, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AssetRecord, MediaNote } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 
 interface MediaNotesOverlayProps {
   asset: Pick<AssetRecord, "id">;
@@ -96,7 +97,7 @@ export function MediaNotesOverlay({
           )}
           <button
             className="media-note-toggle"
-            aria-label={open ? "收起时间点备注" : "时间点备注"}
+            aria-label={open ? translate("preview.notesCollapse") : translate("preview.notesToggle")}
             onClick={() => setOpen((value) => !value)}
           >
             <NotebookPen size={14} />
@@ -106,20 +107,20 @@ export function MediaNotesOverlay({
       {open && (
         <div className="media-notes-overlay">
           <div className="media-notes-header">
-            <span>时间点备注</span>
-            <button aria-label="关闭" onClick={() => setOpen(false)}>
+            <span>{translate("preview.notesToggle")}</span>
+            <button aria-label={translate("preview.close")} onClick={() => setOpen(false)}>
               <X size={13} />
             </button>
           </div>
           <div className="media-notes-list">
             {notes.length === 0 && (
-              <p className="media-notes-empty">还没有备注，播放时添加。</p>
+              <p className="media-notes-empty">{translate("preview.notesEmpty")}</p>
             )}
             {notes.map((note) => (
               <div className="media-note-row" key={note.id}>
                 <button
                   className="media-note-time"
-                  title="跳到该时间点"
+                  title={translate("preview.notesSeekTitle")}
                   onClick={() => {
                     const current = mediaElement();
                     if (current) current.currentTime = note.timeMs / 1000;
@@ -130,7 +131,7 @@ export function MediaNotesOverlay({
                 <span>{note.text}</span>
                 <button
                   className="media-note-delete"
-                  aria-label="删除备注"
+                  aria-label={translate("preview.notesDelete")}
                   onClick={() => {
                     void window.refCanvas.mediaNotes.delete(note.id);
                     setNotes((current) =>
@@ -148,14 +149,14 @@ export function MediaNotesOverlay({
               <input
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                placeholder={`备注（时间 ${formatTime(draftTime)}）`}
+                placeholder={translate("preview.notesPlaceholder").replace("{time}", formatTime(draftTime))}
                 maxLength={2000}
                 autoFocus
                 onKeyDown={(event) => {
                   if (event.key === "Enter") void addNote();
                 }}
               />
-              <button onClick={() => void addNote()}>保存</button>
+              <button onClick={() => void addNote()}>{translate("collections.save")}</button>
             </div>
           ) : (
             <button
@@ -170,7 +171,7 @@ export function MediaNotesOverlay({
               }}
             >
               <Plus size={13} />
-              在此时间添加备注
+              {translate("preview.notesAddHere")}
             </button>
           )}
         </div>

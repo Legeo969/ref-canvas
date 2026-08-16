@@ -11,6 +11,7 @@ import {
   type PanelId,
   type PanelLayout,
 } from "../app/panel-layout";
+import { translate } from "../app/i18n";
 
 const KEYBOARD_STEP = 8;
 const KEYBOARD_STEP_FAST = 32;
@@ -132,13 +133,16 @@ export function PanelDividers({
       ref={elementRef}
       className="panel-divider"
       role="separator"
-      aria-label={`调整${
-        panel === "sidebar"
-          ? "侧栏"
-          : panel === "asset"
-            ? "素材区"
-            : "详情栏"
-      }宽度`}
+      aria-label={translate("workspace.adjustPanelWidth").replace(
+        "{panel}",
+        translate(
+          panel === "sidebar"
+            ? "workspace.panelSidebar"
+            : panel === "asset"
+              ? "workspace.panelAsset"
+              : "workspace.panelDetails",
+        ),
+      )}
       aria-orientation="vertical"
       aria-valuemin={0}
       aria-valuemax={100}

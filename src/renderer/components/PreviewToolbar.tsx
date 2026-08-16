@@ -316,7 +316,7 @@ export function PreviewToolbar({
       {showLowerRow && (
         <div className="preview-toolbar-row secondary">
           <div className="preview-toolbar-scroll">
-          {onFit && <button type="button" className="preview-tool-label preview-fit-button" title={translate("preview.fit")} aria-label={translate("preview.fit")} onClick={onFit}>Fit</button>}
+          {onFit && <button type="button" className="preview-tool-label preview-fit-button" title={translate("preview.fit")} aria-label={translate("preview.fit")} onClick={onFit}>{translate("imageReview.fitShort")}</button>}
           <div className="preview-toolbar-renderer-controls" ref={rendererControlsRef} />
           {onAutoToggle && <button
             className={`preview-tool-label${autoActive ? " active" : ""}`}
@@ -359,6 +359,7 @@ export function PreviewToolbar({
           </button>}
           {multichannel && <button
             ref={multichannelButtonRef}
+            data-preview-multichannel
             className={`preview-tool-label${multichannelActive ? " active" : ""}`}
             title={translate("preview.multichannel")}
             aria-label={translate("preview.multichannel")}

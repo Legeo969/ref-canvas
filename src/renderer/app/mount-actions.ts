@@ -1,5 +1,6 @@
 import type { MountRoot } from "../../shared/contracts";
 import { useAppStore } from "./store";
+import { translate } from "./i18n";
 import type { ConfirmDialogConfig } from "../components/DialogProvider";
 
 interface ConfirmationDialog {
@@ -11,9 +12,9 @@ export async function confirmRemoveMount(
   mount: Pick<MountRoot, "id" | "displayName" | "path">,
 ): Promise<boolean> {
   const confirmed = await dialog.requestConfirm({
-    title: `移除挂载“${mount.displayName}”？`,
-    description: "只停止浏览这个目录。磁盘文件、标签、评分和备注都不会被删除。",
-    confirmLabel: "移除挂载",
+    title: translate("directory.unmountNamed").replace("{name}", mount.displayName),
+    description: translate("directory.unmountDescription"),
+    confirmLabel: translate("directory.unmount"),
   });
   if (!confirmed) return false;
   await window.refCanvas.mounts.remove(mount.id);

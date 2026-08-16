@@ -2,8 +2,11 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RefCanvasApi } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { confirmRemoveMount } from "../../../../src/renderer/app/mount-actions";
 import { useAppStore } from "../../../../src/renderer/app/store";
+
+setLanguage("zh-CN"); // 对话框文案已迁移到 i18n key；断言基于简体中文 catalog。
 
 describe("mount removal", () => {
   afterEach(() => {

@@ -15,6 +15,7 @@ import type {
   AssetAnnotation,
   AssetRecord,
 } from "../../shared/contracts";
+import { translate } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
 
 interface AssetAnnotationDialogProps {
@@ -43,7 +44,7 @@ export function AssetAnnotationDialog({
         if (current) setAnnotations(items);
       })
       .catch(() => {
-        if (current) setError("标注加载失败，请重试");
+        if (current) setError(translate("annotations.loadFailed"));
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -99,25 +100,25 @@ export function AssetAnnotationDialog({
         setSelectedId(updated.id);
         setMovingId(null);
       } catch {
-        setError("标注位置更新失败，请重试");
+        setError(translate("annotations.moveFailed"));
       }
       return;
     }
 
     setAdding(false);
     await dialog.requestForm({
-      title: "添加图片标注",
-      description: "评论固定在刚才点击的位置，并可通过素材搜索找到。",
-      confirmLabel: "添加标注",
+      title: translate("annotations.addTitle"),
+      description: translate("annotations.addDescription"),
+      confirmLabel: translate("annotations.add"),
       fields: [
         {
           name: "text",
-          label: "标注内容",
+          label: translate("annotations.contentLabel"),
           type: "textarea",
           rows: 5,
           required: true,
           maxLength: 2_000,
-          placeholder: "记录需要关注的构图、颜色、材质或修改意见…",
+          placeholder: translate("annotations.contentPlaceholder"),
         },
       ],
       onSubmit: async ({ text }) => {
@@ -133,12 +134,12 @@ export function AssetAnnotationDialog({
 
   const editAnnotation = async (annotation: AssetAnnotation) => {
     await dialog.requestForm({
-      title: "编辑图片标注",
-      confirmLabel: "保存",
+      title: translate("annotations.editTitle"),
+      confirmLabel: translate("collections.save"),
       fields: [
         {
           name: "text",
-          label: "标注内容",
+          label: translate("annotations.contentLabel"),
           type: "textarea",
           rows: 5,
           initialValue: annotation.text,
@@ -168,14 +169,14 @@ export function AssetAnnotationDialog({
       setSelectedId((id) => (id === annotation.id ? null : id));
       setMovingId((id) => (id === annotation.id ? null : id));
     } catch {
-      setError("标注删除失败，请重试");
+      setError(translate("annotations.deleteFailed"));
     }
   };
 
   const interactionLabel = adding
-    ? "点击图片上的位置添加标注"
+    ? translate("annotations.placeHint")
     : movingId
-      ? "点击图片上的新位置完成移动"
+      ? translate("annotations.moveHint")
       : "";
 
   return (
@@ -190,7 +191,7 @@ export function AssetAnnotationDialog({
       >
         <header>
           <div>
-            <span className="eyebrow">图片标注</span>
+            <span className="eyebrow">{translate("annotations.eyebrow")}</span>
             <h2 id="annotation-dialog-title">{asset.title}</h2>
           </div>
           <div className="annotation-header-actions">
@@ -203,14 +204,14 @@ export function AssetAnnotationDialog({
               }}
             >
               <MessageSquarePlus size={16} />
-              {adding ? "取消添加" : "添加标注"}
+              {adding ? translate("annotations.cancelAdd") : translate("annotations.add")}
             </button>
             <button
               data-autofocus
               className="icon-button"
               type="button"
               onClick={onClose}
-              aria-label="关闭图片标注"
+              aria-label={translate("annotations.close")}
             >
               <X size={17} />
             </button>
@@ -240,7 +241,7 @@ export function AssetAnnotationDialog({
                   left: `${annotation.x * 100}%`,
                   top: `${annotation.y * 100}%`,
                 }}
-                aria-label={`查看标注 ${index + 1}`}
+                aria-label={translate("annotations.viewNamed").replace("{index}", String(index + 1))}
                 onClick={(event) => {
                   event.stopPropagation();
                   setSelectedId(annotation.id);
@@ -262,19 +263,19 @@ export function AssetAnnotationDialog({
         <aside className="annotation-comments">
           <header>
             <div>
-              <strong>空间评论</strong>
-              <span>{annotations.length} 条</span>
+              <strong>{translate("annotations.spaceComments")}</strong>
+              <span>{translate("annotations.count").replace("{count}", String(annotations.length))}</span>
             </div>
-            <p>点击编号可在图片和评论之间定位。</p>
+            <p>{translate("annotations.navigateHint")}</p>
           </header>
           {error && <div className="annotation-error">{error}</div>}
           <div className="annotation-comment-list">
-            {loading && <div className="annotation-empty">正在加载标注…</div>}
+            {loading && <div className="annotation-empty">{translate("annotations.loading")}</div>}
             {!loading && annotations.length === 0 && (
               <div className="annotation-empty">
                 <MessageSquarePlus size={22} />
-                <strong>还没有图片标注</strong>
-                <span>点击“添加标注”，再点选图片位置。</span>
+                <strong>{translate("annotations.emptyTitle")}</strong>
+                <span>{translate("annotations.emptyHint")}</span>
               </div>
             )}
             {annotations.map((annotation, index) => (
@@ -294,7 +295,7 @@ export function AssetAnnotationDialog({
                       setMovingId(annotation.id);
                       setSelectedId(annotation.id);
                     }}
-                    aria-label={`重新定位标注 ${index + 1}`}
+                    aria-label={translate("annotations.relocateNamed").replace("{index}", String(index + 1))}
                   >
                     <Crosshair size={15} />
                   </button>
@@ -304,7 +305,7 @@ export function AssetAnnotationDialog({
                       event.stopPropagation();
                       void editAnnotation(annotation);
                     }}
-                    aria-label={`编辑标注 ${index + 1}`}
+                    aria-label={translate("annotations.editNamed").replace("{index}", String(index + 1))}
                   >
                     <Pencil size={15} />
                   </button>
@@ -314,7 +315,7 @@ export function AssetAnnotationDialog({
                       event.stopPropagation();
                       void deleteAnnotation(annotation);
                     }}
-                    aria-label={`删除标注 ${index + 1}`}
+                    aria-label={translate("annotations.deleteNamed").replace("{index}", String(index + 1))}
                   >
                     <Trash2 size={15} />
                   </button>

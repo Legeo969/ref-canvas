@@ -56,6 +56,7 @@ export const catalog = {
     "ai.found.majorChange": "Major changes needed",
     "ai.found.professionalModify": "Professional modify",
     "ai.found.imageUnit": "images",
+    "aiSettings.fileFilterWorkflow": "API workflow JSON",
   },
   zhCN: {
     "ai.title": "AI 设计",
@@ -112,5 +113,6 @@ export const catalog = {
     "ai.found.majorChange": "需要较大改动",
     "ai.found.professionalModify": "专业修改",
     "ai.found.imageUnit": "张",
+    "aiSettings.fileFilterWorkflow": "API workflow JSON",
   },
 } satisfies Record<string, Partial<Record<MessageKey, string>>>;
