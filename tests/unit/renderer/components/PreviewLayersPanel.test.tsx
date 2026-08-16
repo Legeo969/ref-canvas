@@ -3,11 +3,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { FoundLayersPanel } from "../../../../src/renderer/components/FoundLayersPanel";
+import { PreviewLayersPanel } from "../../../../src/renderer/components/PreviewLayersPanel";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-describe("FoundLayersPanel", () => {
+describe("PreviewLayersPanel", () => {
   let root: ReturnType<typeof createRoot> | null = null;
   afterEach(async () => {
     await act(async () => root?.unmount());
@@ -19,7 +19,7 @@ describe("FoundLayersPanel", () => {
     const host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
-    await act(async () => root?.render(<FoundLayersPanel />));
+    await act(async () => root?.render(<PreviewLayersPanel />));
     const button = host.querySelector<HTMLButtonElement>("button");
     expect(button?.textContent).toContain("Layers (0)");
     expect(button?.getAttribute("aria-expanded")).toBe("false");

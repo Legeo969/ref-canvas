@@ -1,5 +1,6 @@
 import { Focus, Maximize2, Minimize2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { translate } from "../app/i18n";
 
 /**
  * 全屏预览走窗口级系统全屏（主进程 setFullScreen）：HTML5
@@ -128,13 +129,13 @@ export function PreviewSessionModeButtons({
   showFocus?: boolean;
 }) {
   return (
-    <div className="preview-session-mode-actions" role="group" aria-label="预览显示模式">
+    <div className="preview-session-mode-actions" role="group" aria-label={translate("preview.displayModeGroup")}>
       {showFocus && (
         <button
           type="button"
           className={focused ? "active" : ""}
-          aria-label={focused ? "退出聚焦预览" : "聚焦预览"}
-          title={focused ? "退出聚焦预览" : "聚焦预览"}
+          aria-label={focused ? translate("preview.exitFocus") : translate("preview.focus")}
+          title={focused ? translate("preview.exitFocus") : translate("preview.focus")}
           aria-pressed={focused}
           onClick={onToggleFocus}
         >
@@ -144,8 +145,8 @@ export function PreviewSessionModeButtons({
       <button
         type="button"
         className={fullscreen ? "active" : ""}
-        aria-label={fullscreen ? "退出全屏预览" : "全屏预览"}
-        title={fullscreen ? "退出全屏预览" : "全屏预览"}
+        aria-label={fullscreen ? translate("preview.exitFullscreen") : translate("preview.fullscreen")}
+        title={fullscreen ? translate("preview.exitFullscreen") : translate("preview.fullscreen")}
         aria-pressed={fullscreen}
         onClick={onToggleFullscreen}
       >

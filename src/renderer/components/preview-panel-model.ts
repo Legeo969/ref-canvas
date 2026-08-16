@@ -1,6 +1,6 @@
 import type { AssetKind, DirectoryEntry } from "../../shared/contracts";
 
-export type FoundPreviewKind =
+export type PreviewPanelKind =
   | "image"
   | "svg"
   | "gif"
@@ -10,12 +10,12 @@ export type FoundPreviewKind =
   | "pdf"
   | "model3d";
 
-export type FoundToolbarVariant = Extract<
-  FoundPreviewKind,
+export type PreviewToolbarVariant = Extract<
+  PreviewPanelKind,
   "image" | "svg" | "gif" | "video" | "sequence"
 >;
 
-export interface FoundToolbarCapabilities {
+export interface PreviewToolbarCapabilities {
   upper: boolean;
   lower: boolean;
   timeline: boolean;
@@ -27,10 +27,10 @@ export interface FoundToolbarCapabilities {
   supreme: boolean;
 }
 
-export function classifyFoundPreview(
+export function classifyPreviewPanel(
   entry: Pick<DirectoryEntry, "extension" | "sequence" | "sequenceGroup">,
   asset: { kind: AssetKind; extension: string },
-): FoundPreviewKind {
+): PreviewPanelKind {
   if (entry.sequenceGroup || entry.sequence) return "sequence";
   const extension = (asset.extension || entry.extension).toLowerCase();
   if (extension === "svg") return "svg";
@@ -47,9 +47,9 @@ export function classifyFoundPreview(
   }
 }
 
-export function foundToolbarCapabilities(
-  variant: FoundToolbarVariant,
-): FoundToolbarCapabilities {
+export function previewToolbarCapabilities(
+  variant: PreviewToolbarVariant,
+): PreviewToolbarCapabilities {
   return {
     upper: true,
     lower: true,
@@ -62,8 +62,8 @@ export function foundToolbarCapabilities(
   };
 }
 
-export function foundToolbarProgressColor(variant: FoundToolbarVariant): string {
-  return variant === "sequence" ? "var(--found-sequence)" : "var(--found-accent)";
+export function previewToolbarProgressColor(variant: PreviewToolbarVariant): string {
+  return variant === "sequence" ? "var(--preview-sequence)" : "var(--preview-accent)";
 }
 
 export interface EnvironmentPreviewCapabilities {
@@ -90,7 +90,7 @@ export function environmentPreviewCapabilities(
   };
 }
 
-export function formatFoundTimecode(seconds: number, fps?: number | null): string {
+export function formatPreviewTimecode(seconds: number, fps?: number | null): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
   const total = Math.floor(safeSeconds);
   const hours = Math.floor(total / 3600);

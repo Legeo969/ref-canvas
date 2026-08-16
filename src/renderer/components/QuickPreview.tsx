@@ -100,12 +100,12 @@ export function QuickPreview({
         event.target instanceof HTMLElement &&
           event.target.matches("input, textarea, select, button"),
       );
-      // 方向键按焦点归属路由：事件目标位于媒体预览根/Found 预览面板时
+      // 方向键按焦点归属路由：事件目标位于媒体预览根/预览面板时
       // 让位（视频步进、序列步进接管），快速预览不翻页。
       const inPreviewFocus = Boolean(
         event.target instanceof HTMLElement &&
           event.target.closest(
-            ".video-preview, .sequence-preview-shell, .found-preview-panel",
+            ".video-preview, .sequence-preview-shell, .preview-panel",
           ),
       );
       if (event.key === " " && !interactive) {

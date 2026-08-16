@@ -803,7 +803,7 @@ describe("DirectoryAssetPanel", () => {
 
     const section = document.querySelector<HTMLElement>(".asset-panel")!;
     const previewRegion = document.createElement("div");
-    previewRegion.className = "found-preview-panel";
+    previewRegion.className = "preview-panel";
     document.body.append(previewRegion);
     await act(async () => {
       Array.from(document.querySelectorAll<HTMLButtonElement>(".directory-card"))[0]?.click();

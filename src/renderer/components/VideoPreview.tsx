@@ -459,7 +459,7 @@ export function VideoPreview({
   };
   // ←/→ 逐帧：短按 = 精确单帧；长按 = 加速扫览（计时器驱动，忽略
   // 浏览器按键自动重复）。按键按焦点归属路由：事件目标在本预览根内
-  // （点击画面后），或位于 Found 预览面板（点击工具栏后方向键仍归
+  // （点击画面后），或位于预览面板（点击工具栏后方向键仍归
   // 预览）才响应；目录网格等全局方向键处理在目标进入预览区域后让位。
   // 空格只在预览根内生效（工具栏按钮保留原生 Space 激活语义）；滑杆
   // 等自带方向键处理的控件除外。扫览中窗口失焦（Alt-Tab 等）立即停止。
@@ -482,10 +482,10 @@ export function VideoPreview({
       const root = rootRef.current;
       if (!root || !(target instanceof Node)) return;
       const insideRoot = root.contains(target);
-      const inFoundPanel =
+      const inPreviewPanel =
         target instanceof Element &&
-        target.closest(".found-preview-panel") != null;
-      if (!insideRoot && !inFoundPanel) return;
+        target.closest(".preview-panel") != null;
+      if (!insideRoot && !inPreviewPanel) return;
       if (
         target instanceof Element &&
         target.closest("button, input, textarea, select, a, [role='slider']")
@@ -746,7 +746,7 @@ export function VideoPreview({
             onPointerUp={() => schedulePalette(videoRef.current?.currentTime ?? timecode, true)}
           />
         )}
-        <div className={`video-step-controls${onOpenTool ? " found-managed" : ""}`}>
+        <div className={`video-step-controls${onOpenTool ? " preview-managed" : ""}`}>
           <button
             aria-label={translate("sequence.previousFrame")}
             disabled={stepping || effectiveFrameRate === null}

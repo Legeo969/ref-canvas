@@ -131,7 +131,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       const aiTab = Array.from(
         document.querySelectorAll('.directory-details-panel [role="tab"]'),
       ).find(
-        // Found tab bar localizes the label; every catalog renders the AI tab with "AI" (e.g. "AI Design Director"/"AI 设计总监").
+        // Preview tab bar localizes the label; every catalog renders the AI tab with "AI" (e.g. "AI Design Director"/"AI 设计总监").
         (item) => /AI/i.test(item.textContent ?? ""),
       );
       aiTab?.click();
@@ -188,18 +188,18 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       const previewTab = document.querySelector('.directory-details-panel [role="tab"]');
       if (!previewTab) throw new Error("PREVIEW_TAB_NOT_FOUND");
       previewTab.click();
-      const toolbar = await waitForSelector(".directory-details-panel .found-toolbar-video", 30000);
-      const viewport = await waitForSelector(".directory-details-panel .found-preview-viewport", 30000);
-      const video = await waitForSelector(".directory-details-panel .found-preview-viewport video", 30000);
+      const toolbar = await waitForSelector(".directory-details-panel .preview-toolbar-video", 30000);
+      const viewport = await waitForSelector(".directory-details-panel .preview-viewport", 30000);
+      const video = await waitForSelector(".directory-details-panel .preview-viewport video", 30000);
       if (!toolbar || !viewport || !video) throw new Error("VIDEO_PREVIEW_NOT_READY:" + JSON.stringify({
         toolbar: Boolean(toolbar), viewport: Boolean(viewport), video: Boolean(video),
         selected: document.querySelector(".directory-card.selected, .directory-card.active")?.textContent?.trim() ?? null,
         panel: document.querySelector(".directory-details-panel")?.textContent?.slice(0, 500) ?? null,
       }));
-      if (document.querySelector(".directory-details-panel .found-preview-controls-slot")) {
+      if (document.querySelector(".directory-details-panel .preview-controls-slot")) {
         throw new Error("DUPLICATE_PREVIEW_TOOLBAR_SLOT");
       }
-      if (document.querySelectorAll(".directory-details-panel .found-toolbar").length !== 1) {
+      if (document.querySelectorAll(".directory-details-panel .preview-toolbar").length !== 1) {
         throw new Error("PREVIEW_TOOLBAR_COUNT_INVALID");
       }
 
@@ -212,13 +212,13 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         const button = document.querySelector('.directory-details-panel [aria-label="' + label + '"]');
         if (!button) throw new Error("TOOL_BUTTON_MISSING:" + label);
         button.click();
-        const tray = await waitForSelector(".directory-details-panel .found-context-tray" + trayClass);
+        const tray = await waitForSelector(".directory-details-panel .preview-context-tray" + trayClass);
         if (!tray) throw new Error("TOOL_TRAY_MISSING:" + label);
-        const currentViewport = document.querySelector(".directory-details-panel .found-preview-viewport");
+        const currentViewport = document.querySelector(".directory-details-panel .preview-viewport");
         const currentVideo = currentViewport?.querySelector("video");
-        const currentToolbar = document.querySelector(".directory-details-panel .found-toolbar");
-        const fileRow = document.querySelector(".directory-details-panel .found-preview-file-row");
-        const controls = document.querySelector(".directory-details-panel .found-preview-controls-slot:not(:empty)");
+        const currentToolbar = document.querySelector(".directory-details-panel .preview-toolbar");
+        const fileRow = document.querySelector(".directory-details-panel .preview-file-row");
+        const controls = document.querySelector(".directory-details-panel .preview-controls-slot:not(:empty)");
         const boxes = { viewport: rect(currentViewport), tray: rect(tray), fileRow: rect(fileRow), toolbar: rect(currentToolbar), controls: rect(controls) };
         if (!currentVideo || currentVideo !== video) throw new Error("MEDIA_REPLACED:" + label);
         if (intersects(boxes.viewport, boxes.tray) || intersects(boxes.tray, boxes.toolbar) || intersects(boxes.tray, boxes.controls)) {
@@ -248,7 +248,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       const rect = (element) => { const box = element?.getBoundingClientRect(); return box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height } : null; };
       const intersects = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
-      document.querySelector('.directory-details-panel .found-context-tray-header [aria-label="关闭工具"]')?.click();
+      document.querySelector('.directory-details-panel .preview-context-tray-header [aria-label="关闭工具"]')?.click();
       await delay(80);
       const button = document.querySelector('.directory-details-panel [aria-label=${JSON.stringify(label)}]');
       if (!button) throw new Error(${JSON.stringify(`TOOL_BUTTON_MISSING:${label}`)});
@@ -257,15 +257,15 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       if (${JSON.stringify(label)} === "播放速度" || ${JSON.stringify(label)} === "LUT") {
         const isRateMenu = ${JSON.stringify(label)} === "播放速度";
         const menuSelector = isRateMenu
-          ? ".found-rate-anchor-menu .playback-rate-menu[aria-label='播放速度']"
-          : ".found-lut-anchor-menu .lut-popover-menu[aria-label='LUT 菜单']";
+          ? ".preview-rate-anchor-menu .playback-rate-menu[aria-label='播放速度']"
+          : ".preview-lut-anchor-menu .lut-popover-menu[aria-label='LUT 菜单']";
         let menu = null;
         while (Date.now() < deadline && !menu) {
           menu = document.querySelector(menuSelector);
           if (!menu) await delay(50);
         }
         if (!menu) throw new Error(isRateMenu ? "PLAYBACK_RATE_MENU_MISSING" : "LUT_MENU_MISSING");
-        const viewport = document.querySelector(".directory-details-panel .found-preview-viewport");
+        const viewport = document.querySelector(".directory-details-panel .preview-viewport");
         const menuBox = rect(menu);
         const buttonBox = rect(button);
         if (!viewport?.querySelector("video")) throw new Error(${JSON.stringify(`MEDIA_MISSING:${label}`)});
@@ -275,12 +275,12 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         return { label: ${JSON.stringify(label)}, menuBox, buttonBox };
       }
       let tray = null;
-      while (Date.now() < deadline && !tray) { tray = document.querySelector(${JSON.stringify(`.directory-details-panel .found-context-tray${trayClass}`)}); if (!tray) await delay(50); }
+      while (Date.now() < deadline && !tray) { tray = document.querySelector(${JSON.stringify(`.directory-details-panel .preview-context-tray${trayClass}`)}); if (!tray) await delay(50); }
       if (!tray) throw new Error(${JSON.stringify(`TOOL_TRAY_MISSING:${label}`)});
-      const viewport = document.querySelector(".directory-details-panel .found-preview-viewport");
-      const toolbar = document.querySelector(".directory-details-panel .found-toolbar");
-      const fileRow = document.querySelector(".directory-details-panel .found-preview-file-row");
-      const controls = document.querySelector(".directory-details-panel .found-preview-controls-slot:not(:empty)");
+      const viewport = document.querySelector(".directory-details-panel .preview-viewport");
+      const toolbar = document.querySelector(".directory-details-panel .preview-toolbar");
+      const fileRow = document.querySelector(".directory-details-panel .preview-file-row");
+      const controls = document.querySelector(".directory-details-panel .preview-controls-slot:not(:empty)");
       const boxes = { viewport: rect(viewport), tray: rect(tray), fileRow: rect(fileRow), toolbar: rect(toolbar), controls: rect(controls) };
       if (!viewport?.querySelector("video")) throw new Error(${JSON.stringify(`MEDIA_MISSING:${label}`)});
       if (intersects(boxes.viewport, boxes.tray) || intersects(boxes.tray, boxes.toolbar) || intersects(boxes.tray, boxes.controls)) throw new Error(${JSON.stringify(`PREVIEW_UI_OVERLAP:${label}:`)} + JSON.stringify(boxes));
@@ -293,7 +293,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
 
   const colorSampleTarget = await evaluate(client, `(async () => {
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    document.querySelector('.directory-details-panel .found-context-tray-header [aria-label="关闭工具"]')?.click();
+    document.querySelector('.directory-details-panel .preview-context-tray-header [aria-label="关闭工具"]')?.click();
     const paletteButton = document.querySelector('.directory-details-panel [aria-label="色彩栏"]');
     if (!paletteButton) throw new Error("COLOR_BAR_BUTTON_MISSING");
     if (paletteButton.getAttribute("aria-pressed") !== "true") paletteButton.click();
@@ -305,7 +305,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     }
     if (!sampleButton) throw new Error("COLOR_SAMPLE_BUTTON_MISSING");
     sampleButton.click();
-    const video = document.querySelector('.directory-details-panel .found-preview-viewport video');
+    const video = document.querySelector('.directory-details-panel .preview-viewport video');
     const readyDeadline = Date.now() + 10000;
     while (Date.now() < readyDeadline && (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight)) {
       await delay(50);
@@ -340,7 +340,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     const deadline = Date.now() + 10000;
     let swatch = null;
     while (Date.now() < deadline && !swatch) {
-      swatch = document.querySelector('.directory-details-panel .found-color-swatch.sampled');
+      swatch = document.querySelector('.directory-details-panel .preview-color-swatch.sampled');
       if (!swatch) await delay(50);
     }
     if (!swatch) {
@@ -349,7 +349,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       canvas.height = 1;
       const context = canvas.getContext("2d");
       let canvasError = null;
-      const video = document.querySelector('.directory-details-panel .found-preview-viewport video');
+      const video = document.querySelector('.directory-details-panel .preview-viewport video');
       try {
         context.drawImage(video, 0, 0, 1, 1, 0, 0, 1, 1);
         context.getImageData(0, 0, 1, 1);
@@ -537,7 +537,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       computedVisibility: getComputedStyle(fallback).visibility,
       computedOpacity: getComputedStyle(fallback).opacity,
     } : null;
-    const swatch = document.querySelector('.directory-details-panel .found-color-swatch.sampled');
+    const swatch = document.querySelector('.directory-details-panel .preview-color-swatch.sampled');
     if (!swatch) throw new Error("HDR_COLOR_SAMPLE_MISSING");
     const background = swatch.style.background;
     const match = background.match(/rgba?\\(([^)]+)\\)/);
@@ -559,7 +559,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         imgState,
         hitElement: hit ? (hit.className || hit.tagName) : null,
         reticle: document.querySelector(".directory-details-panel .hdr-sample-reticle")?.getAttribute("style") ?? null,
-        swatches: Array.from(document.querySelectorAll(".found-color-swatch.sampled")).map((item) => item.style.background),
+        swatches: Array.from(document.querySelectorAll(".preview-color-swatch.sampled")).map((item) => item.style.background),
       }));
     }
     // 准星应在极短闪现（约 250ms）后自动消失，而不是卡在画面上。
@@ -786,7 +786,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     let panelRestored = false;
     const restoreDeadline = Date.now() + 15000;
     while (Date.now() < restoreDeadline && !panelRestored) {
-      panelRestored = Boolean(document.querySelector(".directory-details-panel .found-preview-viewport .hdr-preview-stage"));
+      panelRestored = Boolean(document.querySelector(".directory-details-panel .preview-viewport .hdr-preview-stage"));
       if (!panelRestored) await delay(100);
     }
     return {
@@ -806,16 +806,16 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   }
 
   const focusResult = await evaluate(client, `(async () => {
-    document.querySelector('.directory-details-panel .found-context-tray-header [aria-label="关闭工具"]')?.click();
+    document.querySelector('.directory-details-panel .preview-context-tray-header [aria-label="关闭工具"]')?.click();
     const button = document.querySelector('.directory-details-panel [aria-label="聚焦预览"]');
     if (!button) throw new Error("FOCUS_BUTTON_MISSING");
     button.click();
     await new Promise((resolve) => setTimeout(resolve, 100));
-    const panel = document.querySelector(".found-preview-panel.preview-session-focused");
+    const panel = document.querySelector(".preview-panel.preview-session-focused");
     const titlebar = document.querySelector(".titlebar");
-    const header = panel?.querySelector(".found-tab-bar");
-    const viewport = panel?.querySelector(".found-preview-viewport");
-    const workspace = panel?.querySelector(".found-preview-workspace");
+    const header = panel?.querySelector(".preview-tab-bar");
+    const viewport = panel?.querySelector(".preview-viewport");
+    const workspace = panel?.querySelector(".preview-workspace");
     const rect = (element) => { const box = element?.getBoundingClientRect(); return box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : null; };
     const boxes = { panel: rect(panel), titlebar: rect(titlebar), header: rect(header), viewport: rect(viewport), workspace: rect(workspace) };
     if (!boxes.panel || !boxes.titlebar || boxes.panel.top > boxes.titlebar.top + 1) throw new Error("FOCUS_DOES_NOT_COVER_WINDOW:" + JSON.stringify(boxes));
@@ -825,18 +825,18 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       const style = getComputedStyle(element);
       return style.backgroundColor === "rgba(0, 0, 0, 0)" && style.backdropFilter === "none" && style.boxShadow === "none";
     };
-    const chrome = panel.querySelectorAll(".found-preview-workspace, .found-preview-file-row, .found-toolbar, .found-toolbar-row.secondary, .found-toolbar-tail, .found-color-context-toolbar");
+    const chrome = panel.querySelectorAll(".preview-workspace, .preview-file-row, .preview-toolbar, .preview-toolbar-row.secondary, .preview-toolbar-tail, .preview-color-context-toolbar");
     if (getComputedStyle(workspace).position !== "absolute" || !Array.from(chrome).every(transparent)) throw new Error("FOCUS_TRANSPORT_NOT_FULLY_TRANSPARENT");
     return boxes;
   })()`);
   const focusScreenshot = await captureScreenshot(client, screenshotRoot, `${runLabel}-focused-preview`);
 
   let fullscreenButtonTarget = await evaluate(client, `(async () => {
-    document.querySelector('.found-preview-panel [aria-label="退出聚焦预览"]')?.click();
+    document.querySelector('.preview-panel [aria-label="退出聚焦预览"]')?.click();
     const deadline = Date.now() + 10000;
     let button = null;
     while (Date.now() < deadline && !button) {
-      button = document.querySelector('.found-preview-panel:not(.preview-session-focused) [aria-label="全屏预览"]');
+      button = document.querySelector('.preview-panel:not(.preview-session-focused) [aria-label="全屏预览"]');
       if (!button) await new Promise((resolve) => setTimeout(resolve, 50));
     }
     if (!button) throw new Error("FULLSCREEN_BUTTON_MISSING");
@@ -874,7 +874,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     })()`);
     if (!fullscreenEntered) {
       fullscreenButtonTarget = await evaluate(client, `(() => {
-        const button = document.querySelector('.found-preview-panel [aria-label="全屏预览"]');
+        const button = document.querySelector('.preview-panel [aria-label="全屏预览"]');
         const rect = button?.getBoundingClientRect();
         if (!rect?.width || !rect.height) throw new Error("FULLSCREEN_RETRY_BUTTON_MISSING");
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -883,7 +883,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   }
   if (!fullscreenEntered) {
     await client.send("Runtime.evaluate", {
-      expression: `document.querySelector('.found-preview-panel')?.requestFullscreen()`,
+      expression: `document.querySelector('.preview-panel')?.requestFullscreen()`,
       awaitPromise: true,
       userGesture: true,
     });
@@ -892,12 +892,12 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline && !document.fullscreenElement) await new Promise((resolve) => setTimeout(resolve, 50));
     const panel = document.fullscreenElement;
-    const header = panel?.querySelector(".found-tab-bar");
-    const viewport = panel?.querySelector(".found-preview-viewport");
-    const workspace = panel?.querySelector(".found-preview-workspace");
+    const header = panel?.querySelector(".preview-tab-bar");
+    const viewport = panel?.querySelector(".preview-viewport");
+    const workspace = panel?.querySelector(".preview-workspace");
     const rect = (element) => { const box = element?.getBoundingClientRect(); return box ? { left: box.left, top: box.top, right: box.right, bottom: box.bottom } : null; };
     const boxes = { panel: rect(panel), header: rect(header), viewport: rect(viewport), workspace: rect(workspace) };
-    if (!panel?.matches(".found-preview-panel")) throw new Error("FULLSCREEN_PANEL_MISSING");
+    if (!panel?.matches(".preview-panel")) throw new Error("FULLSCREEN_PANEL_MISSING");
     if (!boxes.header || boxes.header.right - boxes.header.left > 1) throw new Error("FULLSCREEN_HEADER_VISIBLE:" + JSON.stringify(boxes));
     const workspaceStyle = getComputedStyle(workspace);
     if (!boxes.viewport || !boxes.workspace || boxes.workspace.bottom < boxes.panel.bottom - 1 || workspaceStyle.position !== "absolute") throw new Error("FULLSCREEN_TRANSPORT_NOT_OVERLAID:" + JSON.stringify(boxes));
@@ -910,13 +910,13 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   const fullscreenHoverResult = await evaluate(client, `(async () => {
     const deadline = Date.now() + 3000;
     const panel = document.fullscreenElement;
-    const workspace = panel?.querySelector(".found-preview-workspace");
+    const workspace = panel?.querySelector(".preview-workspace");
     while (Date.now() < deadline && getComputedStyle(workspace).opacity !== "1") await new Promise((resolve) => setTimeout(resolve, 25));
     const transparent = (element) => {
       const style = getComputedStyle(element);
       return style.backgroundColor === "rgba(0, 0, 0, 0)" && style.backdropFilter === "none" && style.boxShadow === "none";
     };
-    const chrome = panel?.querySelectorAll(".found-preview-workspace, .found-preview-file-row, .found-toolbar, .found-toolbar-row.secondary, .found-toolbar-tail, .found-color-context-toolbar") ?? [];
+    const chrome = panel?.querySelectorAll(".preview-workspace, .preview-file-row, .preview-toolbar, .preview-toolbar-row.secondary, .preview-toolbar-tail, .preview-color-context-toolbar") ?? [];
     const style = getComputedStyle(workspace);
     if (style.opacity !== "1" || style.pointerEvents !== "auto" || style.visibility !== "visible") throw new Error("FULLSCREEN_CONTROLS_NOT_SHOWN_ON_POINTER");
     if (!Array.from(chrome).every(transparent)) throw new Error("FULLSCREEN_CONTROLS_NOT_FULLY_TRANSPARENT");
@@ -944,14 +944,14 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   })()`);
   const fullscreenIdleResult = await evaluate(client, `(async () => {
     const target = document.elementFromPoint(${idlePointerTarget.x}, ${idlePointerTarget.y});
-    if (target?.closest(".found-preview-workspace, .found-preview-session-footer, .found-layers-panel")) {
+    if (target?.closest(".preview-workspace, .preview-session-footer, .preview-layers-panel")) {
       throw new Error("FULLSCREEN_IDLE_POINTER_STILL_OVER_CONTROLS:" + target.className);
     }
     // 轮询等待 1800ms 闲置计时器触发自动隐藏，而不是用固定睡眠赌时序。
     const deadline = Date.now() + 5000;
     let hidden = false;
     while (Date.now() < deadline) {
-      const workspace = document.fullscreenElement?.querySelector(".found-preview-workspace");
+      const workspace = document.fullscreenElement?.querySelector(".preview-workspace");
       const style = workspace ? getComputedStyle(workspace) : null;
       if (style && style.opacity === "0" && style.pointerEvents === "none" && style.visibility === "hidden") {
         hidden = true;
@@ -959,7 +959,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    const workspace = document.fullscreenElement?.querySelector(".found-preview-workspace");
+    const workspace = document.fullscreenElement?.querySelector(".preview-workspace");
     const style = getComputedStyle(workspace);
     if (!hidden || style.opacity !== "0" || style.pointerEvents !== "none" || style.visibility !== "hidden") {
       throw new Error("FULLSCREEN_CONTROLS_DID_NOT_AUTO_HIDE:" + JSON.stringify({
@@ -991,7 +991,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       card.click();
       let image = null;
       while (Date.now() < deadline) {
-        const activeFilename = document.querySelector(".directory-details-panel .found-preview-filename")?.textContent?.trim();
+        const activeFilename = document.querySelector(".directory-details-panel .preview-filename")?.textContent?.trim();
         image = document.querySelector(".directory-details-panel .image-review-img");
         if (activeFilename === filename && image?.complete && image.naturalWidth > 0) break;
         await new Promise((resolve) => setTimeout(resolve, 50));
@@ -1041,10 +1041,10 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         blobType: blob.type,
         imageDecoder: typeof ImageDecoder,
         location: window.location.href,
-        activeFilename: document.querySelector(".directory-details-panel .found-preview-filename")?.textContent?.trim() ?? null,
+        activeFilename: document.querySelector(".directory-details-panel .preview-filename")?.textContent?.trim() ?? null,
         cardSelected: card.classList.contains("selected"),
         message: document.querySelector(".directory-details-panel .preview-message")?.textContent ?? null,
-        viewport: document.querySelector(".directory-details-panel .found-preview-viewport")?.innerHTML.slice(0, 500) ?? null,
+        viewport: document.querySelector(".directory-details-panel .preview-viewport")?.innerHTML.slice(0, 500) ?? null,
       }));
     }
     return { filename, width: canvas.width, height: canvas.height };
@@ -1053,7 +1053,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   toolScreenshots.push(await captureScreenshot(client, screenshotRoot, `${runLabel}-gif-preview`));
 
   const boardResult = await evaluate(client, `(async () => {
-    document.querySelector('.found-preview-panel [aria-label="退出聚焦预览"]')?.click();
+    document.querySelector('.preview-panel [aria-label="退出聚焦预览"]')?.click();
     const deadline = Date.now() + 10000;
     const pngCard = Array.from(document.querySelectorAll(".directory-card"))
       .find((item) => item.textContent?.includes("runtime-board.png"));

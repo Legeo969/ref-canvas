@@ -96,7 +96,7 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
     case "image":
       if (asset.extension === "gif") {
         return (
-          <div className="found-managed-media-surface">
+          <div className="preview-managed-media-surface">
             <GIFPreview asset={asset} managed={Boolean(onOpenTool)} onPaletteChange={onPaletteChange} />
           </div>
         );

@@ -4,6 +4,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssetRecord } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import {
   PreviewSessionModeButtons,
   usePreviewSessionMode,
@@ -16,6 +17,8 @@ import {
 } from "../../../../src/renderer/components/PreviewSessionShell";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 全屏/聚焦按钮已迁移到 i18n；断言基于简体中文。
 
 function SessionHarness({ assetKey, onClose }: { assetKey: string; onClose(): void }) {
   const session = usePreviewSessionMode(assetKey, onClose);

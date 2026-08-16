@@ -8,7 +8,8 @@ import {
   type DirectoryEntry,
   type RefCanvasApi,
 } from "../../../../src/shared/contracts";
-import { FoundPreviewPanel } from "../../../../src/renderer/components/FoundPreviewPanel";
+import { PreviewPanel } from "../../../../src/renderer/components/PreviewPanel";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 
 vi.mock("../../../../src/renderer/components/SequencePreview", () => ({
   SequencePreviewDialog: ({ sequence, controlsTarget, multichannelOpen, onGifExportToggle }: { sequence: { id: string; extension?: string }; controlsTarget?: HTMLElement | null; multichannelOpen?: boolean; onGifExportToggle?: () => void }) => (
@@ -30,7 +31,7 @@ vi.mock("../../../../src/renderer/components/HdrPreview", async () => {
       multichannelOpen?: boolean;
       eyedropActive?: boolean;
     }) => (
-      <div className={`hdr-preview found-managed-preview${eyedropActive ? " is-sampling" : ""}`}>
+      <div className={`hdr-preview preview-managed-preview${eyedropActive ? " is-sampling" : ""}`}>
         {controlsTarget && createPortal(
           <div className="hdr-preview-controls">
             {multichannelOpen && <div className="hdr-channel-control" aria-label="EXR 通道选择器" />}
@@ -44,6 +45,8 @@ vi.mock("../../../../src/renderer/components/HdrPreview", async () => {
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
+setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
+
 const entry: DirectoryEntry = {
   path: "D:\\refs\\photo.png",
   name: "photo.png",
@@ -51,7 +54,7 @@ const entry: DirectoryEntry = {
   extension: "png",
 };
 
-describe("FoundPreviewPanel smoke", () => {
+describe("PreviewPanel smoke", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];
 
   afterEach(async () => {
@@ -77,14 +80,14 @@ describe("FoundPreviewPanel smoke", () => {
     roots.push(root);
 
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={null} />);
+      root.render(<PreviewPanel entry={null} />);
     });
 
-    expect(host.querySelector(".found-preview-panel")).toBeTruthy();
+    expect(host.querySelector(".preview-panel")).toBeTruthy();
     expect(host.querySelector('[role="tab"][aria-selected="true"]')).toBeTruthy();
   });
 
-  it("renders the Found tab bar with Preview and AI tabs", async () => {
+  it("renders the Preview tab bar with Preview and AI tabs", async () => {
     Object.assign(window, {
       refCanvas: {
         metadata: { ensure: vi.fn(async () => ({ asset: null })) },
@@ -99,14 +102,14 @@ describe("FoundPreviewPanel smoke", () => {
     roots.push(root);
 
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={entry} />);
+      root.render(<PreviewPanel entry={entry} />);
       await Promise.resolve();
       await Promise.resolve();
     });
 
     const tabs = host.querySelectorAll('[role="tab"]');
     expect(tabs.length).toBe(2);
-    expect(tabs[0]?.textContent).toContain("Preview");
+    expect(tabs[0]?.textContent).toContain("预览");
     expect(tabs[1]?.textContent).toContain("AI");
   });
 
@@ -125,16 +128,16 @@ describe("FoundPreviewPanel smoke", () => {
     roots.push(root);
 
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={entry} />);
+      root.render(<PreviewPanel entry={entry} />);
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(host.querySelector(".found-preview-panel")).toBeTruthy();
-    expect(host.querySelector(".found-tab-bar")).toBeTruthy();
+    expect(host.querySelector(".preview-panel")).toBeTruthy();
+    expect(host.querySelector(".preview-tab-bar")).toBeTruthy();
   });
 
-  it("applies focus state to the active Found panel DOM", async () => {
+  it("applies focus state to the active Preview panel DOM", async () => {
     Object.assign(window, {
       refCanvas: {
         metadata: { ensure: vi.fn(async () => { throw new Error("no"); }) },
@@ -148,16 +151,16 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={entry} />);
+      root.render(<PreviewPanel entry={entry} />);
       await Promise.resolve();
       await Promise.resolve();
     });
     await act(async () => {
       host.querySelector<HTMLButtonElement>('[aria-label="聚焦预览"]')?.click();
     });
-    const panel = host.querySelector(".found-preview-panel");
+    const panel = host.querySelector(".preview-panel");
     expect(panel?.classList.contains("preview-session-focused")).toBe(true);
-    expect(panel?.querySelector(".found-tab-bar [role='tab']")).toBeTruthy();
+    expect(panel?.querySelector(".preview-tab-bar [role='tab']")).toBeTruthy();
     expect(panel?.querySelector('[aria-label="退出聚焦预览"]')).toBeTruthy();
   });
 
@@ -178,14 +181,14 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={svgEntry} />);
+      root.render(<PreviewPanel entry={svgEntry} />);
       await Promise.resolve(); await Promise.resolve();
     });
-    expect(host.querySelector(".found-layers-panel")?.textContent).toContain("Layers (0)");
-    expect(host.querySelector(".found-toolbar-svg")).toBeTruthy();
+    expect(host.querySelector(".preview-layers-panel")?.textContent).toContain("Layers (0)");
+    expect(host.querySelector(".preview-toolbar-svg")).toBeTruthy();
     expect(host.querySelectorAll('[aria-label="资产备注"]')).toHaveLength(1);
-    expect(host.querySelector(".found-toolbar-renderer-controls .image-preview-toolbar")).toBeTruthy();
-    expect(host.querySelector(".found-preview-controls-slot")).toBeNull();
+    expect(host.querySelector(".preview-toolbar-renderer-controls .image-preview-toolbar")).toBeTruthy();
+    expect(host.querySelector(".preview-controls-slot")).toBeNull();
   });
 
   it("keeps the filename and controls below an unobstructed shared viewport", async () => {
@@ -208,21 +211,21 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={entry} />);
+      root.render(<PreviewPanel entry={entry} />);
       await Promise.resolve(); await Promise.resolve();
     });
 
-    const viewport = host.querySelector(".found-preview-viewport");
-    const workspace = host.querySelector(".found-preview-workspace");
+    const viewport = host.querySelector(".preview-viewport");
+    const workspace = host.querySelector(".preview-workspace");
     expect(viewport).toBeTruthy();
     expect(viewport?.querySelector(".workbench-asset-label")).toBeNull();
-    expect(workspace?.querySelector(".found-preview-filename")?.textContent).toContain(entry.name);
-    expect(workspace?.querySelector(".found-preview-controls-slot")).toBeNull();
-    expect(workspace?.querySelector(".found-toolbar-renderer-controls .image-preview-toolbar")).toBeTruthy();
-    expect(workspace?.querySelector(".found-toolbar-image")).toBeTruthy();
+    expect(workspace?.querySelector(".preview-filename")?.textContent).toContain(entry.name);
+    expect(workspace?.querySelector(".preview-controls-slot")).toBeNull();
+    expect(workspace?.querySelector(".preview-toolbar-renderer-controls .image-preview-toolbar")).toBeTruthy();
+    expect(workspace?.querySelector(".preview-toolbar-image")).toBeTruthy();
     expect(workspace?.querySelectorAll('[aria-label="资产备注"]')).toHaveLength(1);
-    expect(host.querySelector(".found-tab-bar .preview-session-mode-actions")).toBeNull();
-    expect(workspace?.querySelector(".found-toolbar-tail .preview-session-mode-actions")).toBeTruthy();
+    expect(host.querySelector(".preview-tab-bar .preview-session-mode-actions")).toBeNull();
+    expect(workspace?.querySelector(".preview-toolbar-tail .preview-session-mode-actions")).toBeTruthy();
     expect(workspace?.querySelectorAll(".preview-color-swatches")).toHaveLength(0);
   });
 
@@ -250,24 +253,24 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={entry} />);
+      root.render(<PreviewPanel entry={entry} />);
       await Promise.resolve(); await Promise.resolve();
     });
-    const viewport = host.querySelector(".found-preview-viewport");
+    const viewport = host.querySelector(".preview-viewport");
     const notesButton = host.querySelector<HTMLButtonElement>('[aria-label="资产备注"]')!;
     await act(async () => notesButton.click());
-    expect(host.querySelector(".found-preview-viewport")).toBe(viewport);
-    expect(host.querySelector(".found-context-tray-notes .asset-notes-panel")).toBeTruthy();
+    expect(host.querySelector(".preview-viewport")).toBe(viewport);
+    expect(host.querySelector(".preview-context-tray-notes .asset-notes-panel")).toBeTruthy();
     expect(notesButton.getAttribute("aria-pressed")).toBe("true");
     await act(async () => notesButton.click());
-    expect(host.querySelector(".found-context-tray")).toBeNull();
+    expect(host.querySelector(".preview-context-tray")).toBeNull();
 
     const lutButton = host.querySelector<HTMLButtonElement>('[aria-label="LUT"]')!;
     await act(async () => lutButton.click());
-    expect(host.querySelector(".found-preview-viewport")).toBe(viewport);
-    expect(host.querySelector(".found-context-tray-lut")).toBeNull();
-    expect(document.body.querySelector(".found-lut-anchor-menu .preview-color-tools")).toBeTruthy();
-    expect(document.body.querySelector(".found-lut-anchor-menu")?.getAttribute("data-placement")).toBe("top-start");
+    expect(host.querySelector(".preview-viewport")).toBe(viewport);
+    expect(host.querySelector(".preview-context-tray-lut")).toBeNull();
+    expect(document.body.querySelector(".preview-lut-anchor-menu .preview-color-tools")).toBeTruthy();
+    expect(document.body.querySelector(".preview-lut-anchor-menu")?.getAttribute("data-placement")).toBe("top-start");
   });
 
   it("opens GIF export as an embedded range tool below the video preview", async () => {
@@ -291,14 +294,14 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={videoEntry} />);
+      root.render(<PreviewPanel entry={videoEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="导出 GIF"]')?.click());
-    expect(host.querySelector(".found-preview-panel.tool-open")).toBeTruthy();
-    expect(host.querySelector(".found-context-tray-gif .gif-export-studio.embedded")).toBeTruthy();
-    expect(host.querySelector(".found-slider .range-start")).toBeTruthy();
-    expect(host.querySelector(".found-slider .range-end")).toBeTruthy();
+    expect(host.querySelector(".preview-panel.tool-open")).toBeTruthy();
+    expect(host.querySelector(".preview-context-tray-gif .gif-export-studio.embedded")).toBeTruthy();
+    expect(host.querySelector(".preview-slider .range-start")).toBeTruthy();
+    expect(host.querySelector(".preview-slider .range-end")).toBeTruthy();
     expect(host.querySelector(".gif-dual-range")).toBeNull();
     expect(host.querySelector(".quick-preview-backdrop")).toBeNull();
     expect(host.querySelector('[role="dialog"]')).toBeNull();
@@ -328,16 +331,16 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={entry} />);
+      root.render(<PreviewPanel entry={entry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
     expect(host.querySelectorAll(".preview-color-swatches")).toHaveLength(0);
-    expect(host.querySelectorAll(".found-color-swatches")).toHaveLength(0);
+    expect(host.querySelectorAll(".preview-color-swatches")).toHaveLength(0);
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]')?.click());
     expect(host.querySelector(".image-review-img")?.classList.contains("eyedrop")).toBe(false);
-    expect(host.querySelectorAll(".found-color-swatches")).toHaveLength(1);
-    expect(host.querySelectorAll(".found-color-swatch.fixed")).toHaveLength(2);
+    expect(host.querySelectorAll(".preview-color-swatches")).toHaveLength(1);
+    expect(host.querySelectorAll(".preview-color-swatch.fixed")).toHaveLength(2);
     expect(host.querySelector('[aria-label="吸取颜色"]')).toBeTruthy();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色"]')?.click());
     expect(host.querySelector(".image-review-img")?.classList.contains("eyedrop")).toBe(true);
@@ -380,16 +383,16 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={exrEntry} />);
+      root.render(<PreviewPanel entry={exrEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
-    expect(host.querySelector(".found-preview-controls-slot")).toBeNull();
-    expect(host.querySelector(".found-toolbar-renderer-controls .hdr-preview-controls")).toBeTruthy();
+    expect(host.querySelector(".preview-controls-slot")).toBeNull();
+    expect(host.querySelector(".preview-toolbar-renderer-controls .hdr-preview-controls")).toBeTruthy();
     expect(host.querySelector(".hdr-channel-control")).toBeNull();
     expect(host.querySelector('[aria-label="反射球"]')).toBeTruthy();
     expect(host.querySelector('[aria-label="全景模式"]')).toBeTruthy();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="提取多通道"]')?.click());
-    expect(host.querySelector(".found-toolbar-renderer-controls .hdr-channel-control")).toBeTruthy();
+    expect(host.querySelector(".preview-toolbar-renderer-controls .hdr-channel-control")).toBeTruthy();
     expect(host.querySelector('[aria-label="提取多通道"]')?.getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -421,7 +424,7 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={softboxEntry} />);
+      root.render(<PreviewPanel entry={softboxEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
     expect(host.querySelector('[aria-label="反射球"]')).toBeTruthy();
@@ -454,7 +457,7 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={exrEntry} />);
+      root.render(<PreviewPanel entry={exrEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
@@ -481,13 +484,13 @@ describe("FoundPreviewPanel smoke", () => {
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
-    await act(async () => root.render(<FoundPreviewPanel entry={null} />));
-    const panel = host.querySelector(".found-preview-panel");
+    await act(async () => root.render(<PreviewPanel entry={null} />));
+    const panel = host.querySelector(".preview-panel");
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={{ ...entry, path: "D:\\refs\\runtime-smoke.txt", name: "runtime-smoke.txt", extension: "txt" }} />);
+      root.render(<PreviewPanel entry={{ ...entry, path: "D:\\refs\\runtime-smoke.txt", name: "runtime-smoke.txt", extension: "txt" }} />);
       await Promise.resolve(); await Promise.resolve();
     });
-    expect(host.querySelector(".found-preview-panel")).toBe(panel);
+    expect(host.querySelector(".preview-panel")).toBe(panel);
     expect(panel?.querySelector(".directory-inspector-title")?.textContent).toContain("runtime-smoke.txt");
   });
 
@@ -515,12 +518,12 @@ describe("FoundPreviewPanel smoke", () => {
     const firstEntry = { ...entry, path: firstGroup.files[0], sequenceGroup: firstGroup };
     const secondEntry = { ...entry, path: secondGroup.files[0], sequenceGroup: secondGroup };
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={firstEntry} />);
+      root.render(<PreviewPanel entry={firstEntry} />);
       await Promise.resolve(); await Promise.resolve();
     });
     const firstSession = host.querySelector('[data-testid="sequence-session"]');
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={secondEntry} />);
+      root.render(<PreviewPanel entry={secondEntry} />);
       await Promise.resolve(); await Promise.resolve();
     });
     const secondSession = host.querySelector('[data-testid="sequence-session"]');
@@ -551,16 +554,16 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={sequenceEntry} />);
+      root.render(<PreviewPanel entry={sequenceEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
-    expect(host.querySelector(".found-slider .range-start")).toBeNull();
+    expect(host.querySelector(".preview-slider .range-start")).toBeNull();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="测试序列 GIF 范围"]')?.click());
-    expect(host.querySelector(".found-slider .range-start")).toBeTruthy();
-    expect(host.querySelector(".found-slider .range-end")).toBeTruthy();
-    expect(host.querySelector(".found-context-tray-gif .gif-export-studio.embedded")).toBeTruthy();
-    expect(host.querySelectorAll(".found-context-tray-gif .gif-export-options select")).toHaveLength(4);
+    expect(host.querySelector(".preview-slider .range-start")).toBeTruthy();
+    expect(host.querySelector(".preview-slider .range-end")).toBeTruthy();
+    expect(host.querySelector(".preview-context-tray-gif .gif-export-studio.embedded")).toBeTruthy();
+    expect(host.querySelectorAll(".preview-context-tray-gif .gif-export-options select")).toHaveLength(4);
   });
 
   it("exposes active HDR capabilities for an EXR sequence", async () => {
@@ -586,7 +589,7 @@ describe("FoundPreviewPanel smoke", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
-      root.render(<FoundPreviewPanel entry={sequenceEntry} />);
+      root.render(<PreviewPanel entry={sequenceEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
     const paletteButton = host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]');

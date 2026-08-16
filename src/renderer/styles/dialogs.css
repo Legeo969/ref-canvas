@@ -3539,7 +3539,7 @@
 }
 
 /* HdrPreview 根容器只有 min-height: 320px（dialogs.css .hdr-preview）；
-   快速预览对话框（board.css）与右侧面板（found-preview.css）都有撑满
+   快速预览对话框（board.css）与右侧面板（preview-panel.css）都有撑满
    规则，唯独序列预览对话框的 stage 缺失——高度塌缩到 320px、宽度按
    grid item 内容收缩（stage 是 grid），EXR 图被 contain 成一小块、四周
    大片空白（回归：合并序列双击预览画面很小）。 */

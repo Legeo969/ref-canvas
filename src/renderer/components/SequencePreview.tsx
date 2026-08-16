@@ -21,7 +21,7 @@ import type {
 import { useFoundSettings } from "../app/found-settings";
 import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
-import { FoundSlider } from "./FoundSlider";
+import { PreviewSlider } from "./PreviewSlider";
 import { HdrPreview } from "./HdrPreview";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
 import { usePreviewTransportRegistration } from "./PreviewTransport";
@@ -569,17 +569,17 @@ export function SequencePreviewDialog({
       );
       if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === " ")) {
         // 按键按焦点归属路由：事件目标须在本预览根内（点击画面后），
-        // 或位于 Found 预览面板（点击工具栏后方向键仍归预览）；滑杆等
+        // 或位于预览面板（点击工具栏后方向键仍归预览）；滑杆等
         // 自带方向键处理的控件除外。目录网格等全局处理在目标进入预览
         // 区域后让位。空格 = 播放/暂停（只在预览根内生效，按钮保留
         // 原生 Space 激活语义）。
         const root = shellRef.current;
         if (!root || !(target instanceof Node)) return;
         const insideRoot = root.contains(target);
-        const inFoundPanel =
+        const inPreviewPanel =
           target instanceof Element &&
-          target.closest(".found-preview-panel") != null;
-        if (!insideRoot && !inFoundPanel) return;
+          target.closest(".preview-panel") != null;
+        if (!insideRoot && !inPreviewPanel) return;
         if (
           target instanceof Element &&
           target.closest("button, input, textarea, select, a, [role='slider']")
@@ -637,10 +637,10 @@ export function SequencePreviewDialog({
 
   const embeddedExportControls = embedded && controlsTarget ? createPortal(
     <div className="sequence-inline-export-controls">
-      <button ref={mp4ButtonRef} type="button" className={`found-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label="导出 MP4" aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")} title={translate("sequence.exportMp4Title")}>
+      <button ref={mp4ButtonRef} type="button" className={`preview-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label="导出 MP4" aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")} title={translate("sequence.exportMp4Title")}>
         <Download size={13} /> {exportState === "running" ? translate("sequence.exporting") : "MP4"}
       </button>
-      <button ref={gifButtonRef} type="button" className={`found-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label="选择 GIF 帧范围" aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")} title="在进度条上选择 GIF 帧范围">
+      <button ref={gifButtonRef} type="button" className={`preview-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label="选择 GIF 帧范围" aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")} title="在进度条上选择 GIF 帧范围">
         <Film size={13} /> {gifState === "running" ? translate("sequence.exporting") : "GIF"}
       </button>
       {exportPopover}
@@ -836,7 +836,7 @@ export function SequencePreviewDialog({
               {fps} FPS
             </button>
             <div className="sequence-timeline">
-              <FoundSlider
+              <PreviewSlider
                 value={frames.length > 1 ? frameIndex / (frames.length - 1) : 0}
                 onChange={(position) => setFrameIndex(Math.round(position * Math.max(0, frames.length - 1)))}
                 range={resolvedGifRangeActive ? { ...resolvedGifRange, onChange: setGifRange } : undefined}

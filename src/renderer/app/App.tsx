@@ -58,7 +58,7 @@ import { DuplicatesPanel } from "../components/DuplicatesPanel";
 import { PanelDividers } from "../components/PanelDividers";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { Sidebar } from "../components/Sidebar";
-import { FoundPreviewPanel } from "../components/FoundPreviewPanel";
+import { PreviewPanel } from "../components/PreviewPanel";
 import { useAppStore } from "./store";
 
 /**
@@ -755,7 +755,7 @@ function WorkspaceApp() {
               windowWidth={windowWidth}
               onCommit={(next) => commitPanelLayout("details", next)}
             />
-            <FoundPreviewPanel entry={store.selectedDirectoryEntry} />
+            <PreviewPanel entry={store.selectedDirectoryEntry} />
           </>
         ) : (
           <>
@@ -770,7 +770,7 @@ function WorkspaceApp() {
               windowWidth={windowWidth}
               onCommit={(next) => commitPanelLayout("details", next)}
             />
-            <FoundPreviewPanel entry={store.selectedDirectoryEntry} />
+            <PreviewPanel entry={store.selectedDirectoryEntry} />
           </>
         )}
       </div>

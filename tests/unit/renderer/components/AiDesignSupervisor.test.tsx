@@ -115,7 +115,7 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
     expect(host.textContent).toContain("2 个输出");
   });
 
-  it("uses the Found four-region structure when embedded", async () => {
+  it("uses the Preview four-region structure when embedded", async () => {
     const { refCanvas } = baseRefCanvas();
     Object.assign(window, { refCanvas });
     const host = document.createElement("div");
@@ -126,10 +126,10 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
       root.render(<AiDesignSupervisorPanel variant="embedded" initialSourcePath="D:\\src\\a.png" />);
       await Promise.resolve(); await Promise.resolve();
     });
-    expect(host.querySelector(".found-ai-source-region")).toBeTruthy();
-    expect(host.querySelector(".found-ai-feedback-region textarea")).toBeTruthy();
-    expect(host.querySelector(".found-ai-config-region")).toBeTruthy();
-    expect(host.querySelector(".found-ai-bottom-bar .primary-button")).toBeTruthy();
+    expect(host.querySelector(".preview-ai-source-region")).toBeTruthy();
+    expect(host.querySelector(".preview-ai-feedback-region textarea")).toBeTruthy();
+    expect(host.querySelector(".preview-ai-config-region")).toBeTruthy();
+    expect(host.querySelector(".preview-ai-bottom-bar .primary-button")).toBeTruthy();
   });
 
   it("adds source + references from the file picker and runs a job", async () => {

@@ -617,7 +617,7 @@ export function HdrPreview({
 
   return (
     <div
-      className={`hdr-preview${managed ? " found-managed-preview" : ""}`}
+      className={`hdr-preview${managed ? " preview-managed-preview" : ""}`}
       style={{ "--hdr-exposure": String(exposure) } as React.CSSProperties}
     >
       {viewMode !== "flat" ? <PanoramaPreview
@@ -737,7 +737,7 @@ export function HdrPreview({
           <button ref={exposureButtonRef} type="button" className={`mini-icon-button${exposureOpen ? " active" : ""}`} aria-label="调整曝光" aria-expanded={exposureOpen} title="调整曝光" onClick={() => { const next = !exposureOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setExposureOpen(next); }}><SunMedium size={15} /></button>
         </div>
         <div className="hdr-ocio-control">
-          <button ref={ocioButtonRef} type="button" className={`found-tool-label${ocioOpen ? " active" : ""}`} aria-label="OCIO 色彩管理" aria-expanded={ocioOpen} onClick={() => { const next = !ocioOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setOcioOpen(next); }}>OCIO</button>
+          <button ref={ocioButtonRef} type="button" className={`preview-tool-label${ocioOpen ? " active" : ""}`} aria-label="OCIO 色彩管理" aria-expanded={ocioOpen} onClick={() => { const next = !ocioOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setOcioOpen(next); }}>OCIO</button>
         </div>
         {path && (
           <button

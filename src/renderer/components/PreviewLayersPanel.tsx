@@ -1,14 +1,14 @@
 import { ChevronRight, Layers } from "lucide-react";
 import { useState } from "react";
 
-export function FoundLayersPanel() {
+export function PreviewLayersPanel() {
   const [open, setOpen] = useState(false);
   return (
-    <section className={`found-layers-panel${open ? " open" : ""}`}>
+    <section className={`preview-layers-panel${open ? " open" : ""}`}>
       <button
         type="button"
         aria-expanded={open}
-        aria-controls="found-svg-layers"
+        aria-controls="preview-svg-layers"
         onClick={() => setOpen((value) => !value)}
       >
         <ChevronRight size={13} aria-hidden="true" />
@@ -16,7 +16,7 @@ export function FoundLayersPanel() {
         <span>Layers (0)</span>
       </button>
       {open && (
-        <div id="found-svg-layers" className="found-layers-empty" role="status">
+        <div id="preview-svg-layers" className="preview-layers-empty" role="status">
           No layers
         </div>
       )}

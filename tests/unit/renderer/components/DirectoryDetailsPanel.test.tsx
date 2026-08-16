@@ -9,9 +9,12 @@ import {
   type DirectoryEntry,
   type RefCanvasApi,
 } from "../../../../src/shared/contracts";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { DirectoryDetailsPanel } from "../../../../src/renderer/components/DirectoryDetailsPanel";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+setLanguage("zh-CN"); // 面板按钮已迁移到 i18n；断言基于简体中文。
 
 const entry: DirectoryEntry = {
   path: "D:\\refs\\clip.mp4",

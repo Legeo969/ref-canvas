@@ -7,7 +7,7 @@ import {
 } from "../../../../src/renderer/components/ImagePreviewViewport";
 
 describe("ImagePreviewViewport math", () => {
-  it("clamps zoom to the Found-style 10% to 800% range", () => {
+  it("clamps zoom to the Preview-style 10% to 800% range", () => {
     expect(clampImageZoom(0.01)).toBe(MIN_IMAGE_ZOOM);
     expect(clampImageZoom(2)).toBe(2);
     expect(clampImageZoom(20)).toBe(MAX_IMAGE_ZOOM);

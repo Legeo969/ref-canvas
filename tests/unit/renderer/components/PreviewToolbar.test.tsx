@@ -3,11 +3,14 @@
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FoundToolbar } from "../../../../src/renderer/components/FoundToolbar";
+import { setLanguage } from "../../../../src/renderer/app/i18n";
+import { PreviewToolbar } from "../../../../src/renderer/components/PreviewToolbar";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
-describe("FoundToolbar variants", () => {
+setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
+
+describe("PreviewToolbar variants", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];
   afterEach(async () => {
     await act(async () => {
@@ -16,12 +19,12 @@ describe("FoundToolbar variants", () => {
     document.body.replaceChildren();
   });
 
-  async function render(variant: Parameters<typeof FoundToolbar>[0]["variant"]) {
+  async function render(variant: Parameters<typeof PreviewToolbar>[0]["variant"]) {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
-    await act(async () => root.render(<FoundToolbar variant={variant} />));
+    await act(async () => root.render(<PreviewToolbar variant={variant} />));
     return host;
   }
 
@@ -38,7 +41,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar variant="video" onGifExport={() => undefined} />,
+      <PreviewToolbar variant="video" onGifExport={() => undefined} />,
     ));
     expect(host.querySelector('[role="slider"]')).toBeTruthy();
     expect(host.querySelector('[aria-label="裁剪或分割"]')).toBeTruthy();
@@ -57,7 +60,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar variant="video" playing={false} onPlayingToggle={toggle} onStepFrames={step} />,
+      <PreviewToolbar variant="video" playing={false} onPlayingToggle={toggle} onStepFrames={step} />,
     ));
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="播放"]')?.click());
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="上一帧"]')?.click());
@@ -73,7 +76,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar variant="sequence" seekPosition={0.5} onSeekChange={seek} />,
+      <PreviewToolbar variant="sequence" seekPosition={0.5} onSeekChange={seek} />,
     ));
     expect(host.querySelector('[role="slider"]')).toBeTruthy();
     expect(host.querySelector('[aria-label="音量"]')).toBeNull();
@@ -99,7 +102,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar variant="video" seekPosition={0.5} onSeekChange={seek} />,
+      <PreviewToolbar variant="video" seekPosition={0.5} onSeekChange={seek} />,
     ));
     const slider = host.querySelector<HTMLElement>('[role="slider"]')!;
     expect(slider.getAttribute("aria-label")).toBe("预览时间线");
@@ -119,7 +122,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar
+      <PreviewToolbar
         variant="sequence"
         multichannel
         onLutToggle={onLut}
@@ -144,7 +147,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar
+      <PreviewToolbar
         variant="image"
         colorSwatches={["#112233", "#445566"]}
         sampledColorSwatches={["#abcdef"]}
@@ -156,22 +159,22 @@ describe("FoundToolbar variants", () => {
       />,
     ));
 
-    const row = host.querySelector(".found-toolbar-row.secondary")!;
-    const scroll = row.querySelector(".found-toolbar-scroll")!;
-    const tail = row.querySelector(".found-toolbar-tail")!;
-    const colorTools = host.querySelector(".found-color-context-toolbar")!;
+    const row = host.querySelector(".preview-toolbar-row.secondary")!;
+    const scroll = row.querySelector(".preview-toolbar-scroll")!;
+    const tail = row.querySelector(".preview-toolbar-tail")!;
+    const colorTools = host.querySelector(".preview-color-context-toolbar")!;
     expect(scroll.querySelector('[aria-label="色彩栏"]')).toBeTruthy();
-    expect(tail.querySelectorAll(".found-color-swatch")).toHaveLength(0);
-    expect(colorTools.querySelectorAll(".found-color-swatch.fixed")).toHaveLength(2);
-    expect(colorTools.querySelectorAll(".found-color-swatch.sampled")).toHaveLength(1);
+    expect(tail.querySelectorAll(".preview-color-swatch")).toHaveLength(0);
+    expect(colorTools.querySelectorAll(".preview-color-swatch.fixed")).toHaveLength(2);
+    expect(colorTools.querySelectorAll(".preview-color-swatch.sampled")).toHaveLength(1);
     expect(colorTools.querySelector('[aria-label="吸取颜色"]')).toBeTruthy();
     expect(colorTools.querySelector('[aria-label="清除吸取颜色"]')).toBeTruthy();
     expect(colorTools.querySelector('[aria-label="收起固定颜色板"]')).toBeTruthy();
     expect(tail.querySelector('[aria-label="全屏预览"]')).toBeTruthy();
 
     await act(async () => colorTools.querySelector<HTMLButtonElement>('[aria-label="收起固定颜色板"]')?.click());
-    expect(colorTools.querySelectorAll(".found-color-swatch.fixed")).toHaveLength(0);
-    expect(colorTools.querySelectorAll(".found-color-swatch.sampled")).toHaveLength(1);
+    expect(colorTools.querySelectorAll(".preview-color-swatch.fixed")).toHaveLength(0);
+    expect(colorTools.querySelectorAll(".preview-color-swatch.sampled")).toHaveLength(1);
     expect(colorTools.querySelector('[aria-label="展开固定颜色板"]')).toBeTruthy();
   });
 
@@ -179,7 +182,7 @@ describe("FoundToolbar variants", () => {
     function Harness() {
       const [open, setOpen] = useState(true);
       return (
-        <FoundToolbar
+        <PreviewToolbar
           variant="image"
           paletteActive={open}
           colorSwatches={["#112233", "#445566", "#778899", "#aabbcc", "#ddeeff"]}
@@ -192,9 +195,9 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(<Harness />));
-    expect(host.querySelector(".found-color-context-toolbar")).toBeTruthy();
+    expect(host.querySelector(".preview-color-context-toolbar")).toBeTruthy();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]')?.click());
-    expect(host.querySelector(".found-color-context-toolbar")).toBeNull();
+    expect(host.querySelector(".preview-color-context-toolbar")).toBeNull();
   });
 
   it("routes playback speed and shows active contextual tools as pressed", async () => {
@@ -204,7 +207,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar
+      <PreviewToolbar
         variant="video"
         rateActive
         notesActive
@@ -229,16 +232,16 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar
+      <PreviewToolbar
         variant="image"
         lutActive
         onLutToggle={() => undefined}
         lutMenu={<div data-testid="lut-menu-content">LUT options</div>}
       />,
     ));
-    const menu = document.body.querySelector(".found-lut-anchor-menu");
+    const menu = document.body.querySelector(".preview-lut-anchor-menu");
     expect(menu?.querySelector('[data-testid="lut-menu-content"]')).toBeTruthy();
-    expect(host.querySelector(".found-toolbar-scroll .found-lut-anchor-menu")).toBeNull();
+    expect(host.querySelector(".preview-toolbar-scroll .preview-lut-anchor-menu")).toBeNull();
     expect(menu?.getAttribute("data-placement")).toBe("top-start");
   });
 
@@ -248,16 +251,16 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar
+      <PreviewToolbar
         variant="video"
         rateActive
         onRateToggle={() => undefined}
         rateMenu={<div data-testid="playback-options">1.5×</div>}
       />,
     ));
-    const menu = document.body.querySelector(".found-rate-anchor-menu");
+    const menu = document.body.querySelector(".preview-rate-anchor-menu");
     expect(menu?.querySelector('[data-testid="playback-options"]')).toBeTruthy();
-    expect(host.querySelector(".found-toolbar-scroll .found-rate-anchor-menu")).toBeNull();
+    expect(host.querySelector(".preview-toolbar-scroll .preview-rate-anchor-menu")).toBeNull();
     expect(menu?.getAttribute("data-placement")).toBe("top-start");
   });
 
@@ -267,7 +270,7 @@ describe("FoundToolbar variants", () => {
     const sequenceRoot = createRoot(sequenceHost);
     roots.push(sequenceRoot);
     await act(async () => sequenceRoot.render(
-      <FoundToolbar variant="sequence" onRateToggle={() => undefined} rateLabel="24 fps" />,
+      <PreviewToolbar variant="sequence" onRateToggle={() => undefined} rateLabel="24 fps" />,
     ));
     expect(sequenceHost.querySelector('[aria-label="帧率"]')?.textContent).toBe("24 fps");
 
@@ -276,7 +279,7 @@ describe("FoundToolbar variants", () => {
     const videoRoot = createRoot(videoHost);
     roots.push(videoRoot);
     await act(async () => videoRoot.render(
-      <FoundToolbar variant="video" onRateToggle={() => undefined} rateLabel="1.5×" />,
+      <PreviewToolbar variant="video" onRateToggle={() => undefined} rateLabel="1.5×" />,
     ));
     expect(videoHost.querySelector('[aria-label="播放速度"]')?.textContent).toBe("1.5×");
     expect(videoHost.querySelector('[aria-label="帧率"]')).toBeNull();
@@ -289,7 +292,7 @@ describe("FoundToolbar variants", () => {
     const videoRoot = createRoot(videoHost);
     roots.push(videoRoot);
     await act(async () => videoRoot.render(
-      <FoundToolbar variant="video" onSupremeToggle={toggle} />,
+      <PreviewToolbar variant="video" onSupremeToggle={toggle} />,
     ));
     const button = videoHost.querySelector<HTMLButtonElement>('[aria-label="至臻画质"]')!;
     expect(button).toBeTruthy();
@@ -301,7 +304,7 @@ describe("FoundToolbar variants", () => {
     const sequenceRoot = createRoot(sequenceHost);
     roots.push(sequenceRoot);
     await act(async () => sequenceRoot.render(
-      <FoundToolbar variant="sequence" onSupremeToggle={toggle} />,
+      <PreviewToolbar variant="sequence" onSupremeToggle={toggle} />,
     ));
     expect(sequenceHost.querySelector('[aria-label="至臻画质"]')).toBeNull();
   });
@@ -312,7 +315,7 @@ describe("FoundToolbar variants", () => {
     const root = createRoot(host);
     roots.push(root);
     await act(async () => root.render(
-      <FoundToolbar
+      <PreviewToolbar
         variant="video"
         supremeOn
         supremeGenerating

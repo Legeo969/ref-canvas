@@ -370,7 +370,7 @@ export function ModelPreview({
   </div></div>;
 
   return (
-    <div className={`model-preview${managed ? " found-managed-preview" : ""}`} ref={rootRef}>
+    <div className={`model-preview${managed ? " preview-managed-preview" : ""}`} ref={rootRef}>
       <div className="model-preview-canvas" ref={hostRef} />
       {controlsTarget ? createPortal(controls, controlsTarget) : controls}
       {feedback && <span className="model-preview-feedback">{feedback}</span>}

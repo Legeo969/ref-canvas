@@ -238,7 +238,7 @@ describe("HDR preview controls", () => {
       expect(container?.style.getPropertyValue("--hdr-exposure")).toBe("1");
 
       const managedCss = readFileSync(
-        resolve(process.cwd(), "src/renderer/styles/found-preview.css"),
+        resolve(process.cwd(), "src/renderer/styles/preview-panel.css"),
         "utf8",
       );
       expect(managedCss).toMatch(

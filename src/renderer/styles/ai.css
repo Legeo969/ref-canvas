@@ -52,7 +52,7 @@
   background: var(--surface-1);
 }
 
-.ai-panel.embedded .found-ai-source-region {
+.ai-panel.embedded .preview-ai-source-region {
   min-height: 220px;
   flex: 0 0 35%;
   padding: 10px 12px;
@@ -60,7 +60,7 @@
   overflow-y: auto;
 }
 
-.ai-panel.embedded .found-ai-source-region .ai-drop-zone {
+.ai-panel.embedded .preview-ai-source-region .ai-drop-zone {
   min-height: 120px;
   flex: 1 1 auto;
   border: 1px dashed #555;
@@ -68,14 +68,14 @@
   background: var(--surface-1);
 }
 
-.ai-panel.embedded .found-ai-feedback-region {
+.ai-panel.embedded .preview-ai-feedback-region {
   min-height: 150px;
   flex: 1 1 35%;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line);
 }
 
-.ai-panel.embedded .found-ai-feedback-region .ai-prompt-input {
+.ai-panel.embedded .preview-ai-feedback-region .ai-prompt-input {
   height: 100%;
   min-height: 120px;
   padding: 10px;
@@ -85,7 +85,7 @@
   resize: vertical;
 }
 
-.ai-panel.embedded .found-ai-config-region {
+.ai-panel.embedded .preview-ai-config-region {
   min-height: 40px;
   padding: 8px 12px;
   background: var(--surface-2);
@@ -97,7 +97,7 @@
   margin: 0 12px;
 }
 
-.ai-panel.embedded .found-ai-bottom-bar {
+.ai-panel.embedded .preview-ai-bottom-bar {
   display: flex;
   min-height: 40px;
   align-items: center;
@@ -107,7 +107,7 @@
   background: var(--surface-2);
 }
 
-.ai-panel.embedded .found-ai-bottom-bar .primary-button {
+.ai-panel.embedded .preview-ai-bottom-bar .primary-button {
   width: auto;
   min-width: 96px;
   height: 30px;

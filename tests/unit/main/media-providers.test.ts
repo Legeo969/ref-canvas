@@ -98,7 +98,7 @@ describe("stage 3 media providers", () => {
       size: 0,
     });
     // 宽高比来自 dataWindow（probe 只读头、不解码像素）：2:1 才能通过
-    // Found 预览面板的全景资格判定。
+    // 预览面板的全景资格判定。
     expect(probe.width).toBe(4);
     expect(probe.height).toBe(2);
     expect(probe.width! / probe.height!).toBe(2);

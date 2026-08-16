@@ -56,7 +56,7 @@ describe("ImageReviewPreview (FND-005)", () => {
     return { host, root, asset: assetFixture(extension) };
   }
 
-  it("shows the Found-style zoom menu, fit, rotate and checker controls", async () => {
+  it("shows the Preview-style zoom menu, fit, rotate and checker controls", async () => {
     installRefCanvas();
     const { host, root, asset } = render();
     await act(async () => {
@@ -77,7 +77,7 @@ describe("ImageReviewPreview (FND-005)", () => {
       root.render(<ImageReviewPreview asset={asset} />);
     });
     expect(host.querySelector<HTMLElement>(".image-preview-viewport-stage")?.style.background)
-      .toBe("var(--found-canvas, #0F1119)");
+      .toBe("var(--preview-canvas, #0F1119)");
     expect(host.querySelector("[aria-label='棋盘透明背景']")?.getAttribute("aria-pressed"))
       .toBe("false");
   });

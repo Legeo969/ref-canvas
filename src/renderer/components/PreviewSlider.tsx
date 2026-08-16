@@ -1,9 +1,10 @@
 import { useCallback, useRef } from "react";
+import { translate } from "../app/i18n";
 
 type RangeHandle = "start" | "end";
 
-export function updateFoundSliderRange(
-  range: Pick<NonNullable<FoundSliderProps["range"]>, "start" | "end">,
+export function updatePreviewSliderRange(
+  range: Pick<NonNullable<PreviewSliderProps["range"]>, "start" | "end">,
   value: number,
   handle: RangeHandle,
 ): { start: number; end: number; seek: number } {
@@ -16,10 +17,10 @@ export function updateFoundSliderRange(
   return { start: range.start, end, seek: end };
 }
 
-interface FoundSliderProps {
+interface PreviewSliderProps {
   /** Current value in [0, 1]. */
   value: number;
-  /** Fill color override (default: var(--found-accent)). */
+  /** Fill color override (default: var(--preview-accent)). */
   fillColor?: string;
   /** Called when the user drags or clicks to seek. */
   onChange(value: number): void;
@@ -27,11 +28,11 @@ interface FoundSliderProps {
 }
 
 /**
- * Found-style seek / progress slider.
+ * Preview-style seek / progress slider.
  * Track #3A3D45, fill theme accent, white circle handle 12px.
  * Spec §3 upper-row slider.
  */
-export function FoundSlider({ value, fillColor, onChange, range }: FoundSliderProps) {
+export function PreviewSlider({ value, fillColor, onChange, range }: PreviewSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; handle: RangeHandle } | null>(null);
 
@@ -43,7 +44,7 @@ export function FoundSlider({ value, fillColor, onChange, range }: FoundSliderPr
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       if (range) {
         const handle = lockedHandle ?? (Math.abs(ratio - range.start) <= Math.abs(ratio - range.end) ? "start" : "end");
-        const next = updateFoundSliderRange(range, ratio, handle);
+        const next = updatePreviewSliderRange(range, ratio, handle);
         range.onChange(next.start, next.end);
         onChange(next.seek);
       } else onChange(ratio);
@@ -108,29 +109,29 @@ export function FoundSlider({ value, fillColor, onChange, range }: FoundSliderPr
 
   return (
     <div
-      className="found-slider"
+      className="preview-slider"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onKeyDown={onKeyDown}
       role="slider"
-      aria-label="预览时间线"
+      aria-label={translate("preview.timeline")}
       aria-valuenow={Math.round(value * 100)}
       aria-valuemin={0}
       aria-valuemax={100}
       tabIndex={0}
     >
-      <div className="found-slider-track" ref={trackRef}>
-        {range && <div className="found-slider-range" style={{ left: `${range.start * 100}%`, right: `${(1 - range.end) * 100}%`, background: fillColor }} />}
+      <div className="preview-slider-track" ref={trackRef}>
+        {range && <div className="preview-slider-range" style={{ left: `${range.start * 100}%`, right: `${(1 - range.end) * 100}%`, background: fillColor }} />}
         {!range && <div
-          className="found-slider-fill"
+          className="preview-slider-fill"
           style={{ width: pct, background: fillColor }}
         />}
         {range ? <>
-          <div className="found-slider-handle range-start" style={{ left: `${range.start * 100}%` }} />
-          <div className="found-slider-handle range-end" style={{ left: `${range.end * 100}%` }} />
-        </> : <div className="found-slider-handle" style={{ left: pct }} />}
+          <div className="preview-slider-handle range-start" style={{ left: `${range.start * 100}%` }} />
+          <div className="preview-slider-handle range-end" style={{ left: `${range.end * 100}%` }} />
+        </> : <div className="preview-slider-handle" style={{ left: pct }} />}
       </div>
     </div>
   );

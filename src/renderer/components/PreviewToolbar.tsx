@@ -20,15 +20,16 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefCallback } from "react";
 import { createPortal } from "react-dom";
-import { FoundSlider } from "./FoundSlider";
+import { PreviewSlider } from "./PreviewSlider";
+import { translate } from "../app/i18n";
 import {
-  foundToolbarCapabilities,
-  foundToolbarProgressColor,
-  type FoundToolbarVariant,
-} from "./found-preview-model";
+  previewToolbarCapabilities,
+  previewToolbarProgressColor,
+  type PreviewToolbarVariant,
+} from "./preview-panel-model";
 
 /**
- * Found-style dual-row toolbar.
+ * Preview-style dual-row toolbar.
  *
  * Upper row: + / loop / timecode / progress slider / volume
  * Lower row: auto / fps / grid / C / LUT / brush / camera / GIF / color swatches
@@ -37,8 +38,8 @@ import {
  * real playback state. No side-effects, purely presentational skeleton.
  */
 
-export interface FoundToolbarProps {
-  variant?: FoundToolbarVariant;
+export interface PreviewToolbarProps {
+  variant?: PreviewToolbarVariant;
   /** Playback position [0, 1]. */
   seekPosition?: number;
   /** Seek position change handler. */
@@ -88,7 +89,7 @@ export interface FoundToolbarProps {
   showUpperRow?: boolean;
   /** Whether to show the lower row. */
   showLowerRow?: boolean;
-  /** Progress fill color override (default: --found-accent). */
+  /** Progress fill color override (default: --preview-accent). */
   progressColor?: string;
   muted?: boolean;
   onMutedToggle?: () => void;
@@ -116,7 +117,7 @@ export interface FoundToolbarProps {
   onSupremeToggle?: () => void;
 }
 
-export function FoundToolbar({
+export function PreviewToolbar({
   variant = "video",
   seekPosition = 0,
   onSeekChange,
@@ -169,8 +170,8 @@ export function FoundToolbar({
   supremeGenerating = false,
   supremeProgress = null,
   onSupremeToggle,
-}: FoundToolbarProps) {
-  const capabilities = foundToolbarCapabilities(variant);
+}: PreviewToolbarProps) {
+  const capabilities = previewToolbarCapabilities(variant);
   const hasTimeline = capabilities.timeline && showUpperRow;
   const [paletteExpanded, setPaletteExpanded] = useState(true);
   const paletteVisible = paletteActive ?? colorSwatches.length > 0;
@@ -178,7 +179,7 @@ export function FoundToolbar({
   const rateButtonRef = useRef<HTMLButtonElement>(null);
   const [lutMenuPosition, setLutMenuPosition] = useState({ left: 0, bottom: 0 });
   const [rateMenuPosition, setRateMenuPosition] = useState({ left: 0, bottom: 0 });
-  const rateAriaLabel = variant === "sequence" ? "帧率" : "播放速度";
+  const rateAriaLabel = variant === "sequence" ? translate("preview.rateFps") : translate("preview.rateSpeed");
   const positionLutMenu = useCallback(() => {
     const rect = lutButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -220,114 +221,114 @@ export function FoundToolbar({
     };
   }, [rateActive, rateMenu, positionRateMenu]);
   return (
-    <nav className={`found-toolbar found-toolbar-${variant}`} aria-label="Found 工具条" data-variant={variant}>
+    <nav className={`preview-toolbar preview-toolbar-${variant}`} aria-label={translate("preview.toolbarLabel")} data-variant={variant}>
       {showUpperRow && (
-        <div className="found-toolbar-row">
+        <div className="preview-toolbar-row">
           {capabilities.timeline && <button
-              className={`found-tool-btn circle${loopActive ? " active" : ""}`}
-              title="循环播放"
-              aria-label="循环播放"
+              className={`preview-tool-btn circle${loopActive ? " active" : ""}`}
+              title={translate("preview.loop")}
+              aria-label={translate("preview.loop")}
               onClick={onLoopToggle}
               disabled={!onLoopToggle}
             ><Repeat size={13} /></button>}
-          {capabilities.timeline && <button className="found-tool-btn" title="上一帧" aria-label="上一帧" onClick={() => onStepFrames?.(-1)} disabled={!onStepFrames}><SkipBack size={13} /></button>}
-          {capabilities.timeline && <button className="found-tool-btn" title={playing ? "暂停" : "播放"} aria-label={playing ? "暂停" : "播放"} onClick={onPlayingToggle} disabled={!onPlayingToggle}>
+          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.previousFrame")} aria-label={translate("preview.previousFrame")} onClick={() => onStepFrames?.(-1)} disabled={!onStepFrames}><SkipBack size={13} /></button>}
+          {capabilities.timeline && <button className="preview-tool-btn" title={playing ? translate("preview.pause") : translate("preview.play")} aria-label={playing ? translate("preview.pause") : translate("preview.play")} onClick={onPlayingToggle} disabled={!onPlayingToggle}>
             {playing ? <Pause size={13} /> : <Play size={13} />}
           </button>}
-          {capabilities.timeline && <button className="found-tool-btn" title="下一帧" aria-label="下一帧" onClick={() => onStepFrames?.(1)} disabled={!onStepFrames}><SkipForward size={13} /></button>}
-          {hasTimeline && <span className="found-timecode">{timecode}</span>}
-          {hasTimeline && <FoundSlider
+          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.nextFrame")} aria-label={translate("preview.nextFrame")} onClick={() => onStepFrames?.(1)} disabled={!onStepFrames}><SkipForward size={13} /></button>}
+          {hasTimeline && <span className="preview-timecode">{timecode}</span>}
+          {hasTimeline && <PreviewSlider
               value={seekPosition}
               onChange={onSeekChange ?? (() => {})}
               range={seekRange}
-              fillColor={progressColor ?? foundToolbarProgressColor(variant)}
+              fillColor={progressColor ?? previewToolbarProgressColor(variant)}
             />}
-          {capabilities.trim && <button className={`found-tool-btn${trimActive ? " active" : ""}`} title="裁剪或分割" aria-label="裁剪或分割" aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
+          {capabilities.trim && <button className={`preview-tool-btn${trimActive ? " active" : ""}`} title={translate("preview.trim")} aria-label={translate("preview.trim")} aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
           {capabilities.volume && <button
-              className="found-tool-btn circle"
-              title={muted ? "取消静音" : "音量"}
-              aria-label="音量"
+              className="preview-tool-btn circle"
+              title={muted ? translate("preview.mute") : translate("preview.volume")}
+              aria-label={translate("preview.volume")}
               onClick={onMutedToggle}
               disabled={!onMutedToggle}
             >{muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>}
         </div>
       )}
       {showLowerRow && paletteVisible && (
-        <div className="found-color-context-toolbar" role="toolbar" aria-label="色彩栏工具">
-          <div className="found-color-context-start">
+        <div className="preview-color-context-toolbar" role="toolbar" aria-label={translate("preview.colorToolbarLabel")}>
+          <div className="preview-color-context-start">
             {onSampleColor && (
-              <button type="button" className="found-tool-btn" aria-label="吸取颜色" title="吸取颜色" onClick={onSampleColor}>
+              <button type="button" className="preview-tool-btn" aria-label={translate("preview.sampleColor")} title={translate("preview.sampleColor")} onClick={onSampleColor}>
                 <Plus size={13} />
               </button>
             )}
             {sampledColorSwatches.length > 0 && (
-              <span className="found-color-swatches sampled-colors" aria-label="吸取的颜色">
+              <span className="preview-color-swatches sampled-colors" aria-label={translate("preview.sampledColors")}>
                 {sampledColorSwatches.map((color, i) => (
                   <button
                     type="button"
                     key={`${color}:${i}`}
-                    className="found-color-swatch sampled"
+                    className="preview-color-swatch sampled"
                     style={{ background: color }}
-                    title={`复制颜色 ${color}`}
-                    aria-label={`复制颜色 ${color}`}
+                    title={translate("preview.copyColor").replace("{color}", color)}
+                    aria-label={translate("preview.copyColor").replace("{color}", color)}
                     onClick={() => void navigator.clipboard.writeText(color)}
                   />
                 ))}
               </span>
             )}
             {sampledColorSwatches.length > 0 && onClearSampledColors && (
-              <button type="button" className="found-tool-btn" aria-label="清除吸取颜色" title="清除吸取颜色" onClick={onClearSampledColors}>
+              <button type="button" className="preview-tool-btn" aria-label={translate("preview.clearSampled")} title={translate("preview.clearSampled")} onClick={onClearSampledColors}>
                 <Trash2 size={13} />
               </button>
             )}
           </div>
-          <span className="found-toolbar-spacer" />
+          <span className="preview-toolbar-spacer" />
           {paletteLoading && (
-            <span className="found-color-palette-status" role="status">正在提取主色…</span>
+            <span className="preview-color-palette-status" role="status">{translate("preview.paletteLoading")}</span>
           )}
           {paletteError && (
-            <button type="button" className="found-color-palette-status error" onClick={onPaletteRetry} disabled={!onPaletteRetry}>
+            <button type="button" className="preview-color-palette-status error" onClick={onPaletteRetry} disabled={!onPaletteRetry}>
               {paletteError}
             </button>
           )}
           {(colorSwatches.length > 0 || paletteLoading) && (
             <button
               type="button"
-              className="found-tool-btn found-palette-collapse"
-              aria-label={paletteExpanded ? "收起固定颜色板" : "展开固定颜色板"}
-              title={paletteExpanded ? "收起固定颜色板" : "展开固定颜色板"}
+              className="preview-tool-btn preview-palette-collapse"
+              aria-label={paletteExpanded ? translate("preview.paletteCollapse") : translate("preview.paletteExpand")}
+              title={paletteExpanded ? translate("preview.paletteCollapse") : translate("preview.paletteExpand")}
               onClick={() => setPaletteExpanded((expanded) => !expanded)}
             >
               {paletteExpanded ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
             </button>
           )}
           {paletteExpanded && (
-            <span className={`found-color-swatches fixed-colors${paletteLoading ? " loading" : ""}`} aria-label="固定主色板">
+            <span className={`preview-color-swatches fixed-colors${paletteLoading ? " loading" : ""}`} aria-label={translate("preview.fixedPaletteLabel")}>
               {(paletteLoading ? Array.from({ length: 5 }, () => "") : colorSwatches.slice(0, 5)).map((color, i) => (
                 color ? (
-                  <button type="button" key={`${color}:${i}`} className="found-color-swatch fixed" style={{ background: color }} title={`复制颜色 ${color}`} aria-label={`复制颜色 ${color}`} onClick={() => void navigator.clipboard.writeText(color)} />
-                ) : <span key={i} className="found-color-swatch fixed skeleton" aria-hidden="true" />
+                  <button type="button" key={`${color}:${i}`} className="preview-color-swatch fixed" style={{ background: color }} title={translate("preview.copyColor").replace("{color}", color)} aria-label={translate("preview.copyColor").replace("{color}", color)} onClick={() => void navigator.clipboard.writeText(color)} />
+                ) : <span key={i} className="preview-color-swatch fixed skeleton" aria-hidden="true" />
               ))}
             </span>
           )}
         </div>
       )}
       {showLowerRow && (
-        <div className="found-toolbar-row secondary">
-          <div className="found-toolbar-scroll">
-          {onFit && <button type="button" className="found-tool-label found-fit-button" title="适配窗口" aria-label="适配窗口" onClick={onFit}>Fit</button>}
-          <div className="found-toolbar-renderer-controls" ref={rendererControlsRef} />
+        <div className="preview-toolbar-row secondary">
+          <div className="preview-toolbar-scroll">
+          {onFit && <button type="button" className="preview-tool-label preview-fit-button" title={translate("preview.fit")} aria-label={translate("preview.fit")} onClick={onFit}>Fit</button>}
+          <div className="preview-toolbar-renderer-controls" ref={rendererControlsRef} />
           {onAutoToggle && <button
-            className={`found-tool-label${autoActive ? " active" : ""}`}
+            className={`preview-tool-label${autoActive ? " active" : ""}`}
             onClick={onAutoToggle}
-            aria-label="自动"
-            title="自动"
+            aria-label={translate("preview.auto")}
+            title={translate("preview.auto")}
           >
-            自动
+            {translate("preview.auto")}
           </button>}
           {onRateToggle && <button
             ref={rateButtonRef}
-            className={`found-tool-label found-rate-trigger${rateActive ? " active" : ""}`}
+            className={`preview-tool-label preview-rate-trigger${rateActive ? " active" : ""}`}
             type="button"
             aria-label={rateAriaLabel}
             aria-pressed={rateActive}
@@ -336,65 +337,65 @@ export function FoundToolbar({
           >{rateLabel}</button>}
           {capabilities.supreme && <button
             type="button"
-            className={`found-tool-label found-supreme-trigger${supremeOn ? " active" : ""}${supremeGenerating ? " generating" : ""}`}
-            aria-label="至臻画质"
+            className={`preview-tool-label preview-supreme-trigger${supremeOn ? " active" : ""}${supremeGenerating ? " generating" : ""}`}
+            aria-label={translate("preview.supreme")}
             aria-pressed={supremeOn}
             title={supremeGenerating && supremeProgress != null
-              ? `至臻画质生成中 ${Math.round(supremeProgress * 100)}%`
-              : "超高分辨率（4K 上采样）+ 60 帧流畅播放"}
+              ? translate("preview.supremeGeneratingTitle").replace("{progress}", String(Math.round(supremeProgress * 100)))
+              : translate("preview.supremeTitle")}
             onClick={onSupremeToggle}
             disabled={!onSupremeToggle}
           >
             <Sparkles size={13} />
-            至臻
+            {translate("preview.supremeShort")}
           </button>}
           {onGridToggle && <button
-            className={`found-tool-btn${gridActive ? " active" : ""}`}
-            title="网格"
-            aria-label="网格"
+            className={`preview-tool-btn${gridActive ? " active" : ""}`}
+            title={translate("preview.grid")}
+            aria-label={translate("preview.grid")}
             onClick={onGridToggle}
           >
             <Grid3x3 size={13} />
           </button>}
           {multichannel && <button
             ref={multichannelButtonRef}
-            className={`found-tool-label${multichannelActive ? " active" : ""}`}
-            title="提取多通道"
-            aria-label="提取多通道"
+            className={`preview-tool-label${multichannelActive ? " active" : ""}`}
+            title={translate("preview.multichannel")}
+            aria-label={translate("preview.multichannel")}
             aria-pressed={multichannelActive}
             onClick={onMultichannelToggle}
             disabled={!onMultichannelToggle}
           ><Layers3 size={13} /></button>}
           <button
             ref={lutButtonRef}
-            className={`found-tool-label${lutActive ? " active" : ""}`}
+            className={`preview-tool-label${lutActive ? " active" : ""}`}
             onClick={onLutToggle}
-            aria-label="LUT"
+            aria-label={translate("preview.lut")}
             aria-pressed={lutActive}
-            title="LUT"
+            title={translate("preview.lut")}
             disabled={!onLutToggle}
           >
-            LUT
+            {translate("preview.lut")}
           </button>
-          <button className={`found-tool-btn${paletteVisible ? " active" : ""}`} title="吸取颜色并显示色彩栏" aria-label="色彩栏" aria-pressed={paletteVisible} onClick={onPaletteToggle} disabled={!onPaletteToggle}>
+          <button className={`preview-tool-btn${paletteVisible ? " active" : ""}`} title={translate("preview.paletteToggleTitle")} aria-label={translate("preview.palette")} aria-pressed={paletteVisible} onClick={onPaletteToggle} disabled={!onPaletteToggle}>
             <Palette size={13} />
           </button>
-          <button className={`found-tool-btn${notesActive ? " active" : ""}`} title="资产备注" aria-label="资产备注" aria-pressed={notesActive} onClick={onNotesToggle} disabled={!onNotesToggle}>
+          <button className={`preview-tool-btn${notesActive ? " active" : ""}`} title={translate("preview.notes")} aria-label={translate("preview.notes")} aria-pressed={notesActive} onClick={onNotesToggle} disabled={!onNotesToggle}>
             <NotebookPen size={13} />
           </button>
-          {capabilities.gifExport && onGifExport && <button className={`found-tool-btn${gifActive ? " active" : ""}`} title="导出 GIF" aria-label="导出 GIF" aria-pressed={gifActive} onClick={onGifExport}>
+          {capabilities.gifExport && onGifExport && <button className={`preview-tool-btn${gifActive ? " active" : ""}`} title={translate("preview.exportGif")} aria-label={translate("preview.exportGif")} aria-pressed={gifActive} onClick={onGifExport}>
             <Film size={13} />
           </button>}
-          <span className="found-toolbar-spacer" />
+          <span className="preview-toolbar-spacer" />
           </div>
-          <div className="found-toolbar-tail">
+          <div className="preview-toolbar-tail">
             {trailingActions}
           </div>
         </div>
       )}
       {lutActive && lutMenu && typeof document !== "undefined" && createPortal(
         <div
-          className="found-lut-anchor-menu"
+          className="preview-lut-anchor-menu"
           data-placement="top-start"
           role="presentation"
           style={{ left: lutMenuPosition.left, bottom: lutMenuPosition.bottom }}
@@ -405,7 +406,7 @@ export function FoundToolbar({
       )}
       {rateActive && rateMenu && typeof document !== "undefined" && createPortal(
         <div
-          className="found-rate-anchor-menu"
+          className="preview-rate-anchor-menu"
           data-placement="top-start"
           role="presentation"
           style={{ left: rateMenuPosition.left, bottom: rateMenuPosition.bottom }}

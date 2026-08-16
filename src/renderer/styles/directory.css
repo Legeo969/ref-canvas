@@ -1315,7 +1315,7 @@
   margin: 0 16px;
 }
 
-/* Found-style right preview: the stage is primary, tools open as a bottom drawer. */
+/* Preview-style right preview: the stage is primary, tools open as a bottom drawer. */
 .directory-workbench-panel {
   display: flex;
   flex-direction: column;

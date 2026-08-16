@@ -60,7 +60,7 @@ export function ImagePreviewViewport({
   children,
   toolbarEnd,
   interactionDisabled = false,
-  canvasBackground = "var(--found-canvas, #0F1119)",
+  canvasBackground = "var(--preview-canvas, #0F1119)",
   controlsTarget,
 }: ImagePreviewViewportProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -163,7 +163,7 @@ export function ImagePreviewViewport({
       <div className="image-preview-toolbar-start">
         {!controlsTarget && <button
           type="button"
-          className={`found-tool-label image-preview-fit-button${fit ? " active" : ""}`}
+          className={`preview-tool-label image-preview-fit-button${fit ? " active" : ""}`}
           title={translate("imageReview.fit")}
           aria-label={translate("imageReview.fit")}
           onClick={fitView}

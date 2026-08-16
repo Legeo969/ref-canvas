@@ -133,7 +133,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
   };
 
   return (
-    <div className={`image-review${managed ? " found-managed-preview" : ""}`}>
+    <div className={`image-review${managed ? " preview-managed-preview" : ""}`}>
       <ImagePreviewViewport
         assetKey={`${asset.id}:${asset.previewUrl}`}
         checkerBackground={alphaBackgroundStyle(foundSettings)}

@@ -19,23 +19,23 @@ import {
   usePreviewSessionMode,
 } from "./PreviewSessionMode";
 import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
-import { FoundToolbar } from "./FoundToolbar";
+import { PreviewToolbar } from "./PreviewToolbar";
 import { AssetNotesPanel } from "./AssetNotesPanel";
 import { PreviewColorTools } from "./PreviewColorTools";
-import { FoundEmptyState } from "./FoundEmptyState";
-import { FoundLayersPanel } from "./FoundLayersPanel";
+import { PreviewEmptyState } from "./PreviewEmptyState";
+import { PreviewLayersPanel } from "./PreviewLayersPanel";
 import { SequencePreviewDialog } from "./SequencePreview";
 import {
   PreviewTransportProvider,
   usePreviewTransport,
 } from "./PreviewTransport";
 import {
-  classifyFoundPreview,
+  classifyPreviewPanel,
   environmentPreviewCapabilities,
-  formatFoundTimecode,
-  foundToolbarProgressColor,
-  type FoundToolbarVariant,
-} from "./found-preview-model";
+  formatPreviewTimecode,
+  previewToolbarProgressColor,
+  type PreviewToolbarVariant,
+} from "./preview-panel-model";
 import {
   PreviewSessionShell,
   PreviewSurface,
@@ -49,15 +49,15 @@ type PreviewTab = "preview" | "ai";
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
 
 /** 全屏下指针停在这些控件上时，控制栏不自动隐藏。 */
-const FULLSCREEN_CONTROLS_SELECTOR = ".found-preview-workspace, .found-preview-session-footer, .found-layers-panel, .found-lut-anchor-menu, .found-rate-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu";
+const FULLSCREEN_CONTROLS_SELECTOR = ".preview-workspace, .preview-session-footer, .preview-layers-panel, .preview-lut-anchor-menu, .preview-rate-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu";
 
 /**
- * Found-style right preview panel — 1:1 spec skeleton (§1 structure).
+ * Preview-style right preview panel — 1:1 spec skeleton (§1 structure).
  *
- * Replaces DirectoryDetailsPanel with Found tab bar + dual-row toolbar.
+ * Replaces DirectoryDetailsPanel with Preview tab bar + dual-row toolbar.
  * Preserves all existing state management, event wiring, and tool drawers.
  */
-function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
+function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const foundSettings = useFoundSettings();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
   const [mode, setMode] = useState<PreviewTab>("preview");
@@ -211,8 +211,8 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   useEffect(() => {
     const closeOnPointerAway = (event: PointerEvent) => {
       const target = event.target instanceof Element ? event.target : null;
-      if (eyedropActive && target?.closest(".found-preview-viewport")) return;
-      if (target?.closest(".found-toolbar, .found-lut-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu")) return;
+      if (eyedropActive && target?.closest(".preview-viewport")) return;
+      if (target?.closest(".preview-toolbar, .preview-lut-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu")) return;
       window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
     };
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -283,9 +283,9 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const isHdrImage = /^(exr|hdr)$/i.test(mediaExtension);
   const isExrMedia = mediaExtension === "exr";
   const hasContent = !!(entry && asset && !entry.isDirectory);
-  const previewKind = entry && asset ? classifyFoundPreview(entry, asset) : null;
+  const previewKind = entry && asset ? classifyPreviewPanel(entry, asset) : null;
   const toolbarVariant = previewKind && ["image", "svg", "gif", "video", "sequence"].includes(previewKind)
-    ? previewKind as FoundToolbarVariant
+    ? previewKind as PreviewToolbarVariant
     : null;
   const isPreview = mode === "preview";
 
@@ -293,7 +293,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     if (!asset) return;
     const paletteApi = window.refCanvas.media.palette;
     if (!paletteApi) {
-      setPaletteError("无法提取主色，点击重试");
+      setPaletteError(translate("preview.paletteError"));
       return;
     }
     const currentPath = entry?.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
@@ -306,7 +306,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       });
       setColorSwatches(palette.slice(0, 5).map((color) => color.hex));
     } catch {
-      setPaletteError("无法提取主色，点击重试");
+      setPaletteError(translate("preview.paletteError"));
     } finally {
       setPaletteLoading(false);
     }
@@ -321,7 +321,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
     }).EyeDropper;
     if (!EyeDropper) {
-      setPaletteError("当前环境不支持屏幕取色");
+      setPaletteError(translate("preview.eyedropUnsupported"));
       return;
     }
     try {
@@ -346,7 +346,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   // 序列菜单设置绝对帧率、视频菜单设置倍率；两者都经 transport 写回对应
   // 渲染器的本地状态（对话框的 setPlaybackRate 对序列按绝对 fps 解释）。
   const playbackMenu = toolbarVariant === "sequence" ? (
-    <section className="playback-rate-menu" aria-label="播放帧率">
+    <section className="playback-rate-menu" aria-label={translate("preview.rateFpsMenu")}>
       {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
         <button
           type="button"
@@ -360,7 +360,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       ))}
     </section>
   ) : toolbarVariant === "video" ? (
-    <section className="playback-rate-menu" aria-label="播放速度">
+    <section className="playback-rate-menu" aria-label={translate("preview.rateSpeed")}>
       {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
         <button
           type="button"
@@ -383,10 +383,10 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         elementRef={previewSession.rootRef}
         focused={previewSession.focused}
         fullscreen={previewSession.fullscreen}
-        className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
+        className={`preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
       >
-        {/* Found tab bar */}
-        <header className="found-tab-bar" role="tablist" aria-label="右侧预览区">
+        {/* Preview tab bar */}
+        <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
           <button
             role="tab"
             aria-selected={isPreview}
@@ -394,7 +394,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
             onClick={() => setMode("preview")}
           >
             <Eye size={13} />
-            {translate("found.tab.preview")}
+            {translate("preview.tab.preview")}
           </button>
           <button
             role="tab"
@@ -403,17 +403,17 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
             onClick={() => setMode("ai")}
           >
             <Sparkles size={13} />
-            {translate("found.tab.ai")}
+            {translate("preview.tab.ai")}
           </button>
-          <span className="found-toolbar-spacer" />
+          <span className="preview-toolbar-spacer" />
         </header>
 
         {mode === "ai" ? (
           <AiDesignSupervisorPanel variant="embedded" initialSourcePath={null} />
         ) : (
-          <div className="found-preview-content">
-            <div className="found-canvas-area">
-              <FoundEmptyState />
+          <div className="preview-content">
+            <div className="preview-canvas-area">
+              <PreviewEmptyState />
             </div>
           </div>
         )}
@@ -430,10 +430,10 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       elementRef={previewSession.rootRef}
       focused={previewSession.focused}
       fullscreen={previewSession.fullscreen}
-      className={`found-preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""} mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
+      className={`preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""} mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
     >
-      {/* Found tab bar */}
-      <header className="found-tab-bar" role="tablist" aria-label="右侧预览区">
+      {/* Preview tab bar */}
+      <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
         <button
           role="tab"
           aria-selected={isPreview}
@@ -441,7 +441,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
           onClick={() => { setMode("preview"); setTool("preview"); }}
         >
           <Eye size={13} />
-          {translate("found.tab.preview")}
+          {translate("preview.tab.preview")}
         </button>
         <button
           role="tab"
@@ -450,36 +450,36 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
           onClick={() => setMode("ai")}
         >
           <Sparkles size={13} />
-          {translate("found.tab.ai")}
+          {translate("preview.tab.ai")}
         </button>
-        <span className="found-toolbar-spacer" />
+        <span className="preview-toolbar-spacer" />
         <div className="workbench-file-actions">
-          <button className="workbench-external-action" type="button" aria-label="打开素材" title="打开素材" onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} title={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
             <SquareArrowOutUpRight size={15} />
           </button>
-          <button className="workbench-external-action" type="button" aria-label="在资源管理器中显示" title="在资源管理器中显示" onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.revealInExplorer")} title={translate("preview.revealInExplorer")} onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
             <FolderOpen size={15} />
           </button>
         </div>
       </header>
 
       {/* Content area */}
-      <div className="found-preview-content">
+      <div className="preview-content">
         {isPreview ? (
           <>
             {/* Loading / error states */}
             {loading && (
-              <div className="found-canvas-area">
-                <div className="found-empty-state">
+              <div className="preview-canvas-area">
+                <div className="preview-empty-state">
                   <LoaderCircle className="spin" size={18} />
-                  <span>{translate("found.preview.loading")}</span>
+                  <span>{translate("preview.panelLoading")}</span>
                 </div>
               </div>
             )}
             {error && (
-              <div className="found-canvas-area">
-                <div className="found-empty-state">
-                  <span>{translate("found.preview.error")}</span>
+              <div className="preview-canvas-area">
+                <div className="preview-empty-state">
+                  <span>{translate("preview.panelError")}</span>
                 </div>
               </div>
             )}
@@ -489,9 +489,9 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
               <>
                 <PreviewSurface
                   renderer={previewRendererKind(asset)}
-                  className="workbench-preview-shell found-preview-viewport"
+                  className="workbench-preview-shell preview-viewport"
                 >
-                  {previewKind === "svg" && <FoundLayersPanel />}
+                  {previewKind === "svg" && <PreviewLayersPanel />}
                   {previewKind === "sequence" && entry.sequenceGroup ? (
                     <SequencePreviewDialog
                       key={entry.sequenceGroup.id}
@@ -540,12 +540,12 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                   )}
                 </PreviewSurface>
 
-                <div className="found-preview-workspace">
+                <div className="preview-workspace">
                     {tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" && (
-                      <section className={`found-context-tray found-context-tray-${tool}`} aria-label="上下文工具托盘">
-                        <header className="found-context-tray-header">
-                          <strong>{tool === "gif" ? "导出 GIF" : tool === "frames" ? "导出序列帧" : tool === "notes" ? "资产备注" : "LUT"}</strong>
-                          <button type="button" aria-label="关闭工具" title="关闭工具" onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
+                      <section className={`preview-context-tray preview-context-tray-${tool}`} aria-label={translate("preview.trayLabel")}>
+                        <header className="preview-context-tray-header">
+                          <strong>{tool === "gif" ? translate("preview.exportGif") : tool === "frames" ? translate("preview.exportFrames") : tool === "notes" ? translate("preview.notes") : translate("preview.lut")}</strong>
+                          <button type="button" aria-label={translate("preview.closeTool")} title={translate("preview.closeTool")} onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
                         </header>
                         {tool === "gif" && isVideo && (
                           <GifExportStudio
@@ -600,22 +600,22 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         )}
                       </section>
                     )}
-                    <div className="found-preview-file-row">
-                      <span className="found-preview-filename directory-inspector-title" title={entry.path}>
+                    <div className="preview-file-row">
+                      <span className="preview-filename directory-inspector-title" title={entry.path}>
                         {entry.name}
                       </span>
                       {transport.snapshot?.kind === "video" && (
-                        <span className="found-preview-frame-label">
-                          FRAME {String(transport.snapshot.frameIndex).padStart(3, "0")}
+                        <span className="preview-frame-label">
+                          {translate("preview.frameLabel").replace("{value}", String(transport.snapshot.frameIndex).padStart(3, "0"))}
                         </span>
                       )}
                       {transport.snapshot?.kind === "sequence" && entry.sequenceGroup && (
-                        <span className="found-preview-frame-label">
-                          SEQUENCE {String(entry.sequenceGroup.start + transport.snapshot.frameIndex).padStart(entry.sequenceGroup.width, "0")}
+                        <span className="preview-frame-label">
+                          {translate("preview.sequenceLabel").replace("{value}", String(entry.sequenceGroup.start + transport.snapshot.frameIndex).padStart(entry.sequenceGroup.width, "0"))}
                         </span>
                       )}
                       {!toolbarVariant && (
-                        <span className="found-preview-file-actions">
+                        <span className="preview-file-actions">
                           <PreviewSessionModeButtons
                             focused={previewSession.focused}
                             fullscreen={previewSession.fullscreen}
@@ -625,7 +625,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         </span>
                       )}
                     </div>
-                    {toolbarVariant && <FoundToolbar
+                    {toolbarVariant && <PreviewToolbar
                     variant={toolbarVariant}
                     seekPosition={transport.snapshot?.position ?? 0}
                     onSeekChange={(position) => transport.actions?.seek(position)}
@@ -634,7 +634,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       : undefined}
                     timecode={transport.snapshot?.kind === "sequence"
                       ? String((entry.sequenceGroup?.start ?? 0) + transport.snapshot.frameIndex)
-                      : formatFoundTimecode(
+                      : formatPreviewTimecode(
                           (transport.snapshot?.position ?? 0) * (transport.snapshot?.durationSeconds ?? 0),
                           transport.snapshot?.kind === "gif" ? transport.snapshot.fps : null,
                         )}
@@ -666,7 +666,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onFit={toolbarVariant === "image" || toolbarVariant === "svg"
                       ? () => window.dispatchEvent(new Event("refcanvas:preview-fit"))
                       : undefined}
-                    progressColor={foundToolbarProgressColor(toolbarVariant)}
+                    progressColor={previewToolbarProgressColor(toolbarVariant)}
                     colorSwatches={colorSwatches}
                     sampledColorSwatches={sampledColorSwatches}
                     paletteLoading={paletteLoading}
@@ -699,13 +699,13 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     multichannelButtonRef={setMultichannelAnchor}
                     rendererControlsRef={setControlsTarget}
                     trailingActions={(
-                      <>{reflectionCapable && <button type="button" className={`found-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label="反射球" title="反射球" aria-pressed={hdrViewMode === "reflection"} onClick={() => {
+                      <>{reflectionCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label={translate("preview.reflectionBall")} title={translate("preview.reflectionBall")} aria-pressed={hdrViewMode === "reflection"} onClick={() => {
                           const next = hdrViewMode === "reflection" ? "flat" : "reflection";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);
                           window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", { detail: { path: currentPath, mode: next } }));
-                        }}><span className="found-reflection-ball-glyph" aria-hidden="true" /></button>}
-                      {panoramaCapable && <button type="button" className={`found-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label="全景模式" title="全景模式" aria-pressed={hdrViewMode === "panorama"} onClick={() => {
+                        }}><span className="preview-reflection-ball-glyph" aria-hidden="true" /></button>}
+                      {panoramaCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label={translate("preview.panoramaMode")} title={translate("preview.panoramaMode")} aria-pressed={hdrViewMode === "panorama"} onClick={() => {
                           const next = hdrViewMode === "panorama" ? "flat" : "panorama";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);
@@ -725,8 +725,8 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
 
             {/* Empty state when no asset loaded */}
             {!loading && !error && !hasContent && (
-              <div className="found-canvas-area">
-                <FoundEmptyState />
+              <div className="preview-canvas-area">
+                <PreviewEmptyState />
               </div>
             )}
           </>
@@ -739,7 +739,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         )}
       </div>
       {isPreview && !hasContent && (
-        <div className="found-preview-session-footer">
+        <div className="preview-session-footer">
           <PreviewSessionModeButtons
             focused={previewSession.focused}
             fullscreen={previewSession.fullscreen}
@@ -752,10 +752,10 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   );
 }
 
-export function FoundPreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
+export function PreviewPanel({ entry }: { entry: DirectoryEntry | null }) {
   return (
     <PreviewTransportProvider>
-      <FoundPreviewPanelContent entry={entry} />
+      <PreviewPanelContent entry={entry} />
     </PreviewTransportProvider>
   );
 }
