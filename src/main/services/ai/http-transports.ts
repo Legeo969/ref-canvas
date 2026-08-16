@@ -1,5 +1,5 @@
 /**
- * 生产 HTTP transport（found-clone.md §9.5 / §9.6）。
+ * 生产 HTTP transport（§9.5 / §9.6）。
  *
  * - {@link HttpComfyTransport}：ComfyUI 本地服务的 fetch/upload/download。
  * - {@link HttpRemoteTransport}：Remote REST v1 的 HTTPS 传输层。

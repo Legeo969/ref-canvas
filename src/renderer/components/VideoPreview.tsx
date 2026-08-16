@@ -2,7 +2,7 @@ import { Film, Images, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Vo
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
-import { useFoundSettings } from "../app/found-settings";
+import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { MediaNotesOverlay } from "./MediaNotesOverlay";
 import { GifExportStudio } from "./GifExportStudio";
@@ -60,7 +60,7 @@ export function VideoPreview({
   onEyedropActiveChange?: (active: boolean) => void;
   onColorSample?: (color: string) => void;
 }) {
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameImageRef = useRef<HTMLImageElement>(null);
   /** 预览根：可聚焦，方向键按焦点归属路由（点击预览后接管 ←/→）。 */
@@ -76,7 +76,7 @@ export function VideoPreview({
     timer: number | null;
   } | null>(null);
   // 阶段 5：autoplay 偏好（默认播放）；首次挂载按设置决定是否自动播放。
-  const [playing, setPlaying] = useState(foundSettings.autoplayVideo);
+  const [playing, setPlaying] = useState(previewSettings.autoplayVideo);
   const autoPlayedRef = useRef(false);
   const [timecode, setTimecode] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -192,11 +192,11 @@ export function VideoPreview({
 
   // 挂载后按偏好触发播放（浏览器 autoplay 策略下静音不可行时忽略）。
   useEffect(() => {
-    if (!foundSettings.autoplayVideo || autoPlayedRef.current) return;
+    if (!previewSettings.autoplayVideo || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     const video = videoRef.current;
     if (video) void video.play().catch(() => undefined);
-  }, [foundSettings.autoplayVideo]);
+  }, [previewSettings.autoplayVideo]);
 
   useEffect(() => {
     // 素材切换：停止至臻轮询并复位（新素材重新判定/生成）。

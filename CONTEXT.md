@@ -18,7 +18,7 @@ _Avoid_: 素材条目、目录项、media
 
 **预览面板 (preview panel)**:
 应用右侧的素材预览面板，含 tab 栏（预览 / AI）与工具栏；视觉版式参照外部设计参考「Found」，但「Found」不是本应用的领域概念。
-_Avoid_: Found 面板、详情面板、DirectoryDetailsPanel、workbench 面板
+_Avoid_: 预览面板、详情面板、DirectoryDetailsPanel、workbench 面板
 
 **预览会话 (preview session)**:
 预览面板的呈现状态，有聚焦 (focused) 与全屏 (fullscreen) 两个独立的轴。

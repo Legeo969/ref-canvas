@@ -1,5 +1,5 @@
 /**
- * 引用集合仓储（schema 17，found-clone.md §6.1/§6.3）。
+ * 引用集合仓储（schema 17，§6.1/§6.3）。
  *
  * `collections` 为自引用树（parent_id 默认拒绝删除非空父集合）；
  * `collection_items` 只对 collection_id 级联删除，不依赖 assets.id 存活；

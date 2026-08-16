@@ -1,5 +1,5 @@
 /**
- * AI 密钥存储（found-clone.md §9.6）。
+ * AI 密钥存储（§9.6）。
  *
  * Bearer token 由 Electron `safeStorage` 加密后保存；Renderer 只能读取
  * "已配置" 状态，永不接触明文。SQLite、日志与错误消息均不得出现明文。

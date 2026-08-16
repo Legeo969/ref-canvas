@@ -1,5 +1,5 @@
 /**
- * Remote REST v1 网络安全校验（found-clone.md §9.6）。
+ * Remote REST v1 网络安全校验（§9.6）。
  *
  * - Job API base URL 必须是 HTTPS、不含凭据，并拒绝 loopback、link-local、
  *   私有网段以及解析到这些地址的主机（DNS rebinding 防护）。

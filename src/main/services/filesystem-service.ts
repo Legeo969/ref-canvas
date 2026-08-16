@@ -103,7 +103,7 @@ function filterFavorites(
 }
 
 /**
- * Found 式本地目录浏览服务：浏览不产生任何素材数据库记录；未入库文件
+ * 预览式本地目录浏览服务：浏览不产生任何素材数据库记录；未入库文件
  * 通过 materialize 按需入库。所有路径以参数传入，不接触数据库素材表。
  */
 export class FilesystemService {

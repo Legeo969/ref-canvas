@@ -185,7 +185,7 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     version: 14,
     id: "v14-native-filesystem-schema",
     description:
-      "Found 磁盘原生 schema：引入 mount roots、collection refs、cache 与 media metadata 表，升级 file identities 为磁盘身份模型，移除已停用的 collection_sources。",
+      "预览面板磁盘原生 schema：引入 mount roots、collection refs、cache 与 media metadata 表，升级 file identities 为磁盘身份模型，移除已停用的 collection_sources。",
     apply(db) {
       V14NativeFilesystem.apply(db);
     },
@@ -937,7 +937,7 @@ export class MigrationRepository {
 }
 
 /**
- * v14 Found 磁盘原生 schema（计划 §13.2）。
+ * v14 预览面板磁盘原生 schema（计划 §13.2）。
  *
  * - 新增 `mount_roots`：本地盘符、移动盘或 NAS mount root。
  * - 升级 `file_identities`：为磁盘身份模型补充 mount_id、relative_path、

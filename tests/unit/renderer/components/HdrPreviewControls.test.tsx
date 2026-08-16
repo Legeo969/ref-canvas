@@ -10,9 +10,9 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
 
-vi.mock("../../../../src/renderer/app/found-settings", () => ({
+vi.mock("../../../../src/renderer/app/preview-settings", () => ({
   alphaBackgroundStyle: () => "none",
-  useFoundSettings: vi.fn(() => ({ ocioConfigPath: null })),
+  usePreviewSettings: vi.fn(() => ({ ocioConfigPath: null })),
 }));
 
 vi.mock("../../../../src/renderer/components/ImagePreviewViewport", () => ({
@@ -36,7 +36,7 @@ vi.mock("../../../../src/renderer/components/PanoramaPreview", () => ({
 }));
 
 import { HdrPreview } from "../../../../src/renderer/components/HdrPreview";
-import { useFoundSettings } from "../../../../src/renderer/app/found-settings";
+import { usePreviewSettings } from "../../../../src/renderer/app/preview-settings";
 
 describe("HDR preview controls", () => {
   const roots: Root[] = [];
@@ -151,7 +151,7 @@ describe("HDR preview controls", () => {
 
   it("persists a picked OCIO config and requests a new color-managed preview", async () => {
     const setPreferences = vi.fn(async () => ({
-      foundSettings: { ...({} as Record<string, unknown>), ocioConfigPath: "D:\\color\\config.ocio" },
+      previewSettings: { ...({} as Record<string, unknown>), ocioConfigPath: "D:\\color\\config.ocio" },
     }));
     Object.assign(window, {
       refCanvas: {
@@ -175,14 +175,14 @@ describe("HDR preview controls", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(setPreferences).toHaveBeenCalledWith({ foundSettings: { ocioConfigPath: "D:\\color\\config.ocio" } });
+    expect(setPreferences).toHaveBeenCalledWith({ previewSettings: { ocioConfigPath: "D:\\color\\config.ocio" } });
     expect(host.querySelector('[data-testid="image-viewport"]')?.getAttribute("data-asset-key")).toContain("ocio=");
   });
 
   it("shows the base variant first and overlays the color-managed variant with a custom config", async () => {
     const stubSettings = (ocioConfigPath: string | null) =>
-      ({ ocioConfigPath }) as unknown as ReturnType<typeof useFoundSettings>;
-    vi.mocked(useFoundSettings).mockReturnValue(stubSettings("D:\\color\\config.ocio"));
+      ({ ocioConfigPath }) as unknown as ReturnType<typeof usePreviewSettings>;
+    vi.mocked(usePreviewSettings).mockReturnValue(stubSettings("D:\\color\\config.ocio"));
     try {
       Object.assign(window, {
         refCanvas: {
@@ -208,16 +208,16 @@ describe("HDR preview controls", () => {
       });
       expect(managed?.style.opacity).toBe("");
     } finally {
-      vi.mocked(useFoundSettings).mockReturnValue(
-        stubSettings(null) as ReturnType<typeof useFoundSettings>,
+      vi.mocked(usePreviewSettings).mockReturnValue(
+        stubSettings(null) as ReturnType<typeof usePreviewSettings>,
       );
     }
   });
 
   it("applies exposure brightness to the color-managed overlay too", async () => {
     const stubSettings = (ocioConfigPath: string | null) =>
-      ({ ocioConfigPath }) as unknown as ReturnType<typeof useFoundSettings>;
-    vi.mocked(useFoundSettings).mockReturnValue(stubSettings("D:\\color\\config.ocio"));
+      ({ ocioConfigPath }) as unknown as ReturnType<typeof usePreviewSettings>;
+    vi.mocked(usePreviewSettings).mockReturnValue(stubSettings("D:\\color\\config.ocio"));
     try {
       Object.assign(window, {
         refCanvas: {
@@ -268,8 +268,8 @@ describe("HDR preview controls", () => {
       });
       expect(container?.style.getPropertyValue("--hdr-exposure")).toBe("2");
     } finally {
-      vi.mocked(useFoundSettings).mockReturnValue(
-        stubSettings(null) as ReturnType<typeof useFoundSettings>,
+      vi.mocked(usePreviewSettings).mockReturnValue(
+        stubSettings(null) as ReturnType<typeof usePreviewSettings>,
       );
     }
   });

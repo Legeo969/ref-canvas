@@ -13,7 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
 import { translate } from "../app/i18n";
-import { useFoundSettings } from "../app/found-settings";
+import { usePreviewSettings } from "../app/preview-settings";
 import { AssetPreview } from "./AssetPreview";
 import { AiDesignSupervisorPanel } from "./AiDesignSupervisor";
 import { GifExportStudio } from "./GifExportStudio";
@@ -36,7 +36,7 @@ type WorkbenchMode = "preview" | "ai";
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
 
 export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null }) {
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
   const [mode, setMode] = useState<WorkbenchMode>("preview");
   const [loading, setLoading] = useState(false);
@@ -234,7 +234,7 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
                     <span>{translate("preview.auto")}</span>
                     <strong>{frameRate ? frameRate.toFixed(frameRate % 1 ? 2 : 0) : "—"} FPS</strong>
                   </button>
-                  {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
+                  {Array.from(new Set(previewSettings.sequenceFpsPresets)).map((fps) => (
                     <button key={fps} className={playbackFps === fps ? "active" : ""} onClick={() => setPlaybackFps(fps)}>
                       <span>{translate("directory.preset")}</span>
                       <strong>{fps} FPS</strong>

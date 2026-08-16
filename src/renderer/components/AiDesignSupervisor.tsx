@@ -1,5 +1,5 @@
 /**
- * AI Design Supervisor 面板（FND-008，found-clone.md §9）。
+ * AI Design Supervisor 面板（FND-008，§9）。
  *
  * - 源图 + 最多六张参考图（拖放/粘贴/选择）。
  * - 提示词、重大改动、输出数量 1–4、输出目录与 Provider。

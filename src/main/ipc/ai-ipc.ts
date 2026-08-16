@@ -1,5 +1,5 @@
 /**
- * AI Design Supervisor IPC（FND-008，found-clone.md §9）。
+ * AI Design Supervisor IPC（FND-008，§9）。
  *
  * 所有输入先经共享 Zod schema 校验；Renderer 不能直接访问 Sharp、输出目录
  * 或 Provider 密钥，只能通过这里的最小 Preload API 操作。

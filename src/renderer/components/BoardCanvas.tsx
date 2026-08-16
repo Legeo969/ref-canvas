@@ -931,7 +931,7 @@ export function BoardCanvas({
       importController.scheduleProxyRefresh(refreshVisibleImageProxies);
     };
     canvasRef.current = canvas;
-    controller.onCanvas(canvas, "contextmenu", ({ e, target: foundTarget }) => {
+    controller.onCanvas(canvas, "contextmenu", ({ e, target: hitTarget }) => {
       const event = e as MouseEvent;
       event.preventDefault();
       const mouseUp = interruptedSelectionMouseUp(event);
@@ -942,7 +942,7 @@ export function BoardCanvas({
       }
       const target = (mouseUp
         ? canvas.findTarget(event)
-        : foundTarget) as CanvasObjectWithData | undefined;
+        : hitTarget) as CanvasObjectWithData | undefined;
       const selected = canvas.getActiveObjects() as CanvasObjectWithData[];
       const context = resolveBoardContext(
         selected,

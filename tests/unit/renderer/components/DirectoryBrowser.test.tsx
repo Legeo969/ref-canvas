@@ -213,10 +213,10 @@ describe("DirectoryBrowser", () => {
   it("toggles the master hidden-files switch via the eye button", async () => {
     const listRoots = vi.fn(async () => []);
     const getPreferences = vi.fn(async () => ({
-      foundSettings: { showHiddenFiles: false },
+      previewSettings: { showHiddenFiles: false },
     }));
     const setPreferences = vi.fn(async () => ({
-      foundSettings: { showHiddenFiles: true },
+      previewSettings: { showHiddenFiles: true },
     }));
     useAppStore.setState({
       navigationSource: "directory",
@@ -255,7 +255,7 @@ describe("DirectoryBrowser", () => {
       await Promise.resolve();
     });
     expect(setPreferences).toHaveBeenCalledWith({
-      foundSettings: { showHiddenFiles: true },
+      previewSettings: { showHiddenFiles: true },
     });
     expect(eye?.getAttribute("aria-pressed")).toBe("true");
     expect(eye?.className).toContain("active");

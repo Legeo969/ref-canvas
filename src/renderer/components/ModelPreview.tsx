@@ -15,7 +15,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AssetRecord } from "../../shared/contracts";
-import { useFoundSettings } from "../app/found-settings";
+import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import {
   modelPresetView,
@@ -77,7 +77,7 @@ export function ModelPreview({
   controlsTarget,
   onCameraChange,
 }: ModelPreviewProps) {
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const hostRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const setPresetRef = useRef<(preset: ModelCameraPreset) => void>(() => undefined);
@@ -120,7 +120,7 @@ export function ModelPreview({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.screenSpacePanning = true;
-    controls.autoRotate = foundSettings.autoplayModel3d;
+    controls.autoRotate = previewSettings.autoplayModel3d;
     controls.autoRotateSpeed = 1.6;
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x202827, 2.2));

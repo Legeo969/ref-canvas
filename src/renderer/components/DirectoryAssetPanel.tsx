@@ -36,7 +36,7 @@ import type {
   DirectoryBatchSnapshot,
   DirectoryEntry,
   DirectorySearchSnapshot,
-  FoundFormatGroupId,
+  PreviewFormatGroupId,
   RegisteredScript,
   SequenceGroupInfo,
 } from "../../shared/contracts";
@@ -61,8 +61,8 @@ import { trimDirectoryPageCache } from "../app/directory-page-cache";
 import { directoryBreadcrumb } from "../app/folder-navigation";
 import {
   flattenDepthPreferencePatch,
-  useFoundSettings,
-} from "../app/found-settings";
+  usePreviewSettings,
+} from "../app/preview-settings";
 import { useAppStore } from "../app/store";
 import { translate } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
@@ -96,7 +96,7 @@ import {
 import { resolveDirectorySelectionScope } from "../features/directory/directory-query-model";
 import { DirectoryBatchToolbar } from "./directory/DirectoryBatchToolbar";
 
-type DirectoryFormatFilter = "all" | FoundFormatGroupId | "other";
+type DirectoryFormatFilter = "all" | PreviewFormatGroupId | "other";
 
 /** 目录条目拖拽 MIME：携带 {path, isDirectory}，由 Sidebar 文件夹行消费。 */
 export const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
@@ -461,7 +461,7 @@ export function DirectoryRow({
 /** 目录模式素材区：虚拟网格 + 顶部目录搜索（流式/可取消）+ 导航/预览。 */
 export function DirectoryAssetPanel() {
   const store = useAppStore();
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const dialog = useDialog();
   // 阶段 5 §10.5：已注册脚本（右键菜单运行；信任校验在主进程）。
   const [registeredScripts, setRegisteredScripts] = useState<RegisteredScript[]>([]);
@@ -484,26 +484,26 @@ export function DirectoryAssetPanel() {
   // 阶段 5 §10.1：当前目录 flatten 深度（每文件夹记忆 > 默认值）。
   const currentFlattenDepth =
     (store.directoryPath
-      ? foundSettings.flattenPerFolder[store.directoryPath]
-      : undefined) ?? foundSettings.defaultFlattenDepth;
+      ? previewSettings.flattenPerFolder[store.directoryPath]
+      : undefined) ?? previewSettings.defaultFlattenDepth;
   const setFlattenDepth = async (depth: number) => {
     if (!store.directoryPath) return;
     const next = await window.refCanvas.system.setPreferences({
       ...flattenDepthPreferencePatch(store.directoryPath, depth),
     });
     window.dispatchEvent(
-      new CustomEvent("refcanvas:found-settings", {
-        detail: next.foundSettings,
+      new CustomEvent("refcanvas:preview-settings", {
+        detail: next.previewSettings,
       }),
     );
   };
   const setSequenceCollapsing = async (collapseImageSequences: boolean) => {
     const next = await window.refCanvas.system.setPreferences({
-      foundSettings: { collapseImageSequences },
+      previewSettings: { collapseImageSequences },
     });
     window.dispatchEvent(
-      new CustomEvent("refcanvas:found-settings", {
-        detail: next.foundSettings,
+      new CustomEvent("refcanvas:preview-settings", {
+        detail: next.previewSettings,
       }),
     );
   };
@@ -597,9 +597,9 @@ export function DirectoryAssetPanel() {
   const sequenceTokenCacheRef = useRef(new Map<string, string>());
   const formatFilterExtensions = useMemo(() => {
     if (formatFilter === "all") return undefined;
-    if (formatFilter === "other") return foundSettings.formatWhitelist;
-    return foundSettings.formatGroups.find((group) => group.id === formatFilter)?.extensions ?? [];
-  }, [formatFilter, foundSettings.formatGroups, foundSettings.formatWhitelist]);
+    if (formatFilter === "other") return previewSettings.formatWhitelist;
+    return previewSettings.formatGroups.find((group) => group.id === formatFilter)?.extensions ?? [];
+  }, [formatFilter, previewSettings.formatGroups, previewSettings.formatWhitelist]);
 
   const updateEntryTags = (paths: string[], tags: string[]) => {
     const pathSet = new Set(paths);
@@ -689,7 +689,7 @@ export function DirectoryAssetPanel() {
     setSequenceGroups(new Map());
     sequenceTokenCacheRef.current.clear();
     if (
-      !foundSettings.collapseImageSequences ||
+      !previewSettings.collapseImageSequences ||
       !store.directoryPath ||
       !window.refCanvas.sequences?.detect
     ) return;
@@ -704,7 +704,7 @@ export function DirectoryAssetPanel() {
     return () => {
       cancelled = true;
     };
-  }, [foundSettings.collapseImageSequences, store.directoryPath]);
+  }, [previewSettings.collapseImageSequences, store.directoryPath]);
 
   // 帧路径 → 所属序列；目录页已折叠为首帧条目。
   const sequenceIndex = useMemo(() => {
@@ -811,8 +811,8 @@ export function DirectoryAssetPanel() {
     }
   }, [
     currentFlattenDepth,
-    foundSettings.collapseImageSequences,
-    foundSettings.showHiddenFiles,
+    previewSettings.collapseImageSequences,
+    previewSettings.showHiddenFiles,
     formatFilter,
     formatFilterExtensions,
     favoritesOnly,
@@ -861,7 +861,7 @@ export function DirectoryAssetPanel() {
     if (!value.trim() || !store.directoryPath) return;
     void window.refCanvas.filesystem
       .startSearch(store.directoryPath, value.trim(), {
-        collapseSequences: foundSettings.collapseImageSequences,
+        collapseSequences: previewSettings.collapseImageSequences,
         extensions: formatFilterExtensions,
         favoritesOnly,
       })
@@ -932,7 +932,7 @@ export function DirectoryAssetPanel() {
       setQuery(activeTab.query);
       void window.refCanvas.filesystem
         .startSearch(store.directoryPath ?? "", activeTab.query, {
-          collapseSequences: foundSettings.collapseImageSequences,
+          collapseSequences: previewSettings.collapseImageSequences,
           extensions: formatFilterExtensions,
           favoritesOnly,
         })
@@ -997,14 +997,14 @@ export function DirectoryAssetPanel() {
   );
   const hiddenSequencePaths = useMemo(() => {
     const hidden = new Set<string>();
-    if (!foundSettings.collapseImageSequences) return hidden;
+    if (!previewSettings.collapseImageSequences) return hidden;
     for (const group of sequenceGroups.values()) {
       group.files.slice(1).forEach((filename) => hidden.add(filename));
     }
     return hidden;
-  }, [foundSettings.collapseImageSequences, sequenceGroups]);
+  }, [previewSettings.collapseImageSequences, sequenceGroups]);
   const loadedEntries = searchId ? searchEntries : directoryEntries;
-  const collapseLoadedSequences = foundSettings.collapseImageSequences &&
+  const collapseLoadedSequences = previewSettings.collapseImageSequences &&
     loadedEntries.some((entry) => hiddenSequencePaths.has(entry.path));
   const totalEntries = Math.max(
     0,
@@ -1471,10 +1471,10 @@ export function DirectoryAssetPanel() {
     if (entry.isDirectory) return;
     const values = await dialog.requestForm({
       title: translate("directory.downscale"),
-      description: `${translate("directory.downscaleMode")}${foundSettings.downscaleMode === "suffix"
-        ? translate("directory.downscaleModeSuffix").replace("{suffix}", foundSettings.downscaleSuffix || "2k")
-        : foundSettings.downscaleMode === "subdirectory"
-          ? translate("directory.downscaleModeSubdirectory").replace("{directory}", foundSettings.downscaleSubdirectory || "downscaled")
+      description: `${translate("directory.downscaleMode")}${previewSettings.downscaleMode === "suffix"
+        ? translate("directory.downscaleModeSuffix").replace("{suffix}", previewSettings.downscaleSuffix || "2k")
+        : previewSettings.downscaleMode === "subdirectory"
+          ? translate("directory.downscaleModeSubdirectory").replace("{directory}", previewSettings.downscaleSubdirectory || "downscaled")
           : translate("directory.downscaleModeBackup")}`,
       confirmLabel: translate("directory.start"),
       fields: [
@@ -1492,7 +1492,7 @@ export function DirectoryAssetPanel() {
       64,
       Math.min(16_384, Number(values.maxDimension) || 2048),
     );
-    if (foundSettings.downscaleMode === "backup") {
+    if (previewSettings.downscaleMode === "backup") {
       // §10.4：backup 模式修改原路径，执行前展示源/备份/输出。
       const backupPath = `${entry.path.slice(0, -(entry.extension.length + 1))}.bak.${entry.extension}`;
       const confirmed = await dialog.requestConfirm({
@@ -1509,23 +1509,23 @@ export function DirectoryAssetPanel() {
     await window.refCanvas.media.downscale({
       paths: [entry.path],
       maxDimension,
-      mode: foundSettings.downscaleMode,
+      mode: previewSettings.downscaleMode,
     });
     await store.reloadDirectory();
   };
 
   // 右键菜单「导出 MP4」：视频走 media:exportMp4（ffmpeg 转码）；
   // 图片仅在属于已检测序列（合并序列帧）时提供，走 sequences:exportMp4。
-  // 预设复用 FoundSettings 的 MP4 presets，默认选中 defaultMp4PresetId。
+  // 预设复用 PreviewSettings 的 MP4 presets，默认选中 defaultMp4PresetId。
   const exportMp4Entry = async (entry: DirectoryEntry) => {
     if (entry.isDirectory) return;
     const sequenceGroup = sequenceIndex.byPath.get(entry.path);
     const isVideo = isExportableVideoExtension(entry.extension);
     if (!isVideo && !sequenceGroup) return;
-    const enabledPresets = foundSettings.mp4Presets.filter((preset) => preset.enabled);
+    const enabledPresets = previewSettings.mp4Presets.filter((preset) => preset.enabled);
     const presets = enabledPresets.length
       ? enabledPresets
-      : foundSettings.mp4Presets.slice(0, 1);
+      : previewSettings.mp4Presets.slice(0, 1);
     if (!presets.length) {
       await dialog.requestConfirm({
         title: translate("directory.exportMp4Failed"),
@@ -1535,11 +1535,11 @@ export function DirectoryAssetPanel() {
       return;
     }
     const defaultPresetId =
-      presets.some((preset) => preset.id === foundSettings.defaultMp4PresetId)
-        ? foundSettings.defaultMp4PresetId
+      presets.some((preset) => preset.id === previewSettings.defaultMp4PresetId)
+        ? previewSettings.defaultMp4PresetId
         : presets[0].id;
     const frameCount = sequenceGroup?.files.length ?? 1;
-    const fps = sequenceGroup?.fps ?? foundSettings.defaultSequenceFps;
+    const fps = sequenceGroup?.fps ?? previewSettings.defaultSequenceFps;
     const baseName = sequenceGroup?.baseName ?? pathStemOf(entry.path);
     const defaultDirectory = sequenceGroup?.directory ?? dirnameOf(entry.path);
     const description = isVideo
@@ -2209,7 +2209,7 @@ export function DirectoryAssetPanel() {
             onSelect={(event) => selectEntry(item.entry!, event)}
             onPreview={() => openPreview(item.entry!)}
             onDragOut={() => dragOutEntry(item.entry!)}
-            folderClickMode={foundSettings.folderClickMode}
+            folderClickMode={previewSettings.folderClickMode}
             displayName={
               flattenMark
                 ? item.entry.path.slice((store.directoryPath ?? "").length + 1)
@@ -2264,7 +2264,7 @@ export function DirectoryAssetPanel() {
             onSelect={(event) => selectEntry(item.entry!, event)}
             onPreview={() => openPreview(item.entry!)}
             onDragOut={() => dragOutEntry(item.entry!)}
-            folderClickMode={foundSettings.folderClickMode}
+            folderClickMode={previewSettings.folderClickMode}
             displayName={
               flattenMark
                 ? item.entry.path.slice((store.directoryPath ?? "").length + 1)
@@ -2355,7 +2355,7 @@ export function DirectoryAssetPanel() {
           onSelect={(event) => selectEntry(item.entry!, event)}
           onPreview={() => openPreview(item.entry!)}
           onDragOut={() => dragOutEntry(item.entry!)}
-          folderClickMode={foundSettings.folderClickMode}
+          folderClickMode={previewSettings.folderClickMode}
           displayName={
             flattenMark
               ? item.entry.path.slice((store.directoryPath ?? "").length + 1)
@@ -2466,7 +2466,7 @@ export function DirectoryAssetPanel() {
             onClick={() =>
               window.dispatchEvent(
                 new CustomEvent("refcanvas:open-settings", {
-                  detail: "found",
+                  detail: "preview",
                 }),
               )
             }
@@ -2700,7 +2700,7 @@ export function DirectoryAssetPanel() {
                 <input
                   type="checkbox"
                   data-testid="directory-sequence-toggle"
-                  checked={foundSettings.collapseImageSequences}
+                  checked={previewSettings.collapseImageSequences}
                   onChange={(event) =>
                     void setSequenceCollapsing(event.target.checked)
                   }
@@ -2721,7 +2721,7 @@ export function DirectoryAssetPanel() {
         >
           {translate("directory.all")}
         </button>
-        {foundSettings.formatGroups.map((group) => (
+        {previewSettings.formatGroups.map((group) => (
           <button
             type="button"
             key={group.id}
@@ -2737,7 +2737,7 @@ export function DirectoryAssetPanel() {
           type="button"
           className={formatFilter === "other" ? "active" : ""}
           aria-pressed={formatFilter === "other"}
-          title={translate("directory.extensionCount").replace("{count}", String(foundSettings.formatWhitelist.length))}
+          title={translate("directory.extensionCount").replace("{count}", String(previewSettings.formatWhitelist.length))}
           onClick={() => setFormatFilter("other")}
         >
           {translate("directory.other")}
@@ -2833,7 +2833,7 @@ export function DirectoryAssetPanel() {
           onClick={() =>
             window.dispatchEvent(
               new CustomEvent("refcanvas:open-settings", {
-                detail: "found",
+                detail: "preview",
               }),
             )
           }
@@ -3211,8 +3211,8 @@ export function DirectoryAssetPanel() {
           pageSize: directoryPageSize,
           offset,
           flattenDepth: currentFlattenDepth,
-          showHidden: foundSettings.showHiddenFiles,
-          collapseSequences: foundSettings.collapseImageSequences,
+          showHidden: previewSettings.showHiddenFiles,
+          collapseSequences: previewSettings.collapseImageSequences,
           extensions: formatFilterExtensions,
           favoritesOnly,
         },

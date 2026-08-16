@@ -20,12 +20,12 @@ import type {
   AppPreferencesPatch,
   BackupRecord,
   ColorStatus,
-  FoundFormatGroupId,
-  FoundSettings,
+  PreviewFormatGroupId,
+  PreviewSettings,
   MediaMetadataSnapshot,
   RegisteredScript,
 } from "../../shared/contracts";
-import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../shared/contracts";
 import { APP_LANGUAGES, translate } from "../app/i18n";
 import type { MessageKey } from "../app/i18n";
 import type { AppLanguage } from "../../shared/contracts";
@@ -40,7 +40,7 @@ import { MaintenanceSettings } from "./settings/MaintenanceSettings";
 export type SettingsTab =
   | "general"
   | "board"
-  | "found"
+  | "preview"
   | "ai"
   | "maintenance"
   | "about";
@@ -53,7 +53,7 @@ interface SettingsPanelProps {
 const TABS: Array<{ id: SettingsTab; labelKey: MessageKey; icon: typeof Info }> = [
   { id: "general", labelKey: "settings.general", icon: SlidersHorizontal },
   { id: "board", labelKey: "settings.board", icon: MonitorCog },
-  { id: "found", labelKey: "settings.options", icon: ScanLine },
+  { id: "preview", labelKey: "settings.options", icon: ScanLine },
   { id: "ai", labelKey: "settings.ai", icon: Sparkles },
   { id: "maintenance", labelKey: "settings.maintenance", icon: Gauge },
   { id: "about", labelKey: "settings.about", icon: Info },
@@ -83,8 +83,8 @@ export function SettingsPanel({
     failed: 0,
   });
 
-  const foundSettings =
-    appPreferences?.foundSettings ?? FOUND_SETTINGS_DEFAULTS;
+  const previewSettings =
+    appPreferences?.previewSettings ?? PREVIEW_SETTINGS_DEFAULTS;
 
   const reload = async () => {
     const nextBackups = await window.refCanvas.backups.list();
@@ -123,10 +123,10 @@ export function SettingsPanel({
         detail: next.boardSettings,
       }),
     );
-    if (next.foundSettings) {
+    if (next.previewSettings) {
       window.dispatchEvent(
-        new CustomEvent("refcanvas:found-settings", {
-          detail: next.foundSettings,
+        new CustomEvent("refcanvas:preview-settings", {
+          detail: next.previewSettings,
         }),
       );
     }
@@ -134,12 +134,12 @@ export function SettingsPanel({
 
   const updateFpsPresets = (
     presets: number[],
-    defaultFps = foundSettings.defaultSequenceFps,
+    defaultFps = previewSettings.defaultSequenceFps,
   ) => {
     const normalized = Array.from(new Set(presets)).slice(0, 10);
     if (!normalized.length) return;
     void setAppPreference({
-      foundSettings: {
+      previewSettings: {
         sequenceFpsPresets: normalized,
         defaultSequenceFps: normalized.includes(defaultFps)
           ? defaultFps
@@ -148,44 +148,44 @@ export function SettingsPanel({
     });
   };
 
-  const updateMp4Presets = (mp4Presets: FoundSettings["mp4Presets"]) => {
-    void setAppPreference({ foundSettings: { mp4Presets } });
+  const updateMp4Presets = (mp4Presets: PreviewSettings["mp4Presets"]) => {
+    void setAppPreference({ previewSettings: { mp4Presets } });
   };
 
-  const addFormatExtension = (groupId: FoundFormatGroupId, value: string) => {
+  const addFormatExtension = (groupId: PreviewFormatGroupId, value: string) => {
     const extension = value.trim().replace(/^\./, "").toLowerCase();
     if (!/^[a-z0-9]{1,16}$/.test(extension)) return;
-    const groups = foundSettings.formatGroups.map((group) =>
+    const groups = previewSettings.formatGroups.map((group) =>
       group.id === groupId
         ? { ...group, extensions: [...new Set([...group.extensions, extension])] }
         : group,
     );
-    void setAppPreference({ foundSettings: { formatGroups: groups } });
+    void setAppPreference({ previewSettings: { formatGroups: groups } });
   };
 
-  const removeFormatExtension = (groupId: FoundFormatGroupId, extension: string) => {
-    const groups = foundSettings.formatGroups.map((group) =>
+  const removeFormatExtension = (groupId: PreviewFormatGroupId, extension: string) => {
+    const groups = previewSettings.formatGroups.map((group) =>
       group.id === groupId
         ? { ...group, extensions: group.extensions.filter((item) => item !== extension) }
         : group,
     );
-    void setAppPreference({ foundSettings: { formatGroups: groups } });
+    void setAppPreference({ previewSettings: { formatGroups: groups } });
   };
 
   const addWhitelistExtension = (value: string) => {
     const extension = value.trim().replace(/^\./, "").toLowerCase();
     if (!/^[a-z0-9]{1,16}$/.test(extension)) return;
     void setAppPreference({
-      foundSettings: {
-        formatWhitelist: [...new Set([...foundSettings.formatWhitelist, extension])],
+      previewSettings: {
+        formatWhitelist: [...new Set([...previewSettings.formatWhitelist, extension])],
       },
     });
   };
 
   const removeWhitelistExtension = (extension: string) => {
     void setAppPreference({
-      foundSettings: {
-        formatWhitelist: foundSettings.formatWhitelist.filter((item) => item !== extension),
+      previewSettings: {
+        formatWhitelist: previewSettings.formatWhitelist.filter((item) => item !== extension),
       },
     });
   };
@@ -435,7 +435,7 @@ export function SettingsPanel({
               </div>
             )}
 
-            {tab === "found" && (
+            {tab === "preview" && (
               <div className="settings-group">
                 <h3>{translate("settings.options")}</h3>
                 <label className="settings-row">
@@ -445,10 +445,10 @@ export function SettingsPanel({
                   </span>
                   <input
                     type="checkbox"
-                    checked={appPreferences?.foundSettings.showHiddenFiles ?? false}
+                    checked={appPreferences?.previewSettings.showHiddenFiles ?? false}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           showHiddenFiles: event.target.checked,
                         },
                       })
@@ -461,7 +461,7 @@ export function SettingsPanel({
                     <small>{translate("settings.preview.folderOpenModeHint")}</small>
                   </span>
                   <SelectMenu
-                    value={appPreferences?.foundSettings.folderClickMode ?? "double"}
+                    value={appPreferences?.previewSettings.folderClickMode ?? "double"}
                     ariaLabel={translate("settings.preview.folderOpenMode")}
                     options={[
                       { value: "single", label: translate("settings.preview.folderOpenSingle") },
@@ -469,7 +469,7 @@ export function SettingsPanel({
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           folderClickMode: value,
                         },
                       })
@@ -478,7 +478,7 @@ export function SettingsPanel({
                 </label>
                 <h3>{translate("settings.preview.formatSupport")}</h3>
                 <div className="format-groups-editor">
-                  {foundSettings.formatGroups.map((group) => (
+                  {previewSettings.formatGroups.map((group) => (
                     <section className="format-group-editor" key={group.id}>
                       <header>
                         <strong>{group.label}</strong>
@@ -516,11 +516,11 @@ export function SettingsPanel({
                   <section className="format-group-editor format-whitelist-editor">
                     <header>
                       <strong>{translate("settings.preview.otherWhitelist")}</strong>
-                      <span>{translate("directory.extensionCount").replace("{count}", String(foundSettings.formatWhitelist.length))}</span>
+                      <span>{translate("directory.extensionCount").replace("{count}", String(previewSettings.formatWhitelist.length))}</span>
                     </header>
                     <p>{translate("settings.preview.whitelistHint")}</p>
                     <div className="format-extension-chips">
-                      {foundSettings.formatWhitelist.map((extension) => (
+                      {previewSettings.formatWhitelist.map((extension) => (
                         <span className="format-extension-chip" key={extension}>
                           .{extension}
                           <button
@@ -552,10 +552,10 @@ export function SettingsPanel({
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
-                    checked={appPreferences?.foundSettings.autoplayVideo ?? true}
+                    checked={appPreferences?.previewSettings.autoplayVideo ?? true}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: { autoplayVideo: event.target.checked },
+                        previewSettings: { autoplayVideo: event.target.checked },
                       })
                     }
                   />
@@ -567,10 +567,10 @@ export function SettingsPanel({
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
-                    checked={appPreferences?.foundSettings.autoplaySequence ?? true}
+                    checked={appPreferences?.previewSettings.autoplaySequence ?? true}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: { autoplaySequence: event.target.checked },
+                        previewSettings: { autoplaySequence: event.target.checked },
                       })
                     }
                   />
@@ -582,10 +582,10 @@ export function SettingsPanel({
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
-                    checked={appPreferences?.foundSettings.autoplayModel3d ?? false}
+                    checked={appPreferences?.previewSettings.autoplayModel3d ?? false}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: { autoplayModel3d: event.target.checked },
+                        previewSettings: { autoplayModel3d: event.target.checked },
                       })
                     }
                   />
@@ -600,14 +600,14 @@ export function SettingsPanel({
                     <small>{translate("settings.preview.sequenceFpsPresetsHint")}</small>
                   </span>
                   <SelectMenu
-                    value={foundSettings.defaultSequenceFps}
+                    value={previewSettings.defaultSequenceFps}
                     ariaLabel={translate("settings.preview.sequenceFpsPresets")}
-                    options={foundSettings.sequenceFpsPresets.map((preset) => ({
+                    options={previewSettings.sequenceFpsPresets.map((preset) => ({
                       value: preset,
                       label: `${preset} FPS`,
                     }))}
                     onValueChange={(preset) =>
-                      updateFpsPresets(foundSettings.sequenceFpsPresets, preset)
+                      updateFpsPresets(previewSettings.sequenceFpsPresets, preset)
                     }
                   />
                 </div>
@@ -617,7 +617,7 @@ export function SettingsPanel({
                     <small>{translate("settings.preview.alphaBackgroundHint")}</small>
                   </span>
                   <SelectMenu
-                    value={appPreferences?.foundSettings.alphaBackground ?? "checker"}
+                    value={appPreferences?.previewSettings.alphaBackground ?? "checker"}
                     ariaLabel={translate("settings.preview.alphaBackground")}
                     options={[
                       { value: "checker", label: translate("settings.preview.alphaChecker") },
@@ -627,23 +627,23 @@ export function SettingsPanel({
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           alphaBackground: value,
                         },
                       })
                     }
                   />
                 </label>
-                {(appPreferences?.foundSettings.alphaBackground ?? "checker") ===
+                {(appPreferences?.previewSettings.alphaBackground ?? "checker") ===
                   "custom" && (
                   <label className="settings-row">
                     <span>{translate("settings.preview.customAlphaColor")}</span>
                     <input
                       type="color"
-                      value={appPreferences?.foundSettings.alphaCustomColor ?? "#404040"}
+                      value={appPreferences?.previewSettings.alphaCustomColor ?? "#404040"}
                       onChange={(event) =>
                         void setAppPreference({
-                          foundSettings: { alphaCustomColor: event.target.value },
+                          previewSettings: { alphaCustomColor: event.target.value },
                         })
                       }
                     />
@@ -659,10 +659,10 @@ export function SettingsPanel({
                     min={0.8}
                     max={1.5}
                     step={0.05}
-                    value={appPreferences?.foundSettings.uiScale ?? 1}
+                    value={appPreferences?.previewSettings.uiScale ?? 1}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           uiScale: Number(event.target.value) || 1,
                         },
                       })
@@ -680,10 +680,10 @@ export function SettingsPanel({
                     type="number"
                     min={1}
                     max={16}
-                    value={appPreferences?.foundSettings.previewConcurrency ?? 4}
+                    value={appPreferences?.previewSettings.previewConcurrency ?? 4}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           previewConcurrency:
                             Math.max(1, Math.min(16, Number(event.target.value) || 4)),
                         },
@@ -700,10 +700,10 @@ export function SettingsPanel({
                     type="number"
                     min={1}
                     max={8}
-                    value={appPreferences?.foundSettings.thumbnailWorkerThreads ?? 1}
+                    value={appPreferences?.previewSettings.thumbnailWorkerThreads ?? 1}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           thumbnailWorkerThreads:
                             Math.max(1, Math.min(8, Number(event.target.value) || 1)),
                         },
@@ -719,7 +719,7 @@ export function SettingsPanel({
                     <small>{translate("settings.preview.downscaleModeHint")}</small>
                   </span>
                   <SelectMenu
-                    value={appPreferences?.foundSettings.downscaleMode ?? "suffix"}
+                    value={appPreferences?.previewSettings.downscaleMode ?? "suffix"}
                     ariaLabel={translate("settings.preview.downscaleMode")}
                     options={[
                       { value: "suffix", label: translate("settings.preview.downscaleSuffixMode") },
@@ -728,7 +728,7 @@ export function SettingsPanel({
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           downscaleMode: value,
                         },
                       })
@@ -740,10 +740,10 @@ export function SettingsPanel({
                   <input
                     type="text"
                     maxLength={32}
-                    value={appPreferences?.foundSettings.downscaleSuffix ?? "2k"}
+                    value={appPreferences?.previewSettings.downscaleSuffix ?? "2k"}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: { downscaleSuffix: event.target.value },
+                        previewSettings: { downscaleSuffix: event.target.value },
                       })
                     }
                   />
@@ -753,10 +753,10 @@ export function SettingsPanel({
                   <input
                     type="text"
                     maxLength={128}
-                    value={appPreferences?.foundSettings.downscaleSubdirectory ?? "downscaled"}
+                    value={appPreferences?.previewSettings.downscaleSubdirectory ?? "downscaled"}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: { downscaleSubdirectory: event.target.value },
+                        previewSettings: { downscaleSubdirectory: event.target.value },
                       })
                     }
                   />
@@ -771,11 +771,11 @@ export function SettingsPanel({
                     <button
                       type="button"
                       className="secondary-button"
-                      disabled={foundSettings.mp4Presets.length >= 3}
+                      disabled={previewSettings.mp4Presets.length >= 3}
                       onClick={() => {
-                        const index = foundSettings.mp4Presets.length + 1;
+                        const index = previewSettings.mp4Presets.length + 1;
                         updateMp4Presets([
-                          ...foundSettings.mp4Presets,
+                          ...previewSettings.mp4Presets,
                           {
                             id: `convert-${Date.now()}`,
                             label: translate("settings.preview.mp4PresetDefault").replace("{index}", String(index)),
@@ -792,14 +792,14 @@ export function SettingsPanel({
                     </button>
                   </div>
                   <div className="mp4-preset-list">
-                    {foundSettings.mp4Presets.map((preset, index) => (
+                    {previewSettings.mp4Presets.map((preset, index) => (
                       <div className="mp4-preset-row" key={preset.id}>
                         <input
                           type="checkbox"
                           checked={preset.enabled}
                           aria-label={translate("settings.preview.presetEnabled").replace("{label}", preset.label)}
                           onChange={(event) => {
-                            const next = [...foundSettings.mp4Presets];
+                            const next = [...previewSettings.mp4Presets];
                             next[index] = { ...preset, enabled: event.target.checked };
                             updateMp4Presets(next);
                           }}
@@ -809,7 +809,7 @@ export function SettingsPanel({
                           value={preset.label}
                           aria-label={translate("settings.preview.presetName").replace("{label}", preset.label)}
                           onChange={(event) => {
-                            const next = [...foundSettings.mp4Presets];
+                            const next = [...previewSettings.mp4Presets];
                             next[index] = { ...preset, label: event.target.value || preset.label };
                             updateMp4Presets(next);
                           }}
@@ -822,7 +822,7 @@ export function SettingsPanel({
                             { value: "h265", label: "H.265" },
                           ]}
                           onValueChange={(value) => {
-                            const next = [...foundSettings.mp4Presets];
+                            const next = [...previewSettings.mp4Presets];
                             next[index] = { ...preset, codec: value };
                             updateMp4Presets(next);
                           }}
@@ -836,7 +836,7 @@ export function SettingsPanel({
                             { value: "best", label: translate("settings.preview.qualityBest") },
                           ]}
                           onValueChange={(value) => {
-                            const next = [...foundSettings.mp4Presets];
+                            const next = [...previewSettings.mp4Presets];
                             next[index] = { ...preset, quality: value };
                             updateMp4Presets(next);
                           }}
@@ -850,20 +850,20 @@ export function SettingsPanel({
                             { value: "quarter", label: translate("settings.preview.resolutionQuarter") },
                           ]}
                           onValueChange={(value) => {
-                            const next = [...foundSettings.mp4Presets];
+                            const next = [...previewSettings.mp4Presets];
                             next[index] = { ...preset, resolution: value };
                             updateMp4Presets(next);
                           }}
                         />
                         <button
                           type="button"
-                          className={preset.id === foundSettings.defaultMp4PresetId ? "active" : ""}
+                          className={preset.id === previewSettings.defaultMp4PresetId ? "active" : ""}
                           aria-label={translate("settings.preview.setDefaultPreset").replace("{label}", preset.label)}
                           title={translate("settings.preview.setAsDefault")}
                           disabled={!preset.enabled}
                           onClick={() =>
                             void setAppPreference({
-                              foundSettings: {
+                              previewSettings: {
                                 defaultMp4PresetId: preset.id,
                               },
                             })
@@ -874,10 +874,10 @@ export function SettingsPanel({
                         <button
                           type="button"
                           aria-label={translate("settings.preview.deletePreset").replace("{label}", preset.label)}
-                          disabled={foundSettings.mp4Presets.length === 1}
+                          disabled={previewSettings.mp4Presets.length === 1}
                           onClick={() =>
                             updateMp4Presets(
-                              foundSettings.mp4Presets.filter((_, itemIndex) => itemIndex !== index),
+                              previewSettings.mp4Presets.filter((_, itemIndex) => itemIndex !== index),
                             )
                           }
                         >
@@ -906,10 +906,10 @@ export function SettingsPanel({
                   <div className="settings-path-control">
                     <input
                       type="text"
-                      value={appPreferences?.foundSettings.ocioConfigPath ?? ""}
+                      value={appPreferences?.previewSettings.ocioConfigPath ?? ""}
                       onChange={(event) =>
                         void setAppPreference({
-                          foundSettings: {
+                          previewSettings: {
                             ocioConfigPath: event.target.value || null,
                           },
                         })
@@ -920,9 +920,9 @@ export function SettingsPanel({
                       className="icon-button"
                       aria-label={translate("settings.preview.locateOcioConfig")}
                       title={translate("settings.preview.locate")}
-                      disabled={!appPreferences?.foundSettings.ocioConfigPath}
+                      disabled={!appPreferences?.previewSettings.ocioConfigPath}
                       onClick={() => {
-                        const value = appPreferences?.foundSettings.ocioConfigPath;
+                        const value = appPreferences?.previewSettings.ocioConfigPath;
                         if (value) void window.refCanvas.system.revealInFolder(value);
                       }}
                     >
@@ -936,10 +936,10 @@ export function SettingsPanel({
                     <input
                       type="text"
                       placeholder={translate("settings.preview.lutPlaceholder")}
-                      value={appPreferences?.foundSettings.activeLut ?? ""}
+                      value={appPreferences?.previewSettings.activeLut ?? ""}
                       onChange={(event) =>
                         void setAppPreference({
-                          foundSettings: {
+                          previewSettings: {
                             activeLut: event.target.value || null,
                           },
                         })
@@ -950,9 +950,9 @@ export function SettingsPanel({
                       className="icon-button"
                       aria-label={translate("settings.preview.locateLut")}
                       title={translate("settings.preview.locate")}
-                      disabled={!appPreferences?.foundSettings.activeLut}
+                      disabled={!appPreferences?.previewSettings.activeLut}
                       onClick={() => {
-                        const value = appPreferences?.foundSettings.activeLut;
+                        const value = appPreferences?.previewSettings.activeLut;
                         if (value) void window.refCanvas.system.revealInFolder(value);
                       }}
                     >
@@ -1057,10 +1057,10 @@ export function SettingsPanel({
                 <label className="settings-toggle">
                   <input
                     type="checkbox"
-                    checked={appPreferences?.foundSettings.debugLogging ?? false}
+                    checked={appPreferences?.previewSettings.debugLogging ?? false}
                     onChange={(event) =>
                       void setAppPreference({
-                        foundSettings: { debugLogging: event.target.checked },
+                        previewSettings: { debugLogging: event.target.checked },
                       })
                     }
                   />
@@ -1075,7 +1075,7 @@ export function SettingsPanel({
                     <small>{translate("settings.preview.closeBehaviorHint")}</small>
                   </span>
                   <SelectMenu
-                    value={appPreferences?.foundSettings.closeBehavior ?? "quit"}
+                    value={appPreferences?.previewSettings.closeBehavior ?? "quit"}
                     ariaLabel={translate("settings.preview.closeBehavior")}
                     options={[
                       { value: "quit", label: translate("settings.preview.closeQuit") },
@@ -1083,7 +1083,7 @@ export function SettingsPanel({
                     ]}
                     onValueChange={(value) =>
                       void setAppPreference({
-                        foundSettings: {
+                        previewSettings: {
                           closeBehavior: value,
                         },
                       })

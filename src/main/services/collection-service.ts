@@ -1,5 +1,5 @@
 /**
- * 引用集合业务服务（found-clone.md §6）。
+ * 引用集合业务服务（§6）。
  *
  * 负责需要磁盘 IO 的集合操作：
  * - addPaths：为每个路径计算 quickFingerprint 并关联挂载引用（mountId +

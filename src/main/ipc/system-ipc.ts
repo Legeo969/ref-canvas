@@ -17,10 +17,8 @@ import type {
   AppLanguage,
   AppPreferences,
   BoardSettings,
-  FoundSettings,
 } from "../../shared/contracts";
-import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
-import { mergeFoundSettings } from "./found-settings";
+import { mergePreviewSettings, readPreviewSettings } from "./preview-settings";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryManager } from "../services/library-manager";
 import type { LibraryService } from "../services/library-service";
@@ -107,7 +105,7 @@ const mp4PresetSchema = z.object({
   resolution: z.enum(["original", "half", "quarter"]),
 });
 
-const foundFormatGroupSchema = z.object({
+const previewFormatGroupSchema = z.object({
   id: z.enum(["model3d", "image", "video", "audio", "pdf"]),
   label: z.string().trim().min(1).max(32),
   extensions: z
@@ -115,14 +113,14 @@ const foundFormatGroupSchema = z.object({
     .max(128),
 });
 
-const foundSettingsPatchSchema = z.object({
+const previewSettingsPatchSchema = z.object({
   showHiddenFiles: z.boolean().optional(),
   folderClickMode: z.enum(["single", "double"]).optional(),
   defaultFlattenDepth: z.number().int().min(0).max(8).optional(),
   flattenPerFolder: z
     .record(z.string(), z.number().int().min(0).max(8))
     .optional(),
-  formatGroups: z.array(foundFormatGroupSchema).max(5).optional(),
+  formatGroups: z.array(previewFormatGroupSchema).max(5).optional(),
   formatWhitelist: z
     .array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i))
     .max(256)
@@ -446,10 +444,7 @@ export function registerSystemIpc(
     state.thumbnailWorker = new ThumbnailWorkerClient(
       path.join(__dirname, "thumbnail-worker.js"),
       resolved,
-      mergeFoundSettings(
-        FOUND_SETTINGS_DEFAULTS,
-        database().getSetting<Partial<FoundSettings>>("foundSettings", {}),
-      ).thumbnailWorkerThreads,
+      readPreviewSettings(database()).thumbnailWorkerThreads,
     );
   });
   ipc.handleWithEvent("system:export-diagnostics", async (event) => {
@@ -501,10 +496,7 @@ export function registerSystemIpc(
       sampling: "bilinear",
       undoLimit: 99,
     }),
-    foundSettings: mergeFoundSettings(
-      FOUND_SETTINGS_DEFAULTS,
-      database().getSetting<Partial<FoundSettings>>("foundSettings", {}),
-    ),
+    previewSettings: readPreviewSettings(database()),
   });
   ipc.handle("system:get-preferences", readAppPreferences);
   ipc.handle("system:set-preferences", (prefs) => {
@@ -524,7 +516,7 @@ export function registerSystemIpc(
             undoLimit: z.number().int().min(1).max(500).optional(),
           })
           .optional(),
-        foundSettings: foundSettingsPatchSchema.optional(),
+        previewSettings: previewSettingsPatchSchema.optional(),
       })
       .parse(prefs);
     if (parsed.globalShortcuts !== undefined) {
@@ -542,29 +534,37 @@ export function registerSystemIpc(
         ...parsed.boardSettings,
       });
     }
-    if (parsed.foundSettings !== undefined) {
-      const current = readAppPreferences().foundSettings;
-      const next = mergeFoundSettings(current, parsed.foundSettings);
-      database().setSetting("foundSettings", next);
+    if (parsed.previewSettings !== undefined) {
+      const current = readPreviewSettings(database());
+      const next = mergePreviewSettings(current, parsed.previewSettings);
+      database().setSetting("previewSettings", next);
+      // 旧键存在则顺带清理（异常忽略，不影响新键写入）。
+      try {
+        if (database().getSetting<unknown>("foundSettings", null) !== null) {
+          database().setSetting("foundSettings", null);
+        }
+      } catch {
+        // 忽略旧键清理失败。
+      }
       // 偏好变更即时生效（§10 验收：进入任务参数）。
       if (
-        parsed.foundSettings.previewConcurrency !== undefined &&
-        parsed.foundSettings.previewConcurrency !== current.previewConcurrency
+        parsed.previewSettings.previewConcurrency !== undefined &&
+        parsed.previewSettings.previewConcurrency !== current.previewConcurrency
       ) {
         dependencies.thumbnailQueue.setConcurrency(
-          parsed.foundSettings.previewConcurrency,
+          parsed.previewSettings.previewConcurrency,
         );
       }
-      if (parsed.foundSettings.thumbnailWorkerThreads !== undefined) {
+      if (parsed.previewSettings.thumbnailWorkerThreads !== undefined) {
         dependencies.thumbnailWorker?.setConcurrency(
-          parsed.foundSettings.thumbnailWorkerThreads,
+          parsed.previewSettings.thumbnailWorkerThreads,
         );
       }
-      if (parsed.foundSettings.debugLogging !== undefined) {
-        database().setSetting("debugLogging", parsed.foundSettings.debugLogging);
+      if (parsed.previewSettings.debugLogging !== undefined) {
+        database().setSetting("debugLogging", parsed.previewSettings.debugLogging);
       }
-      if (parsed.foundSettings.closeBehavior !== undefined) {
-        database().setSetting("closeBehavior", parsed.foundSettings.closeBehavior);
+      if (parsed.previewSettings.closeBehavior !== undefined) {
+        database().setSetting("closeBehavior", parsed.previewSettings.closeBehavior);
       }
     }
     return readAppPreferences();

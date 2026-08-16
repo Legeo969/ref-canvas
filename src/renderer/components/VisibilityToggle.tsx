@@ -1,23 +1,23 @@
 import { Eye } from "lucide-react";
 import { useState } from "react";
 import { translate } from "../app/i18n";
-import { useFoundSettings } from "../app/found-settings";
+import { usePreviewSettings } from "../app/preview-settings";
 
 /**
  * 👁 主隐藏开关（Sidebar Navigation 设计规格）。
  *
  * 语义（已确认）：found 面板中所有隐藏项目的主隐藏开关——即
- * `foundSettings.showHiddenFiles`（设置面板「显示隐藏文件」，
+ * `previewSettings.showHiddenFiles`（设置面板「显示隐藏文件」，
  * 目录视图是否显示以 `.` 开头的文件）。
  *
- * - 点按切换偏好并广播 `refcanvas:found-settings`（与 SettingsPanel 同一
- *   写入/广播通道，`useFoundSettings` 订阅方即时更新）。
+ * - 点按切换偏好并广播 `refcanvas:preview-settings`（与 SettingsPanel 同一
+ *   写入/广播通道，`usePreviewSettings` 订阅方即时更新）。
  * - 图标态 = 当前是否显示隐藏项：亮起（accent + 实心）表示隐藏文件可见。
  * - 三个侧栏面板标题共用同一主开关（同一偏好、同一图标态）。
  */
 export function VisibilityToggle() {
-  const foundSettings = useFoundSettings();
-  const showing = foundSettings.showHiddenFiles;
+  const previewSettings = usePreviewSettings();
+  const showing = previewSettings.showHiddenFiles;
   const [pending, setPending] = useState(false);
 
   const toggle = async () => {
@@ -25,11 +25,11 @@ export function VisibilityToggle() {
     setPending(true);
     try {
       const next = await window.refCanvas.system.setPreferences({
-        foundSettings: { showHiddenFiles: !showing },
+        previewSettings: { showHiddenFiles: !showing },
       });
       window.dispatchEvent(
-        new CustomEvent("refcanvas:found-settings", {
-          detail: next.foundSettings,
+        new CustomEvent("refcanvas:preview-settings", {
+          detail: next.previewSettings,
         }),
       );
     } catch {

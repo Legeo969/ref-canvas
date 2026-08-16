@@ -94,12 +94,8 @@ import { registerTaskCenterIpc } from "./ipc/task-center-ipc";
 import { AiJobService } from "./services/ai/ai-job-service";
 import type { AiProvider } from "./services/ai/ai-provider";
 import type { AiProviderKind } from "../shared/contracts";
-import {
-  FOUND_SETTINGS_DEFAULTS,
-  type BoardDocument,
-  type FoundSettings,
-} from "../shared/contracts";
-import { mergeFoundSettings } from "./ipc/found-settings";
+import type { BoardDocument } from "../shared/contracts";
+import { readPreviewSettings } from "./ipc/preview-settings";
 import { MockAiProvider } from "./services/ai/mock-ai-provider";
 import { ComfyUiProvider } from "./services/ai/comfyui-provider";
 import { RemoteRestProvider } from "./services/ai/remote-ai-provider";
@@ -785,7 +781,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   if (rendererInteractive) scheduleBackgroundServices();
 }
 
-/** Mock Provider 仅在开发/测试构建允许（found-clone.md §9.4；正式打包隐藏）。 */
+/** Mock Provider 仅在开发/测试构建允许（§9.4；正式打包隐藏）。 */
 function mockAiAllowed(): boolean {
   return !app.isPackaged;
 }
@@ -1340,15 +1336,12 @@ void app.whenReady().then(async () => {
   );
   // 性能偏好（§10.2）启动回填：并发设置此前只在「改动时」套用，重启后
   // 队列回到硬编码默认 4、worker 回到 sharp 默认核数，直到用户再次改动。
-  const foundSettings = mergeFoundSettings(
-    FOUND_SETTINGS_DEFAULTS,
-    database.getSetting<Partial<FoundSettings>>("foundSettings", {}),
-  );
-  thumbnailQueue.setConcurrency(foundSettings.previewConcurrency);
+  const previewSettings = readPreviewSettings(database);
+  thumbnailQueue.setConcurrency(previewSettings.previewConcurrency);
   thumbnailWorker = new ThumbnailWorkerClient(
     path.join(__dirname, "thumbnail-worker.js"),
     thumbnailCacheDirectory,
-    foundSettings.thumbnailWorkerThreads,
+    previewSettings.thumbnailWorkerThreads,
   );
   providerRegistry = new ProviderRegistry();
   // provider worker 不继承 process.defaultApp（undefined 会被误判为打包

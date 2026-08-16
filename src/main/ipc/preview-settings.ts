@@ -1,9 +1,11 @@
 import {
-  FOUND_FORMAT_GROUP_DEFAULTS,
-  foundFormatGroupIds,
-  type FoundFormatGroup,
-  type FoundSettings,
+  PREVIEW_FORMAT_GROUP_DEFAULTS,
+  PREVIEW_SETTINGS_DEFAULTS,
+  previewFormatGroupIds,
+  type PreviewFormatGroup,
+  type PreviewSettings,
 } from "../../shared/contracts";
+import type { RefCanvasDatabase } from "../persistence/database";
 
 function normalizeExtension(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -13,16 +15,16 @@ function normalizeExtension(value: unknown): string | null {
 
 function normalizeFormatGroups(
   values: unknown,
-  fallback: FoundFormatGroup[],
-): FoundFormatGroup[] {
+  fallback: PreviewFormatGroup[],
+): PreviewFormatGroup[] {
   const entries = Array.isArray(values) ? values : [];
-  return foundFormatGroupIds.map((id) => {
+  return previewFormatGroupIds.map((id) => {
     const source = entries.find(
       (item): item is Record<string, unknown> =>
         Boolean(item) && typeof item === "object" && (item as Record<string, unknown>).id === id,
     );
     const defaultGroup = fallback.find((group) => group.id === id) ??
-      FOUND_FORMAT_GROUP_DEFAULTS.find((group) => group.id === id)!;
+      PREVIEW_FORMAT_GROUP_DEFAULTS.find((group) => group.id === id)!;
     const extensions = Array.from(
       new Set(
         (Array.isArray(source?.extensions) ? source.extensions : defaultGroup.extensions)
@@ -66,8 +68,8 @@ function normalizeFpsPresets(values: unknown, fallback: number[]): number[] {
 
 function normalizeMp4Presets(
   values: unknown,
-  fallback: FoundSettings["mp4Presets"],
-): FoundSettings["mp4Presets"] {
+  fallback: PreviewSettings["mp4Presets"],
+): PreviewSettings["mp4Presets"] {
   if (!Array.isArray(values) || values.length === 0) return fallback;
   return values.slice(0, 3).map((value, index) => {
     const preset = value && typeof value === "object"
@@ -111,11 +113,11 @@ function normalizeMp4Presets(
   });
 }
 
-/** 合并 foundSettings patch：嵌套对象（flattenPerFolder）合并而非覆盖。 */
-export function mergeFoundSettings(
-  current: FoundSettings,
-  patch: Partial<FoundSettings>,
-): FoundSettings {
+/** 合并 previewSettings patch：嵌套对象（flattenPerFolder）合并而非覆盖。 */
+export function mergePreviewSettings(
+  current: PreviewSettings,
+  patch: Partial<PreviewSettings>,
+): PreviewSettings {
   const sequenceFpsPresets = normalizeFpsPresets(
     patch.sequenceFpsPresets,
     current.sequenceFpsPresets,
@@ -154,4 +156,20 @@ export function mergeFoundSettings(
     mp4Presets,
     lutDirectories: patch.lutDirectories ?? current.lutDirectories,
   };
+}
+
+/**
+ * 读取预览设置：优先新键 previewSettings，回退旧键（升级兼容，
+ * 旧版本用户设置不丢失）。语义与 mergePreviewSettings 一致：默认值合并 patch。
+ */
+export function readPreviewSettings(database: RefCanvasDatabase): PreviewSettings {
+  const legacy = database.getSetting<Partial<PreviewSettings> | null>(
+    "foundSettings",
+    null,
+  );
+  const current = database.getSetting<Partial<PreviewSettings> | null>(
+    "previewSettings",
+    null,
+  );
+  return mergePreviewSettings(PREVIEW_SETTINGS_DEFAULTS, current ?? legacy ?? {});
 }

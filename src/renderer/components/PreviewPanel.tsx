@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
-import { useFoundSettings } from "../app/found-settings";
+import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { AssetPreview } from "./AssetPreview";
 import { AiDesignSupervisorPanel } from "./AiDesignSupervisor";
@@ -58,7 +58,7 @@ const FULLSCREEN_CONTROLS_SELECTOR = ".preview-workspace, .preview-session-foote
  * Preserves all existing state management, event wiring, and tool drawers.
  */
 function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
   const [mode, setMode] = useState<PreviewTab>("preview");
   const [loading, setLoading] = useState(false);
@@ -342,12 +342,12 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     : frameRate
       ? `${frameRate % 1 ? frameRate.toFixed(2) : frameRate} fps`
       : "25 fps";
-  const sequenceFps = entry?.sequenceGroup?.fps || foundSettings.defaultSequenceFps;
+  const sequenceFps = entry?.sequenceGroup?.fps || previewSettings.defaultSequenceFps;
   // 序列菜单设置绝对帧率、视频菜单设置倍率；两者都经 transport 写回对应
   // 渲染器的本地状态（对话框的 setPlaybackRate 对序列按绝对 fps 解释）。
   const playbackMenu = toolbarVariant === "sequence" ? (
     <section className="playback-rate-menu" aria-label={translate("preview.rateFpsMenu")}>
-      {Array.from(new Set(foundSettings.sequenceFpsPresets)).map((fps) => (
+      {Array.from(new Set(previewSettings.sequenceFpsPresets)).map((fps) => (
         <button
           type="button"
           key={fps}
@@ -563,7 +563,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                             initialPaths={[]}
                             sequence={{
                               files: entry.sequenceGroup.files,
-                              fps: transport.snapshot?.fps ?? entry.sequenceGroup.fps ?? foundSettings.defaultSequenceFps,
+                              fps: transport.snapshot?.fps ?? entry.sequenceGroup.fps ?? previewSettings.defaultSequenceFps,
                               baseName: entry.sequenceGroup.baseName,
                               directory: entry.sequenceGroup.directory,
                               range: gifRange,
@@ -682,7 +682,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onNotesToggle={() => toggleTool("notes")}
                     lutActive={tool === "lut"}
                     onLutToggle={() => toggleTool("lut")}
-                    lutMenu={tool === "lut" ? <PreviewColorTools settings={foundSettings} /> : undefined}
+                    lutMenu={tool === "lut" ? <PreviewColorTools settings={previewSettings} /> : undefined}
                     paletteActive={paletteOpen}
                     onPaletteToggle={() => {
                       const next = !paletteOpen;

@@ -1,5 +1,5 @@
 /**
- * 引用集合面板（FND-003，found-clone.md §6）。
+ * 引用集合面板（FND-003，§6）。
  *
  * 侧栏分组显示集合树；展开集合后展示条目网格（resolved/offline/missing/
  * ambiguous 四种状态），并支持：
@@ -788,7 +788,7 @@ export function CollectionDetailsPanel() {
   );
 }
 
-/** 侧栏引用集合区（found-clone.md §5.1 左栏分组）。 */
+/** 侧栏引用集合区（§5.1 左栏分组）。 */
 export function CollectionsPanel({
   style,
 }: {

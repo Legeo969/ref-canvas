@@ -1,30 +1,30 @@
 import { useEffect, useState } from "react";
 import type {
   AppPreferencesPatch,
-  FoundSettings,
+  PreviewSettings,
 } from "../../shared/contracts";
-import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../shared/contracts";
 
 export function flattenDepthPreferencePatch(
   directoryPath: string | null,
   depth: number,
 ): AppPreferencesPatch {
-  const foundSettings: NonNullable<AppPreferencesPatch["foundSettings"]> = {
+  const previewSettings: NonNullable<AppPreferencesPatch["previewSettings"]> = {
     defaultFlattenDepth: depth,
   };
   if (directoryPath) {
-    foundSettings.flattenPerFolder = { [directoryPath]: depth };
+    previewSettings.flattenPerFolder = { [directoryPath]: depth };
   }
-  return { foundSettings };
+  return { previewSettings };
 }
 
 /**
- * Found 高级功能设置（阶段 5）：
- * 挂载时从主进程读取一次，之后监听 `refcanvas:found-settings` 事件即时更新。
+ * 预览高级功能设置（阶段 5）：
+ * 挂载时从主进程读取一次，之后监听 `refcanvas:preview-settings` 事件即时更新。
  */
-export function useFoundSettings(): FoundSettings {
-  const [settings, setSettings] = useState<FoundSettings>(
-    FOUND_SETTINGS_DEFAULTS,
+export function usePreviewSettings(): PreviewSettings {
+  const [settings, setSettings] = useState<PreviewSettings>(
+    PREVIEW_SETTINGS_DEFAULTS,
   );
 
   useEffect(() => {
@@ -33,20 +33,20 @@ export function useFoundSettings(): FoundSettings {
       void window.refCanvas.system
         .getPreferences()
         .then((preferences) => {
-          if (!cancelled) setSettings(preferences.foundSettings);
+          if (!cancelled) setSettings(preferences.previewSettings);
         })
         .catch(() => undefined);
     } catch {
       // 测试或受限环境没有完整 preload API：保持默认值。
     }
-    const onFoundSettings = (event: Event) => {
-      const detail = (event as CustomEvent<FoundSettings>).detail;
+    const onPreviewSettings = (event: Event) => {
+      const detail = (event as CustomEvent<PreviewSettings>).detail;
       if (detail) setSettings(detail);
     };
-    window.addEventListener("refcanvas:found-settings", onFoundSettings);
+    window.addEventListener("refcanvas:preview-settings", onPreviewSettings);
     return () => {
       cancelled = true;
-      window.removeEventListener("refcanvas:found-settings", onFoundSettings);
+      window.removeEventListener("refcanvas:preview-settings", onPreviewSettings);
     };
   }, []);
 
@@ -54,7 +54,7 @@ export function useFoundSettings(): FoundSettings {
 }
 
 /** alphaBackground 设置 → CSS background 字符串。 */
-export function alphaBackgroundStyle(settings: FoundSettings): string {
+export function alphaBackgroundStyle(settings: PreviewSettings): string {
   switch (settings.alphaBackground) {
     case "black":
       return "#000";

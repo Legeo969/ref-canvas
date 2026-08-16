@@ -342,8 +342,8 @@ export interface AppPreferences {
   boardSettings: BoardSettings;
   /** 界面语言（双语：zh-CN / en；en 为回退基准）。 */
   language: AppLanguage;
-  /** Found 高级功能设置（阶段 5），默认值见 FOUND_SETTINGS_DEFAULTS。 */
-  foundSettings: FoundSettings;
+  /** 预览高级功能设置（阶段 5），默认值见 PREVIEW_SETTINGS_DEFAULTS。 */
+  previewSettings: PreviewSettings;
 }
 
 /** 序列检测自定义规则（阶段 5 §10.1 Sequence rules）。 */
@@ -366,7 +366,7 @@ export interface Mp4Preset {
   resolution: "original" | "half" | "quarter";
 }
 
-export const foundFormatGroupIds = [
+export const previewFormatGroupIds = [
   "model3d",
   "image",
   "video",
@@ -374,15 +374,15 @@ export const foundFormatGroupIds = [
   "pdf",
 ] as const;
 
-export type FoundFormatGroupId = (typeof foundFormatGroupIds)[number];
+export type PreviewFormatGroupId = (typeof previewFormatGroupIds)[number];
 
-export interface FoundFormatGroup {
-  id: FoundFormatGroupId;
+export interface PreviewFormatGroup {
+  id: PreviewFormatGroupId;
   label: string;
   extensions: string[];
 }
 
-export const FOUND_FORMAT_GROUP_DEFAULTS: FoundFormatGroup[] = [
+export const PREVIEW_FORMAT_GROUP_DEFAULTS: PreviewFormatGroup[] = [
   {
     id: "model3d",
     label: "3D",
@@ -414,8 +414,8 @@ export const FOUND_FORMAT_GROUP_DEFAULTS: FoundFormatGroup[] = [
   },
 ];
 
-/** Found 高级功能设置（全部进持久化 + cache invalidation + 任务参数）。 */
-export interface FoundSettings {
+/** 预览高级功能设置（全部进持久化 + cache invalidation + 任务参数）。 */
+export interface PreviewSettings {
   // §10.1 高级浏览
   showHiddenFiles: boolean;
   folderClickMode: "single" | "double";
@@ -423,8 +423,8 @@ export interface FoundSettings {
   defaultFlattenDepth: number;
   /** 每个文件夹独立记忆的 flattening 深度（path → depth）。 */
   flattenPerFolder: Record<string, number>;
-  /** Found 式可编辑格式分组；扩展名不含点、统一小写。 */
-  formatGroups: FoundFormatGroup[];
+  /** 预览式可编辑格式分组；扩展名不含点、统一小写。 */
+  formatGroups: PreviewFormatGroup[];
   /** 纳入 OTHER 筛选的非视觉扩展名；默认不隐藏磁盘上的未知文件。 */
   formatWhitelist: string[];
   // §10.2 高级预览
@@ -465,12 +465,12 @@ export interface FoundSettings {
   closeBehavior: "quit" | "tray";
 }
 
-export const FOUND_SETTINGS_DEFAULTS: FoundSettings = {
+export const PREVIEW_SETTINGS_DEFAULTS: PreviewSettings = {
   showHiddenFiles: false,
   folderClickMode: "double",
   defaultFlattenDepth: 0,
   flattenPerFolder: {},
-  formatGroups: FOUND_FORMAT_GROUP_DEFAULTS,
+  formatGroups: PREVIEW_FORMAT_GROUP_DEFAULTS,
   formatWhitelist: [
     "txt", "md", "json", "xml", "csv", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
     "zip", "rar", "7z", "tar", "gz", "svg", "ai", "eps", "hip", "nk", "max", "ma", "mb",
@@ -531,7 +531,7 @@ export interface AppPreferencesPatch {
   backgroundResidency?: boolean;
   boardSettings?: Partial<BoardSettings>;
   language?: AppLanguage;
-  foundSettings?: Partial<FoundSettings>;
+  previewSettings?: Partial<PreviewSettings>;
 }
 
 export interface PanelLayoutPreference {
@@ -543,7 +543,7 @@ export interface PanelLayoutPreference {
 
 export type NavigationSource = "library" | "directory";
 
-/** 本地目录浏览（Found 式）的单个条目，不依赖素材数据库。 */
+/** 本地目录浏览（预览式）的单个条目，不依赖素材数据库。 */
 export interface DirectoryEntry {
   path: string;
   name: string;
@@ -1022,7 +1022,7 @@ export type BoardDocument = BoardDocumentV1 | BoardDocumentV2 | BoardDocumentV3;
 export interface ReconcileCandidate {
   assetId: string;
   title: string;
-  /** On-disk filename the candidate was found at, for user-confirmed relinks. */
+  /** On-disk filename the candidate resolved to, for user-confirmed relinks. */
   path: string;
 }
 
@@ -1366,7 +1366,7 @@ export interface BoardReferenceResolution {
   relinked?: boolean;
 }
 
-// --- 引用集合（schema 17，found-clone.md §6.1/§6.3） ---
+// --- 引用集合（schema 17，§6.1/§6.3） ---
 
 export type CollectionItemState = "resolved" | "offline" | "missing" | "ambiguous";
 
@@ -1400,7 +1400,7 @@ export interface CollectionAddResult {
   skipped: { directories: string[]; missing: string[] };
 }
 
-/** 集合导出任务快照（found-clone.md §6.3）。 */
+/** 集合导出任务快照（§6.3）。 */
 export interface CollectionExportSnapshot {
   id: string;
   collectionId: string;
@@ -1456,7 +1456,7 @@ export interface ArchiveSnapshot {
   errorMessage: string | null;
 }
 
-// --- AI Design Supervisor（found-clone.md §9） ---
+// --- AI Design Supervisor（§9） ---
 
 export type AiProviderKind = "remote-rest" | "comfyui" | "mock";
 
@@ -1652,7 +1652,7 @@ export interface RefCanvasApi {
       callback: (change: MountChangedEvent) => void,
     ): () => void;
   };
-  /** 引用集合（schema 17，found-clone.md §6）。 */
+  /** 引用集合（schema 17，§6）。 */
   collections: {
     list(): Promise<ReferenceCollection[]>;
     create(input: {

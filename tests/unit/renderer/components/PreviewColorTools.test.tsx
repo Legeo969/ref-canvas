@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FOUND_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { PreviewColorTools } from "../../../../src/renderer/components/PreviewColorTools";
 
@@ -15,15 +15,15 @@ describe("PreviewColorTools", () => {
   afterEach(async () => { await act(async () => roots.splice(0).forEach((root) => root.unmount())); document.body.replaceChildren(); });
 
   it("imports cube and 3dl LUT files through application preferences", async () => {
-    const setPreferences = vi.fn(async (patch) => ({ foundSettings: { ...FOUND_SETTINGS_DEFAULTS, ...patch.foundSettings } }));
+    const setPreferences = vi.fn(async (patch) => ({ previewSettings: { ...PREVIEW_SETTINGS_DEFAULTS, ...patch.previewSettings } }));
     Object.assign(window, { refCanvas: { system: {
       pickFile: vi.fn(async () => ["D:\\luts\\show.cube"]), setPreferences,
     } } });
     const host = document.createElement("div"); document.body.append(host);
     const root = createRoot(host); roots.push(root);
-    await act(async () => root.render(<PreviewColorTools settings={FOUND_SETTINGS_DEFAULTS} />));
+    await act(async () => root.render(<PreviewColorTools settings={PREVIEW_SETTINGS_DEFAULTS} />));
     await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="导入 LUT"]')?.click(); await Promise.resolve(); await Promise.resolve(); });
-    expect(setPreferences).toHaveBeenCalledWith({ foundSettings: { activeLut: "D:\\luts\\show.cube" } });
+    expect(setPreferences).toHaveBeenCalledWith({ previewSettings: { activeLut: "D:\\luts\\show.cube" } });
     expect(host.textContent).toContain("show.cube");
   });
 });

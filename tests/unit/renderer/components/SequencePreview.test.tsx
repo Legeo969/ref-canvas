@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RefCanvasApi, SequenceGroupInfo } from "../../../../src/shared/contracts";
-import { FOUND_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { SequencePreviewDialog } from "../../../../src/renderer/components/SequencePreview";
 
@@ -77,11 +77,11 @@ describe("SequencePreviewDialog", () => {
 
   it("keeps the previous frame until the next frame has loaded", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: false,
       sequenceFpsPresets: [24, 30],
-      mp4Presets: [FOUND_SETTINGS_DEFAULTS.mp4Presets[0]],
+      mp4Presets: [PREVIEW_SETTINGS_DEFAULTS.mp4Presets[0]],
     };
     Object.assign(window, {
       refCanvas: {
@@ -91,7 +91,7 @@ describe("SequencePreviewDialog", () => {
           ),
         },
         system: {
-          getPreferences: vi.fn(async () => ({ foundSettings })),
+          getPreferences: vi.fn(async () => ({ previewSettings })),
           pickDirectory: vi.fn(async () => null),
         },
         sequences: { exportMp4: vi.fn() },
@@ -135,10 +135,10 @@ describe("SequencePreviewDialog", () => {
 
   it("uses generated high-resolution previews for EXR sequences", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: false,
-      mp4Presets: [FOUND_SETTINGS_DEFAULTS.mp4Presets[0]],
+      mp4Presets: [PREVIEW_SETTINGS_DEFAULTS.mp4Presets[0]],
     };
     Object.assign(window, {
       refCanvas: {
@@ -146,7 +146,7 @@ describe("SequencePreviewDialog", () => {
           previewToken: vi.fn(async () => "exr-token"),
         },
         system: {
-          getPreferences: vi.fn(async () => ({ foundSettings })),
+          getPreferences: vi.fn(async () => ({ previewSettings })),
           pickDirectory: vi.fn(async () => null),
         },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
@@ -180,11 +180,11 @@ describe("SequencePreviewDialog", () => {
 
   it("uses 960px staging for multi-frame EXR sequences and 1920px in fullscreen", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = { ...FOUND_SETTINGS_DEFAULTS, autoplaySequence: false };
+    const previewSettings = { ...PREVIEW_SETTINGS_DEFAULTS, autoplaySequence: false };
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "exr-token") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -227,11 +227,11 @@ describe("SequencePreviewDialog", () => {
   });
 
   it("does not advance the HDR renderer path before the next frame is decoded", async () => {    vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = { ...FOUND_SETTINGS_DEFAULTS, autoplaySequence: false };
+    const previewSettings = { ...PREVIEW_SETTINGS_DEFAULTS, autoplaySequence: false };
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async (file: string) => file.includes("0001") ? "exr-a" : "exr-b") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -258,14 +258,14 @@ describe("SequencePreviewDialog", () => {
 
   it("steps frames with arrow keys and pauses playback", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: true,
     };
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -295,14 +295,14 @@ describe("SequencePreviewDialog", () => {
 
   it("ignores arrow keys while the sequence preview is not focused", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: false,
     };
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -333,14 +333,14 @@ describe("SequencePreviewDialog", () => {
   it("accelerates held arrow keys and resets to single-frame steps on release", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: false,
     };
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -393,14 +393,14 @@ describe("SequencePreviewDialog", () => {
   it("toggles playback with Space while the preview is focused", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: false,
     };
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -443,10 +443,10 @@ describe("SequencePreviewDialog", () => {
         filesystem: { previewToken: vi.fn(async () => "token") },
         system: {
           getPreferences: vi.fn(async () => ({
-            foundSettings: {
-              ...FOUND_SETTINGS_DEFAULTS,
+            previewSettings: {
+              ...PREVIEW_SETTINGS_DEFAULTS,
               autoplaySequence: false,
-              mp4Presets: [FOUND_SETTINGS_DEFAULTS.mp4Presets[0]],
+              mp4Presets: [PREVIEW_SETTINGS_DEFAULTS.mp4Presets[0]],
             },
           })),
           pickDirectory: vi.fn(async () => "D:\\out"),
@@ -493,7 +493,7 @@ describe("SequencePreviewDialog", () => {
 
     expect(exportGif).toHaveBeenCalledWith(expect.objectContaining({
       files: rangedSequence.files.slice(1, 4),
-      fps: FOUND_SETTINGS_DEFAULTS.defaultSequenceFps,
+      fps: PREVIEW_SETTINGS_DEFAULTS.defaultSequenceFps,
       outputDirectory: "D:\\out",
       baseName: "shot",
     }));
@@ -504,7 +504,7 @@ describe("SequencePreviewDialog", () => {
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })), pickDirectory: vi.fn(async () => null) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })), pickDirectory: vi.fn(async () => null) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -537,7 +537,7 @@ describe("SequencePreviewDialog", () => {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "exr-token") },
         media: { palette },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
         sequences: { exportMp4: vi.fn(), exportGif: vi.fn() },
       } as unknown as RefCanvasApi,
     });
@@ -569,14 +569,14 @@ describe("SequencePreviewDialog", () => {
 
   it("selects FPS from its drawer and MP4 presets from the export popover", async () => {
     vi.stubGlobal("Image", BufferedImageMock);
-    const foundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const previewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       autoplaySequence: false,
       defaultSequenceFps: 25,
       sequenceFpsPresets: [24, 25, 30],
       mp4Presets: [
-        { ...FOUND_SETTINGS_DEFAULTS.mp4Presets[0], enabled: true },
-        { ...FOUND_SETTINGS_DEFAULTS.mp4Presets[1], enabled: true, label: "轻量转换" },
+        { ...PREVIEW_SETTINGS_DEFAULTS.mp4Presets[0], enabled: true },
+        { ...PREVIEW_SETTINGS_DEFAULTS.mp4Presets[1], enabled: true, label: "轻量转换" },
       ],
     };
     const exportMp4 = vi.fn(async () => ({
@@ -590,7 +590,7 @@ describe("SequencePreviewDialog", () => {
       refCanvas: {
         filesystem: { previewToken: vi.fn(async () => "token") },
         system: {
-          getPreferences: vi.fn(async () => ({ foundSettings })),
+          getPreferences: vi.fn(async () => ({ previewSettings })),
           pickDirectory: vi.fn(async () => "D:\\out"),
         },
         sequences: { exportMp4, exportGif: vi.fn() },
@@ -636,7 +636,7 @@ describe("SequencePreviewDialog", () => {
     expect(exportMp4).toHaveBeenCalledWith(expect.objectContaining({
       files: sequence.files,
       fps: 30,
-      presetId: foundSettings.mp4Presets[1].id,
+      presetId: previewSettings.mp4Presets[1].id,
       outputDirectory: "D:\\out",
     }));
   });

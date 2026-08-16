@@ -12,7 +12,7 @@ import {
 import path from "node:path";
 import { z } from "zod";
 import { assetKindForExtension } from "../../shared/asset-kind";
-import type { FoundSettings } from "../../shared/contracts";
+import { readPreviewSettings } from "../ipc/preview-settings";
 import type { RefCanvasDatabase } from "../persistence/database";
 import { fileProtocolResponse } from "./protocol-file-response";
 import { previewCacheKey, type PreviewCacheIdentity } from "./preview-cache-key";
@@ -431,7 +431,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
                 ? { width: previewSize, height: previewSize }
                 : undefined,
             url.searchParams.get("channel") ?? undefined,
-            dependencies.getDatabase().getSetting<Partial<FoundSettings>>("foundSettings", {}).ocioConfigPath ?? undefined,
+            readPreviewSettings(dependencies.getDatabase()).ocioConfigPath ?? undefined,
             hdrInputColorSpace(url),
             hdrDisplayTransform(url),
           );
@@ -573,7 +573,7 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
             signal,
             { width: thumbnailSize, height: thumbnailSize },
             url.searchParams.get("channel") ?? undefined,
-            dependencies.getDatabase().getSetting<Partial<FoundSettings>>("foundSettings", {}).ocioConfigPath ?? undefined,
+            readPreviewSettings(dependencies.getDatabase()).ocioConfigPath ?? undefined,
             hdrInputColorSpace(url),
             hdrDisplayTransform(url),
           );

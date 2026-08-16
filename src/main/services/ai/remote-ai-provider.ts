@@ -1,5 +1,5 @@
 /**
- * Remote REST v1 Provider（found-clone.md §9.6）。
+ * Remote REST v1 Provider（§9.6）。
  *
  * 协议端点：
  * 1. POST /v1/uploads/prepare：为每个输入取得 upload id、预签名 URL、所需

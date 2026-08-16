@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { FOUND_SETTINGS_DEFAULTS } from "../../../src/shared/contracts";
-import { mergeFoundSettings } from "../../../src/main/ipc/found-settings";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../../src/shared/contracts";
+import { mergePreviewSettings } from "../../../src/main/ipc/preview-settings";
 
-describe("mergeFoundSettings（阶段 5：Found 偏好持久化）", () => {
+describe("mergePreviewSettings（阶段 5：预览偏好持久化）", () => {
   it("标量字段整体替换", () => {
-    const next = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+    const next = mergePreviewSettings(PREVIEW_SETTINGS_DEFAULTS, {
       showHiddenFiles: true,
       alphaBackground: "black",
     });
@@ -15,37 +15,37 @@ describe("mergeFoundSettings（阶段 5：Found 偏好持久化）", () => {
   });
 
   it("flattenPerFolder 按文件夹合并而非覆盖", () => {
-    const current = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+    const current = mergePreviewSettings(PREVIEW_SETTINGS_DEFAULTS, {
       flattenPerFolder: { "D:\\a": 2 },
     });
-    const next = mergeFoundSettings(current, {
+    const next = mergePreviewSettings(current, {
       flattenPerFolder: { "D:\\b": 1 },
     });
     expect(next.flattenPerFolder).toEqual({ "D:\\a": 2, "D:\\b": 1 });
   });
 
   it("数组字段整体替换", () => {
-    const next = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+    const next = mergePreviewSettings(PREVIEW_SETTINGS_DEFAULTS, {
       sequenceRules: [
         { id: "rule-1", name: "自定义", pattern: "^frame", minFrames: 3 },
       ],
       activeLut: null,
     });
     expect(next.sequenceRules).toHaveLength(1);
-    expect(next.mp4Presets).toHaveLength(FOUND_SETTINGS_DEFAULTS.mp4Presets.length);
+    expect(next.mp4Presets).toHaveLength(PREVIEW_SETTINGS_DEFAULTS.mp4Presets.length);
     expect(next.activeLut).toBeNull();
   });
 
   it("默认值可被 patch 清空（nullable 字段）", () => {
-    const current = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+    const current = mergePreviewSettings(PREVIEW_SETTINGS_DEFAULTS, {
       activeLut: "C:\\luts\\camera.cube",
     });
-    const next = mergeFoundSettings(current, { activeLut: null });
+    const next = mergePreviewSettings(current, { activeLut: null });
     expect(next.activeLut).toBeNull();
   });
 
   it("规范化格式分组和非视觉白名单", () => {
-    const next = mergeFoundSettings(FOUND_SETTINGS_DEFAULTS, {
+    const next = mergePreviewSettings(PREVIEW_SETTINGS_DEFAULTS, {
       formatGroups: [
         { id: "image", label: "IMG", extensions: [".PNG", "png", " EXR "] },
       ],

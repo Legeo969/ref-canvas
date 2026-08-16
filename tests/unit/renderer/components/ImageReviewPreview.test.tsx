@@ -3,7 +3,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FOUND_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { ImageReviewPreview } from "../../../../src/renderer/components/ImageReviewPreview";
 
@@ -41,7 +41,7 @@ describe("ImageReviewPreview (FND-005)", () => {
         system: {
           writeClipboard: vi.fn(async () => undefined),
           getPreferences: vi.fn(async () => ({
-            foundSettings: FOUND_SETTINGS_DEFAULTS,
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
           })),
         },
       },
@@ -150,7 +150,7 @@ describe("ImageReviewPreview (FND-005)", () => {
         filesystem: { previewToken: vi.fn() },
         system: {
           writeClipboard,
-          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
         },
       },
     });

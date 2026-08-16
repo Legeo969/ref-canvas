@@ -18,7 +18,7 @@ import type {
   ExportMp4Result,
   SequenceGroupInfo,
 } from "../../shared/contracts";
-import { useFoundSettings } from "../app/found-settings";
+import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
 import { PreviewSlider } from "./PreviewSlider";
@@ -128,15 +128,15 @@ export function SequencePreviewDialog({
   // 960px 对内嵌播放面足够，避免每帧解码完整 1920px EXR；全屏时呈现表面
   // 变大（4K 上 960 上采样会糊），尺寸随预览面板全屏状态升回 1920。
   const framePreviewSize = frames.length > 1 ? (fullscreen ? 1920 : 960) : 1920;
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   // 阶段 5：autoplaySequence 决定打开时是否自动播放；defaultSequenceFps
   // 作为 FPS presets 默认速度（检测器推断值保留给无设置时）。
   const [frameIndex, setFrameIndex] = useState(0);
-  const [playing, setPlaying] = useState(foundSettings.autoplaySequence);
+  const [playing, setPlaying] = useState(previewSettings.autoplaySequence);
   const [looping, setLooping] = useState(true);
   const [fps, setFps] = useState(
-    foundSettings.defaultSequenceFps > 0
-      ? foundSettings.defaultSequenceFps
+    previewSettings.defaultSequenceFps > 0
+      ? previewSettings.defaultSequenceFps
       : (sequence.fps || 24),
   );
   const [optionsDrawer, setOptionsDrawer] = useState<"fps" | "mp4" | "gif" | null>(null);
@@ -153,19 +153,19 @@ export function SequencePreviewDialog({
     ? sequenceFrameSourceUrl(sequence.extension, activeToken, framePreviewSize)
     : null;
   const isHdrSequence = /^(exr|hdr)$/i.test(sequence.extension);
-  const fpsPresets = foundSettings.sequenceFpsPresets.length
-    ? foundSettings.sequenceFpsPresets
+  const fpsPresets = previewSettings.sequenceFpsPresets.length
+    ? previewSettings.sequenceFpsPresets
     : [24];
   const availableMp4Presets = useMemo(
     () => {
-      const enabled = foundSettings.mp4Presets.filter((preset) => preset.enabled);
-      return enabled.length ? enabled : foundSettings.mp4Presets.slice(0, 1);
+      const enabled = previewSettings.mp4Presets.filter((preset) => preset.enabled);
+      return enabled.length ? enabled : previewSettings.mp4Presets.slice(0, 1);
     },
-    [foundSettings.mp4Presets],
+    [previewSettings.mp4Presets],
   );
-  // 阶段 5：MP4 导出（预设来自 FoundSettings.mp4Presets）。
+  // 阶段 5：MP4 导出（预设来自 PreviewSettings.mp4Presets）。
   const [exportPresetId, setExportPresetId] = useState(
-    foundSettings.defaultMp4PresetId,
+    previewSettings.defaultMp4PresetId,
   );
   const [exportState, setExportState] = useState<
     "idle" | "running" | "done"
@@ -270,11 +270,11 @@ export function SequencePreviewDialog({
     fpsRef.current = fps;
   }, [fps]);
   useEffect(() => {
-    setPlaying(foundSettings.autoplaySequence);
-  }, [foundSettings.autoplaySequence]);
+    setPlaying(previewSettings.autoplaySequence);
+  }, [previewSettings.autoplaySequence]);
   useEffect(() => {
-    setFps(foundSettings.defaultSequenceFps > 0 ? foundSettings.defaultSequenceFps : 24);
-  }, [foundSettings.defaultSequenceFps]);
+    setFps(previewSettings.defaultSequenceFps > 0 ? previewSettings.defaultSequenceFps : 24);
+  }, [previewSettings.defaultSequenceFps]);
 
   const handleDisplayReady = useCallback((framePath: string | undefined) => {
     displayReadyPathRef.current = framePath ?? null;
@@ -406,7 +406,7 @@ export function SequencePreviewDialog({
   }, [displayedFrameIndex, frames, fullscreen]);
   const activePresetLabel = availableMp4Presets.find((preset) => preset.id === exportPresetId)?.label ?? "MP4";
 
-  // 阶段 5：MP4 导出（预设来自 FoundSettings.mp4Presets）。
+  // 阶段 5：MP4 导出（预设来自 PreviewSettings.mp4Presets）。
   const exportMp4 = async () => {
     setExportError(null);
     const outputDirectory = await window.refCanvas.system.pickDirectory({

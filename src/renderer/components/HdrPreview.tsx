@@ -3,8 +3,8 @@ import { type MouseEvent, useCallback, useEffect, useLayoutEffect, useRef, useSt
 import { createPortal } from "react-dom";
 import {
   alphaBackgroundStyle,
-  useFoundSettings,
-} from "../app/found-settings";
+  usePreviewSettings,
+} from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { Download, FolderOpen, RefreshCw, RotateCcw, SunMedium } from "lucide-react";
 import { ImagePreviewViewport } from "./ImagePreviewViewport";
@@ -106,7 +106,7 @@ export function HdrPreview({
   /** 后续帧路径：以其色彩管理变体预热主进程缓存，缩短播放门控等待。 */
   prefetchPaths?: string[];
 }) {
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const fallbackRef = useRef<HTMLImageElement | null>(null);
   const managedImageRef = useRef<HTMLImageElement | null>(null);
   const exposureButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -125,7 +125,7 @@ export function HdrPreview({
   const [exposureEv, setExposureEv] = useState(0);
   const [scheme, setScheme] = useState<ColorSchemeName>("linear-srgb");
   const [ocioOpen, setOcioOpen] = useState(false);
-  const [ocioConfigPath, setOcioConfigPath] = useState(foundSettings.ocioConfigPath);
+  const [ocioConfigPath, setOcioConfigPath] = useState(previewSettings.ocioConfigPath);
   const [ocioError, setOcioError] = useState<string | null>(null);
   const [colorStatus, setColorStatus] = useState<ColorStatus | null>(null);
   const [viewMode, setViewMode] = useState<EnvironmentPreviewMode>("flat");
@@ -237,8 +237,8 @@ export function HdrPreview({
     return () => { cancelled = true; };
   }, [ocioConfigPath]);
   useEffect(() => {
-    setOcioConfigPath(foundSettings.ocioConfigPath);
-  }, [foundSettings.ocioConfigPath]);
+    setOcioConfigPath(previewSettings.ocioConfigPath);
+  }, [previewSettings.ocioConfigPath]);
   useEffect(() => {
     setResolvedSource(source);
     if (!path || !window.refCanvas.filesystem.previewToken) return;
@@ -415,9 +415,9 @@ export function HdrPreview({
         setOcioError(translate("hdr.ocioLoadFailedDetail").replace("{detail}", validation.detail ?? translate("hdr.unknownError")));
         return false;
       }
-      const next = await window.refCanvas.system.setPreferences({ foundSettings: { ocioConfigPath: configPath } });
-      setOcioConfigPath(next.foundSettings.ocioConfigPath);
-      window.dispatchEvent(new CustomEvent("refcanvas:found-settings", { detail: next.foundSettings }));
+      const next = await window.refCanvas.system.setPreferences({ previewSettings: { ocioConfigPath: configPath } });
+      setOcioConfigPath(next.previewSettings.ocioConfigPath);
+      window.dispatchEvent(new CustomEvent("refcanvas:preview-settings", { detail: next.previewSettings }));
       setOcioOpen(false);
       return true;
     } catch (error) {
@@ -629,7 +629,7 @@ export function HdrPreview({
         toneMapping={toneMappings[scheme]}
       /> : <ImagePreviewViewport
         assetKey={colorManagedSource}
-        checkerBackground={alphaBackgroundStyle(foundSettings)}
+        checkerBackground={alphaBackgroundStyle(previewSettings)}
         canvasBackground={managed ? "var(--surface-1, #1d201f)" : undefined}
         controlsTarget={controlsTarget}
       >

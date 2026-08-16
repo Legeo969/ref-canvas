@@ -1,5 +1,5 @@
 /**
- * 引用集合 IPC（FND-003，found-clone.md §6）。
+ * 引用集合 IPC（FND-003，§6）。
  *
  * 所有输入先经共享 Zod schema 校验（§12.1/§9.1 精神）；Renderer 不直接访问
  * 文件系统或集合仓储，只能通过这里的最小 Preload API 操作。

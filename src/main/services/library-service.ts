@@ -935,7 +935,7 @@ export class LibraryService {
   }
 
   /**
-   * 按需入库一个未导入文件（Found 式浏览的 materialize）：
+   * 按需入库一个未导入文件（预览式浏览的 materialize）：
    * 磁盘唯一真相——同路径复用 assetId；只计算 quick fingerprint，完整
    * SHA-256 仅用于主动完整性校验；不创建文件夹层级，绝不复制源文件
    * （materialize 恒为 linked 引用索引，§13.4 已移除 options）。

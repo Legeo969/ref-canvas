@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  FOUND_SETTINGS_DEFAULTS,
+  PREVIEW_SETTINGS_DEFAULTS,
   type DirectoryEntry,
   type RefCanvasApi,
 } from "../../../../src/shared/contracts";
@@ -71,7 +71,7 @@ describe("PreviewPanel smoke", () => {
         metadata: { ensure: vi.fn() },
         media: { probe: vi.fn() },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -93,7 +93,7 @@ describe("PreviewPanel smoke", () => {
         metadata: { ensure: vi.fn(async () => ({ asset: null })) },
         media: { probe: vi.fn() },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -119,7 +119,7 @@ describe("PreviewPanel smoke", () => {
         metadata: { ensure: vi.fn(async () => { throw new Error("no"); }) },
         media: { probe: vi.fn() },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -143,7 +143,7 @@ describe("PreviewPanel smoke", () => {
         metadata: { ensure: vi.fn(async () => { throw new Error("no"); }) },
         media: { probe: vi.fn() },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -173,7 +173,7 @@ describe("PreviewPanel smoke", () => {
           previewUrl: "refasset://svg", title: "mark.svg", linkState: "online",
         } })) },
         media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -202,7 +202,7 @@ describe("PreviewPanel smoke", () => {
         media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
         system: {
           writeClipboard: vi.fn(),
-          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
         },
       } as unknown as RefCanvasApi,
     });
@@ -242,8 +242,8 @@ describe("PreviewPanel smoke", () => {
         filesystem: { open: vi.fn(), reveal: vi.fn() },
         system: {
           writeClipboard: vi.fn(),
-          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
-          setPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
+          setPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
           pickFile: vi.fn(async () => []),
         },
       } as unknown as RefCanvasApi,
@@ -286,7 +286,7 @@ describe("PreviewPanel smoke", () => {
         media: { probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })), palette: vi.fn(async () => []) },
         mediaNotes: { list: vi.fn(async () => []), getPlaybackState: vi.fn(async () => null), setPlaybackState: vi.fn() },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -322,7 +322,7 @@ describe("PreviewPanel smoke", () => {
         filesystem: { open: vi.fn(), reveal: vi.fn() },
         system: {
           writeClipboard: vi.fn(),
-          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
         },
       } as unknown as RefCanvasApi,
     });
@@ -375,7 +375,7 @@ describe("PreviewPanel smoke", () => {
           setPlaybackState: vi.fn(),
         },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -416,7 +416,7 @@ describe("PreviewPanel smoke", () => {
           setPlaybackState: vi.fn(),
         },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -449,7 +449,7 @@ describe("PreviewPanel smoke", () => {
           setPlaybackState: vi.fn(async () => undefined),
         },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -477,7 +477,7 @@ describe("PreviewPanel smoke", () => {
           title: path.split("\\").at(-1), linkState: "online",
         } })) },
         media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -508,7 +508,7 @@ describe("PreviewPanel smoke", () => {
           previewUrl: `refasset://${path}`, title: path, linkState: "online",
         } })) },
         media: { probe: vi.fn() }, filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -546,7 +546,7 @@ describe("PreviewPanel smoke", () => {
         } })) },
         media: { probe: vi.fn(), palette: vi.fn(async () => []) },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");
@@ -581,7 +581,7 @@ describe("PreviewPanel smoke", () => {
         } })) },
         media: { probe: vi.fn(async () => ({ width: 1920, height: 1080, extra: { layers: [] } })), palette: vi.fn(async () => []) },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
       } as unknown as RefCanvasApi,
     });
     const host = document.createElement("div");

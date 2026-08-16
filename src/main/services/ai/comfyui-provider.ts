@@ -1,5 +1,5 @@
 /**
- * ComfyUI 本地 Provider（found-clone.md §9.5）。
+ * ComfyUI 本地 Provider（§9.5）。
  *
  * - 默认地址 `http://127.0.0.1:8188`，只允许 localhost/127/8/::1。
  * - `/system_stats` 健康检查、`/upload/image` 上传、`/prompt` 入队、

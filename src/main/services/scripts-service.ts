@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { RefCanvasDatabase } from "../persistence/database";
 
-const SCRIPTS_KEY = "foundScripts";
+const SCRIPTS_KEY = "previewScripts";
 
 export interface RegisteredScript {
   id: string;
@@ -72,7 +72,12 @@ export class ScriptsService {
   }
 
   list(): RegisteredScript[] {
-    return this.database.getSetting<RegisteredScript[]>(SCRIPTS_KEY, []);
+    // 回退旧键：升级前注册的脚本不丢失。
+    const legacy = this.database.getSetting<RegisteredScript[]>(
+      "foundScripts",
+      [],
+    );
+    return this.database.getSetting<RegisteredScript[]>(SCRIPTS_KEY, legacy);
   }
 
   async register(

@@ -8,9 +8,9 @@ ipcRenderer.on("boards:flush-request", () => {
 
 function applyUiScale(preferences: unknown): void {
   if (!preferences || typeof preferences !== "object") return;
-  const foundSettings = (preferences as { foundSettings?: unknown }).foundSettings;
-  if (!foundSettings || typeof foundSettings !== "object") return;
-  const scale = (foundSettings as { uiScale?: unknown }).uiScale;
+  const previewSettings = (preferences as { previewSettings?: unknown }).previewSettings;
+  if (!previewSettings || typeof previewSettings !== "object") return;
+  const scale = (previewSettings as { uiScale?: unknown }).uiScale;
   if (typeof scale !== "number" || !Number.isFinite(scale)) return;
   webFrame.setZoomFactor(Math.min(1.5, Math.max(0.8, scale)));
   window.setTimeout(() => window.dispatchEvent(new Event("resize")), 0);

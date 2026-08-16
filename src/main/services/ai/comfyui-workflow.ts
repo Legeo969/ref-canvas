@@ -1,5 +1,5 @@
 /**
- * ComfyUI API-format workflow 检查与绑定（found-clone.md §9.5）。
+ * ComfyUI API-format workflow 检查与绑定（§9.5）。
  *
  * 用户导入 ComfyUI API-format workflow JSON（{ nodes: [{id,type,inputs}], links }），
  * 配置源图、参考图、提示词、重大改动、批量数、seed 与输出节点绑定。

@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  FOUND_SETTINGS_DEFAULTS,
+  PREVIEW_SETTINGS_DEFAULTS,
   type RefCanvasApi,
 } from "../../../../src/shared/contracts";
 import { useAppStore } from "../../../../src/renderer/app/store";
@@ -84,12 +84,12 @@ describe("DirectoryAssetPanel", () => {
       nextCursor: null,
       scanState: "complete" as const,
     }));
-    const nextFoundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
+    const nextPreviewSettings = {
+      ...PREVIEW_SETTINGS_DEFAULTS,
       flattenPerFolder: { "D:\\refs": 8 },
     };
     const setPreferences = vi.fn(async () => ({
-      foundSettings: nextFoundSettings,
+      previewSettings: nextPreviewSettings,
     }));
     Object.assign(window, {
       refCanvas: {
@@ -99,7 +99,7 @@ describe("DirectoryAssetPanel", () => {
         },
         system: {
           getPreferences: vi.fn(async () => ({
-            foundSettings: FOUND_SETTINGS_DEFAULTS,
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
           })),
           setPreferences,
         },
@@ -150,7 +150,7 @@ describe("DirectoryAssetPanel", () => {
     });
 
     expect(setPreferences).toHaveBeenCalledWith({
-      foundSettings: {
+      previewSettings: {
         defaultFlattenDepth: 8,
         flattenPerFolder: { "D:\\refs": 8 },
       },
@@ -176,7 +176,7 @@ describe("DirectoryAssetPanel", () => {
         },
         system: {
           getPreferences: vi.fn(async () => ({
-            foundSettings: FOUND_SETTINGS_DEFAULTS,
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
           })),
           setPreferences: vi.fn(async (patch: unknown) => patch),
         },
@@ -244,10 +244,10 @@ describe("DirectoryAssetPanel", () => {
 
   it("toggles sequence merging from the view options popover", async () => {
     const setPreferences = vi.fn(
-      async (patch: { foundSettings?: { collapseImageSequences?: boolean } }) => ({
-        foundSettings: {
-          ...FOUND_SETTINGS_DEFAULTS,
-          ...(patch.foundSettings ?? {}),
+      async (patch: { previewSettings?: { collapseImageSequences?: boolean } }) => ({
+        previewSettings: {
+          ...PREVIEW_SETTINGS_DEFAULTS,
+          ...(patch.previewSettings ?? {}),
           flattenPerFolder: { "D:\\refs": 0 },
         },
       }),
@@ -265,7 +265,7 @@ describe("DirectoryAssetPanel", () => {
         },
         system: {
           getPreferences: vi.fn(async () => ({
-            foundSettings: FOUND_SETTINGS_DEFAULTS,
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
           })),
           setPreferences,
         },
@@ -303,14 +303,14 @@ describe("DirectoryAssetPanel", () => {
       '[data-testid="directory-sequence-toggle"]',
     );
     expect(sequenceToggle).toBeTruthy();
-    expect(sequenceToggle?.checked).toBe(true); // FOUND_SETTINGS_DEFAULTS.collapseImageSequences
+    expect(sequenceToggle?.checked).toBe(true); // PREVIEW_SETTINGS_DEFAULTS.collapseImageSequences
     await act(async () => {
       sequenceToggle?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(setPreferences).toHaveBeenCalledWith({
-      foundSettings: { collapseImageSequences: false },
+      previewSettings: { collapseImageSequences: false },
     });
   });
 
@@ -2249,7 +2249,7 @@ describe("DirectoryAssetPanel", () => {
     window.removeEventListener("refcanvas:open-settings", openSettings);
     expect(openSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        detail: "found",
+        detail: "preview",
       }),
     );
   });

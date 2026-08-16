@@ -1,5 +1,5 @@
 /**
- * 图片审阅（FND-005，found-clone.md §5 图片会话）。
+ * 图片审阅（FND-005，§5 图片会话）。
  *
  * - 缩放/平移/适配/100%/旋转 + 棋盘透明背景（复用 alphaBackgroundStyle）。
  * - 像素取色：从显示变换后的可见像素取色（显示色值），支持复制 RGB/HEX。
@@ -18,7 +18,7 @@ import {
   useState,
 } from "react";
 import type { AssetRecord } from "../../shared/contracts";
-import { alphaBackgroundStyle, useFoundSettings } from "../app/found-settings";
+import { alphaBackgroundStyle, usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { ImagePreviewViewport } from "./ImagePreviewViewport";
 import { PreviewColorBar } from "./PreviewColorBar";
@@ -47,7 +47,7 @@ function toHex(value: number): string {
 }
 
 export function ImageReviewPreview({ asset, onPaletteChange, managed = false, controlsTarget, sharedColorControls = false, eyedropActive: controlledEyedropActive, onEyedropActiveChange, onColorSample }: ImageReviewPreviewProps) {
-  const foundSettings = useFoundSettings();
+  const previewSettings = usePreviewSettings();
   const imageRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [localEyedropActive, setLocalEyedropActive] = useState(false);
@@ -136,7 +136,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     <div className={`image-review${managed ? " preview-managed-preview" : ""}`}>
       <ImagePreviewViewport
         assetKey={`${asset.id}:${asset.previewUrl}`}
-        checkerBackground={alphaBackgroundStyle(foundSettings)}
+        checkerBackground={alphaBackgroundStyle(previewSettings)}
         interactionDisabled={eyedropActive}
         canvasBackground={managed ? "var(--surface-1, #1d201f)" : undefined}
         controlsTarget={controlsTarget}

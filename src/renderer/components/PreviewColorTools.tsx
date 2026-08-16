@@ -1,17 +1,17 @@
 import { useState } from "react";
-import type { FoundSettings } from "../../shared/contracts";
+import type { PreviewSettings } from "../../shared/contracts";
 import { translate } from "../app/i18n";
 
 interface PreviewColorToolsProps {
-  settings: FoundSettings;
+  settings: PreviewSettings;
 }
 
 export function PreviewColorTools({ settings }: PreviewColorToolsProps) {
   const [activeLut, setActiveLut] = useState(settings.activeLut);
 
   const updateLut = async (value: string | null) => {
-    const next = await window.refCanvas.system.setPreferences({ foundSettings: { activeLut: value } });
-    setActiveLut(next.foundSettings.activeLut);
+    const next = await window.refCanvas.system.setPreferences({ previewSettings: { activeLut: value } });
+    setActiveLut(next.previewSettings.activeLut);
   };
 
   const importLut = async () => {

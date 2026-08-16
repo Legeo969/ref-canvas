@@ -36,9 +36,8 @@ import {
   downscaleImage,
   planDownscale,
 } from "../services/media/downscale";
-import { FOUND_SETTINGS_DEFAULTS } from "../../shared/contracts";
-import type { FoundSettings } from "../../shared/contracts";
-import { mergeFoundSettings } from "./found-settings";
+import { PREVIEW_SETTINGS_DEFAULTS } from "../../shared/contracts";
+import { readPreviewSettings } from "./preview-settings";
 import { idSchema, pathSchema } from "./schemas";
 import { extractDominantPalette } from "../../shared/color-palette";
 import { previewCacheKey } from "../platform/preview-cache-key";
@@ -191,14 +190,7 @@ export function registerResourcesIpc(
     if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
     // 阶段 5 §10.3：当前 LUT 进入 cache key（路径+mtime+size），
     // LUT 变化自动失效；activeLut 存在时缩略图叠加 lut3d。
-    const found = database().getSetting<Partial<FoundSettings>>(
-      "foundSettings",
-      {},
-    );
-    const settings: FoundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
-      ...found,
-    };
+    const settings = readPreviewSettings(database());
     let lutSignature = "nolut";
     let lutPath: string | null = null;
     if (settings.activeLut) {
@@ -605,14 +597,7 @@ export function registerResourcesIpc(
       dependencies.windowForSender(event), "export", [{ path: candidate, mode: "destination" }],
     );
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
-      const found = database().getSetting<Partial<FoundSettings>>(
-        "foundSettings",
-        {},
-      );
-      const settings: FoundSettings = mergeFoundSettings(
-        FOUND_SETTINGS_DEFAULTS,
-        found,
-      );
+      const settings = readPreviewSettings(database());
       const preset =
         settings.mp4Presets.find(
           (item) => item.id === parsed.presetId && item.enabled,
@@ -700,14 +685,7 @@ export function registerResourcesIpc(
         .parse(options) ?? {};
     // 阶段 5：序列规则（sequenceRules pattern + sequenceMinFrames 过滤）
     // 进入检测任务参数；调用方显式传 customPatterns 时优先。
-    const found = database().getSetting<Partial<FoundSettings>>(
-      "foundSettings",
-      {},
-    );
-    const settings: FoundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
-      ...found,
-    };
+    const settings = readPreviewSettings(database());
     const customPatterns =
       parsed.customPatterns ?? settings.sequenceRules.map((rule) => rule.pattern);
     const groups = await detectSequencesInDirectory(resolved, {
@@ -715,7 +693,7 @@ export function registerResourcesIpc(
     });
     const minFrames = Math.max(
       1,
-      settings.sequenceMinFrames || FOUND_SETTINGS_DEFAULTS.sequenceMinFrames,
+      settings.sequenceMinFrames || PREVIEW_SETTINGS_DEFAULTS.sequenceMinFrames,
     );
     return groups
       .filter((group) => group.files.length >= minFrames)
@@ -756,14 +734,7 @@ export function registerResourcesIpc(
       dependencies.windowForSender(event), "export", [{ path: candidate, mode: "destination" }],
     );
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
-      const found = database().getSetting<Partial<FoundSettings>>(
-        "foundSettings",
-        {},
-      );
-      const settings: FoundSettings = mergeFoundSettings(
-        FOUND_SETTINGS_DEFAULTS,
-        found,
-      );
+      const settings = readPreviewSettings(database());
       const preset =
         settings.mp4Presets.find(
           (item) => item.id === parsed.presetId && item.enabled,
@@ -844,14 +815,7 @@ export function registerResourcesIpc(
   // --- color:get-status（阶段 5 §10.3 色彩管理）---
 
   ipc.handle("color:get-status", async () => {
-    const found = database().getSetting<Partial<FoundSettings>>(
-      "foundSettings",
-      {},
-    );
-    const settings: FoundSettings = {
-      ...FOUND_SETTINGS_DEFAULTS,
-      ...found,
-    };
+    const settings = readPreviewSettings(database());
     const detected = process.env.OCIO ?? null;
     let activeLutExists = false;
     if (settings.activeLut) {
@@ -883,8 +847,7 @@ export function registerResourcesIpc(
       })
       .parse(request);
     const sourcePaths = parsed.paths.map(assertAbsoluteLocalPath);
-    const found = database().getSetting<Partial<FoundSettings>>("foundSettings", {});
-    const settings: FoundSettings = { ...FOUND_SETTINGS_DEFAULTS, ...found };
+    const settings = readPreviewSettings(database());
     const planned = sourcePaths.map((sourcePath) =>
         planDownscale(sourcePath, {
           maxDimension: parsed.maxDimension,

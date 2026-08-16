@@ -41,7 +41,7 @@ import {
 import { workspaceStatusHint } from "./workspace-status";
 import { parseBoardWindowParams } from "./board-window";
 import { parsePreviewWindowParams } from "./preview-window";
-import { useFoundSettings } from "./found-settings";
+import { usePreviewSettings } from "./preview-settings";
 import { translate, useAppLanguage } from "./i18n";
 import { ActionsPanel } from "../components/ActionsPanel";
 import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
@@ -97,7 +97,7 @@ function WorkspaceApp() {
     }) => state),
   );
   const dialog = useDialog();
-  const uiScale = useFoundSettings().uiScale;
+  const uiScale = usePreviewSettings().uiScale;
   const [boardInteractionPreset, setBoardInteractionPreset] = useState<
     BoardSettings["interactionPreset"]
   >("pureref");
@@ -130,7 +130,7 @@ function WorkspaceApp() {
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<"general" | "found">("general");
+  const [settingsTab, setSettingsTab] = useState<"general" | "preview">("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [panelLayout, setPanelLayout] = useState(PANEL_DEFAULTS);
   const [presentationMode, setPresentationModeState] = useState(false);
@@ -201,8 +201,8 @@ function WorkspaceApp() {
   useEffect(() => {
     const openDuplicates = () => setDuplicatesOpen(true);
     const openSettings = (event: Event) => {
-      const detail = (event as CustomEvent<"general" | "found">).detail;
-      setSettingsTab(detail === "found" ? "found" : "general");
+      const detail = (event as CustomEvent<"general" | "preview">).detail;
+      setSettingsTab(detail === "preview" ? "preview" : "general");
       setMaintenanceOpen(true);
     };
     window.addEventListener("refcanvas:duplicates", openDuplicates);
@@ -690,7 +690,7 @@ function WorkspaceApp() {
           <button
             className="icon-button"
             onClick={() => {
-              setSettingsTab("found");
+              setSettingsTab("preview");
               setMaintenanceOpen(true);
             }}
             aria-label={translate("titlebar.professionalSettings")}

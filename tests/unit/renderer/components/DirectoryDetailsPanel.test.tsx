@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  FOUND_SETTINGS_DEFAULTS,
+  PREVIEW_SETTINGS_DEFAULTS,
   type AssetRecord,
   type DirectoryEntry,
   type RefCanvasApi,
@@ -72,7 +72,7 @@ describe("DirectoryDetailsPanel workbench", () => {
         },
         filesystem: { open: vi.fn(), reveal: vi.fn() },
         system: {
-          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
           writeClipboard,
         },
       } as unknown as RefCanvasApi,
@@ -140,7 +140,7 @@ describe("DirectoryDetailsPanel workbench", () => {
           onChanged: vi.fn(() => () => undefined),
         },
         system: {
-          getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })),
+          getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })),
           writeClipboard: vi.fn(async () => undefined),
         },
       } as unknown as RefCanvasApi,

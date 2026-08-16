@@ -1,5 +1,5 @@
 /**
- * AI Provider 抽象（found-clone.md §9）。
+ * AI Provider 抽象（§9）。
  *
  * Main 侧统一接口：health / start / cancel / recover。任务协调器负责状态机、
  * 持久化、超时、重试与输出落盘；Provider 只负责自身协议。
