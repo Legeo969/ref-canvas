@@ -33,6 +33,9 @@ export function classifyFoundPreview(
   const extension = (asset.extension || entry.extension).toLowerCase();
   if (extension === "svg") return "svg";
   if (extension === "gif" || extension === "apng") return "gif";
+  // PSD/PSB 由 image-provider 生成扁平化 PNG 预览（thumbnailUrl），
+  // 按图片审阅展示：Fit/取色/色板/图层工具栏，而不是 DCC 降级壳。
+  if (extension === "psd" || extension === "psb") return "image";
   switch (asset.kind) {
     case "video": return "video";
     case "audio": return "audio";

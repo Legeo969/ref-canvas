@@ -168,6 +168,26 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
     case "font":
       return <FontPreview asset={asset} />;
     case "dcc":
+      // PSD/PSB 由 image-provider 生成扁平化 PNG 预览（thumbnailUrl），
+      // 按图片审阅展示：contain 适配、缩放/旋转、取色、色板、图层入口，
+      // 而不是「缩略图贴顶 + 无工具栏」的降级壳。
+      if (asset.extension.toLowerCase() === "psd" || asset.extension.toLowerCase() === "psb") {
+        return (
+          <ImageReviewPreview
+            asset={{
+              ...asset,
+              previewUrl: `${asset.thumbnailUrl}?priority=preview`,
+            }}
+            onPaletteChange={onPaletteChange}
+            managed={managed}
+            controlsTarget={controlsTarget}
+            sharedColorControls={sharedColorControls}
+            eyedropActive={eyedropActive}
+            onEyedropActiveChange={onEyedropActiveChange}
+            onColorSample={onColorSample}
+          />
+        );
+      }
       return (
         <MediaNotesOverlay asset={asset}>
           <div className="preview-unavailable">

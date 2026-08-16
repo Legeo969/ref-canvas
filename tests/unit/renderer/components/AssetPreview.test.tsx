@@ -89,4 +89,20 @@ describe("AssetPreview lightweight mode", () => {
       );
     },
   );
+
+  it("renders PSD/PSB as an image review from the flattened provider preview", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<AssetPreview asset={asset("dcc", "psd")} />);
+    });
+
+    expect(host.querySelector(".image-review")).toBeTruthy();
+    expect(host.querySelector(".image-review-img")?.getAttribute("src")).toBe(
+      "refasset://thumbnail/dcc-1?priority=preview",
+    );
+    expect(host.querySelector(".preview-unavailable")).toBeNull();
+  });
 });

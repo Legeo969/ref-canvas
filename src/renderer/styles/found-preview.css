@@ -1551,6 +1551,20 @@ button.found-color-palette-status {
   background: var(--found-canvas);
 }
 
+/* 降级壳（无本地解码的 DCC/RAW/Office 等）：缩略图垂直居中、
+   contain 适配视口，不再贴顶以自然尺寸溢出或留下大片空白。 */
+.found-preview-panel .preview-unavailable {
+  justify-content: center;
+  gap: 8px;
+}
+
+.found-preview-panel .preview-unavailable img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
 .found-preview-panel .pdf-preview {
   width: min(92%, 860px);
   height: calc(100% - 32px);

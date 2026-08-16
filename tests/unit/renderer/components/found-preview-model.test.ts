@@ -33,6 +33,11 @@ describe("classifyFoundPreview", () => {
     expect(classifyFoundPreview(entry("pdf"), { kind: "pdf", extension: "pdf" })).toBe("pdf");
     expect(classifyFoundPreview(entry("obj"), { kind: "model3d", extension: "obj" })).toBe("model3d");
   });
+
+  it("classifies PSD/PSB as image previews via their flattened provider preview", () => {
+    expect(classifyFoundPreview(entry("psd"), { kind: "dcc", extension: "psd" })).toBe("image");
+    expect(classifyFoundPreview(entry("psb"), { kind: "dcc", extension: "psb" })).toBe("image");
+  });
 });
 
 describe("Found toolbar model", () => {
