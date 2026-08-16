@@ -1,4 +1,4 @@
-import { Film, Images, Pause, Play, Repeat2, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { Film, Images, Pause, Play, Repeat2, SkipBack, SkipForward, Sparkles, Volume2, VolumeX } from "lucide-react";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
@@ -90,6 +90,21 @@ export function VideoPreview({
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
   const [playbackRate, setPlaybackRate] = useState(1);
+  // 至臻画质（仅视频；序列不参与）：4K 上采样 + 60fps 补帧代理。
+  // 开启后主进程生成代理，轮询到 ready 才把 <video> 源切到代理 URL，
+  // 并恢复切换前的播放位置/状态；失败则留在原源并提示。
+  const [supremeOn, setSupremeOn] = useState(false);
+  const [supremeState, setSupremeState] = useState<"off" | "generating" | "ready" | "failed">("off");
+  const [supremeProgress, setSupremeProgress] = useState<number | null>(null);
+  const [supremeSource, setSupremeSource] = useState<string | null>(null);
+  const supremeOnRef = useRef(false);
+  const supremeSourceRef = useRef<string | null>(null);
+  const supremePollRef = useRef<number | null>(null);
+  /** 素材/开关切换的世代号：作废在途轮询与异步结果。 */
+  const supremeEpochRef = useRef(0);
+  /** 至臻源切换后待恢复的播放位置/状态（video src 变化会重置元素）。 */
+  const pendingSeekRef = useRef<number | null>(null);
+  const pendingPlayRef = useRef(false);
   const [paletteTimeMs, setPaletteTimeMs] = useState(0);
   const [samplePoint, setSamplePoint] = useState<{ x: number; y: number; color: string } | null>(null);
   const sampleReticleTimerRef = useRef<number | null>(null);
@@ -167,6 +182,12 @@ export function VideoPreview({
   useEffect(() => () => {
     if (paletteTimerRef.current !== null) window.clearTimeout(paletteTimerRef.current);
     if (sampleReticleTimerRef.current !== null) window.clearTimeout(sampleReticleTimerRef.current);
+    // 卸载：停止至臻轮询，作废在途状态查询。
+    supremeEpochRef.current += 1;
+    if (supremePollRef.current !== null) {
+      window.clearInterval(supremePollRef.current);
+      supremePollRef.current = null;
+    }
   }, []);
 
   // 挂载后按偏好触发播放（浏览器 autoplay 策略下静音不可行时忽略）。
@@ -178,6 +199,20 @@ export function VideoPreview({
   }, [foundSettings.autoplayVideo]);
 
   useEffect(() => {
+    // 素材切换：停止至臻轮询并复位（新素材重新判定/生成）。
+    supremeEpochRef.current += 1;
+    if (supremePollRef.current !== null) {
+      window.clearInterval(supremePollRef.current);
+      supremePollRef.current = null;
+    }
+    supremeOnRef.current = false;
+    supremeSourceRef.current = null;
+    pendingSeekRef.current = null;
+    pendingPlayRef.current = false;
+    setSupremeOn(false);
+    setSupremeState("off");
+    setSupremeProgress(null);
+    setSupremeSource(null);
     let cancelled = false;
     setFrameRate(null);
     setFrameSource(null);
@@ -331,6 +366,97 @@ export function VideoPreview({
   };
   const togglePlaybackRef = useRef(togglePlayback);
   togglePlaybackRef.current = togglePlayback;
+  // ---- 至臻画质：轮询代理生成状态，就绪后切换 <video> 源 ----
+  // 首次 status() 调用即由主进程启动生成（不等待）；轮询期间原源继续
+  // 播放。就绪瞬间才记录待恢复的播放位置/状态，保证切源无感。
+  const tickSupreme = async () => {
+    const epoch = supremeEpochRef.current;
+    try {
+      const status = await window.refCanvas.media.supremeVideoStatus(assetPathRef.current);
+      if (epoch !== supremeEpochRef.current || !supremeOnRef.current) return;
+      if (status.state === "generating") {
+        setSupremeState("generating");
+        setSupremeProgress(status.progress);
+        return;
+      }
+      if (status.state === "ready") {
+        if (supremePollRef.current !== null) {
+          window.clearInterval(supremePollRef.current);
+          supremePollRef.current = null;
+        }
+        if (status.needsEnhancement && status.source) {
+          // 切源前记录当前播放位置/状态，切源后恢复。
+          const video = videoRef.current;
+          pendingSeekRef.current = video ? video.currentTime : 0;
+          pendingPlayRef.current = video ? !video.paused : false;
+          supremeSourceRef.current = status.source;
+          setSupremeSource(status.source);
+        } else {
+          // 源视频已是超高画质（≥3840 宽且 ≥60fps）：无需代理，保持原源。
+          supremeSourceRef.current = null;
+          setSupremeSource(null);
+        }
+        setSupremeState("ready");
+        return;
+      }
+      // failed
+      if (supremePollRef.current !== null) {
+        window.clearInterval(supremePollRef.current);
+        supremePollRef.current = null;
+      }
+      setSupremeState("failed");
+    } catch {
+      if (epoch === supremeEpochRef.current && supremeOnRef.current) {
+        if (supremePollRef.current !== null) {
+          window.clearInterval(supremePollRef.current);
+          supremePollRef.current = null;
+        }
+        setSupremeState("failed");
+      }
+    }
+  };
+  const tickSupremeRef = useRef(tickSupreme);
+  tickSupremeRef.current = tickSupreme;
+
+  const startSupremePolling = () => {
+    if (supremePollRef.current !== null) window.clearInterval(supremePollRef.current);
+    void tickSupremeRef.current();
+    supremePollRef.current = window.setInterval(() => {
+      void tickSupremeRef.current();
+    }, 700);
+  };
+
+  const toggleSupreme = () => {
+    const turningOn = !supremeOnRef.current;
+    supremeOnRef.current = turningOn;
+    setSupremeOn(turningOn);
+    if (turningOn) {
+      setSupremeState("generating");
+      setSupremeProgress(null);
+      setSupremeSource(null);
+      supremeSourceRef.current = null;
+      supremeEpochRef.current += 1;
+      startSupremePolling();
+    } else {
+      supremeEpochRef.current += 1;
+      if (supremePollRef.current !== null) {
+        window.clearInterval(supremePollRef.current);
+        supremePollRef.current = null;
+      }
+      // 取消生成/清失败标记（下次开启可重试）。
+      void window.refCanvas.media.supremeVideoCancel(assetPathRef.current).catch(() => undefined);
+      if (supremeSourceRef.current) {
+        // 当前正播代理：切回原源前记录播放位置/状态。
+        const video = videoRef.current;
+        pendingSeekRef.current = video ? video.currentTime : 0;
+        pendingPlayRef.current = video ? !video.paused : false;
+        supremeSourceRef.current = null;
+        setSupremeSource(null);
+      }
+      setSupremeState("off");
+      setSupremeProgress(null);
+    }
+  };
   // ←/→ 逐帧：短按 = 精确单帧；长按 = 加速扫览（计时器驱动，忽略
   // 浏览器按键自动重复）。按键按焦点归属路由：事件目标在本预览根内
   // （点击画面后），或位于 Found 预览面板（点击工具栏后方向键仍归
@@ -464,7 +590,7 @@ export function VideoPreview({
         <video
           ref={videoRef}
           crossOrigin="anonymous"
-          src={asset.previewUrl}
+          src={supremeOn && supremeState === "ready" && supremeSource ? supremeSource : asset.previewUrl}
           onClick={(event) => {
             // 取色激活时点击 = 采样像素；否则点击画面 = 播放/暂停。
             if (eyedropActive) {
@@ -500,9 +626,46 @@ export function VideoPreview({
             lastFrameTimeRef.current = event.currentTarget.currentTime;
             setTimecode(event.currentTarget.currentTime);
             if (onOpenTool) schedulePalette(event.currentTarget.currentTime, true);
+            // 至臻切源后 video 元素被重置：恢复切换前的播放位置与状态。
+            const pendingSeek = pendingSeekRef.current;
+            if (pendingSeek != null) {
+              pendingSeekRef.current = null;
+              const target = Math.min(
+                pendingSeek,
+                Number.isFinite(event.currentTarget.duration)
+                  ? event.currentTarget.duration
+                  : pendingSeek,
+              );
+              event.currentTarget.currentTime = target;
+              lastFrameTimeRef.current = target;
+              setTimecode(target);
+              onTimeChange?.(target);
+            }
+            if (pendingPlayRef.current) {
+              pendingPlayRef.current = false;
+              void event.currentTarget.play().catch(() => undefined);
+            }
           }}
           onSeeked={(event) => {
             if (onOpenTool) schedulePalette(event.currentTarget.currentTime, true);
+          }}
+          onError={() => {
+            // 至臻代理源失效（缓存被清等）→ 自动回退原源，不黑屏。
+            if (supremeOnRef.current && supremeSourceRef.current) {
+              supremeEpochRef.current += 1;
+              if (supremePollRef.current !== null) {
+                window.clearInterval(supremePollRef.current);
+                supremePollRef.current = null;
+              }
+              supremeOnRef.current = false;
+              supremeSourceRef.current = null;
+              pendingSeekRef.current = null;
+              pendingPlayRef.current = false;
+              setSupremeOn(false);
+              setSupremeState("off");
+              setSupremeProgress(null);
+              setSupremeSource(null);
+            }
           }}
         >
           <track kind="captions" />
@@ -540,6 +703,21 @@ export function VideoPreview({
         )}
         {failed && (
           <span className="video-frame-error">{translate("video.frameError")}</span>
+        )}
+        {supremeOn && supremeState === "generating" && (
+          <span className="video-supreme-chip" role="status">
+            {translate("video.supremeGenerating").replace(
+              "{progress}",
+              supremeProgress == null
+                ? "…"
+                : `${Math.round(supremeProgress * 100)}%`,
+            )}
+          </span>
+        )}
+        {supremeOn && supremeState === "failed" && (
+          <span className="video-supreme-chip is-error" role="alert">
+            {translate("video.supremeFailed")}
+          </span>
         )}
         {onOpenTool && (
           <input
@@ -611,6 +789,16 @@ export function VideoPreview({
           )}
           {onOpenTool && <button className={looping ? "active" : ""} aria-label="循环播放" title="循环播放" onClick={() => setLooping((value) => !value)}><Repeat2 size={15} /></button>}
           {onOpenTool && <button aria-label={muted ? "取消静音" : "静音"} title={muted ? "取消静音" : "静音"} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>}
+          <button
+            type="button"
+            className={`video-supreme-button${supremeOn ? " active" : ""}`}
+            aria-label={translate("video.supreme")}
+            title={translate("video.supremeTitle")}
+            onClick={toggleSupreme}
+          >
+            <Sparkles size={14} />
+            至臻
+          </button>
           <button
             type="button"
             className="video-gif-button"

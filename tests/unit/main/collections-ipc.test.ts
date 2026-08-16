@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -100,12 +100,17 @@ describe("collections IPC (FND-003)", () => {
       const collection = (await invoke("collections:create", {
         name: "素材",
       })) as { id: string };
-      const items = (await invoke("collections:add-paths", {
+      const result = (await invoke("collections:add-paths", {
         collectionId: collection.id,
         paths: [source],
-      })) as Array<{ id: string; state: string }>;
-      expect(items).toHaveLength(1);
-      expect(items[0].state).toBe("resolved");
+      })) as {
+        added: Array<{ id: string; state: string }>;
+        skipped: { directories: string[]; missing: string[] };
+      };
+      expect(result.added).toHaveLength(1);
+      expect(result.added[0].state).toBe("resolved");
+      expect(result.skipped.directories).toHaveLength(0);
+      expect(result.skipped.missing).toHaveLength(0);
       expect(notifyCollectionsChanged).toHaveBeenCalledTimes(2);
 
       const resolved = (await invoke("collections:resolve", collection.id)) as Array<{
@@ -128,6 +133,30 @@ describe("collections IPC (FND-003)", () => {
     }
   });
 
+  it("reports directories and missing paths in skipped instead of silently dropping them", async () => {
+    const { database, directory, invoke } = await setup();
+    try {
+      const folder = path.join(directory, "assets");
+      await mkdir(folder, { recursive: true });
+      const missing = path.join(directory, "gone.png");
+      const collection = (await invoke("collections:create", {
+        name: "跳过",
+      })) as { id: string };
+      const result = (await invoke("collections:add-paths", {
+        collectionId: collection.id,
+        paths: [folder, missing],
+      })) as {
+        added: unknown[];
+        skipped: { directories: string[]; missing: string[] };
+      };
+      expect(result.added).toHaveLength(0);
+      expect(result.skipped.directories).toEqual([path.resolve(folder)]);
+      expect(result.skipped.missing).toEqual([path.resolve(missing)]);
+    } finally {
+      database.close();
+    }
+  });
+
   it("relink requires fingerprint confirmation through IPC", async () => {
     const { database, directory, invoke, notifyCollectionsChanged } = await setup();
     try {
@@ -136,22 +165,25 @@ describe("collections IPC (FND-003)", () => {
       const collection = (await invoke("collections:create", {
         name: "素材",
       })) as { id: string };
-      const items = (await invoke("collections:add-paths", {
+      const result = (await invoke("collections:add-paths", {
         collectionId: collection.id,
         paths: [source],
-      })) as Array<{ id: string }>;
+      })) as {
+        added: Array<{ id: string }>;
+        skipped: { directories: string[]; missing: string[] };
+      };
       const different = path.join(directory, "b.png");
       await writeFile(different, Buffer.alloc(128, 9));
       await expect(
         invoke("collections:relink", {
-          itemId: items[0].id,
+          itemId: result.added[0].id,
           path: different,
           confirmFingerprintChange: false,
         }),
       ).rejects.toThrow("RELINE_FINGERPRINT_CHANGED");
       expect(notifyCollectionsChanged).toHaveBeenCalledTimes(2);
       const relinked = (await invoke("collections:relink", {
-        itemId: items[0].id,
+        itemId: result.added[0].id,
         path: different,
         confirmFingerprintChange: true,
       })) as { lastResolvedPath: string };

@@ -9,11 +9,22 @@ interface WorkerReply {
   error?: string;
 }
 
+/**
+ * 单次 convert 的硬超时：sharp worker 无自己的超时，一旦 libvips 卡死
+ * （损坏文件、网络盘、线程挂起），convert 的 promise 永远不 settle，预览
+ * 队列的一个并发槽被永久占住；槽全占时整个队列死锁，所有缩略图永远
+ * 「正在生成预览」（与 provider worker 的 120s deadline 对齐）。
+ * 超时即释放槽位并杀掉卡死的 worker，下次 convert 重新拉起。
+ */
+const THUMBNAIL_WORKER_TIMEOUT_MS = 120_000;
+export { THUMBNAIL_WORKER_TIMEOUT_MS };
+
 interface PendingRequest {
   outputPath: string;
   finalPath: string;
   resolve(value: Buffer): void;
   reject(error: unknown): void;
+  timer: NodeJS.Timeout | null;
 }
 
 export class ThumbnailWorkerClient {
@@ -44,20 +55,37 @@ export class ThumbnailWorkerClient {
     const id = randomUUID();
     const outputPath = `${finalPath}.${id}.tmp.png`;
     const child = this.ensureChild();
+    let timer: NodeJS.Timeout | null = null;
     const promise = new Promise<Buffer>((resolve, reject) => {
-      this.pending.set(id, { outputPath, finalPath, resolve, reject });
+      this.pending.set(id, { outputPath, finalPath, resolve, reject, timer: null });
     });
-    signal?.addEventListener(
-      "abort",
-      () => {
-        const pending = this.pending.get(id);
-        if (!pending) return;
-        this.pending.delete(id);
-        void rm(outputPath, { force: true });
-        pending.reject(new Error("THUMBNAIL_WORKER_ABORTED"));
-      },
-      { once: true },
-    );
+    const settle = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+    };
+    const onAbort = () => {
+      const pending = this.pending.get(id);
+      if (!pending) return;
+      this.pending.delete(id);
+      settle();
+      void rm(outputPath, { force: true });
+      pending.reject(new Error("THUMBNAIL_WORKER_ABORTED"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => {
+      const pending = this.pending.get(id);
+      if (!pending) return;
+      this.pending.delete(id);
+      // worker 单任务串行：超时视为 worker 卡死，杀掉由下次 convert 重新拉起。
+      if (this.child) {
+        this.child.kill();
+        this.child = null;
+      }
+      void rm(outputPath, { force: true });
+      pending.reject(new Error("THUMBNAIL_WORKER_TIMEOUT"));
+    }, THUMBNAIL_WORKER_TIMEOUT_MS);
+    const entry = this.pending.get(id);
+    if (entry) entry.timer = timer;
     child.postMessage({
       id,
       type: "convert",
@@ -66,7 +94,7 @@ export class ThumbnailWorkerClient {
       width: size.width,
       height: size.height,
     });
-    return promise;
+    return promise.finally(settle);
   }
 
   close(): void {
@@ -120,6 +148,7 @@ export class ThumbnailWorkerClient {
   private async handleMessage(message: WorkerReply): Promise<void> {
     const pending = this.pending.get(message.id);
     if (!pending) return;
+    if (pending.timer !== null) clearTimeout(pending.timer);
     this.pending.delete(message.id);
     if (!message.ok) {
       await rm(pending.outputPath, { force: true });
@@ -137,6 +166,7 @@ export class ThumbnailWorkerClient {
 
   private rejectPending(error: Error): void {
     for (const pending of this.pending.values()) {
+      if (pending.timer !== null) clearTimeout(pending.timer);
       void rm(pending.outputPath, { force: true });
       pending.reject(error);
     }

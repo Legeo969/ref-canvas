@@ -5,14 +5,14 @@ import {
 } from "../../../src/shared/asset-kind";
 
 describe("assetKindForExtension", () => {
-  it.each(["glb", "gltf", "fbx", "obj", "stl"])(
+  it.each(["glb", "gltf", "fbx", "obj", "stl", "abc"])(
     "classifies %s as a model",
     (extension) => {
       expect(assetKindForExtension(extension)).toBe("model3d");
     },
   );
 
-  it.each(["psd", "psb", "abc", "blend", "ma", "mb", "max", "c4d"])(
+  it.each(["psd", "psb", "blend", "blend1", "ma", "mb", "max", "c4d", "hip", "hipnc"])(
     "routes %s through DCC preview support",
     (extension) => {
       expect(assetKindForExtension(extension)).toBe("dcc");

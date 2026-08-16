@@ -174,6 +174,70 @@ export async function writeExrFixture(
   return target;
 }
 
+/**
+ * 生成只有 EXR 头的文件（无像素数据），dataWindow 指定任意宽高。
+ * probe/metadata 只读文件头，因此该 fixture 可用于验证宽图（如 2:1
+ * equirectangular）的尺寸探测；不解码像素。
+ */
+export async function writeExrHeaderOnlyFixture(
+  directory: string,
+  filename: string,
+  width: number,
+  height: number,
+): Promise<string> {
+  await mkdir(directory, { recursive: true });
+  const target = fixtureTarget(directory, filename);
+
+  const channelList = (name: string): Buffer => {
+    const nameBytes = Buffer.from(`${name}\0`, "utf8");
+    const block = Buffer.alloc(nameBytes.length + 16);
+    nameBytes.copy(block, 0);
+    block.writeInt32LE(1, nameBytes.length); // half
+    block[nameBytes.length + 4] = 0; // pLinear
+    block.writeInt32LE(1, nameBytes.length + 8); // xSampling
+    block.writeInt32LE(1, nameBytes.length + 12); // ySampling
+    return block;
+  };
+  const channelBlock = Buffer.concat([
+    ...["R", "G", "B"].map(channelList),
+    Buffer.from([0]), // channels 结束
+  ]);
+
+  const attribute = (name: string, type: string, value: Buffer): Buffer =>
+    Buffer.concat([
+      Buffer.from(`${name}\0`, "utf8"),
+      Buffer.from(`${type}\0`, "utf8"),
+      (() => {
+        const size = Buffer.alloc(4);
+        size.writeInt32LE(value.length, 0);
+        return size;
+      })(),
+      value,
+    ]);
+
+  const box2i = (xMin: number, yMin: number, xMax: number, yMax: number): Buffer => {
+    const box = Buffer.alloc(16);
+    box.writeInt32LE(xMin, 0);
+    box.writeInt32LE(yMin, 4);
+    box.writeInt32LE(xMax, 8);
+    box.writeInt32LE(yMax, 12);
+    return box;
+  };
+
+  const header = Buffer.concat([
+    Buffer.from([0x76, 0x2f, 0x31, 0x01]), // magic
+    Buffer.from([0x02, 0x00, 0x00, 0x00]), // version 2
+    attribute("channels", "chlist", channelBlock),
+    attribute("compression", "compression", Buffer.from([0])), // NONE
+    attribute("dataWindow", "box2i", box2i(0, 0, width - 1, height - 1)),
+    attribute("displayWindow", "box2i", box2i(0, 0, width - 1, height - 1)),
+    Buffer.from([0]), // 空 attribute = header 结束
+  ]);
+
+  await writeFile(target, header);
+  return target;
+}
+
 /** 生成 2×2 Radiance HDR（flat 编码，全图 RGBE(0.5, 0.5, 0.5, 129)）。 */
 export async function writeHdrFixture(
   directory: string,

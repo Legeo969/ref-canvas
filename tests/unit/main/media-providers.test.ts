@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import {
   writeExrFixture,
+  writeExrHeaderOnlyFixture,
   writeGlbFixture,
   writeGltfFixture,
   writeHdrFixture,
@@ -84,6 +85,23 @@ describe("stage 3 media providers", () => {
     expect(probe.width).toBe(2);
     expect(probe.height).toBe(2);
     expect(probe.extra.channels).toHaveLength(3);
+  });
+
+  it("probes a wide 2:1 EXR header for panorama eligibility", async () => {
+    const directory = await tempDirectory("refcanvas-exr-pano-");
+    const filename = await writeExrHeaderOnlyFixture(directory, "panorama.exr", 4, 2);
+    const provider = new HdrProvider();
+    const probe = await provider.probe({
+      path: filename,
+      kind: "image",
+      extension: "exr",
+      size: 0,
+    });
+    // 宽高比来自 dataWindow（probe 只读头、不解码像素）：2:1 才能通过
+    // Found 预览面板的全景资格判定。
+    expect(probe.width).toBe(4);
+    expect(probe.height).toBe(2);
+    expect(probe.width! / probe.height!).toBe(2);
   });
 
   it("selects the Unreal beauty layer instead of auxiliary render passes", async () => {

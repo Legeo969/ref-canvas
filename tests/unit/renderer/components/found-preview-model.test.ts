@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DirectoryEntry } from "../../../../src/shared/contracts";
 import {
   classifyFoundPreview,
+  environmentPreviewCapabilities,
   formatFoundTimecode,
   foundToolbarCapabilities,
   foundToolbarProgressColor,
@@ -64,5 +65,24 @@ describe("formatFoundTimecode", () => {
 
   it("adds a frame field when an FPS is supplied", () => {
     expect(formatFoundTimecode(1.5, 24)).toBe("00:00:01:12");
+  });
+});
+
+describe("environmentPreviewCapabilities", () => {
+  it("allows panorama and reflection for standard 2:1 equirectangular EXR", () => {
+    expect(environmentPreviewCapabilities(12288, 6144)).toEqual({ panorama: true, reflection: true });
+    expect(environmentPreviewCapabilities(10000, 5000)).toEqual({ panorama: true, reflection: true });
+    expect(environmentPreviewCapabilities(2048, 1024)).toEqual({ panorama: true, reflection: true });
+  });
+
+  it("allows reflection but not panorama for 1:1 HDR environment maps", () => {
+    // 柔光箱等 1:1 环境贴图：PMREM 反射球可用，equirectangular 全景不适用。
+    expect(environmentPreviewCapabilities(2048, 2048)).toEqual({ panorama: false, reflection: true });
+  });
+
+  it("returns null when the probe yields no usable dimensions", () => {
+    expect(environmentPreviewCapabilities(null, null)).toBeNull();
+    expect(environmentPreviewCapabilities(0, 0)).toBeNull();
+    expect(environmentPreviewCapabilities(undefined, undefined)).toBeNull();
   });
 });

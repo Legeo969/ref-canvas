@@ -2,9 +2,41 @@
 
 /* --- 侧栏集合树 --- */
 
+/* 作为 SplitPanes 第三面板：flex 列 + 吸收剩余高度。 */
 .collections-section {
-  display: grid;
+  display: flex;
   min-width: 0;
+  min-height: 100px;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+/* 「默认」tab：图标 + 加粗标题 + 主题色下划线（规格白色下划线 → 主题色）。 */
+.collections-tab {
+  position: relative;
+  display: inline-flex;
+  align-self: stretch;
+  align-items: center;
+  gap: 5px;
+  color: #aeb6b2;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.collections-tab svg {
+  color: #7f8984;
+}
+
+.collections-tab::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
 }
 
 .collection-tree {
@@ -38,9 +70,17 @@
 }
 
 .collection-row.active {
-  background: var(--accent-soft);
-  color: #8cdec5;
-  box-shadow: inset 2px 0 var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.collection-row.active .nav-count {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.collection-row.active .collection-node-add {
+  color: #ffffff;
 }
 
 .collection-row-main {
@@ -93,7 +133,7 @@
 .collection-node-add:active { scale: 0.96; }
 
 .collections-section-hint {
-  margin: -1px 16px 7px;
+  margin: 0 16px 7px;
   color: #69736f;
   font-size: 10px;
   line-height: 1.45;
@@ -337,6 +377,11 @@
 .collection-item-card:hover {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.collection-item-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .collection-item-card .asset-preview {

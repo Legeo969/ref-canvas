@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   bgraToRgba,
+  hasEmbeddedPreviewSupport,
   isZstdCompressedBlend,
   readBlendEmbeddedPreview,
 } from "../../../src/main/services/media/blend-preview";
@@ -82,5 +83,15 @@ describe("blend-preview", () => {
     await expect(isZstdCompressedBlend(filename)).resolves.toBe(true);
     const plain = await writeScratch("plain.blend", buildFakeBlend(16, 16));
     await expect(isZstdCompressedBlend(plain)).resolves.toBe(false);
+  });
+
+  it("hasEmbeddedPreviewSupport 仅覆盖 .blend（.blend1 不再读内嵌预览）", () => {
+    expect(hasEmbeddedPreviewSupport("scene.blend")).toBe(true);
+    expect(hasEmbeddedPreviewSupport("blend")).toBe(true);
+    expect(hasEmbeddedPreviewSupport("scene.blend1")).toBe(false);
+    expect(hasEmbeddedPreviewSupport(".blend1")).toBe(false);
+    expect(hasEmbeddedPreviewSupport(".BLEND1")).toBe(false);
+    expect(hasEmbeddedPreviewSupport("scene.abc")).toBe(false);
+    expect(hasEmbeddedPreviewSupport("scene.max")).toBe(false);
   });
 });

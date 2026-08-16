@@ -200,17 +200,33 @@ function defaultLayerCandidate(
   return candidates.find((candidate) => candidate.layer === layer) ?? null;
 }
 
-function canUseSimpleExrsFallback(
+/**
+ * WASM 兜底解码是否可用（像素 × 通道预算）。
+ *
+ * 预算只计显示层实际需要解码的通道数，而不是文件头里的全部通道：
+ * decodeExrThumbnail 的快速路径（顶层 Beauty，无显式 channel）只解码
+ * RGB(A) 3-4 个通道；Unreal 多层 EXR 头里常有 20-30+ 通道（4K 下全通道
+ * 像素量轻松超过 64M 预算），但缩略图只显示顶层 RGB(A)。按全通道计数会让
+ * 「OIIO 侧车缺失/被跳过」的可解码文件硬失败（EXR_DECODE_FAILED），
+ * 缩略图因此缺失；按实际通道预算则可走 WASM 兜底正常出图。
+ * 非顶层 layer/显式 channel 选择仍走 decodeExr 全通道解码，预算保持全通道，
+ * 以限制 WASM 峰值内存。
+ */
+export function canUseSimpleExrsFallback(
   header: ExrHeaderInfo,
-  selection: Pick<ResolvedExrSelection, "subimage" | "subimageCount">,
+  selection: Pick<ResolvedExrSelection, "subimage" | "subimageCount" | "layer" | "component">,
 ): boolean {
   const pixels = (header.width ?? 0) * (header.height ?? 0);
+  const isMainLayerFastPath = selection.layer?.name === "" && !selection.component;
+  const channelBudget = isMainLayerFastPath
+    ? Math.max(1, selection.layer?.components.length ?? 3)
+    : header.channels.length;
   return selection.subimage === 0 &&
     selection.subimageCount === 1 &&
     !header.tiles &&
     pixels > 0 &&
     header.channels.length > 0 &&
-    pixels * header.channels.length <= 64_000_000 &&
+    pixels * channelBudget <= 64_000_000 &&
     header.compression !== "dwaa" &&
     header.compression !== "dwab";
 }

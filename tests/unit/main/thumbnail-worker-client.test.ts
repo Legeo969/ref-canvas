@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +11,10 @@ vi.mock("electron", () => ({
   utilityProcess: { fork: electron.fork },
 }));
 
-import { ThumbnailWorkerClient } from "../../../src/main/platform/thumbnail-worker-client";
+import {
+  ThumbnailWorkerClient,
+  THUMBNAIL_WORKER_TIMEOUT_MS,
+} from "../../../src/main/platform/thumbnail-worker-client";
 
 type Listener = (...args: unknown[]) => void;
 
@@ -51,6 +54,7 @@ function configureMessages(child: FakeUtilityProcess): number[] {
 }
 
 beforeEach(() => electron.fork.mockReset());
+afterEach(() => vi.useRealTimers());
 
 describe("ThumbnailWorkerClient concurrency", () => {
   async function withTempCache(
@@ -159,6 +163,62 @@ describe("ThumbnailWorkerClient concurrency", () => {
       expect(configureMessages(second)).toEqual([]);
       second.emit("spawn");
       expect(configureMessages(second)).toEqual([5]);
+    });
+  });
+
+  it("rejects a convert that never answers and kills the wedged worker", async () => {
+    vi.useFakeTimers();
+    const child = new FakeUtilityProcess();
+    electron.fork.mockReturnValue(child);
+    await withTempCache(async (directory) => {
+      const client = new ThumbnailWorkerClient("thumbnail-worker.js", directory);
+      const convert = client.convert(
+        path.join(directory, "src.png"),
+        path.join(directory, "out.png"),
+      );
+      await awaitFork();
+      child.emit("spawn");
+      const rejection = expect(convert).rejects.toThrow(
+        "THUMBNAIL_WORKER_TIMEOUT",
+      );
+      await vi.advanceTimersByTimeAsync(THUMBNAIL_WORKER_TIMEOUT_MS);
+      await rejection;
+      // 超时视为 worker 卡死：杀掉进程，下次 convert 重新拉起。
+      expect(child.killed).toBe(true);
+      expect(electron.fork).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("ignores a late worker reply after the timeout freed the slot", async () => {
+    vi.useFakeTimers();
+    const child = new FakeUtilityProcess();
+    electron.fork.mockReturnValue(child);
+    await withTempCache(async (directory) => {
+      const client = new ThumbnailWorkerClient("thumbnail-worker.js", directory);
+      const outputPath = path.join(directory, "out.png");
+      const convert = client.convert(
+        path.join(directory, "src.png"),
+        outputPath,
+      );
+      await awaitFork();
+      child.emit("spawn");
+      const rejection = expect(convert).rejects.toThrow(
+        "THUMBNAIL_WORKER_TIMEOUT",
+      );
+      await vi.advanceTimersByTimeAsync(THUMBNAIL_WORKER_TIMEOUT_MS);
+      await rejection;
+      // worker 迟到的回复（消息在超时后到达）不应当影响已拒绝的请求，
+      // 也不应当再把临时文件当作结果。
+      const convertMessage = child.messages.find(
+        (message) => message.type === "convert",
+      );
+      const id = convertMessage?.id as string;
+      await import("node:fs/promises").then((fs) =>
+        fs.writeFile(`${outputPath}.${id}.tmp.png`, "late"),
+      );
+      child.emit("message", { id, ok: true });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(convert).rejects.toThrow("THUMBNAIL_WORKER_TIMEOUT");
     });
   });
 });

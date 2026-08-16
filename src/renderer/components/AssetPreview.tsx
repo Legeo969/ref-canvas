@@ -192,8 +192,10 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
       return (
         <MediaNotesOverlay asset={asset}>
           <div className="preview-unavailable">
+            {/* DCC 专有格式：显示格式图标卡片即可，不展示「本地无
+                Blender runtime」类警告——本机可能装着对应软件，只是
+                RefCanvas 不静默调用；文案既误导又无操作价值。 */}
             <SystemThumbnail asset={asset} />
-            <UnsupportedNotice asset={asset} />
           </div>
         </MediaNotesOverlay>
       );

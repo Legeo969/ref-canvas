@@ -106,9 +106,12 @@ export function registerCollectionsIpc(
 
   ipc.handle("collections:add-paths", async (input) => {
     const parsed = addPathsSchema.parse(input);
-    const items = await service().addPaths(parsed.collectionId, parsed.paths);
+    const result = await service().addPathsDetailed(
+      parsed.collectionId,
+      parsed.paths,
+    );
     dependencies.notifyCollectionsChanged();
-    return items;
+    return result;
   });
 
   ipc.handle("collections:remove-items", (input) => {

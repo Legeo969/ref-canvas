@@ -63,6 +63,30 @@ export function foundToolbarProgressColor(variant: FoundToolbarVariant): string 
   return variant === "sequence" ? "var(--found-sequence)" : "var(--found-accent)";
 }
 
+export interface EnvironmentPreviewCapabilities {
+  /** equirectangular 全景（2:1）模式可用。 */
+  panorama: boolean;
+  /** 反射球模式可用：PMREM 反射不需要 2:1，任意 HDR 环境图都行。 */
+  reflection: boolean;
+}
+
+/**
+ * EXR/HDR 环境预览能力判定。全景要求标准 2:1 equirectangular 宽高比
+ * （1.8~2.2 容差）；反射球对任意宽高比可用。probe 未给出有效尺寸时
+ * 返回 null（不显示虚假支持）。
+ */
+export function environmentPreviewCapabilities(
+  width: number | null | undefined,
+  height: number | null | undefined,
+): EnvironmentPreviewCapabilities | null {
+  if (!width || !height) return null;
+  const ratio = width / height;
+  return {
+    panorama: ratio >= 1.8 && ratio <= 2.2,
+    reflection: true,
+  };
+}
+
 export function formatFoundTimecode(seconds: number, fps?: number | null): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
   const total = Math.floor(safeSeconds);

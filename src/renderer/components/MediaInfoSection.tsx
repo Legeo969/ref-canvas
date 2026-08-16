@@ -82,9 +82,14 @@ interface FieldDef {
 function fieldsFor(asset: MediaInfoAsset, probe: MediaProbeResult): FieldDef[] {
   const extra = probe.extra ?? {};
   const unsupportedReason = extra.unsupportedReason;
-  if (typeof unsupportedReason === "string") {
+  // DCC 专有格式（blend/blend1/max/ma/mb/c4d/hip/hipnc）不展示「本地无
+  // Blender runtime」类说明：本机可能装着对应软件，只是 RefCanvas 不静默调用；
+  // 文案既误导又无操作价值。其余无解码器格式（JXL/RAW/PDF 等）保留。
+  const isDcc = asset.kind === "dcc";
+  if (typeof unsupportedReason === "string" && !isDcc) {
     return [{ label: "说明", value: unsupportedReason }];
   }
+  if (isDcc) return [];
   switch (asset.kind) {
     case "video": {
       const audioTracks = extra.audioTracks as number | undefined;

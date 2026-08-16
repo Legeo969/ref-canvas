@@ -1107,6 +1107,22 @@ export interface MediaFrameResult {
   jobId?: string;
 }
 
+/**
+ * 至臻画质状态（视频预览增强代理，仅视频；序列不参与）。
+ * ready 且 needsEnhancement 时经 source（refbrowse token）播放代理。
+ */
+export interface SupremeVideoStatusResult {
+  /** generating = 代理生成中；ready = 可直接播放；failed = 生成失败。 */
+  state: "idle" | "generating" | "ready" | "failed";
+  /** 0..1；时长未知时为 null（不确定进度）。 */
+  progress: number | null;
+  /** false = 源视频已是超高画质（≥3840 宽且 ≥60fps），无需代理。 */
+  needsEnhancement: boolean;
+  /** ready 且 needsEnhancement 时的 refbrowse://preview/<token> 代理 URL。 */
+  source: string | null;
+  error: string | null;
+}
+
 /** media.waveform 波形结果（阶段 4：音频）。 */
 export interface MediaWaveformResult {
   /** 归一化 0..1 峰值包络（等时间间隔）。 */
@@ -1145,6 +1161,24 @@ export interface ExportMp4Result {
   outputPath: string;
   durationSeconds: number;
   frameCount: number;
+  width: number;
+  height: number;
+  jobId?: string;
+}
+
+/** 单视频 → MP4 导出请求（右键菜单「导出 MP4」）。 */
+export interface ExportVideoMp4Request {
+  inputPath: string;
+  outputDirectory: string;
+  baseName: string;
+  /** Mp4Preset.id（默认 "original"）。 */
+  presetId: string;
+  jobId?: string;
+}
+
+export interface ExportVideoMp4Result {
+  outputPath: string;
+  durationSeconds: number;
   width: number;
   height: number;
   jobId?: string;
@@ -1358,6 +1392,12 @@ export interface ReferenceCollectionItem {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 批量添加路径的结果：成功条目 + 被跳过的非文件/缺失路径。 */
+export interface CollectionAddResult {
+  added: ReferenceCollectionItem[];
+  skipped: { directories: string[]; missing: string[] };
 }
 
 /** 集合导出任务快照（found-clone.md §6.3）。 */
@@ -1632,7 +1672,7 @@ export interface RefCanvasApi {
     addPaths(
       collectionId: string,
       paths: string[],
-    ): Promise<ReferenceCollectionItem[]>;
+    ): Promise<CollectionAddResult>;
     removeItems(collectionId: string, itemIds: string[]): Promise<void>;
     resolve(collectionId: string): Promise<
       Array<{ item: ReferenceCollectionItem; relinked: boolean }>
@@ -1671,6 +1711,10 @@ export interface RefCanvasApi {
       path: string,
       options?: { timeMs?: number; width?: number; height?: number },
     ): Promise<MediaFrameResult>;
+    /** 至臻画质：查询/启动 4K 上采样 + 60fps 补帧增强代理（仅视频）。 */
+    supremeVideoStatus(path: string): Promise<SupremeVideoStatusResult>;
+    /** 取消至臻代理生成（并清失败标记，允许重试）。 */
+    supremeVideoCancel(path: string): Promise<void>;
     /** 从本地图片或视频时间点提取主色，不依赖 renderer 画布权限。 */
     palette(
       path: string,
@@ -1686,6 +1730,8 @@ export interface RefCanvasApi {
     exportGif(request: ExportVideoGifRequest): Promise<ExportGifResult>;
     /** 视频片段导出 PNG/JPEG 序列帧。 */
     exportFrames(request: ExportVideoFramesRequest): Promise<ExportVideoFramesResult>;
+    /** 单视频转码导出 MP4（右键菜单「导出 MP4」，MP4 presets 复用）。 */
+    exportMp4(request: ExportVideoMp4Request): Promise<ExportVideoMp4Result>;
     /** 将 EXR/HDR 当前显示层或通道导出为显示转换后的 PNG。 */
     exportDisplayChannel(
       request: ExportDisplayChannelRequest,

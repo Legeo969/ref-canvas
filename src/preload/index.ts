@@ -273,6 +273,10 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("media:validateOcioConfig", path),
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
+    supremeVideoStatus: (path) =>
+      ipcRenderer.invoke("media:supremeVideoStatus", path),
+    supremeVideoCancel: (path) =>
+      ipcRenderer.invoke("media:supremeVideoCancel", path),
     palette: (path, options) =>
       ipcRenderer.invoke("media:palette", path, options),
     downscale: (request) => ipcRenderer.invoke("media:downscale", request),
@@ -280,6 +284,7 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("media:convert", path, targetFormat, jobId),
     exportGif: (request) => ipcRenderer.invoke("media:exportGif", request),
     exportFrames: (request) => ipcRenderer.invoke("media:exportFrames", request),
+    exportMp4: (request) => ipcRenderer.invoke("media:exportMp4", request),
     exportDisplayChannel: (request) =>
       ipcRenderer.invoke("media:exportDisplayChannel", request),
     cancel: (jobId) => ipcRenderer.invoke("media:cancel", jobId),

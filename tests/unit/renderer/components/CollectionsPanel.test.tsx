@@ -55,7 +55,10 @@ function baseRefCanvas(overrides: Record<string, unknown> = {}) {
     create: vi.fn(async () => sampleCollection("new-1", "新集合")),
     update: vi.fn(async () => sampleCollection("c-1", "改名")),
     delete: vi.fn(async () => undefined),
-    addPaths: vi.fn(async () => []),
+    addPaths: vi.fn(async () => ({
+      added: [],
+      skipped: { directories: [], missing: [] },
+    })),
     removeItems: vi.fn(async () => undefined),
     resolve: vi.fn(async () => []),
     relink: vi.fn(async () => sampleItem("c-1", "D:\\new\\file.png", "resolved")),
@@ -146,11 +149,11 @@ describe("CollectionsPanel", () => {
         </DialogProvider>,
       );
     });
-    expect(host.textContent).toContain("还没有收藏夹");
+    expect(host.textContent).toContain("还没有集合");
     expect(host.textContent).toContain("不复制或移动源文件");
 
     await act(async () => {
-      host.querySelector('[aria-label="新建收藏夹"]')?.dispatchEvent(
+      host.querySelector('[aria-label="新建集合"]')?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
     });
@@ -160,7 +163,7 @@ describe("CollectionsPanel", () => {
     expect(
       dismiss?.compareDocumentPosition(menu as Node) ?? 0,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(host.textContent).toContain("选文件并新建收藏夹");
+    expect(host.textContent).toContain("选文件并新建集合");
     await act(async () => {
       host.querySelector('.collection-menu button[role="menuitem"]')?.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
@@ -232,7 +235,7 @@ describe("CollectionsPanel", () => {
 
     expect(host.textContent).toContain("灵感");
     expect(host.textContent).toContain("子集");
-    expect(host.textContent).toContain("跨文件夹收藏素材");
+    expect(host.textContent).toContain("归集到一起");
     expect(host.querySelector('[aria-label="添加素材到 灵感"]')).toBeTruthy();
 
     await act(async () => {
@@ -366,6 +369,51 @@ describe("CollectionsPanel", () => {
     expect(refreshCollections).toHaveBeenCalled();
   });
 
+  it("selects the directory entry when a resolved item card is clicked", async () => {
+    const collections = [sampleCollection("c-1", "灵感")];
+    const item = sampleItem("c-1", "D:\\refs\\a.png", "resolved");
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      collections,
+      collectionTree: { "": collections },
+      collectionItems: { "c-1": [item] },
+      activeCollectionId: "c-1",
+      selectedDirectoryEntry: null,
+      refreshCollections: vi.fn(async () => undefined),
+    });
+
+    const { CollectionDetailsPanel } = await import(
+      "../../../../src/renderer/components/CollectionsPanel"
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionDetailsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    await act(async () => {
+      host
+        .querySelector(".collection-item-card")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(useAppStore.getState().selectedDirectoryEntry).toEqual({
+      path: "D:\\refs\\a.png",
+      name: "a.png",
+      isDirectory: false,
+      extension: "png",
+    });
+
+    // 选中卡片带 active 高亮类。
+    expect(host.querySelector(".collection-item-card")?.className).toContain("active");
+  });
+
   it("adds dropped directory entries to the active collection", async () => {
     const collections = [sampleCollection("c-1", "灵感")];
     const { refCanvas, collections: api } = baseRefCanvas();
@@ -462,6 +510,42 @@ describe("CollectionsPanel", () => {
       for (let index = 0; index < 5; index += 1) await Promise.resolve();
     });
     expect(api.update).toHaveBeenCalledWith("c-2", { parentId: "c-1" });
+  });
+
+  it("shows the Default tab and collapses the panel via the header toggle", async () => {
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      collections: [sampleCollection("c-1", "灵感")],
+      collectionTree: { "": [sampleCollection("c-1", "灵感")] },
+      collectionItems: {},
+      activeCollectionId: null,
+      refreshCollections: vi.fn(async () => undefined),
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    // 「默认」tab（图标 + 标题）与集合树可见。
+    const tab = host.querySelector(".collections-tab");
+    expect(tab?.textContent).toContain("默认");
+    expect(tab?.querySelector("svg")).toBeTruthy();
+    expect(host.textContent).toContain("灵感");
+
+    // 头部 ⌃ 折叠：内容隐藏，tab 仍保留。
+    const collapse = host.querySelector<HTMLButtonElement>('[aria-label="折叠"]');
+    await act(async () => collapse?.click());
+    expect(host.textContent).not.toContain("灵感");
+    expect(host.textContent).toContain("默认");
   });
 
   it("reorders a collection through the row menu", async () => {

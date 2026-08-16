@@ -42,9 +42,22 @@
 }
 
 .dir-root-row.active {
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 var(--accent);
-  color: #8cdec5;
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.dir-root-row.active .dir-root-copy strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.dir-root-row.active .dir-root-copy small {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.dir-root-row.active .favorite-button {
+  color: #ffffff;
 }
 
 .dir-root-main {
@@ -87,7 +100,7 @@
 }
 
 .dir-root-row.active .dir-root-copy small {
-  color: #67b79f;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .favorite-button {
@@ -245,6 +258,28 @@
   line-height: 28px;
 }
 
+/* 可折叠区块标题（收藏）：按钮化 + 对齐 chevron 与标签。 */
+.directory-subsection-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.directory-subsection-toggle svg {
+  flex: none;
+  opacity: 0.75;
+}
+
+.directory-subsection-toggle:hover {
+  color: #a7b0ab;
+}
+
 .quick-access-list {
   display: grid;
   gap: 1px;
@@ -253,7 +288,7 @@
 
 .quick-access-row {
   display: flex;
-  min-height: 40px;
+  min-height: 46px;
   align-items: center;
   border-radius: 7px;
   color: #a7b0ab;
@@ -264,15 +299,17 @@
   color: #dbe3df;
 }
 
+/* 选中行：主题绿 accent 实底 + 白字（迅雷式高对比激活态，与标签一致）。 */
 .quick-access-row.active {
-  background: var(--accent-soft);
-  color: #8cdec5;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .quick-access-main {
   display: grid;
   min-width: 0;
-  min-height: 40px;
+  min-height: 46px;
   flex: 1;
   grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
@@ -287,10 +324,30 @@
   cursor: pointer;
 }
 
+/* 名称 + 路径副文字（11px 灰，规格 QA3p/QA5p/QA8p）。 */
+.quick-access-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
 .quick-access-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.quick-access-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6f7974;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.quick-access-row.active .quick-access-path {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .dir-tree-row {
@@ -307,8 +364,14 @@
 }
 
 .dir-tree-row.active {
-  background: var(--accent-soft);
-  color: #8cdec5;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.dir-tree-row.active .favorite-button {
+  color: #ffffff;
 }
 
 .dir-tree-chevron {
@@ -369,7 +432,20 @@
 /* Directory asset panel */
 .directory-card-wrap {
   position: absolute;
-  height: 160px;
+  /* 缩放滑块控制：行高随 --directory-card-h（缺省 160px）伸缩。 */
+  height: var(--directory-card-h, 160px);
+}
+
+/* 目录卡片填满缩放后的行高；预览区高度随 --directory-preview-h 伸缩，
+   覆盖 dialogs.css 的 .asset-virtual-grid .asset-card（150px 固定高）。 */
+.asset-virtual-grid .directory-card-wrap .asset-card {
+  height: 100%;
+  grid-template-rows: var(--directory-preview-h, 108px) auto auto;
+}
+
+/* 大缩略图卡（迅雷式）：预览区圆角 8，缩略图 object-fit: cover。 */
+.asset-virtual-grid .directory-card-wrap .asset-card .asset-preview {
+  border-radius: 8px;
 }
 
 .directory-hover-scrub {
@@ -430,6 +506,24 @@
   text-align: center;
 }
 
+/* 文件卡缩略图右下角的小扩展名徽章（与右上角收藏/评分徽章互不遮挡）。 */
+.directory-extension-badge {
+  position: absolute;
+  z-index: 2;
+  right: 7px;
+  bottom: 7px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(12, 15, 15, 0.84);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: #cfd8d3;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  pointer-events: none;
+}
+
 .directory-shortcut-notice {
   position: fixed;
   z-index: 1100;
@@ -488,6 +582,15 @@
 
 .search-cancel:hover {
   color: #ffffff;
+}
+
+/* 紧凑搜索框（迅雷式窄框）：覆盖 library.css 的全宽样式；子目录搜索
+   提示（directory.includeSubdirectories）已移到 title/tooltip。 */
+.directory-search {
+  width: 168px;
+  min-width: 0;
+  align-self: flex-start;
+  margin: 8px 12px 6px;
 }
 
 .directory-search-status {
@@ -566,6 +669,78 @@
   color: #4c5450;
   font-size: 10px;
   user-select: none;
+}
+
+/* 视图选项（子目录深度 + 合并序列）：面包屑行右侧的紧凑 popover 入口。 */
+.dir-view-options {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.dir-view-options .icon-button {
+  width: 32px;
+  height: 32px;
+}
+
+.dir-view-options-popover {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #262b2c;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.dir-view-options-section {
+  display: grid;
+  gap: 2px;
+  padding: 4px;
+}
+
+.dir-view-options-label {
+  padding: 2px 8px;
+  color: #626b67;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.dir-view-option {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: #a7b0ab;
+  font-size: 11px;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-view-option:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #dbe3df;
+}
+
+.dir-view-option input {
+  accent-color: #35c6a0;
+  cursor: pointer;
+}
+
+.dir-view-options-divider {
+  height: 1px;
+  margin: 2px 4px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .dir-header-actions {
@@ -1708,7 +1883,8 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.directory-card-wrap[data-flatten-group="true"]::before {
+.directory-card-wrap[data-flatten-group="true"]::before,
+.directory-folder-row-wrap[data-flatten-group="true"]::before {
   content: "";
   position: absolute;
   z-index: 3;
@@ -1720,4 +1896,422 @@
   background: var(--directory-group-color);
   opacity: 0.9;
   pointer-events: none;
+}
+
+/* ===== 参考图重设计：分组头 / 状态栏 / 视图切换 / 缩放 / 排序 / 列表视图 ===== */
+
+/* 分区分组头（文件夹 (N) / 文件 (M)）：绝对定位于虚拟网格内，可折叠。 */
+.directory-group-header {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  color: #a7b0ab;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.directory-group-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #dbe3df;
+}
+
+.directory-group-header .directory-group-chevron {
+  color: #7f8984;
+  transition-property: rotate;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.directory-group-header .directory-group-chevron.expanded {
+  rotate: 90deg;
+}
+
+.directory-group-header[data-kind="files"] .directory-group-icon {
+  color: #8f9aa3;
+}
+
+.directory-group-count {
+  min-width: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #8b9590;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.directory-group-header:hover .directory-group-count {
+  color: #aeb7b2;
+}
+
+/* 列表视图行（图标 + 名称 + 元信息，行式布局）。 */
+.directory-row-wrap {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 40px;
+  padding: 0 4px;
+}
+
+.directory-row {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #cdd5d1;
+  text-align: left;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 110ms;
+  transition-timing-function: ease-out;
+}
+
+.directory-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.directory-row.selected {
+  background: var(--accent-soft);
+  color: #e8ece9;
+}
+
+.directory-row-icon {
+  display: grid;
+  width: 24px;
+  flex: none;
+  place-items: center;
+  color: #8f9aa3;
+}
+
+.directory-row-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-row-meta {
+  flex: none;
+  color: #6d7672;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-row.selected .directory-row-meta {
+  color: #8b9a95;
+}
+
+.directory-row-loading {
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* 文件夹区紧凑行（迅雷式多列行）：行高 40px，FolderGlyph + 暖黄名称。 */
+.directory-folder-row-wrap {
+  position: absolute;
+  padding: 0 4px;
+}
+
+.directory-folder-row {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #f0d488;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 110ms;
+  transition-timing-function: ease-out;
+}
+
+.directory-folder-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+  color: #fff3d6;
+}
+
+.directory-folder-row.selected {
+  background: var(--accent-soft);
+  color: #fff3d6;
+}
+
+.directory-folder-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+
+.directory-folder-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directory-folder-row-loading {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* 底部状态栏：文件 / 文件夹计数（随过滤与搜索变化）。 */
+.directory-status-bar {
+  display: flex;
+  min-height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 18px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-1);
+  color: #7f8984;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-status-bar span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.directory-status-bar strong {
+  color: #b7c0bb;
+  font-weight: 600;
+}
+
+/* 面包屑行右侧：缩放滑块 + 视图选项按钮（网格/列表切换已移到筛选行）。 */
+.dir-path-bar-right {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.directory-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  color: #7f8984;
+}
+
+.directory-zoom input[type="range"] {
+  width: 84px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.dir-view-mode {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dir-view-mode button {
+  display: grid;
+  width: 28px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #7f8984;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-view-mode button:hover {
+  color: #dbe3df;
+}
+
+.dir-view-mode button.active {
+  background: var(--accent-soft);
+  color: #8cdec5;
+}
+
+/* 排序控件：格式筛选行右侧的弹出菜单入口。
+   （.dir-format-filter button 选择器特异性更高且后加载，这里用两段式选择器覆盖。） */
+.dir-sort-control {
+  position: relative;
+  display: flex;
+  flex: none;
+  margin-left: auto;
+}
+
+.dir-sort-control .dir-sort-trigger {
+  display: inline-flex;
+  height: 30px;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: #8b9590;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-sort-control .dir-sort-trigger:hover,
+.dir-sort-control .dir-sort-trigger[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.06);
+  color: #dbe3df;
+}
+
+.dir-sort-popover {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 148px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #262b2c;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.dir-sort-popover .dir-sort-option {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  color: #a7b0ab;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-sort-popover .dir-sort-option:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #dbe3df;
+}
+
+.dir-sort-popover .dir-sort-option.active {
+  background: rgba(53, 198, 160, 0.12);
+  color: #8cdec5;
+}
+
+/* ===== 视图切换 / ⚙ 设置：移到格式筛选行（排序控件旁边，迅雷布局） =====
+   这两组控件现在位于 .dir-format-filter 内部，会被 dialogs.css 的
+   .dir-format-filter button 通用样式命中，用两段式选择器覆盖回紧凑外观。 */
+
+.dir-format-filter .dir-view-mode {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dir-format-filter .dir-view-mode button {
+  display: grid;
+  width: 28px;
+  height: 26px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: #7f8984;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-format-filter .dir-view-mode button:hover {
+  color: #dbe3df;
+}
+
+.dir-format-filter .dir-view-mode button.active {
+  background: var(--accent-soft);
+  color: #8cdec5;
+}
+
+/* 筛选行 ⚙ 设置入口：与视图选项按钮同款主题图标按钮。 */
+.dir-format-filter .dir-filter-settings {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: #8b9590;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-format-filter .dir-filter-settings:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #dbe3df;
 }

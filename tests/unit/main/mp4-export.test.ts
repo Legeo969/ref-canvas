@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { exportSequenceToMp4 } from "../../../src/main/services/media/mp4-export";
+import { exportSequenceToMp4, exportVideoToMp4 } from "../../../src/main/services/media/mp4-export";
 import { packagedFfmpegPath } from "../../../src/main/services/media/ffmpeg-tools";
 
 const execFileAsync = promisify(execFile);
@@ -143,5 +143,61 @@ describe("exportSequenceToMp4（阶段 5：序列导出 MP4）", () => {
     });
     expect(result.width).toBe(80);
     expect(result.height).toBe(44);
+  });
+
+  it("把单视频转码为 H.264 MP4（右键菜单「导出 MP4」）", async () => {
+    const directory = await withTemp();
+    const input = path.join(directory, "source.mov");
+    // 生成一段 1 秒 testsrc 视频作为输入（QuickTime 容器，ffmpeg 原生支持）。
+    await execFileAsync(
+      packagedFfmpegPath(),
+      [
+        "-y",
+        "-f", "lavfi",
+        "-i", "testsrc=duration=1:size=320x180:rate=24",
+        "-pix_fmt", "yuv420p",
+        input,
+      ],
+      { windowsHide: true },
+    );
+    const output = path.join(directory, "converted.mp4");
+    const result = await exportVideoToMp4({
+      inputPath: input,
+      codec: "h264",
+      quality: "high",
+      resolution: "original",
+      outputPath: output,
+    });
+    expect(result.width).toBe(320);
+    expect(result.height).toBe(180);
+    expect(result.durationSeconds).toBeGreaterThan(0.5);
+    const entries = await readdir(directory);
+    expect(entries).toContain("converted.mp4");
+  });
+
+  it("视频转码支持半分辨率预设", async () => {
+    const directory = await withTemp();
+    const input = path.join(directory, "source.webm");
+    await execFileAsync(
+      packagedFfmpegPath(),
+      [
+        "-y",
+        "-f", "lavfi",
+        "-i", "testsrc=duration=0.5:size=640x360:rate=24",
+        "-pix_fmt", "yuv420p",
+        input,
+      ],
+      { windowsHide: true },
+    );
+    const output = path.join(directory, "half.mp4");
+    const result = await exportVideoToMp4({
+      inputPath: input,
+      codec: "h264",
+      quality: "medium",
+      resolution: "half",
+      outputPath: output,
+    });
+    expect(result.width).toBe(320);
+    expect(result.height).toBe(180);
   });
 });

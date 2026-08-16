@@ -17,6 +17,14 @@ export interface Mp4ExportOptions {
   outputPath: string;
 }
 
+export interface VideoToMp4ExportOptions {
+  inputPath: string;
+  codec: "h264" | "h265";
+  quality: "medium" | "high" | "best";
+  resolution: "original" | "half" | "quarter";
+  outputPath: string;
+}
+
 export interface Mp4ExportResult {
   width: number;
   height: number;
@@ -100,4 +108,57 @@ export async function exportSequenceToMp4(
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
+}
+
+/**
+ * 单视频 → MP4（右键菜单「导出 MP4」）。
+ *
+ * 与 exportSequenceToMp4 共用同一套预设（codec/quality/resolution），
+ * 重新编码视频轨（H.264/H.265 + yuv420p + faststart），音频转 AAC；
+ * 适用于 .mov/.mkv/.webm/.avi 等需要交付为 MP4 的场景。
+ */
+export async function exportVideoToMp4(
+  options: VideoToMp4ExportOptions,
+  signal?: AbortSignal,
+): Promise<Mp4ExportResult> {
+  const args = [
+    "-y",
+    "-i", options.inputPath,
+    "-c:v", options.codec === "h265" ? "libx265" : "libx264",
+    "-preset", "medium",
+    "-crf", String(crfFor(options.codec, options.quality)),
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    "-b:a", "192k",
+    "-movflags", "+faststart",
+  ];
+  const scale = scaleFor(options.resolution);
+  if (scale) args.push("-vf", scale);
+  if (options.codec === "h265") args.push("-tag:v", "hvc1");
+  args.push(options.outputPath);
+
+  await execFileAsync(packagedFfmpegPath(), args, {
+    maxBuffer: 16 * 1024 * 1024,
+    windowsHide: true,
+    signal,
+  });
+
+  // 用 ffprobe 取实际输出尺寸与时长（probe 失败不阻塞导出）。
+  let width = 0;
+  let height = 0;
+  let durationSeconds = 0;
+  try {
+    const info = await readFfprobeFullMetadata(options.outputPath);
+    if (info.valid) {
+      const video = info.streams.find(
+        (stream) => stream.codecType === "video",
+      );
+      width = video?.width ?? 0;
+      height = video?.height ?? 0;
+      durationSeconds = info.duration ?? 0;
+    }
+  } catch {
+    // 忽略：输出文件已生成。
+  }
+  return { width, height, durationSeconds };
 }

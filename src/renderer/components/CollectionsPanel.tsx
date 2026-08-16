@@ -40,6 +40,7 @@ import {
   useState,
 } from "react";
 import type {
+  CollectionAddResult,
   CollectionExportSnapshot,
   CollectionItemState,
   ReferenceCollection,
@@ -48,6 +49,7 @@ import type {
 import { useAppStore } from "../app/store";
 import { translate, type MessageKey } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
+import { VisibilityToggle } from "./VisibilityToggle";
 
 /** 状态标签直接映射 i18n key（值随语言切换）。 */
 const stateLabelKeys: Record<CollectionItemState, MessageKey> = {
@@ -74,6 +76,22 @@ const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
 
 /** 集合行拖拽 MIME：携带被拖集合 id（用于嵌套/重排）。 */
 const COLLECTION_DRAG_MIME = "application/x-refcanvas-collection-id";
+
+/** 目录被跳过时给出反馈（文件夹本身不会被加入集合）。 */
+function notifySkippedDirectories(
+  dialog: ReturnType<typeof useDialog>,
+  skipped: CollectionAddResult["skipped"],
+): void {
+  if (skipped.directories.length === 0) return;
+  void dialog.requestConfirm({
+    title: translate("collections.addFailed"),
+    description: translate("collections.skippedDirectories").replace(
+      "{count}",
+      String(skipped.directories.length),
+    ),
+    confirmLabel: translate("collections.acknowledge"),
+  });
+}
 
 interface CollectionNodeProps {
   collection: ReferenceCollection;
@@ -106,7 +124,11 @@ function CollectionNode({
     if (!paths.length) return;
     setPending(true);
     try {
-      await window.refCanvas.collections.addPaths(collection.id, paths);
+      const result = await window.refCanvas.collections.addPaths(
+        collection.id,
+        paths,
+      );
+      notifySkippedDirectories(dialog, result.skipped);
       onRefreshTree();
       if (store.activeCollectionId === collection.id) setExpanded(true);
     } catch {
@@ -391,6 +413,7 @@ function CollectionItemCard({
   onRemove(item: ReferenceCollectionItem): void;
   onContextMenu(event: React.MouseEvent, item: ReferenceCollectionItem): void;
 }) {
+  const store = useAppStore();
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -412,11 +435,29 @@ function CollectionItemCard({
 
   const displayName =
     item.lastResolvedPath.split(/[\\/]/).pop() ?? item.pathKey.split(/[\\/]/).pop() ?? item.pathKey;
+  const displayExtension = (() => {
+    const dot = displayName.lastIndexOf(".");
+    return dot > 0 ? displayName.slice(dot + 1) : "";
+  })();
+
+  /** 点击卡片进入右侧预览（与目录网格选中行为一致）。 */
+  const openInPreview = () => {
+    if (item.state === "missing") return;
+    store.selectDirectoryEntry({
+      path: item.lastResolvedPath,
+      name: displayName,
+      isDirectory: false,
+      extension: displayExtension.toLowerCase(),
+    });
+  };
 
   return (
     <div
-      className={`collection-item-card ${stateClasses[item.state]}`}
+      className={`collection-item-card ${stateClasses[item.state]}${
+        store.selectedDirectoryEntry?.path === item.lastResolvedPath ? " active" : ""
+      }`}
       draggable
+      onClick={openInPreview}
       onDragStart={(event) => {
         event.dataTransfer.setData(
           DIRECTORY_ENTRY_MIME,
@@ -434,7 +475,11 @@ function CollectionItemCard({
           <img src={thumbnailUrl} alt="" draggable={false} onError={() => setFailed(true)} />
         ) : (
           <span className="asset-placeholder">
-            {item.state === "missing" ? <AlertTriangle size={26} /> : <FolderOpen size={26} strokeWidth={1.35} />}
+            {item.state === "missing" ? (
+              <AlertTriangle size={26} />
+            ) : (
+              <span>{displayExtension.toUpperCase() || "FILE"}</span>
+            )}
           </span>
         )}
         <span className={`collection-state-badge ${stateClasses[item.state]}`}>
@@ -702,6 +747,20 @@ export function CollectionDetailsPanel() {
             <button
               role="menuitem"
               onClick={() => {
+                const target = itemMenu.item;
+                setItemMenu(null);
+                if (target.state === "resolved") {
+                  void window.refCanvas.filesystem.reveal(target.lastResolvedPath);
+                }
+              }}
+              disabled={itemMenu.item.state !== "resolved"}
+            >
+              <FolderOpen size={16} />
+              {translate("preview.reveal")}
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
                 void window.refCanvas.system.writeClipboard(itemMenu.item.lastResolvedPath);
                 setItemMenu(null);
               }}
@@ -730,11 +789,16 @@ export function CollectionDetailsPanel() {
 }
 
 /** 侧栏引用集合区（found-clone.md §5.1 左栏分组）。 */
-export function CollectionsPanel() {
+export function CollectionsPanel({
+  style,
+}: {
+  style?: React.CSSProperties;
+}) {
   const store = useAppStore();
   const dialog = useDialog();
   const [menuOpen, setMenuOpen] = useState(false);
   const [draggingOver, setDraggingOver] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const createCollection = async () => {
@@ -770,7 +834,11 @@ export function CollectionsPanel() {
     const collection = await window.refCanvas.collections.create({
       name: values.name,
     });
-    const added = await window.refCanvas.collections.addPaths(collection.id, picked);
+    const { added, skipped } = await window.refCanvas.collections.addPaths(
+      collection.id,
+      picked,
+    );
+    notifySkippedDirectories(dialog, skipped);
     await store.refreshCollections();
     store.openCollection(collection.id);
     if (added.length === 0) {
@@ -793,7 +861,11 @@ export function CollectionsPanel() {
       ],
     });
     if (!picked.length) return;
-    const added = await window.refCanvas.collections.addPaths(id, picked);
+    const { added, skipped } = await window.refCanvas.collections.addPaths(
+      id,
+      picked,
+    );
+    notifySkippedDirectories(dialog, skipped);
     await store.refreshCollections();
     if (added.length > 0) store.openCollection(id);
     if (added.length === 0 && picked.length > 0) {
@@ -840,7 +912,8 @@ export function CollectionsPanel() {
     const active = store.activeCollectionId;
     if (!active) return;
     try {
-      await window.refCanvas.collections.addPaths(active, [path]);
+      const result = await window.refCanvas.collections.addPaths(active, [path]);
+      notifySkippedDirectories(dialog, result.skipped);
       await store.refreshCollections();
     } catch {
       // 集合可能已删除；刷新树后回到浏览。
@@ -852,7 +925,8 @@ export function CollectionsPanel() {
     const active = store.activeCollectionId;
     if (!active || !files.length) return;
     const paths = window.refCanvas.library.pathsForFiles(files);
-    await window.refCanvas.collections.addPaths(active, paths);
+    const result = await window.refCanvas.collections.addPaths(active, paths);
+    notifySkippedDirectories(dialog, result.skipped);
     await store.refreshCollections();
   };
 
@@ -871,8 +945,9 @@ export function CollectionsPanel() {
   );
 
   return (
-    <div
-      className="sidebar-section collections-section"
+    <section
+      className={`sidebar-pane collections-section ${collapsed ? "collapsed" : ""}`}
+      style={style}
       ref={rootRef}
       onDragOver={(event) => {
         if (!store.activeCollectionId) return;
@@ -882,64 +957,88 @@ export function CollectionsPanel() {
       onDragLeave={() => setDraggingOver(false)}
       onDrop={(event) => onDrop(event)}
     >
-      <div className="section-label row-label">
-        <span>{translate("sidebar.collections")}</span>
-        <button
-          type="button"
-          className="mini-icon-button"
-          aria-label={translate("collections.create")}
-          title={translate("collections.create")}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((value) => !value)}
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-      <p className="collections-section-hint">跨文件夹收藏素材，不复制或移动源文件</p>
-      {menuOpen && (
-        <>
-          <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
-          <div className="collection-menu collection-menu-head" role="menu">
-            <button type="button" role="menuitem" onClick={() => void createCollection()}>
-              <FolderPlus size={15} />
-              {translate("collections.create")}
-            </button>
-            <span className="context-menu-divider" />
-            <button type="button" role="menuitem" onClick={() => void createCollectionWithFiles()}>
-              <Upload size={15} />
-              {translate("collections.createFromFiles")}
-            </button>
-          </div>
-        </>
-      )}
-      {roots.length === 0 ? (
-        <div className="collections-empty">
-          <p>{translate("collections.empty")}</p>
-          <span>{translate("collections.description")}</span>
-          <button type="button" onClick={() => void createCollection()}>
-            <FolderPlus size={14} />
-            {translate("collections.create")}
+      <header className="sidebar-pane-header collections-pane-header">
+        <div className="collections-tab active">
+          <Layers size={14} />
+          <span>{translate("collections.default")}</span>
+        </div>
+        <div className="sidebar-pane-actions">
+          <VisibilityToggle />
+          <button
+            type="button"
+            className="mini-icon-button"
+            aria-label={translate("collections.create")}
+            title={translate("collections.create")}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            type="button"
+            className="mini-icon-button pane-collapse"
+            aria-expanded={!collapsed}
+            aria-label={
+              collapsed ? translate("directory.expand") : translate("directory.collapse")
+            }
+            title={
+              collapsed ? translate("directory.expand") : translate("directory.collapse")
+            }
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
           </button>
         </div>
-      ) : (
-        <div className="collection-tree">
-          {roots.map((collection) => (
-            <CollectionNode
-              key={collection.id}
-              collection={collection}
-              depth={0}
-              onRefreshTree={() => void store.refreshCollections()}
-              onOpen={(id) => store.openCollection(id)}
-              onAddFiles={(id) => void addFiles(id)}
-              onExport={(id) => void exportCollection(id)}
-            />
-          ))}
+      </header>
+      {!collapsed && (
+        <div className="sidebar-pane-content">
+          <p className="collections-section-hint">{translate("collections.description")}</p>
+          {menuOpen && (
+            <>
+              <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
+              <div className="collection-menu collection-menu-head" role="menu">
+                <button type="button" role="menuitem" onClick={() => void createCollection()}>
+                  <FolderPlus size={15} />
+                  {translate("collections.create")}
+                </button>
+                <span className="context-menu-divider" />
+                <button type="button" role="menuitem" onClick={() => void createCollectionWithFiles()}>
+                  <Upload size={15} />
+                  {translate("collections.createFromFiles")}
+                </button>
+              </div>
+            </>
+          )}
+          {roots.length === 0 ? (
+            <div className="collections-empty">
+              <p>{translate("collections.empty")}</p>
+              <span>{translate("collections.description")}</span>
+              <button type="button" onClick={() => void createCollection()}>
+                <FolderPlus size={14} />
+                {translate("collections.create")}
+              </button>
+            </div>
+          ) : (
+            <div className="collection-tree">
+              {roots.map((collection) => (
+                <CollectionNode
+                  key={collection.id}
+                  collection={collection}
+                  depth={0}
+                  onRefreshTree={() => void store.refreshCollections()}
+                  onOpen={(id) => store.openCollection(id)}
+                  onAddFiles={(id) => void addFiles(id)}
+                  onExport={(id) => void exportCollection(id)}
+                />
+              ))}
+            </div>
+          )}
+          <div className={`collection-drop-hint ${draggingOver ? "visible" : ""}`}>
+            {translate("collections.dropActive")}
+          </div>
         </div>
       )}
-      <div className={`collection-drop-hint ${draggingOver ? "visible" : ""}`}>
-        {translate("collections.dropActive")}
-      </div>
-    </div>
+    </section>
   );
 }

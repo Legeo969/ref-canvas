@@ -1,7 +1,7 @@
 import {
   ChevronDown,
   ChevronRight,
-  FolderOpen,
+  ChevronUp,
   HardDrive,
   RefreshCw,
   Star,
@@ -13,9 +13,22 @@ import type {
 } from "../../shared/contracts";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
+import { FolderGlyph } from "./FolderGlyph";
+import { VisibilityToggle } from "./VisibilityToggle";
 
 function normalizePath(value: string): string {
   return value.replace(/[\\/]+/g, "\\").replace(/\\$/, "").toLowerCase();
+}
+
+/** 快速访问条目的路径副文字：显示父目录（条目自身 title 已是完整路径）。 */
+function quickAccessSubtext(path: string): string {
+  const normalized = path.replace(/[\\/]+$/g, "");
+  const separator = Math.max(
+    normalized.lastIndexOf("\\"),
+    normalized.lastIndexOf("/"),
+  );
+  if (separator <= 0) return path;
+  return normalized.slice(0, separator);
 }
 
 function FavoriteButton({ path, name }: { path: string; name: string }) {
@@ -118,7 +131,7 @@ function DirectoryNode({
           className="dir-tree-main"
           onClick={() => void store.openDirectory(entry.path)}
         >
-          <FolderOpen size={15} strokeWidth={1.8} />
+          <FolderGlyph size={15} />
           <span className="dir-tree-name" title={entry.path}>
             {entry.name}
           </span>
@@ -204,11 +217,91 @@ function RootNode({
   );
 }
 
-/** 侧栏本地目录区：磁盘卷标树（懒展开）+ 快速访问收藏。 */
-export function DirectoryBrowser() {
+/** Pane 1（快速访问）：用户收藏目录列表 + 折叠 + 路径副文字。 */
+export function QuickAccessPane({
+  style,
+}: {
+  style?: React.CSSProperties;
+}) {
   const store = useAppStore();
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <section
+      className={`sidebar-pane quick-access-pane ${collapsed ? "collapsed" : ""}`}
+      style={collapsed ? undefined : style}
+      aria-label={translate("sidebar.quickAccess")}
+    >
+      <header className="sidebar-pane-header">
+        <span className="sidebar-pane-title">
+          <Star size={12} fill="currentColor" />
+          {translate("sidebar.quickAccess")}
+        </span>
+        <div className="sidebar-pane-actions">
+          <VisibilityToggle />
+          <button
+            type="button"
+            className="mini-icon-button pane-collapse"
+            aria-expanded={!collapsed}
+            aria-label={
+              collapsed ? translate("directory.expand") : translate("directory.collapse")
+            }
+            title={
+              collapsed ? translate("directory.expand") : translate("directory.collapse")
+            }
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
+        </div>
+      </header>
+      {!collapsed && (
+        <div className="sidebar-pane-content">
+          {store.quickAccess.length > 0 ? (
+            <div className="quick-access-list">
+              {store.quickAccess.map((entry) => (
+                <div
+                  className={`quick-access-row ${
+                    store.directoryPath === entry.path ? "active" : ""
+                  }`}
+                  key={entry.id}
+                >
+                  <button
+                    className="quick-access-main"
+                    onClick={() => void store.openDirectory(entry.path)}
+                  >
+                    <FolderGlyph size={15} />
+                    <span className="quick-access-copy">
+                      <span className="quick-access-name" title={entry.path}>
+                        {entry.name}
+                      </span>
+                      <small className="quick-access-path" title={entry.path}>
+                        {quickAccessSubtext(entry.path)}
+                      </small>
+                    </span>
+                  </button>
+                  <FavoriteButton path={entry.path} name={entry.name} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="directory-empty">{translate("directory.favoriteHint")}</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** Pane 2（目录）：磁盘卷标树（懒展开）+ 折叠。 */
+export function DirectoryTreePane({
+  style,
+}: {
+  style?: React.CSSProperties;
+}) {
   const [roots, setRoots] = useState<DirectoryEntry[] | null>(null);
   const [expandedRoots, setExpandedRoots] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState(false);
   const [globalRefreshVersion, setGlobalRefreshVersion] = useState(0);
   const [directoryRefreshVersions, setDirectoryRefreshVersions] = useState<
     Record<string, number>
@@ -249,64 +342,72 @@ export function DirectoryBrowser() {
   }, []);
 
   return (
-    <div className="sidebar-section directory-browser">
-      <div className="directory-subsection directory-quick-access">
-        <div className="directory-subsection-label">{translate("sidebar.quickAccess")}</div>
-        {store.quickAccess.length > 0 ? (
-          <div className="quick-access-list">
-            {store.quickAccess.map((entry) => (
-              <div
-                className={`quick-access-row ${
-                  store.directoryPath === entry.path ? "active" : ""
-                }`}
-                key={entry.id}
-              >
-                <button
-                  className="quick-access-main"
-                  onClick={() => void store.openDirectory(entry.path)}
-                >
-                  <FolderOpen size={14} strokeWidth={1.8} />
-                  <span className="quick-access-name" title={entry.path}>
-                    {entry.name}
-                  </span>
-                </button>
-                <FavoriteButton path={entry.path} name={entry.name} />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="directory-empty">{translate("directory.favoriteHint")}</p>
-        )}
-      </div>
-
-      <div className="directory-subsection directory-roots-section">
-        <div className="directory-subsection-label">{translate("sidebar.drives")}</div>
-        <div className="dir-roots">
-          {roots === null && <p className="directory-empty">{translate("directory.loadingDrives")}</p>}
-          {roots?.map((root) => (
-            <RootNode
-              key={root.path}
-              entry={root}
-              expanded={expandedRoots.has(normalizePath(root.path))}
-              onToggle={() =>
-                setExpandedRoots((current) => {
-                  const next = new Set(current);
-                  const key = normalizePath(root.path);
-                  if (next.has(key)) next.delete(key);
-                  else next.add(key);
-                  return next;
-                })
-              }
-              globalRefreshVersion={globalRefreshVersion}
-              directoryRefreshVersions={directoryRefreshVersions}
-            />
-          ))}
-          {roots?.length === 0 && (
-            <p className="directory-empty">{translate("directory.noDrives")}</p>
-          )}
+    <section
+      className={`sidebar-pane directory-tree-pane ${collapsed ? "collapsed" : ""}`}
+      style={collapsed ? undefined : style}
+      aria-label={translate("sidebar.directory")}
+    >
+      <header className="sidebar-pane-header">
+        <span className="sidebar-pane-title">{translate("sidebar.directory")}</span>
+        <div className="sidebar-pane-actions">
+          <VisibilityToggle />
+          <button
+            type="button"
+            className="mini-icon-button pane-collapse"
+            aria-expanded={!collapsed}
+            aria-label={
+              collapsed ? translate("directory.expand") : translate("directory.collapse")
+            }
+            title={
+              collapsed ? translate("directory.expand") : translate("directory.collapse")
+            }
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
         </div>
-      </div>
-    </div>
+      </header>
+      {!collapsed && (
+        <div className="sidebar-pane-content">
+          <div className="dir-roots">
+            {roots === null && (
+              <p className="directory-empty">{translate("directory.loadingDrives")}</p>
+            )}
+            {roots?.map((root) => (
+              <RootNode
+                key={root.path}
+                entry={root}
+                expanded={expandedRoots.has(normalizePath(root.path))}
+                onToggle={() =>
+                  setExpandedRoots((current) => {
+                    const next = new Set(current);
+                    const key = normalizePath(root.path);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  })
+                }
+                globalRefreshVersion={globalRefreshVersion}
+                directoryRefreshVersions={directoryRefreshVersions}
+              />
+            ))}
+            {roots?.length === 0 && (
+              <p className="directory-empty">{translate("directory.noDrives")}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 侧栏本地目录区组合视图（两个面板同屏；Sidebar 用 SplitPanes 分隔）。 */
+export function DirectoryBrowser() {
+  return (
+    <>
+      <QuickAccessPane />
+      <DirectoryTreePane />
+    </>
   );
 }
 

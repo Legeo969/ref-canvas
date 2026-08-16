@@ -1586,3 +1586,34 @@ button.found-color-palette-status {
   background: #fff;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
+
+/* 至臻画质（仅视频）：工具栏开关与生成状态浮层。 */
+.video-preview .video-supreme-button {
+  display: inline-flex;
+  width: auto;
+  min-width: 64px;
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.video-preview .video-supreme-chip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 6;
+  color: #9fd0ba;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(12, 16, 15, 0.82);
+  padding: 6px 12px;
+  border-radius: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.video-preview .video-supreme-chip.is-error {
+  color: #e0b178;
+}

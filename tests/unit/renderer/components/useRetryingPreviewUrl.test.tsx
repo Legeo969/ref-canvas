@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  PREVIEW_ATTEMPT_TIMEOUT_MS,
   PREVIEW_RETRY_DELAYS_MS,
   previewUrlWithRetry,
   useRetryingPreviewUrl,
@@ -78,8 +79,36 @@ describe("useRetryingPreviewUrl", () => {
     const { host, root, Harness } = render("refbrowse://thumbnail/old");
     await act(async () => host.querySelector<HTMLButtonElement>("button:nth-of-type(2)")?.click());
     await act(async () => root.render(<Harness value="refbrowse://thumbnail/new" />));
-    await act(async () => vi.runAllTimersAsync());
+    // 只推进旧重试窗口：新 source 的重试定时器被取消，stall 超时（60s）未到。
+    await act(async () => vi.advanceTimersByTimeAsync(PREVIEW_RETRY_DELAYS_MS[0]));
     expect(host.firstElementChild?.getAttribute("data-url")).toBe("refbrowse://thumbnail/new");
     expect(host.firstElementChild?.getAttribute("data-status")).toBe("loading");
+  });
+
+  it("times out a stalled request and converges through bounded retries to failed", async () => {
+    vi.useFakeTimers();
+    const { host } = render("refbrowse://thumbnail/token");
+    expect(host.firstElementChild?.getAttribute("data-status")).toBe("loading");
+    // 主进程迟迟不返回（worker 卡死等）：stall 超时 → waiting → 重试，循环
+    // 有界，最终收敛到明确的 failed 态，而不是永远「正在生成预览」。
+    for (let index = 0; index < PREVIEW_RETRY_DELAYS_MS.length; index += 1) {
+      await act(async () => vi.advanceTimersByTimeAsync(PREVIEW_ATTEMPT_TIMEOUT_MS));
+      expect(host.firstElementChild?.getAttribute("data-status")).toBe("waiting");
+      await act(async () => vi.advanceTimersByTimeAsync(PREVIEW_RETRY_DELAYS_MS[index]));
+      expect(host.firstElementChild?.getAttribute("data-url")).toContain(
+        `previewRetry=${index + 1}`,
+      );
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(PREVIEW_ATTEMPT_TIMEOUT_MS));
+    expect(host.firstElementChild?.getAttribute("data-status")).toBe("failed");
+  });
+
+  it("does not stall-timeout a preview that already became ready", async () => {
+    vi.useFakeTimers();
+    const { host } = render("refbrowse://thumbnail/token");
+    await act(async () => host.querySelector<HTMLButtonElement>("button:nth-of-type(1)")?.click());
+    await act(async () => vi.advanceTimersByTimeAsync(PREVIEW_ATTEMPT_TIMEOUT_MS * 2));
+    expect(host.firstElementChild?.getAttribute("data-status")).toBe("ready");
+    expect(host.firstElementChild?.getAttribute("data-url")).toBe("refbrowse://thumbnail/token");
   });
 });

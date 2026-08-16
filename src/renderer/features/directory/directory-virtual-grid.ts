@@ -5,6 +5,16 @@ export const DIRECTORY_ROW_HEIGHT = 160;
 export const DIRECTORY_GRID_GAP = 12;
 export const DIRECTORY_PAGE_SIZE = 512;
 export const MAXIMUM_CACHED_DIRECTORY_PAGES = 12;
+/** 目录分区「文件夹 (N) / 文件 (M)」分组头高度（px）。 */
+export const DIRECTORY_GROUP_HEADER_HEIGHT = 28;
+/** 列表视图行高（px）。 */
+export const DIRECTORY_LIST_ROW_HEIGHT = 40;
+/** 卡片预览区之外（标题 + 元信息）的固定高度（px），缩放时预览区随之伸缩。 */
+export const DIRECTORY_CARD_FOOTER_HEIGHT = 34;
+/** 文件夹区紧凑行行高（px，迅雷式多列行；与列表视图行高一致）。 */
+export const DIRECTORY_FOLDER_ROW_HEIGHT = 40;
+/** 文件夹区紧凑行的最小列宽（px）：列数 = floor((width+gap)/(minWidth+gap))。 */
+export const DIRECTORY_FOLDER_ROW_WIDTH = 170;
 
 export interface DirectoryVirtualWindow {
   columns: number;
@@ -24,22 +34,31 @@ export function calculateDirectoryVirtualWindow(input: {
   total: number;
   overscanBefore?: number;
   overscanAfter?: number;
+  /** 缩放后的卡片宽（缺省 DIRECTORY_CARD_WIDTH）。 */
+  cardWidth?: number;
+  /** 缩放后的网格间距（缺省 DIRECTORY_GRID_GAP）。 */
+  gap?: number;
+  /** 行高（缺省 DIRECTORY_ROW_HEIGHT；列表视图用 DIRECTORY_LIST_ROW_HEIGHT）。 */
+  rowHeight?: number;
 }): DirectoryVirtualWindow {
+  const cardW = input.cardWidth ?? DIRECTORY_CARD_WIDTH;
+  const gapW = input.gap ?? DIRECTORY_GRID_GAP;
+  const rowH = input.rowHeight ?? DIRECTORY_ROW_HEIGHT;
   const columns = Math.max(
     1,
     Math.floor(
-      (input.width + DIRECTORY_GRID_GAP) /
-        (DIRECTORY_CARD_WIDTH + DIRECTORY_GRID_GAP),
+      (input.width + gapW) /
+        (cardW + gapW),
     ),
   );
   const rowCount = Math.ceil(Math.max(0, input.total) / columns);
   const firstVisibleRow = Math.max(
     0,
-    Math.floor(input.scrollTop / DIRECTORY_ROW_HEIGHT),
+    Math.floor(input.scrollTop / rowH),
   );
   const lastVisibleRow = Math.min(
     rowCount,
-    Math.ceil((input.scrollTop + input.height) / DIRECTORY_ROW_HEIGHT),
+    Math.ceil((input.scrollTop + input.height) / rowH),
   );
   const startRow = Math.max(0, firstVisibleRow - (input.overscanBefore ?? 2));
   const endRow = Math.min(rowCount, lastVisibleRow + (input.overscanAfter ?? 3));

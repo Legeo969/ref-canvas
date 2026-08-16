@@ -1224,7 +1224,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   if (!result.boardPngIsImage) {
     throw new Error("BOARD_PNG_NOT_RENDERED");
   }
-  if (result.firstSidebarSection !== "快速访问") {
+  if (result.firstSidebarSection !== "收藏") {
     throw new Error(`SIDEBAR_PRIMARY_MISMATCH:${result.firstSidebarSection}`);
   }
   if (!result.diskSectionVisible) {

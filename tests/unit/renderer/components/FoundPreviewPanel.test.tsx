@@ -393,6 +393,41 @@ describe("FoundPreviewPanel smoke", () => {
     expect(host.querySelector('[aria-label="提取多通道"]')?.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("shows the reflection ball but not panorama for a 1:1 HDR environment map", async () => {
+    // SoftBox_SoftEdge.exr 这类 1:1 柔光箱环境贴图：反射球（PMREM）可用，
+    // 但非 equirectangular 2:1，不显示全景按钮。
+    const softboxEntry = { ...entry, path: "D:\\refs\\SoftBox_SoftEdge.exr", name: "SoftBox_SoftEdge.exr", extension: "exr" };
+    Object.assign(window, {
+      refCanvas: {
+        metadata: { ensure: vi.fn(async () => ({ asset: {
+          id: "softbox-1", kind: "image", extension: "exr", path: softboxEntry.path,
+          previewUrl: "refasset://asset/softbox-1", thumbnailUrl: "refasset://thumbnail/softbox-1",
+          title: softboxEntry.name, linkState: "online",
+        } })) },
+        media: {
+          probe: vi.fn(async () => ({ width: 2048, height: 2048, duration: null, extra: {} })),
+        },
+        mediaNotes: {
+          list: vi.fn(async () => []),
+          getPlaybackState: vi.fn(async () => null),
+          setPlaybackState: vi.fn(),
+        },
+        filesystem: { open: vi.fn(), reveal: vi.fn() },
+        system: { getPreferences: vi.fn(async () => ({ foundSettings: FOUND_SETTINGS_DEFAULTS })) },
+      } as unknown as RefCanvasApi,
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<FoundPreviewPanel entry={softboxEntry} />);
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    });
+    expect(host.querySelector('[aria-label="反射球"]')).toBeTruthy();
+    expect(host.querySelector('[aria-label="全景模式"]')).toBeNull();
+  });
+
   it("uses the in-preview sampler for HDR instead of the native EyeDropper", async () => {
     const exrEntry = { ...entry, path: "D:\\refs\\beauty.exr", name: "beauty.exr", extension: "exr" };
     const nativeOpen = vi.fn();

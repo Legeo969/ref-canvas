@@ -1,5 +1,4 @@
 import { open } from "node:fs/promises";
-import path from "node:path";
 
 /**
  * .blend 文件内嵌预览图读取（无需启动 Blender）。
@@ -97,8 +96,10 @@ export function bgraToRgba(pixels: Buffer): Buffer {
   return out;
 }
 
-/** 根据扩展名判断是否尝试内嵌预览（仅 .blend；.abc 无此机制）。 */
+/** 根据扩展名判断是否尝试内嵌预览（仅 .blend；.blend1 不再读内嵌预览，.abc 无此机制）。 */
 export function hasEmbeddedPreviewSupport(extension: string): boolean {
-  return path.extname(extension).toLowerCase() === ".blend" ||
-    extension.toLowerCase() === "blend";
+  const normalized = extension.toLowerCase();
+  const lastDot = normalized.lastIndexOf(".");
+  const raw = lastDot >= 0 ? normalized.slice(lastDot + 1) : normalized;
+  return raw === "blend";
 }

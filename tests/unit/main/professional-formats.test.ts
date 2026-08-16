@@ -219,14 +219,15 @@ describe("FontProvider（阶段 4：字体）", () => {
   });
 });
 
-describe("DccProvider（阶段 4：Alembic/DCC 降级）", () => {
-  it("Alembic probe：明确降级说明", async () => {
-    const directory = await withTemp();
-    const target = path.join(directory, "shot.abc");
-    await writeFile(target, Buffer.from("Ogawa\u0000", "latin1"));
+describe("DccProvider（阶段 4：DCC 场景降级）", () => {
+  it("Alembic 已归 model3d，不再由 DccProvider 处理", async () => {
+    // .abc 是通用 3D 交换格式（与 fbx/obj 同类），分类器归 model3d；
+    // DccProvider 不应再声明 abc 扩展。
     const provider = new DccProvider();
-    const result = await provider.probe({ path: target, kind: "dcc", extension: "abc", size: 0 });
-    expect(result.extra.unsupportedReason).toContain("Alembic");
+    expect(provider.manifest.extensions).not.toContain("abc");
+    await expect(async () => provider.probe({
+      path: "shot.abc", kind: "dcc", extension: "abc", size: 0,
+    })).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
     await provider.dispose();
   });
 
@@ -237,6 +238,24 @@ describe("DccProvider（阶段 4：Alembic/DCC 降级）", () => {
     const provider = new DccProvider();
     const result = await provider.probe({ path: target, kind: "dcc", extension: "blend", size: 0 });
     expect(result.extra.unsupportedReason).toContain("Blender");
+    await provider.dispose();
+  });
+
+  it.each([
+    ["blend1", "Blender"],
+    ["ma", "Maya"],
+    ["mb", "Maya"],
+    ["max", "3ds Max"],
+    ["c4d", "Cinema 4D"],
+    ["hip", "Houdini"],
+    ["hipnc", "Houdini"],
+  ])("DCC 场景 %s：probe 返回明确降级说明", async (extension, software) => {
+    const provider = new DccProvider();
+    expect(provider.manifest.extensions).toContain(extension);
+    const result = await provider.probe({
+      path: `scene.${extension}`, kind: "dcc", extension, size: 0,
+    });
+    expect(result.extra.unsupportedReason).toContain(software);
     await provider.dispose();
   });
 

@@ -4557,55 +4557,7 @@
 }
 
 
-/* 阶段 5：Folder flattening */
-
-.dir-flatten-control {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  gap: 8px;
-  margin-left: 4px;
-  padding: 4px 4px 4px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: var(--shadow-border);
-  color: #8d9a94;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.dir-flatten-control select {
-  min-width: 124px;
-  min-height: 32px;
-  padding: 0 7px;
-  border: 0;
-  border-radius: 4px;
-  outline: 0;
-  background: #252b2b;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.075);
-  color: #c8d1cc;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.dir-sequence-toggle {
-  display: inline-flex;
-  min-height: 40px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: var(--shadow-border);
-  color: #8d9a94;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.dir-sequence-toggle input {
-  accent-color: #35c6a0;
-  cursor: pointer;
-}
+/* 阶段 5：Folder flattening & format filter */
 
 .dir-format-filter {
   display: flex;

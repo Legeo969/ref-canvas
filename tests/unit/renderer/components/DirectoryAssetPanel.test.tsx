@@ -125,16 +125,26 @@ describe("DirectoryAssetPanel", () => {
     });
     listDirectory.mockClear();
 
-    const select = host.querySelector<HTMLSelectElement>(
+    const toggle = host.querySelector<HTMLButtonElement>(
+      '[data-testid="directory-view-options-toggle"]',
+    );
+    expect(toggle).toBeTruthy();
+    await act(async () => {
+      toggle?.click();
+      await Promise.resolve();
+    });
+
+    const depths = host.querySelector<HTMLElement>(
       '[data-testid="directory-flatten-depth"]',
     );
-    expect(select).toBeTruthy();
-    expect(select?.options).toHaveLength(9);
-    expect(select?.options[8]?.value).toBe("8");
+    expect(depths).toBeTruthy();
+    const radios = Array.from(
+      depths?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [],
+    );
+    expect(radios).toHaveLength(9);
+    expect(radios[8]?.value).toBe("8");
     await act(async () => {
-      if (!select) return;
-      select.value = "8";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      radios[8]?.click();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -149,6 +159,159 @@ describe("DirectoryAssetPanel", () => {
       "D:\\refs",
       expect.objectContaining({ flattenDepth: 8 }),
     );
+  });
+
+  it("opens and closes the view options popover from the breadcrumb row", async () => {
+    const listDirectory = vi.fn(async () => ({
+      entries: [],
+      total: 0,
+      nextCursor: null,
+      scanState: "complete" as const,
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          onSearchProgress: () => () => undefined,
+        },
+        system: {
+          getPreferences: vi.fn(async () => ({
+            foundSettings: FOUND_SETTINGS_DEFAULTS,
+          })),
+          setPreferences: vi.fn(async (patch: unknown) => patch),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    const toggle = host.querySelector<HTMLButtonElement>(
+      '[data-testid="directory-view-options-toggle"]',
+    );
+    expect(toggle).toBeTruthy();
+    expect(toggle?.getAttribute("aria-label")).toBe("视图选项");
+    expect(host.querySelector(".dir-view-options-popover")).toBeNull();
+
+    await act(async () => {
+      toggle?.click();
+      await Promise.resolve();
+    });
+    const popover = host.querySelector<HTMLElement>(".dir-view-options-popover");
+    expect(popover).toBeTruthy();
+    expect(popover?.getAttribute("role")).toBe("group");
+    expect(popover?.getAttribute("aria-label")).toBe("视图选项");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+
+    // Escape 关闭。
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".dir-view-options-popover")).toBeNull();
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+
+    // 再次打开后，点击 popover 外部关闭。
+    await act(async () => {
+      toggle?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".dir-view-options-popover")).toBeTruthy();
+    await act(async () => {
+      document.body.dispatchEvent(
+        new MouseEvent("pointerdown", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".dir-view-options-popover")).toBeNull();
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("toggles sequence merging from the view options popover", async () => {
+    const setPreferences = vi.fn(
+      async (patch: { foundSettings?: { collapseImageSequences?: boolean } }) => ({
+        foundSettings: {
+          ...FOUND_SETTINGS_DEFAULTS,
+          ...(patch.foundSettings ?? {}),
+          flattenPerFolder: { "D:\\refs": 0 },
+        },
+      }),
+    );
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory: vi.fn(async () => ({
+            entries: [],
+            total: 0,
+            nextCursor: null,
+            scanState: "complete" as const,
+          })),
+          onSearchProgress: () => () => undefined,
+        },
+        system: {
+          getPreferences: vi.fn(async () => ({
+            foundSettings: FOUND_SETTINGS_DEFAULTS,
+          })),
+          setPreferences,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      host
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="directory-view-options-toggle"]',
+        )
+        ?.click();
+      await Promise.resolve();
+    });
+
+    const sequenceToggle = host.querySelector<HTMLInputElement>(
+      '[data-testid="directory-sequence-toggle"]',
+    );
+    expect(sequenceToggle).toBeTruthy();
+    expect(sequenceToggle?.checked).toBe(true); // FOUND_SETTINGS_DEFAULTS.collapseImageSequences
+    await act(async () => {
+      sequenceToggle?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(setPreferences).toHaveBeenCalledWith({
+      foundSettings: { collapseImageSequences: false },
+    });
   });
 
   it("opens a folder card in browse mode from the context menu", async () => {
@@ -202,7 +365,7 @@ describe("DirectoryAssetPanel", () => {
 
     await act(async () => {
       document
-        .querySelector(".directory-card-wrap")
+        .querySelector(".directory-folder-row-wrap")
         ?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     });
     const openButton = Array.from(
@@ -861,6 +1024,410 @@ describe("DirectoryAssetPanel", () => {
     expect(open).toHaveBeenCalledWith("D:\\refs\\concept.psd");
   });
 
+  it.each([
+    { extension: "png", showDownscale: true, showGifWorkbench: false, showExportMp4: false, showFrames: false },
+    { extension: "tiff", showDownscale: true, showGifWorkbench: false, showExportMp4: false, showFrames: false },
+    { extension: "svg", showDownscale: false, showGifWorkbench: false, showExportMp4: false, showFrames: false },
+    { extension: "mp4", showDownscale: false, showGifWorkbench: true, showExportMp4: true, showFrames: true },
+    { extension: "exr", showDownscale: false, showGifWorkbench: false, showExportMp4: false, showFrames: false },
+    { extension: "mp3", showDownscale: false, showGifWorkbench: false, showExportMp4: false, showFrames: false },
+  ])(
+    "context menu export entries: Downscale / GIF 工作台 / 导出 MP4 by format ($extension)",
+    async ({ extension, showDownscale, showGifWorkbench, showExportMp4, showFrames }) => {
+      Object.assign(window, {
+        refCanvas: {
+          filesystem: {
+            onSearchProgress: () => () => undefined,
+            previewToken: vi.fn(async () => "token-downscale"),
+            open: vi.fn(async () => undefined),
+            reveal: vi.fn(async () => undefined),
+            materialize: vi.fn(async () => ({
+              asset: {},
+              created: true,
+              copied: false,
+              verified: false,
+            })),
+            trash: vi.fn(async () => undefined),
+          },
+          system: {
+            writeClipboard: vi.fn(async () => undefined),
+          },
+        } as unknown as RefCanvasApi,
+      });
+      useAppStore.setState({
+        directoryPath: "D:\\refs",
+        directoryEntries: [
+          {
+            path: `D:\\refs\\shot.${extension}`,
+            name: `shot.${extension}`,
+            isDirectory: false,
+            extension,
+            size: 100,
+          },
+        ],
+        directoryTotal: 1,
+      });
+
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      roots.push(root);
+      await act(async () => {
+        root.render(
+          <DialogProvider>
+            <DirectoryAssetPanel />
+          </DialogProvider>,
+        );
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        document
+          .querySelector(".directory-card-wrap")
+          ?.dispatchEvent(
+            new window.MouseEvent("contextmenu", {
+              bubbles: true,
+              clientX: 40,
+              clientY: 40,
+            }),
+          );
+      });
+      const labels = Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          ".asset-context-menu button",
+        ),
+      ).map((button) => button.textContent?.trim() ?? "");
+      expect(labels.includes("Downscale…")).toBe(showDownscale);
+      expect(labels.includes("GIF 工作台…")).toBe(showGifWorkbench);
+      expect(labels.includes("导出 MP4…")).toBe(showExportMp4);
+      expect(labels.includes("导出 PNG/JPG 序列帧…")).toBe(showFrames);
+    },
+  );
+
+  it("opens the GIF workbench with the image sequence attached from the context menu", async () => {
+    const frames = [1, 2, 3].map((frame) => ({
+      path: `D:\\refs\\shot_${String(frame).padStart(4, "0")}.exr`,
+      name: `shot_${String(frame).padStart(4, "0")}.exr`,
+      isDirectory: false,
+      extension: "exr",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          previewToken: vi.fn(async () => "token-sequence-gif"),
+          open: vi.fn(async () => undefined),
+          reveal: vi.fn(async () => undefined),
+          materialize: vi.fn(async () => ({
+            asset: {},
+            created: false,
+            copied: false,
+            verified: false,
+          })),
+          trash: vi.fn(async () => undefined),
+        },
+        sequences: {
+          detect: vi.fn(async () => [
+            {
+              id: "sequence-1",
+              directory: "D:\\refs",
+              baseName: "shot",
+              extension: "exr",
+              pattern: "standard",
+              files: frames.map((frame) => frame.path),
+              frames: [1, 2, 3],
+              start: 1,
+              end: 3,
+              missingFrames: [],
+              width: 4,
+              fps: 24,
+            },
+          ]),
+        },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: frames,
+      directoryTotal: frames.length,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    const workbench: Array<{ path: string; tool: string }> = [];
+    const listener = (event: Event) => {
+      workbench.push(
+        (event as CustomEvent<{ path: string; tool: string }>).detail,
+      );
+    };
+    window.addEventListener("refcanvas:directory-workbench", listener);
+    await act(async () => {
+      document
+        .querySelector(".directory-card-wrap")
+        ?.dispatchEvent(
+          new window.MouseEvent("contextmenu", {
+            bubbles: true,
+            clientX: 40,
+            clientY: 40,
+          }),
+        );
+    });
+    const gifButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".asset-context-menu button"),
+    ).find((button) => button.textContent?.includes("GIF 工作台"));
+    await act(async () => {
+      gifButton?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    window.removeEventListener("refcanvas:directory-workbench", listener);
+    expect(workbench).toEqual([
+      { path: "D:\\refs\\shot_0001.exr", tool: "gif" },
+    ]);
+    expect(
+      useAppStore.getState().selectedDirectoryEntry?.sequenceGroup?.files,
+    ).toEqual(frames.map((frame) => frame.path));
+  });
+
+  it("exports an image sequence to MP4 from the context menu via the preset dialog", async () => {
+    const frames = [1, 2, 3].map((frame) => ({
+      path: `D:\\refs\\shot_${String(frame).padStart(4, "0")}.png`,
+      name: `shot_${String(frame).padStart(4, "0")}.png`,
+      isDirectory: false,
+      extension: "png",
+    }));
+    const sequencesExportMp4 = vi.fn(async () => ({
+      outputPath: "D:\\out\\shot.mp4",
+      durationSeconds: 0.4,
+      frameCount: 3,
+      width: 320,
+      height: 180,
+    }));
+    const mediaExportMp4 = vi.fn(async () => ({
+      outputPath: "D:\\out\\clip.mp4",
+      durationSeconds: 1,
+      width: 320,
+      height: 180,
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          previewToken: vi.fn(async () => "token-mp4"),
+          open: vi.fn(async () => undefined),
+          reveal: vi.fn(async () => undefined),
+          materialize: vi.fn(async () => ({
+            asset: {},
+            created: false,
+            copied: false,
+            verified: false,
+          })),
+          trash: vi.fn(async () => undefined),
+        },
+        sequences: {
+          detect: vi.fn(async () => [
+            {
+              id: "sequence-1",
+              directory: "D:\\refs",
+              baseName: "shot",
+              extension: "png",
+              pattern: "standard",
+              files: frames.map((frame) => frame.path),
+              frames: [1, 2, 3],
+              start: 1,
+              end: 3,
+              missingFrames: [],
+              width: 4,
+              fps: 24,
+            },
+          ]),
+          exportMp4: sequencesExportMp4,
+        },
+        media: { exportMp4: mediaExportMp4 },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: frames,
+      directoryTotal: frames.length,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      document
+        .querySelector(".directory-card-wrap")
+        ?.dispatchEvent(
+          new window.MouseEvent("contextmenu", {
+            bubbles: true,
+            clientX: 40,
+            clientY: 40,
+          }),
+        );
+    });
+    const mp4Button = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".asset-context-menu button"),
+    ).find((button) => button.textContent?.includes("导出 MP4"));
+    expect(mp4Button).toBeTruthy();
+    await act(async () => {
+      mp4Button?.click();
+      await Promise.resolve();
+    });
+    expect(document.querySelector(".form-dialog")).toBeTruthy();
+    expect(document.querySelector(".form-dialog select")).toBeTruthy();
+    const directoryInput = host.querySelector<HTMLInputElement>(
+      ".form-dialog input",
+    );
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(directoryInput, "D:\\out");
+      directoryInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      host
+        .querySelector<HTMLButtonElement>(".form-dialog button[type='submit']")
+        ?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    expect(sequencesExportMp4).toHaveBeenCalledWith({
+      files: frames.map((frame) => frame.path),
+      fps: 24,
+      presetId: "convert-default",
+      outputDirectory: "D:\\out",
+      baseName: "shot",
+    });
+    expect(mediaExportMp4).not.toHaveBeenCalled();
+  });
+
+  it("transcodes a video to MP4 from the context menu via the preset dialog", async () => {
+    const sequencesExportMp4 = vi.fn(async () => undefined);
+    const mediaExportMp4 = vi.fn(async () => ({
+      outputPath: "D:\\out\\clip.mp4",
+      durationSeconds: 1,
+      width: 320,
+      height: 180,
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          previewToken: vi.fn(async () => "token-video-mp4"),
+          open: vi.fn(async () => undefined),
+          reveal: vi.fn(async () => undefined),
+          materialize: vi.fn(async () => ({
+            asset: {},
+            created: false,
+            copied: false,
+            verified: false,
+          })),
+          trash: vi.fn(async () => undefined),
+        },
+        sequences: { exportMp4: sequencesExportMp4 },
+        media: { exportMp4: mediaExportMp4 },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        {
+          path: "D:\\refs\\clip.mov",
+          name: "clip.mov",
+          isDirectory: false,
+          extension: "mov",
+          size: 128,
+        },
+      ],
+      directoryTotal: 1,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      document
+        .querySelector(".directory-card-wrap")
+        ?.dispatchEvent(
+          new window.MouseEvent("contextmenu", {
+            bubbles: true,
+            clientX: 40,
+            clientY: 40,
+          }),
+        );
+    });
+    const mp4Button = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".asset-context-menu button"),
+    ).find((button) => button.textContent?.includes("导出 MP4"));
+    await act(async () => {
+      mp4Button?.click();
+      await Promise.resolve();
+    });
+    const directoryInput = host.querySelector<HTMLInputElement>(
+      ".form-dialog input",
+    );
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(directoryInput, "D:\\out");
+      directoryInput?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      host
+        .querySelector<HTMLButtonElement>(".form-dialog button[type='submit']")
+        ?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    expect(mediaExportMp4).toHaveBeenCalledWith({
+      inputPath: "D:\\refs\\clip.mov",
+      outputDirectory: "D:\\out",
+      baseName: "clip",
+      presetId: "convert-default",
+    });
+    expect(sequencesExportMp4).not.toHaveBeenCalled();
+  });
+
   it("does not expose a redundant manual index command", async () => {
     const materialize = vi.fn(async () => ({
       asset: {},
@@ -1040,19 +1607,20 @@ describe("DirectoryAssetPanel", () => {
     });
     useAppStore.setState({
       directoryPath: "D:\\refs",
+      // 服务端目录优先排序（filesystem-service.sortDirectory）：目录在前。
       directoryEntries: [
+        {
+          path: "D:\\refs\\sub",
+          name: "sub",
+          isDirectory: true,
+          extension: "",
+        },
         {
           path: "D:\\refs\\a.txt",
           name: "a.txt",
           isDirectory: false,
           extension: "txt",
           size: 4,
-        },
-        {
-          path: "D:\\refs\\sub",
-          name: "sub",
-          isDirectory: true,
-          extension: "",
         },
         {
           path: "D:\\refs\\b.txt",
@@ -1156,6 +1724,7 @@ describe("DirectoryAssetPanel", () => {
 
     const cards = document.querySelectorAll<HTMLElement>(".directory-card-wrap");
     expect(cards[2]?.style.left).toBe("320px");
+    // 文件分组头已移除（对齐迅雷），文件区直接网格：第 1 行 top 归零。
     expect(cards[2]?.style.top).toBe("0px");
   });
 
@@ -1300,5 +1869,421 @@ describe("DirectoryAssetPanel", () => {
     expect(document.querySelector('[role="status"]')?.textContent).toContain(
       "已取消：完成 25 项",
     );
+  });
+
+  it("renders folder group header with compact folder rows and no file header", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        { path: "D:\\refs\\sub-a", name: "sub-a", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\sub-b", name: "sub-b", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\a.txt", name: "a.txt", isDirectory: false, extension: "txt", size: 4 },
+      ],
+      directoryTotal: 3,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    const folderHeader = host.querySelector<HTMLButtonElement>(
+      '[data-testid="directory-folder-group-header"]',
+    );
+    expect(folderHeader?.getAttribute("aria-expanded")).toBe("true");
+    expect(folderHeader?.textContent).toContain("文件夹");
+    expect(folderHeader?.textContent).toContain("2");
+    // 文件分组头已移除（对齐迅雷），文件区直接网格。
+    expect(host.querySelector('[data-testid="directory-file-group-header"]')).toBeNull();
+    // 文件夹区 = 紧凑多列行（FolderGlyph + 名称）；文件区 = 大卡网格。
+    const folderRows = Array.from(
+      host.querySelectorAll<HTMLElement>(".directory-folder-row"),
+    );
+    expect(folderRows).toHaveLength(2);
+    expect(folderRows[0]?.textContent).toContain("sub-a");
+    expect(folderRows[0]?.querySelector('[data-folder-glyph]')).toBeTruthy();
+    expect(host.querySelectorAll(".directory-card-wrap")).toHaveLength(1);
+
+    // 折叠文件夹区：文件夹紧凑行消失、文件卡片保留，头部计数不变。
+    await act(async () => {
+      folderHeader?.click();
+      await Promise.resolve();
+    });
+    expect(folderHeader?.getAttribute("aria-expanded")).toBe("false");
+    const names = Array.from(
+      document.querySelectorAll<HTMLElement>(".directory-card .asset-title"),
+    ).map((node) => node.textContent);
+    expect(names).toEqual(["a.txt"]);
+
+    // 再次展开恢复全部行。
+    await act(async () => {
+      folderHeader?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelectorAll(".directory-folder-row")).toHaveLength(2);
+    expect(host.querySelectorAll(".directory-card-wrap")).toHaveLength(1);
+  });
+
+  it("shows file/folder counts in the bottom status bar", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        { path: "D:\\refs\\sub-a", name: "sub-a", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\sub-b", name: "sub-b", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\a.txt", name: "a.txt", isDirectory: false, extension: "txt", size: 4 },
+      ],
+      directoryTotal: 3,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    const bar = host.querySelector<HTMLElement>('[data-testid="directory-status-bar"]');
+    expect(bar?.textContent).toContain("文件: 1");
+    expect(bar?.textContent).toContain("文件夹: 2");
+  });
+
+  it("switches between grid and list views with selection preserved", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        { path: "D:\\refs\\a.txt", name: "a.txt", isDirectory: false, extension: "txt", size: 4 },
+        { path: "D:\\refs\\b.txt", name: "b.txt", isDirectory: false, extension: "txt", size: 4 },
+      ],
+      directoryTotal: 2,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    // 默认网格视图。
+    expect(host.querySelectorAll(".directory-card-wrap").length).toBeGreaterThan(0);
+    expect(host.querySelectorAll(".directory-row")).toHaveLength(0);
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="directory-view-list"]')?.click();
+      await Promise.resolve();
+    });
+    const rows = () =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>(".directory-row"));
+    expect(rows()).toHaveLength(2);
+    expect(rows()[0]?.textContent).toContain("a.txt");
+
+    // 列表行复用选择逻辑。
+    await act(async () => {
+      rows()[0]?.click();
+    });
+    expect(useAppStore.getState().selectedDirectoryEntry?.path).toBe("D:\\refs\\a.txt");
+    expect(rows()[0]?.classList.contains("selected")).toBe(true);
+
+    // 切回网格。
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="directory-view-grid"]')?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelectorAll(".directory-card-wrap").length).toBeGreaterThan(0);
+    expect(host.querySelectorAll(".directory-row")).toHaveLength(0);
+  });
+
+  it("zooms card size via the slider", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: Array.from({ length: 4 }, (_, index) => ({
+        path: `D:\\refs\\${index + 1}.txt`,
+        name: `${index + 1}.txt`,
+        isDirectory: false,
+        extension: "txt",
+        size: 4,
+      })),
+      directoryTotal: 4,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    const slider = host.querySelector<HTMLInputElement>(
+      '[data-testid="directory-zoom-slider"]',
+    );
+    expect(slider).toBeTruthy();
+    expect(host.querySelector<HTMLElement>(".directory-card-wrap")?.style.width).toBe(
+      "148px",
+    );
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(slider, "0.75");
+      slider?.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    // 0.75 缩放：卡片宽 111px、行高 max(96, round(126*0.75)) + 34 = 130px。
+    // jsdom 视口宽 0 ⇒ 1 列，第 3 张卡片在第 3 行：文件头已移除 ⇒ 2×130px。
+    const cards = host.querySelectorAll<HTMLElement>(".directory-card-wrap");
+    expect(cards[0]?.style.width).toBe("111px");
+    expect(cards[0]?.style.getPropertyValue("--directory-card-h")).toBe("130px");
+    expect(cards[2]?.style.top).toBe("260px");
+  });
+
+  it("sorts loaded entries by modified time and size from the sort menu", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        { path: "D:\\refs\\a.txt", name: "a.txt", isDirectory: false, extension: "txt", size: 100, mtimeMs: 3000 },
+        { path: "D:\\refs\\b.txt", name: "b.txt", isDirectory: false, extension: "txt", size: 300, mtimeMs: 1000 },
+        { path: "D:\\refs\\c.txt", name: "c.txt", isDirectory: false, extension: "txt", size: 200, mtimeMs: 2000 },
+      ],
+      directoryTotal: 3,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    const names = () =>
+      Array.from(
+        document.querySelectorAll<HTMLElement>(".directory-card .asset-title"),
+      ).map((node) => node.textContent);
+
+    // 默认名称序（服务端顺序）。
+    expect(names()).toEqual(["a.txt", "b.txt", "c.txt"]);
+
+    const toggle = host.querySelector<HTMLButtonElement>(
+      '[data-testid="directory-sort-toggle"]',
+    );
+    await act(async () => {
+      toggle?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".dir-sort-popover")).toBeTruthy();
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="directory-sort-size"]')?.click();
+      await Promise.resolve();
+    });
+    expect(names()).toEqual(["a.txt", "c.txt", "b.txt"]); // 大小升序 100/200/300
+
+    await act(async () => {
+      toggle?.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[data-testid="directory-sort-mtime"]')?.click();
+      await Promise.resolve();
+    });
+    expect(names()).toEqual(["b.txt", "c.txt", "a.txt"]); // 修改时间升序 1000/2000/3000
+  });
+
+  it("renders folder compact rows with adaptive columns and file cards with a 75% thumbnail", async () => {
+    let resizeCallback: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resizeCallback = callback;
+        }
+        observe = observe;
+        disconnect = vi.fn();
+        unobserve = vi.fn();
+      },
+    );
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        { path: "D:\\refs\\sub-a", name: "sub-a", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\sub-b", name: "sub-b", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\sub-c", name: "sub-c", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\sub-d", name: "sub-d", isDirectory: true, extension: "" },
+        { path: "D:\\refs\\a.txt", name: "a.txt", isDirectory: false, extension: "txt", size: 4 },
+      ],
+      directoryTotal: 5,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+
+    // 520px 宽：文件夹列宽 170 ⇒ floor((520+12)/(170+12)) = 2 列；
+    // 4 个文件夹占 2 行（40px/行）；第 3 个文件夹（sub-c）在第 2 行第 1 列。
+    await act(async () => {
+      resizeCallback?.(
+        [
+          {
+            contentRect: { width: 520, height: 600 },
+          } as ResizeObserverEntry,
+        ],
+        {} as ResizeObserver,
+      );
+    });
+    const folderWraps = host.querySelectorAll<HTMLElement>(".directory-folder-row-wrap");
+    expect(folderWraps).toHaveLength(4);
+    expect(folderWraps[2]?.style.left).toBe("0px"); // sub-c 第 2 行第 1 列
+    expect(folderWraps[3]?.style.left).toBe("182px"); // (170+12) * 1
+    expect(folderWraps[2]?.style.top).toBe("68px"); // 28px 文件夹头 + 1×40px
+    expect(folderWraps[0]?.style.height).toBe("40px");
+    // 文件大卡：预览区占卡高 75%（160 × 0.75 = 120px），文件名/元信息居中。
+    const card = host.querySelector<HTMLElement>(".directory-card-wrap");
+    expect(card?.style.getPropertyValue("--directory-preview-h")).toBe("120px");
+    // 缩略图右上角元数据徽章、右下角扩展名徽章与文件名元素均保留。
+    expect(host.querySelector(".directory-extension-badge")?.textContent).toBe("TXT");
+  });
+
+  it("keeps the view-mode toggle and settings gear in the format filter row", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        { path: "D:\\refs\\a.txt", name: "a.txt", isDirectory: false, extension: "txt", size: 4 },
+      ],
+      directoryTotal: 1,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    // 网格/列表切换位于筛选行内（排序控件旁边），面包屑行右侧不再包含它。
+    const filterRow = host.querySelector<HTMLElement>(".dir-format-filter");
+    expect(filterRow?.querySelector('[data-testid="directory-view-grid"]')).toBeTruthy();
+    expect(filterRow?.querySelector('[data-testid="directory-view-list"]')).toBeTruthy();
+    const pathBarRight = host.querySelector<HTMLElement>(".dir-path-bar-right");
+    expect(pathBarRight?.querySelector('[data-testid="directory-view-grid"]')).toBeNull();
+    // 面包屑行右侧保留缩放滑块 + 视图选项按钮。
+    expect(pathBarRight?.querySelector('[data-testid="directory-zoom-slider"]')).toBeTruthy();
+    expect(pathBarRight?.querySelector('[data-testid="directory-view-options-toggle"]')).toBeTruthy();
+
+    // ⚙ 设置入口在筛选行，触发与头部 Settings2 相同的入口事件。
+    const settingsButton = host.querySelector<HTMLButtonElement>(
+      '[data-testid="directory-filter-settings"]',
+    );
+    expect(settingsButton).toBeTruthy();
+    const openSettings = vi.fn();
+    window.addEventListener("refcanvas:open-settings", openSettings);
+    await act(async () => {
+      settingsButton?.click();
+      await Promise.resolve();
+    });
+    window.removeEventListener("refcanvas:open-settings", openSettings);
+    expect(openSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: "found",
+      }),
+    );
+  });
+
+  it("renders a compact search box with the subfolder hint moved to a tooltip", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    const field = host.querySelector<HTMLElement>(".directory-search");
+    expect(field).toBeTruthy();
+    // 子目录提示从 kbd 移到 title/tooltip，kbd 不再渲染。
+    expect(field?.querySelector("kbd")).toBeNull();
+    expect(field?.getAttribute("title")).toContain("含子目录");
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="搜索当前目录"]');
+    expect(input).toBeTruthy();
+    expect(input?.getAttribute("placeholder")).toBe("查找…");
   });
 });

@@ -24,7 +24,7 @@ import {
 } from "./refbrowse";
 import { thumbnailCacheFilename } from "./thumbnail-cache";
 import type { ThumbnailWorkerClient } from "./thumbnail-worker-client";
-import { genericPlaceholderThumbnail } from "./placeholder-thumbnail";
+import { genericPlaceholderThumbnail, fileIconPlaceholderThumbnail, shouldUseFileIcon, systemFileIconThumbnail } from "./placeholder-thumbnail";
 import type { ProviderRegistry } from "./provider-registry";
 import { invokeThumbnail } from "./provider-registry";
 import {
@@ -159,10 +159,19 @@ async function generateThumbnail(
   displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw",
 ): Promise<Buffer> {
   const extension = path.extname(source).replace(/^\./, "").toLowerCase();
+  // .blend1（Blender 自动备份）无系统缩略图也无注册关联：直接展示
+  // 系统文件图标（Windows 上是白底空白文档），不读内嵌预览、不做深色
+  // 合成卡片；图标缺失时回退文字占位。必须在 blend 分支之前：blend1
+  // 不再尝试读 TEST 块。
+  if (extension === "blend1") {
+    const placeholder = await systemFileIconThumbnail(source, extension, size);
+    await writeCacheAtomically(cacheFile, placeholder);
+    return placeholder;
+  }
   // .blend 读文件内嵌预览（TEST 块，Blender 保存时自动写入的场景缩略
   // 图）：只读文件头几十 KB、不启动任何外部程序、毫秒级零内存——滚轮
   // 浏览大目录不再卡爆。zstd 压缩的 .blend 无法直接定位内部块，回落
-  // 格式图标占位。
+  // 软件关联图标卡片。
   if (extension === "blend") {
     const embedded = await readBlendEmbeddedPreviewSafe(source);
     if (embedded) {
@@ -180,7 +189,17 @@ async function generateThumbnail(
         .toBuffer();
       return png;
     }
-    const placeholder = await genericPlaceholderThumbnail(extension, size);
+    const placeholder = await fileIconPlaceholderThumbnail(source, extension, size);
+    await writeCacheAtomically(cacheFile, placeholder);
+    return placeholder;
+  }
+  // DCC 专有格式 + Alembic（无本地解码器、无外壳缩略图）：优先用文件
+  // 关联软件图标（app.getFileIcon——装了对应软件就显示软件图标），
+  // 图标 + 格式名合成卡片并缓存；取图标失败回退文字占位。
+  // 必须在 registry 分支之前：abc 归 model3d 后若进 registry 会命中
+  // geometry-provider 且抛错。
+  if (shouldUseFileIcon(extension)) {
+    const placeholder = await fileIconPlaceholderThumbnail(source, extension, size);
     await writeCacheAtomically(cacheFile, placeholder);
     return placeholder;
   }
@@ -256,22 +275,6 @@ async function generateThumbnail(
     if (converted) return converted;
   }
   if (signal.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
-  // DCC 专有格式（Maya/3ds Max/C4D/Houdini/Alembic 场景）没有系统外壳
-  // 缩略图，也没有本地解码器：直接生成格式图标占位卡片并缓存，避免
-  // 每次都调 createThumbnailFromPath 失败重试刷 404。
-  if (
-    extension === "ma" ||
-    extension === "mb" ||
-    extension === "max" ||
-    extension === "c4d" ||
-    extension === "abc" ||
-    extension === "hip" ||
-    extension === "hipnc"
-  ) {
-    const placeholder = await genericPlaceholderThumbnail(extension, size);
-    await writeCacheAtomically(cacheFile, placeholder);
-    return placeholder;
-  }
   // Windows 上没有外壳缩略图的格式（.aep/.zip 等）可能返回空图，也可能
   // 直接抛「Failed to get thumbnail from local thumbnail cache reference」。
   // 两种情况都视为无缩略图：生成并缓存占位卡片，避免每次请求都重试

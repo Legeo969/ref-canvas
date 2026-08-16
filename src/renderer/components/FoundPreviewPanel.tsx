@@ -31,6 +31,7 @@ import {
 } from "./PreviewTransport";
 import {
   classifyFoundPreview,
+  environmentPreviewCapabilities,
   formatFoundTimecode,
   foundToolbarProgressColor,
   type FoundToolbarVariant,
@@ -80,6 +81,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const [gifRange, setGifRange] = useState({ start: 0, end: 1 });
   const [sequenceGifRangeActive, setSequenceGifRangeActive] = useState(false);
   const [panoramaCapable, setPanoramaCapable] = useState(false);
+  const [reflectionCapable, setReflectionCapable] = useState(false);
   const [hdrViewMode, setHdrViewMode] = useState<"flat" | "reflection" | "panorama">("flat");
   const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(false);
   const fullscreenControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -171,6 +173,7 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     setGifRange({ start: 0, end: 1 });
     setSequenceGifRangeActive(false);
     setPanoramaCapable(false);
+    setReflectionCapable(false);
     setHdrViewMode("flat");
     if (!entry || entry.isDirectory) return;
     let cancelled = false;
@@ -247,10 +250,12 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     if (!asset || !/^(exr|hdr)$/i.test(asset.extension)) return;
     let cancelled = false;
     void window.refCanvas.media.probe(asset.path).then((probe) => {
-      if (!cancelled && probe.width && probe.height) {
-        const ratio = probe.width / probe.height;
-        setPanoramaCapable(ratio >= 1.8 && ratio <= 2.2);
-      }
+      if (cancelled) return;
+      // 全景要求 2:1 equirectangular；反射球对任意 HDR 宽高比可用
+      // （PMREM 反射不需要 2:1，1:1 柔光箱等环境图同样支持）。
+      const capabilities = environmentPreviewCapabilities(probe.width, probe.height);
+      setPanoramaCapable(capabilities?.panorama ?? false);
+      setReflectionCapable(capabilities?.reflection ?? false);
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [asset]);
@@ -690,20 +695,18 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     multichannelButtonRef={setMultichannelAnchor}
                     rendererControlsRef={setControlsTarget}
                     trailingActions={(
-                      <>{panoramaCapable && <>
-                        <button type="button" className={`found-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label="反射球" title="反射球" aria-pressed={hdrViewMode === "reflection"} onClick={() => {
+                      <>{reflectionCapable && <button type="button" className={`found-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label="反射球" title="反射球" aria-pressed={hdrViewMode === "reflection"} onClick={() => {
                           const next = hdrViewMode === "reflection" ? "flat" : "reflection";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);
                           window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", { detail: { path: currentPath, mode: next } }));
-                        }}><span className="found-reflection-ball-glyph" aria-hidden="true" /></button>
-                        <button type="button" className={`found-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label="全景模式" title="全景模式" aria-pressed={hdrViewMode === "panorama"} onClick={() => {
+                        }}><span className="found-reflection-ball-glyph" aria-hidden="true" /></button>}
+                      {panoramaCapable && <button type="button" className={`found-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label="全景模式" title="全景模式" aria-pressed={hdrViewMode === "panorama"} onClick={() => {
                           const next = hdrViewMode === "panorama" ? "flat" : "panorama";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);
                           window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", { detail: { path: currentPath, mode: next } }));
-                        }}><Globe2 size={15} /></button>
-                      </>}
+                        }}><Globe2 size={15} /></button>}
                       <PreviewSessionModeButtons
                         focused={previewSession.focused}
                         fullscreen={previewSession.fullscreen}

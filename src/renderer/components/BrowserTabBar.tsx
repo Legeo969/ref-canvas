@@ -8,6 +8,7 @@ import { Layers, Plus, X } from "lucide-react";
 import type { DragEvent } from "react";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
+import { FolderGlyph } from "./FolderGlyph";
 
 function TabTitle({ tab }: { tab: ReturnType<typeof useAppStore.getState>["browserTabs"][number] }) {
   if (tab.kind === "collection") {
@@ -19,7 +20,12 @@ function TabTitle({ tab }: { tab: ReturnType<typeof useAppStore.getState>["brows
     );
   }
   if (tab.targetId === "browser://empty") return <span>{translate("browser.empty")}</span>;
-  return <span title={tab.targetId}>{tab.title}</span>;
+  return (
+    <span className="browser-tab-directory" title={tab.targetId}>
+      <FolderGlyph size={9} className="browser-tab-folder-glyph" />
+      {tab.title}
+    </span>
+  );
 }
 
 export function BrowserTabBar() {

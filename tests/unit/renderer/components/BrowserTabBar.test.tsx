@@ -111,4 +111,42 @@ describe("BrowserTabBar (FND-002)", () => {
     });
     expect(reorderBrowserTab).toHaveBeenCalledWith("a", "b");
   });
+
+  it("prefixes directory tabs with a small folder glyph and keeps the empty tab icon-free", async () => {
+    const collectionTab = {
+      id: "c",
+      kind: "collection" as const,
+      targetId: "col-1",
+      title: "收集板",
+      backStack: [],
+      forwardStack: [],
+      query: "",
+      typeFilters: [],
+      flattenDepth: 0 as 0 | 1 | 2,
+      gridSize: 200,
+      selectedKeys: [],
+      scrollOffset: 0,
+    };
+    const emptyTab = tab("e", "browser://empty", "新标签");
+    const directoryTab = tab("d", "D:\\shots", "shots");
+    useAppStore.setState({
+      browserTabs: [collectionTab, emptyTab, directoryTab],
+      activeTabId: "d",
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<BrowserTabBar />);
+    });
+
+    const tabs = host.querySelectorAll<HTMLElement>(".browser-tab");
+    expect(tabs[0]?.querySelector('[data-folder-glyph]')).toBeNull(); // 集合：Layers
+    expect(tabs[0]?.querySelector(".browser-tab-collection")).toBeTruthy();
+    expect(tabs[1]?.querySelector('[data-folder-glyph]')).toBeNull(); // 空标签：无图标
+    expect(tabs[2]?.querySelector('[data-folder-glyph]')).toBeTruthy(); // 目录：FolderGlyph
+    expect(tabs[2]?.querySelector(".browser-tab-directory")).toBeTruthy();
+  });
 });

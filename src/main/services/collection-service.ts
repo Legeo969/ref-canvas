@@ -10,7 +10,10 @@
  */
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import type { ReferenceCollectionItem } from "../../shared/contracts";
+import type {
+  CollectionAddResult,
+  ReferenceCollectionItem,
+} from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { CollectionsRepository } from "../persistence/repositories/collections-repository-v17";
 import { CollectionResolutionService } from "./collection-resolution-service";
@@ -58,22 +61,42 @@ export class CollectionService {
     collectionId: string,
     paths: string[],
   ): Promise<ReferenceCollectionItem[]> {
+    return (await this.addPathsDetailed(collectionId, paths)).added;
+  }
+
+  /** 添加路径并报告被跳过的目录/缺失路径（供渲染层给出反馈）。 */
+  async addPathsDetailed(
+    collectionId: string,
+    paths: string[],
+  ): Promise<CollectionAddResult> {
     const enriched: Array<{ path: string; fingerprint: string | null }> = [];
+    const skipped: CollectionAddResult["skipped"] = {
+      directories: [],
+      missing: [],
+    };
     for (const filename of paths) {
       const resolved = path.resolve(filename);
       const info = await stat(resolved).catch(() => null);
-      if (!info?.isFile()) continue; // 只接受真实文件（非文件路径跳过）。
+      if (!info) {
+        skipped.missing.push(resolved);
+        continue;
+      }
+      if (!info.isFile()) {
+        // 只接受真实文件（目录本身不加入，但向调用方报告以便反馈）。
+        skipped.directories.push(resolved);
+        continue;
+      }
       const fingerprint = await quickFingerprint(resolved, info.size);
       enriched.push({ path: resolved, fingerprint });
     }
-    if (enriched.length === 0) return [];
+    if (enriched.length === 0) return { added: [], skipped };
     const mountRefs = this.mountRefsFor(enriched.map((entry) => entry.path));
-    return this.database.transaction(() => {
-      const results: ReferenceCollectionItem[] = [];
+    const results = this.database.transaction(() => {
+      const added: ReferenceCollectionItem[] = [];
       for (const entry of enriched) {
         const mountRef = mountRefs.get(entry.path);
         if (mountRef) {
-          results.push(
+          added.push(
             this.collections.addIdentityItem(collectionId, {
               identityId: null,
               mountId: mountRef.mountId,
@@ -88,12 +111,13 @@ export class CollectionService {
           const [item] = this.collections.addPaths(collectionId, [entry.path]);
           if (item) {
             this.collections.updateItem(item.id, { fingerprint: entry.fingerprint });
-            results.push(this.collections.getItem(item.id)!);
+            added.push(this.collections.getItem(item.id)!);
           }
         }
       }
-      return results;
+      return added;
     });
+    return { added: results, skipped };
   }
 
   async resolveCollection(collectionId: string) {

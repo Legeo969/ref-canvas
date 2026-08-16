@@ -500,7 +500,7 @@
 
 .asset-placeholder {
   display: grid;
-  gap: 9px;
+  gap: 6px;
   place-items: center;
   color: #6f7974;
 }
