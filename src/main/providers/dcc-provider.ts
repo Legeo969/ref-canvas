@@ -19,8 +19,8 @@ import type {
 /**
  * DCC provider（阶段 4：专业格式 — Alembic 与 DCC 场景）。
  *
- * 无 assimp/Alembic runtime，也不静默依赖本机 DCC 软件：
- * probe 返回明确降级说明（验收：不显示虚假支持）。
+ * 无 assimp/Alembic runtime，不静默依赖本机 DCC 软件：probe 返回明确
+ * 降级说明（验收：不显示虚假支持）。
  * PSD/PSB 由 image-provider 处理（ffmpeg composite）。
  */
 

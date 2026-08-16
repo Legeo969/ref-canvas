@@ -10,6 +10,7 @@ export function resolveDirectorySelectionScope(input: {
   directoryRevision: string | null;
   excludedPaths: ReadonlySet<string>;
   extensions?: string[];
+  favoritesOnly?: boolean;
 }): DirectorySelectionScope | null {
   if (!input.allMatchingSelected) return null;
   if (input.searchId) {
@@ -29,6 +30,7 @@ export function resolveDirectorySelectionScope(input: {
         revision: input.directoryRevision,
         excludedPaths: [...input.excludedPaths],
         extensions: input.extensions,
+        favoritesOnly: input.favoritesOnly,
       }
     : null;
 }

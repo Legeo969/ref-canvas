@@ -609,6 +609,16 @@ function FoundPreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                           SEQUENCE {String(entry.sequenceGroup.start + transport.snapshot.frameIndex).padStart(entry.sequenceGroup.width, "0")}
                         </span>
                       )}
+                      {!toolbarVariant && (
+                        <span className="found-preview-file-actions">
+                          <PreviewSessionModeButtons
+                            focused={previewSession.focused}
+                            fullscreen={previewSession.fullscreen}
+                            onToggleFocus={previewSession.toggleFocus}
+                            onToggleFullscreen={() => void previewSession.toggleFullscreen()}
+                          />
+                        </span>
+                      )}
                     </div>
                     {toolbarVariant && <FoundToolbar
                     variant={toolbarVariant}

@@ -27,6 +27,9 @@ interface WorkerRequest {
   pageSize?: number;
   collapseSequences?: boolean;
   extensions?: string[];
+  /** 只看收藏素材（主进程已按当前浏览范围裁剪 favoritePaths）。 */
+  favoritesOnly?: boolean;
+  favoritePaths?: string[];
   revision?: string;
   excludedPaths?: string[];
   entryPath?: string;
@@ -51,6 +54,8 @@ interface ScanState {
     pageSize: number;
     collapseSequences: boolean;
     extensions?: string[];
+    favoritesOnly?: boolean;
+    favoritePaths?: string[];
   }>;
 }
 
@@ -151,6 +156,25 @@ const visibleSearchSequence = `
     CAST(json_extract(sequence_json, '$.frame') AS INTEGER) =
     CAST(json_extract(sequence_json, '$.startFrame') AS INTEGER))
 `;
+
+/**
+ * 收藏过滤 SQL 片段：只看收藏时只保留素材（收藏路径集按大小写不敏感匹配）。
+ * 空收藏集返回 `AND 0`（没有收藏 → 不返回任何条目）。
+ */
+function favoritePathClause(
+  favoritesOnly: boolean | undefined,
+  favoritePaths?: string[],
+): { clause: string; args: string[] } {
+  if (!favoritesOnly) return { clause: "", args: [] };
+  if (!favoritePaths?.length) return { clause: " AND 0", args: [] };
+  const keys = favoritePaths.map((key) =>
+    path.normalize(key).toLocaleLowerCase("en-US"),
+  );
+  return {
+    clause: ` AND lower(entry_path) IN (${keys.map(() => "?").join(",")})`,
+    args: keys,
+  };
+}
 
 function readSearchSnapshot(searchId: string): DirectorySearchSnapshot {
   const row = database!.prepare(`
@@ -258,10 +282,19 @@ async function runSearch(
   query: string,
   collapseSequences: boolean,
   extensions?: string[],
+  favoritesOnly?: boolean,
+  favoritePaths?: string[],
 ): Promise<void> {
   const db = database!;
   const pending = [rootPath];
   const failed: Array<{ path: string; reason: string }> = [];
+  const favoriteKeys = favoritesOnly
+    ? new Set(
+        (favoritePaths ?? []).map((key) =>
+          path.normalize(key).toLocaleLowerCase("en-US"),
+        ),
+      )
+    : null;
   const insert = db.prepare(`
     INSERT OR IGNORE INTO directory_search_entries(
       search_id, entry_path, name, extension, discovery_ordinal
@@ -289,7 +322,9 @@ async function runSearch(
             if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
           } else if (
             (!query || entry.name.toLocaleLowerCase("en-US").includes(query)) &&
-            (!allowedExtensions || allowedExtensions.has(entry.extension))
+            (!allowedExtensions || allowedExtensions.has(entry.extension)) &&
+            (!favoriteKeys ||
+              favoriteKeys.has(path.normalize(entry.path).toLocaleLowerCase("en-US")))
           ) {
             matches.push(entry);
             if (/[_.-]\d{3,}\.[^.]+$/.test(entry.name)) {
@@ -378,6 +413,8 @@ function readPage(
   pageSize: number,
   collapseSequences = true,
   extensions?: string[],
+  favoritesOnly?: boolean,
+  favoritePaths?: string[],
 ): DirectoryPage {
   const db = database!;
   const scan = db.prepare(
@@ -398,18 +435,19 @@ function readPage(
     ? ` AND (is_directory = 1 OR extension IN (${extensions.map(() => "?").join(",")}))`
     : "";
   const extensionArgs = extensions?.length ? extensions : [];
+  const favorite = favoritePathClause(favoritesOnly, favoritePaths);
   const systemDirectoryFilter = ` AND NOT (
     is_directory = 1 AND lower(name) IN ('$recycle.bin', 'system volume information')
   )`;
   const rows = db.prepare(`
     SELECT entry_path, name, is_directory, extension, size, mtime_ms, sequence_json
     FROM directory_entries
-    WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}
+    WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}${favorite.clause}
     ORDER BY ${order === "name"
       ? "is_directory DESC, name COLLATE NOCASE, entry_path"
       : "discovery_ordinal"}
     LIMIT ? OFFSET ?
-  `).all(directoryPath, ...extensionArgs, pageSize, offset) as Array<{
+  `).all(directoryPath, ...extensionArgs, ...favorite.args, pageSize, offset) as Array<{
     entry_path: string;
     name: string;
     is_directory: number;
@@ -422,8 +460,8 @@ function readPage(
     db.prepare(`
       SELECT COUNT(*) AS count
       FROM directory_entries
-      WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}
-    `).get(directoryPath, ...extensionArgs) as { count: number }
+      WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}${favorite.clause}
+    `).get(directoryPath, ...extensionArgs, ...favorite.args) as { count: number }
   ).count;
   const entries: DirectoryEntry[] = rows.map((row) => ({
     path: row.entry_path,
@@ -437,7 +475,8 @@ function readPage(
   return {
     entries,
     total,
-    totalFiles: scan.file_total,
+    // 只看收藏时 total 即过滤后的素材数（文件夹已排除）。
+    totalFiles: favoritesOnly ? total : scan.file_total,
     offset,
     revision: scan.revision,
     scanState: scan.state,
@@ -464,6 +503,8 @@ function resolveWaiters(directoryPath: string, state: ScanState): void {
         waiter.pageSize,
         waiter.collapseSequences,
         waiter.extensions,
+        waiter.favoritesOnly,
+        waiter.favoritePaths,
       ),
     });
   }
@@ -619,6 +660,8 @@ async function list(request: WorkerRequest): Promise<void> {
       pageSize,
       request.collapseSequences !== false,
       request.extensions,
+      request.favoritesOnly,
+      request.favoritePaths,
     );
     parentPort!.postMessage({ id: request.id, ok: true, page });
     void fillMetadata(directoryPath, page.entries);
@@ -668,6 +711,8 @@ async function list(request: WorkerRequest): Promise<void> {
     pageSize,
     collapseSequences: request.collapseSequences !== false,
     extensions: request.extensions,
+    favoritesOnly: request.favoritesOnly,
+    favoritePaths: request.favoritePaths,
   });
   resolveWaiters(directoryPath, scan);
 }
@@ -715,6 +760,8 @@ parentPort.on("message", (event) => {
         query,
         request.collapseSequences !== false,
         request.extensions,
+        request.favoritesOnly,
+        request.favoritePaths,
       ).catch((error) => {
         database?.prepare(`
           UPDATE directory_searches SET state = 'failed', completed_at = ?, failed_json = ?
@@ -782,22 +829,33 @@ parentPort.on("message", (event) => {
       const target = database!.prepare(
         "SELECT name, is_directory FROM directory_entries WHERE directory_path = ? AND entry_path = ?",
       ).get(directoryPath, entryPath) as { name: string; is_directory: number } | undefined;
+      const favorite = favoritePathClause(request.favoritesOnly, request.favoritePaths);
       const location = target
         ? (database!.prepare(`
             SELECT COUNT(*) AS count FROM directory_entries
-            WHERE directory_path = ? AND (
-              is_directory > ? OR
-              (is_directory = ? AND name COLLATE NOCASE < ? COLLATE NOCASE) OR
-              (is_directory = ? AND name COLLATE NOCASE = ? COLLATE NOCASE AND entry_path < ?)
+            WHERE directory_path = ?${request.favoritesOnly
+              ? " AND is_directory = 0"
+              : ""}${favorite.clause} AND (
+              ${request.favoritesOnly
+                ? `name COLLATE NOCASE < ? COLLATE NOCASE OR
+                  (name COLLATE NOCASE = ? COLLATE NOCASE AND entry_path < ?)`
+                : `is_directory > ? OR
+                  (is_directory = ? AND name COLLATE NOCASE < ? COLLATE NOCASE) OR
+                  (is_directory = ? AND name COLLATE NOCASE = ? COLLATE NOCASE AND entry_path < ?)`}
             )
           `).get(
             directoryPath,
-            target.is_directory,
-            target.is_directory,
-            target.name,
-            target.is_directory,
-            target.name,
-            entryPath,
+            ...favorite.args,
+            ...(request.favoritesOnly
+              ? [target.name, target.name, entryPath]
+              : [
+                  target.is_directory,
+                  target.is_directory,
+                  target.name,
+                  target.is_directory,
+                  target.name,
+                  entryPath,
+                ]),
           ) as { count: number }).count
         : null;
       parentPort.postMessage({ id: request.id, ok: true, location });
@@ -818,16 +876,18 @@ parentPort.on("message", (event) => {
       }
       const offset = Math.max(0, request.offset ?? 0);
       const limit = Math.max(1, Math.min(1_000, request.pageSize ?? 1_000));
+      const favorite = favoritePathClause(request.favoritesOnly, request.favoritePaths);
       const rows = database!.prepare(`
         SELECT entry_path FROM directory_entries
         WHERE directory_path = ? AND is_directory = 0${request.extensions?.length
           ? ` AND extension IN (${request.extensions.map(() => "?").join(",")})`
-          : ""}
+          : ""}${favorite.clause}
         ORDER BY name COLLATE NOCASE, entry_path
         LIMIT ? OFFSET ?
       `).all(
         directoryPath,
         ...(request.extensions?.length ? request.extensions : []),
+        ...favorite.args,
         limit,
         offset,
       ) as Array<{ entry_path: string }>;
@@ -836,10 +896,11 @@ parentPort.on("message", (event) => {
           SELECT COUNT(*) AS count FROM directory_entries
           WHERE directory_path = ? AND is_directory = 0${request.extensions?.length
             ? ` AND extension IN (${request.extensions.map(() => "?").join(",")})`
-            : ""}
+            : ""}${favorite.clause}
         `).get(
           directoryPath,
           ...(request.extensions?.length ? request.extensions : []),
+          ...favorite.args,
         ) as { count: number }
       ).count;
       const excluded = new Set(request.excludedPaths ?? []);

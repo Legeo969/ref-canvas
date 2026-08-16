@@ -239,6 +239,24 @@ describe("DccProvider（阶段 4：Alembic/DCC 降级）", () => {
     expect(result.extra.unsupportedReason).toContain("Blender");
     await provider.dispose();
   });
+
+  it("不声明 thumbnail 能力（不伪装支持）", async () => {
+    const provider = new DccProvider();
+    expect(provider.manifest.capabilities).not.toContain("thumbnail");
+    await provider.dispose();
+  });
+
+  it("thumbnail 明确不支持", async () => {
+    const directory = await withTemp();
+    const target = path.join(directory, "scene.blend");
+    const output = path.join(directory, "thumb.png");
+    await writeFile(target, Buffer.from("BLENDER", "latin1"));
+    const provider = new DccProvider();
+    await expect(async () => provider.thumbnail({
+      path: target, kind: "dcc", extension: "blend", width: 480, height: 320, outputPath: output,
+    })).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
+    await provider.dispose();
+  });
 });
 
 describe("DocumentProvider（阶段 4：文档）", () => {

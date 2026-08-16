@@ -599,6 +599,8 @@ export type DirectorySelectionScope =
       revision: string;
       excludedPaths: string[];
       extensions?: string[];
+      /** 只选择已收藏素材（目录浏览「只看收藏」模式下的全选/批量操作）。 */
+      favoritesOnly?: boolean;
     }
   | {
       mode: "search";
@@ -1806,17 +1808,28 @@ export interface RefCanvasApi {
         showHidden?: boolean;
         collapseSequences?: boolean;
         extensions?: string[];
+        /** 只看收藏素材（按素材库 favorite 标记过滤）。 */
+        favoritesOnly?: boolean;
       },
     ): Promise<DirectoryPage>;
     onDirectoryProgress(
       callback: (snapshot: DirectoryProgressSnapshot) => void,
     ): () => void;
-    locateEntry(path: string, entryPath: string, revision: string): Promise<number | null>;
+    locateEntry(
+      path: string,
+      entryPath: string,
+      revision: string,
+      favoritesOnly?: boolean,
+    ): Promise<number | null>;
     /** 目录搜索：当前层即时结果 + 子目录流式追加；更换路径/关键词自动取消旧任务。 */
     startSearch(
       path: string,
       query: string,
-      options?: { collapseSequences?: boolean; extensions?: string[] },
+      options?: {
+        collapseSequences?: boolean;
+        extensions?: string[];
+        favoritesOnly?: boolean;
+      },
     ): Promise<string>;
     cancelSearch(id: string): Promise<void>;
     getSearch(id: string): Promise<DirectorySearchSnapshot | null>;

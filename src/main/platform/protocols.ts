@@ -28,6 +28,11 @@ import { genericPlaceholderThumbnail } from "./placeholder-thumbnail";
 import type { ProviderRegistry } from "./provider-registry";
 import { invokeThumbnail } from "./provider-registry";
 import {
+  bgraToRgba,
+  isZstdCompressedBlend,
+  readBlendEmbeddedPreview,
+} from "../services/media/blend-preview";
+import {
   evaluateProtocolRequest,
   protocolResponseHeaders,
   type ProtocolOriginPolicyOptions,
@@ -95,6 +100,33 @@ function directoryThumbnailSize(url: URL): 480 | 960 | 1920 {
   return size === 960 || size === 1920 ? size : 480;
 }
 
+/**
+ * 用户手动设置的自定义缩略图（ModelPreview「设为缩略图」），按磁盘真实
+ * 路径查库命中后直接读取返回。refasset://thumbnail 与 refbrowse://thumbnail
+ * 两条协议路径都必须消费它，否则目录卡片（走 refbrowse token）只能在
+ * renderer 会话级 override 存活期间显示自定义图，重启后「回归」。
+ */
+export async function customThumbnailForPath(
+  database: RefCanvasDatabase,
+  realPath: string,
+): Promise<Buffer | null> {
+  const asset = database.getAssetByPath(realPath);
+  if (!asset?.customThumbnailPath) return null;
+  return readFile(asset.customThumbnailPath).catch(() => null);
+}
+
+/** 读取 .blend 内嵌预览；zstd 压缩/读取失败返回 null（无缩略图，走占位）。 */
+async function readBlendEmbeddedPreviewSafe(
+  filename: string,
+): Promise<{ pixels: Buffer; rectx: number; recty: number } | null> {
+  try {
+    if (await isZstdCompressedBlend(filename)) return null;
+    return await readBlendEmbeddedPreview(filename);
+  } catch {
+    return null;
+  }
+}
+
 async function writeCacheAtomically(filename: string, data: Buffer): Promise<void> {
   const temporary = `${filename}.${randomUUID()}.tmp`;
   await writeFile(temporary, data);
@@ -117,6 +149,31 @@ async function generateThumbnail(
   displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw",
 ): Promise<Buffer> {
   const extension = path.extname(source).replace(/^\./, "").toLowerCase();
+  // .blend 读文件内嵌预览（TEST 块，Blender 保存时自动写入的场景缩略
+  // 图）：只读文件头几十 KB、不启动任何外部程序、毫秒级零内存——滚轮
+  // 浏览大目录不再卡爆。zstd 压缩的 .blend 无法直接定位内部块，回落
+  // 格式图标占位。
+  if (extension === "blend") {
+    const embedded = await readBlendEmbeddedPreviewSafe(source);
+    if (embedded) {
+      const { default: sharp } = await import("sharp");
+      const rgba = bgraToRgba(embedded.pixels);
+      const side = Math.max(size.width, size.height);
+      const png = await sharp(rgba, {
+        raw: { width: embedded.rectx, height: embedded.recty, channels: 4 },
+      })
+        .resize(side, side, {
+          fit: "contain",
+          background: { r: 29, g: 31, b: 30, alpha: 1 },
+        })
+        .png()
+        .toBuffer();
+      return png;
+    }
+    const placeholder = await genericPlaceholderThumbnail(extension, size);
+    await writeCacheAtomically(cacheFile, placeholder);
+    return placeholder;
+  }
   const kind = assetKindForExtension(extension);
   // 阶段 3/4：EXR/HDR、视频、PSD/PSB、音频、字体、文本走 provider
   // registry（display transform / poster / composite / 封面或波形样张 /
@@ -161,20 +218,24 @@ async function generateThumbnail(
   if (registryFormats) {
     const registry = dependencies.getProviderRegistry();
     if (registry) {
-      const { result } = await invokeThumbnail(registry, {
-        path: source,
-        kind,
-        extension,
-        width: size.width,
-        height: size.height,
-        outputPath: cacheFile,
-        channel,
-        ocioConfigPath,
-        inputColorSpace,
-        displayTransform,
-        signal,
-      });
-      return readFile(result.path);
+      const hasThumbnailCandidate =
+        registry.candidates(kind, extension, "thumbnail").length > 0;
+      if (hasThumbnailCandidate) {
+        const { result } = await invokeThumbnail(registry, {
+          path: source,
+          kind,
+          extension,
+          width: size.width,
+          height: size.height,
+          outputPath: cacheFile,
+          channel,
+          ocioConfigPath,
+          inputColorSpace,
+          displayTransform,
+          signal,
+        });
+        return readFile(result.path);
+      }
     }
   }
   const worker = dependencies.getThumbnailWorker();
@@ -185,6 +246,22 @@ async function generateThumbnail(
     if (converted) return converted;
   }
   if (signal.aborted) throw new Error("PREVIEW_QUEUE_ABORTED");
+  // DCC 专有格式（Maya/3ds Max/C4D/Houdini/Alembic 场景）没有系统外壳
+  // 缩略图，也没有本地解码器：直接生成格式图标占位卡片并缓存，避免
+  // 每次都调 createThumbnailFromPath 失败重试刷 404。
+  if (
+    extension === "ma" ||
+    extension === "mb" ||
+    extension === "max" ||
+    extension === "c4d" ||
+    extension === "abc" ||
+    extension === "hip" ||
+    extension === "hipnc"
+  ) {
+    const placeholder = await genericPlaceholderThumbnail(extension, size);
+    await writeCacheAtomically(cacheFile, placeholder);
+    return placeholder;
+  }
   // Windows 上没有外壳缩略图的格式（.aep/.zip 等）可能返回空图，也可能
   // 直接抛「Failed to get thumbnail from local thumbnail cache reference」。
   // 两种情况都视为无缩略图：生成并缓存占位卡片，避免每次请求都重试
@@ -423,6 +500,18 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
     if (!real) return new Response("Token expired", { status: 404 });
     if (url.host === "thumbnail") {
       try {
+        // 自定义缩略图优先（与 refasset://thumbnail 分支一致）：目录卡片
+        // 走 refbrowse token 协议，若此处不消费 customThumbnailPath，自定义
+        // 缩略图只会在 renderer 内存 override 存活期间生效，重启后回归。
+        const custom = await customThumbnailForPath(
+          dependencies.getDatabase(),
+          real,
+        );
+        if (custom) {
+          return new Response(new Uint8Array(custom), {
+            headers: protocolResponseHeaders(access, "image/png"),
+          });
+        }
         const info = await stat(real);
         const imageVariant = assetKindForExtension(path.extname(real)) === "image";
         const channel = url.searchParams.get("channel")?.toLowerCase() ?? "";

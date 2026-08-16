@@ -49,6 +49,8 @@ export class DirectoryIndexClient {
     query: string,
     collapseSequences = true,
     extensions?: string[],
+    favoritesOnly?: boolean,
+    favoritePaths?: string[],
   ): Promise<DirectorySearchSnapshot> {
     return this.request<DirectorySearchSnapshot>({
       type: "start-search",
@@ -57,6 +59,8 @@ export class DirectoryIndexClient {
       query,
       collapseSequences,
       extensions,
+      favoritesOnly,
+      favoritePaths,
     });
   }
 
@@ -79,6 +83,8 @@ export class DirectoryIndexClient {
     pageSize = 512,
     collapseSequences = true,
     extensions?: string[],
+    favoritesOnly?: boolean,
+    favoritePaths?: string[],
   ): Promise<DirectoryPage> {
     const id = randomUUID();
     const child = this.ensureChild();
@@ -94,6 +100,8 @@ export class DirectoryIndexClient {
       pageSize,
       collapseSequences,
       extensions,
+      favoritesOnly,
+      favoritePaths,
     });
     return promise;
   }
@@ -105,6 +113,8 @@ export class DirectoryIndexClient {
     offset: number,
     pageSize = 1_000,
     extensions?: string[],
+    favoritesOnly?: boolean,
+    favoritePaths?: string[],
   ): Promise<{ paths: string[]; nextOffset: number | null; total: number }> {
     const id = randomUUID();
     const child = this.ensureChild();
@@ -125,6 +135,8 @@ export class DirectoryIndexClient {
       offset,
       pageSize,
       extensions,
+      favoritesOnly,
+      favoritePaths,
     });
     return promise;
   }
@@ -150,6 +162,8 @@ export class DirectoryIndexClient {
     directoryPath: string,
     entryPath: string,
     revision: string,
+    favoritesOnly?: boolean,
+    favoritePaths?: string[],
   ): Promise<number | null> {
     const id = randomUUID();
     const child = this.ensureChild();
@@ -163,6 +177,8 @@ export class DirectoryIndexClient {
       directoryPath,
       entryPath,
       revision,
+      favoritesOnly,
+      favoritePaths,
     });
     return promise;
   }

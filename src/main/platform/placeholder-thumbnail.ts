@@ -14,14 +14,25 @@ function escapeXml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
+/** DCC 专有格式（无外壳缩略图、无本地解码器）的图标化说明文案。 */
+const DCC_FORMAT_HINTS: Record<string, string> = {
+  ma: "Maya 场景",
+  mb: "Maya 场景",
+  max: "3ds Max 场景",
+  c4d: "Cinema 4D 场景",
+  abc: "Alembic 缓存",
+  hip: "Houdini 场景",
+  hipnc: "Houdini 场景",
+};
+
 export function genericPlaceholderSvg(
   extension: string,
   width: number,
   height: number,
 ): string {
-  const label = escapeXml(
-    extension.replace(/^\./, "").toUpperCase().slice(0, 8) || "FILE",
-  );
+  const raw = extension.replace(/^\./, "").toLowerCase();
+  const label = escapeXml(raw.toUpperCase().slice(0, 8) || "FILE");
+  const hint = DCC_FORMAT_HINTS[raw] ?? "无可用缩略图";
   const fontSize = Math.max(
     18,
     Math.min(64, Math.round(Math.min(width, height) * 0.16)),
@@ -30,7 +41,7 @@ export function genericPlaceholderSvg(
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="#151a18"/>
   <text x="${Math.round(width / 2)}" y="${centerY - Math.round(fontSize * 0.28)}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="${fontSize}" font-weight="600" fill="#8d9a94">${label}</text>
-  <text x="${Math.round(width / 2)}" y="${centerY + Math.round(fontSize * 0.72)}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#5d6762">无可用缩略图</text>
+  <text x="${Math.round(width / 2)}" y="${centerY + Math.round(fontSize * 0.72)}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#5d6762">${escapeXml(hint)}</text>
 </svg>`;
 }
 

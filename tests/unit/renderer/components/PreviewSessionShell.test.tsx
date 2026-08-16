@@ -45,9 +45,9 @@ describe("shared preview session", () => {
   let presentationListeners: Set<(enabled: boolean) => void>;
 
   /**
-   * 全屏预览走窗口级系统全屏：mock 主进程 setPresentationMode（立即生效并
-   * 回推 presentation-mode-changed），渲染进程经 onPresentationModeChanged
-   * 订阅状态。
+   * 全屏预览走窗口级系统全屏：mock 主进程 setPresentationMode。契约与
+   * system-ipc.ts 一致——达到请求状态时返回请求值（进入成功 → true、
+   * 退出成功 → false），超时返回实际状态；成功时回推 presentation-mode-changed。
    */
   function installFullscreenMock() {
     presentationListeners = new Set();
@@ -55,7 +55,7 @@ describe("shared preview session", () => {
       system: {
         setPresentationMode: vi.fn(async (enabled: boolean) => {
           presentationListeners.forEach((listener) => listener(enabled));
-          return true;
+          return enabled;
         }),
         onPresentationModeChanged: vi.fn((listener: (enabled: boolean) => void) => {
           presentationListeners.add(listener);
@@ -135,6 +135,42 @@ describe("shared preview session", () => {
     // 请求失败：聚焦保留，全屏不生效。
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("true");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
+  });
+
+  it("stays exited when the exit request succeeds without a leave event", async () => {
+    installFullscreenMock();
+    // 退出成功且 leave-full-screen 事件丢失（浮动预览窗口无该监听）：
+    // 主进程返回 false（= 请求值），UI 必须保持退出，绝不回滚回全屏。
+    (window as unknown as { refCanvas: { system: { setPresentationMode: ReturnType<typeof vi.fn> } } })
+      .refCanvas.system.setPresentationMode.mockImplementation(async (enabled: boolean) => enabled);
+    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="退出全屏预览"]')?.click();
+    });
+    // 回归：退出成功返回 false 时不得触发 rollback（旧实现 applied === false
+    // 把「退出成功」误判为「被拒绝」，回滚导致全屏 UI 回弹/卡死）。
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("false");
+  });
+
+  it("keeps the fullscreen overlay when the exit request fails", async () => {
+    installFullscreenMock();
+    // 退出失败/超时：主进程仍处于全屏（返回 true），不回推事件。
+    // UI 必须保持全屏态，不能出现「窗口还全屏、面板已退出」的失步。
+    (window as unknown as { refCanvas: { system: { setPresentationMode: ReturnType<typeof vi.fn> } } })
+      .refCanvas.system.setPresentationMode.mockImplementation(async () => true);
+    const host = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="全屏预览"]')?.click();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="退出全屏预览"]')?.click();
+    });
+    expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
   });
 
   it("applies the fullscreen overlay optimistically when the window event never arrives", async () => {

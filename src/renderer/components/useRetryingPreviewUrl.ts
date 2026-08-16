@@ -3,6 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 export type PreviewLoadStatus = "idle" | "loading" | "waiting" | "ready" | "failed";
 
 export const PREVIEW_RETRY_DELAYS_MS = [600, 1_200, 2_400, 4_800] as const;
+/** DCC 资产（Blender 渲染缩略图慢、滚动 abort 频繁）：给更长的重试窗口，
+ * 避免滚动浏览时缩略图被快速判死「不见」。 */
+export const PREVIEW_RETRY_DELAYS_DCC_MS = [
+  800, 1_600, 3_200, 6_400, 10_000, 15_000, 20_000, 25_000,
+] as const;
 
 export function previewUrlWithRetry(source: string, nonce: number): string {
   if (nonce <= 0) return source;
@@ -14,7 +19,13 @@ export function previewUrlWithRetry(source: string, nonce: number): string {
  * still being generated. Retry the same cache identity with a renderer-only
  * nonce so a completed proxy is picked up without reselecting the asset.
  */
-export function useRetryingPreviewUrl(source: string | null) {
+export function useRetryingPreviewUrl(
+  source: string | null,
+  options?: { dccSlowAsset?: boolean },
+) {
+  const delays = options?.dccSlowAsset
+    ? PREVIEW_RETRY_DELAYS_DCC_MS
+    : PREVIEW_RETRY_DELAYS_MS;
   const timerRef = useRef<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [nonce, setNonce] = useState(0);
@@ -48,7 +59,7 @@ export function useRetryingPreviewUrl(source: string | null) {
       setStatus("idle");
       return;
     }
-    if (attempt >= PREVIEW_RETRY_DELAYS_MS.length) {
+    if (attempt >= delays.length) {
       setStatus("failed");
       return;
     }
@@ -58,8 +69,8 @@ export function useRetryingPreviewUrl(source: string | null) {
       setAttempt((value) => value + 1);
       setNonce((value) => value + 1);
       setStatus("loading");
-    }, PREVIEW_RETRY_DELAYS_MS[attempt]);
-  }, [attempt, clearRetry, source]);
+    }, delays[attempt]);
+  }, [attempt, clearRetry, delays, source]);
 
   const retry = useCallback(() => {
     if (!source) return;

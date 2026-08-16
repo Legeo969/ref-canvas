@@ -696,6 +696,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
             offset,
             undefined,
             selection.extensions,
+            selection.favoritesOnly,
           )
         : directoryService.resolveSearchSelection(
             selection.searchId,
@@ -843,11 +844,13 @@ function registerIpc(): void {
     getTaskCenter: () => taskCenter,
   });
   registerFilesystemIpc(ipc, {
+    getDatabase: () => database,
     getDirectoryBatches: () => directoryBatches,
     getDirectoryService: () => directoryService,
     getFileOperations: () => fileOperations,
     getLibrary: () => library,
     getMountRoots: () => database.listMountRoots(),
+    getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
     previewTokens,
     trashDirectoryPath,
     windowForSender,

@@ -25,13 +25,13 @@ import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryManager } from "../services/library-manager";
 import type { LibraryService } from "../services/library-service";
 import { resolveNativeDragAssets } from "../platform/native-drag";
+import { resolveNativeDragIcon } from "../platform/native-drag-icon";
 import { assertAbsoluteLocalPath } from "../platform/local-path-security";
 import type { PreviewCacheIndex } from "../platform/preview-cache-index";
 import type { PreviewQueue } from "../platform/preview-queue";
 import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import type { WriteAccessController } from "../platform/write-access-controller";
-import { thumbnailCacheFilename } from "../platform/thumbnail-cache";
 import { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import {
   isWindowsUninstallAvailable,
@@ -623,18 +623,26 @@ export function registerSystemIpc(
     if (!assets.length) return;
     const files = assets.map((asset) => asset.path);
     const first = assets[0];
-    const cachedThumbnail = path.join(
-      state.thumbnailCacheDirectory,
-      thumbnailCacheFilename(first),
+    // 图标必须非空：Electron 的 startDrag 在图标为空时静默失败，拖拽不会开始。
+    // 图片直读、非图片走缩略图缓存，逐级兜底到应用图标/内嵌图标。
+    const icon = resolveNativeDragIcon(
+      first.path,
+      {
+        createFromPath: (filePath) => nativeImage.createFromPath(filePath),
+        createFromDataUrl: (dataUrl) => nativeImage.createFromDataURL(dataUrl),
+      },
+      {
+        getAssetByPath: (filename) =>
+          database().getAssetByPath(filename) ?? null,
+        thumbnailCacheDirectory: state.thumbnailCacheDirectory,
+      },
+      app.getAppPath(),
     );
-    const icon =
-      first.kind === "image"
-        ? nativeImage.createFromPath(first.path)
-        : nativeImage.createFromPath(cachedThumbnail);
+    if (icon.isEmpty()) return;
     event.sender.startDrag({
       file: files[0],
       files,
-      icon: icon.isEmpty() ? nativeImage.createEmpty() : icon,
+      icon,
     });
   });
 }

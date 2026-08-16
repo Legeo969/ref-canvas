@@ -672,6 +672,20 @@
   color: #d0d2d6;
 }
 
+/* 3D/DCC 资产（无 FoundToolbar）时，全屏/聚焦入口收进文件名行右侧，
+   紧凑尺寸适配 28px 行高，不撑高布局。 */
+.found-preview-file-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.found-preview-file-actions .preview-session-mode-actions button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
 .found-preview-filename {
   min-width: 0;
   overflow: hidden;

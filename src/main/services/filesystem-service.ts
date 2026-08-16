@@ -31,6 +31,8 @@ export interface ListDirectoryOptions {
   collapseSequences?: boolean;
   /** 只过滤文件扩展名；普通目录视图保留目录，flatten 视图只返回素材。 */
   extensions?: string[];
+  /** 只看收藏素材（按素材库 favorite 标记过滤；文件夹一并隐藏）。 */
+  favoritesOnly?: boolean;
 }
 
 type DirectoryWatcherFactory = (
@@ -83,6 +85,21 @@ function filterExtensions(
     extensions.map((extension) => extension.replace(/^\./, "").toLowerCase()),
   );
   return entries.filter((entry) => entry.isDirectory || allowed.has(entry.extension));
+}
+
+/** 与数据库 path_key 同规则归一化（大小写不敏感比较）。 */
+function favoritePathKey(filename: string): string {
+  return path.normalize(filename).toLocaleLowerCase("en-US");
+}
+
+/** 只保留已收藏的素材条目（文件夹一并隐藏）。 */
+function filterFavorites(
+  entries: DirectoryEntry[],
+  favoriteKeys: Set<string>,
+): DirectoryEntry[] {
+  return entries.filter(
+    (entry) => !entry.isDirectory && favoriteKeys.has(favoritePathKey(entry.path)),
+  );
 }
 
 /**
@@ -149,9 +166,7 @@ export class FilesystemService {
   ): () => void {
     this.events.on("directory-progress", listener);
     return () => this.events.off("directory-progress", listener);
-  }
-
-  onSearchProgress(
+  }  onSearchProgress(
     listener: (snapshot: DirectorySearchSnapshot) => void,
   ): () => void {
     this.events.on("directory-search-progress", listener);
@@ -208,6 +223,25 @@ export class FilesystemService {
     return roots;
   }
 
+  /**
+   * 收藏过滤：把素材库收藏路径裁剪到当前浏览范围（归一化后返回）。
+   * recursive=true（flatten/搜索）取整个子树；否则只取目录直接子项。
+   */
+  private favoritePathsFor(
+    directoryPath: string,
+    recursive: boolean,
+  ): string[] {
+    const scopeKey = favoritePathKey(path.resolve(directoryPath));
+    return this.database
+      .getFavoriteAssetPaths()
+      .map(favoritePathKey)
+      .filter((key) =>
+        recursive
+          ? key.startsWith(`${scopeKey}${path.sep}`)
+          : path.dirname(key) === scopeKey,
+      );
+  }
+
   /** 展开目录下一层；目录内容按名称缓存，游标分页。 */
   async listDirectory(
     filename: string,
@@ -229,14 +263,20 @@ export class FilesystemService {
         ? collapseSequenceEntries(flattened)
         : flattened;
       const filtered = filterExtensions(entries, options.extensions);
+      const favoriteKeys = options.favoritesOnly
+        ? new Set(this.favoritePathsFor(resolved, true))
+        : null;
+      const scoped = favoriteKeys
+        ? filterFavorites(filtered, favoriteKeys)
+        : filtered;
       const pageSize = Math.max(1, Math.min(10_000, options.pageSize ?? 500));
       const cursor = Number.parseInt(options.cursor ?? "0", 10);
       const start = Number.isFinite(cursor) ? Math.max(0, cursor) : 0;
       return {
-        entries: filtered.slice(start, start + pageSize),
-        total: filtered.length,
+        entries: scoped.slice(start, start + pageSize),
+        total: scoped.length,
         nextCursor:
-          start + pageSize < filtered.length ? String(start + pageSize) : null,
+          start + pageSize < scoped.length ? String(start + pageSize) : null,
       };
     }
     if (this.indexClient) {
@@ -248,6 +288,10 @@ export class FilesystemService {
         Math.max(1, Math.min(512, options.pageSize ?? 512)),
         collapseSequences,
         options.extensions,
+        options.favoritesOnly,
+        options.favoritesOnly
+          ? this.favoritePathsFor(resolved, false)
+          : undefined,
       );
       // Windows 保护目录永不进入素材浏览；隐藏文件仍由用户设置控制。
       return {
@@ -284,6 +328,12 @@ export class FilesystemService {
       : cached.entries;
     if (!showHidden) entries = entries.filter((entry) => !entry.name.startsWith("."));
     entries = filterExtensions(entries, options.extensions);
+    if (options.favoritesOnly) {
+      entries = filterFavorites(
+        entries,
+        new Set(this.favoritePathsFor(resolved, false)),
+      );
+    }
     return {
       entries: entries.slice(start, start + pageSize),
       total: entries.length,
@@ -367,6 +417,7 @@ export class FilesystemService {
     offset: number,
     pageSize = 1_000,
     extensions?: string[],
+    favoritesOnly?: boolean,
   ): Promise<{ paths: string[]; nextOffset: number | null; total: number }> {
     if (!this.indexClient) throw new Error("DIRECTORY_INDEX_UNAVAILABLE");
     return this.indexClient.resolveSelection(
@@ -376,6 +427,10 @@ export class FilesystemService {
       offset,
       pageSize,
       extensions,
+      favoritesOnly,
+      favoritesOnly
+        ? this.favoritePathsFor(path.resolve(directoryPath), false)
+        : undefined,
     );
   }
 
@@ -400,12 +455,17 @@ export class FilesystemService {
     directoryPath: string,
     entryPath: string,
     revision: string,
+    favoritesOnly?: boolean,
   ): Promise<number | null> {
     if (!this.indexClient) return Promise.resolve(null);
     return this.indexClient.locate(
       path.resolve(directoryPath),
       path.resolve(entryPath),
       revision,
+      favoritesOnly,
+      favoritesOnly
+        ? this.favoritePathsFor(path.resolve(directoryPath), false)
+        : undefined,
     );
   }
 
@@ -585,13 +645,20 @@ export class FilesystemService {
   async startSearch(
     rootPath: string,
     query: string,
-    options: { collapseSequences?: boolean; extensions?: string[] } = {},
+    options: {
+      collapseSequences?: boolean;
+      extensions?: string[];
+      favoritesOnly?: boolean;
+    } = {},
   ): Promise<string> {
     const resolved = path.resolve(rootPath);
     const normalized = query.trim().toLocaleLowerCase("en-US");
     const extensions = options.extensions?.map((extension) =>
       extension.replace(/^\./, "").toLowerCase(),
     );
+    const favorites = options.favoritesOnly
+      ? new Set(this.favoritePathsFor(resolved, true))
+      : null;
     const id = `search-${Date.now()}-${this.searchSequence++}`;
     const createdAt = new Date().toISOString();
     const snapshot: DirectorySearchSnapshot = {
@@ -613,13 +680,21 @@ export class FilesystemService {
       ? normalized.slice(1).trim()
       : "";
     if (tag) {
-      void this.runTagSearch(id, resolved, tag, extensions);
+      void this.runTagSearch(id, resolved, tag, extensions, favorites);
       return id;
     }
 
     if (this.indexClient) {
       void this.indexClient
-        .startSearch(id, resolved, query, options.collapseSequences, extensions)
+        .startSearch(
+          id,
+          resolved,
+          query,
+          options.collapseSequences,
+          extensions,
+          options.favoritesOnly,
+          favorites ? [...favorites] : undefined,
+        )
         .then((workerSnapshot) => {
         this.searches.set(id, workerSnapshot);
         this.emitSearch(workerSnapshot);
@@ -635,7 +710,7 @@ export class FilesystemService {
         this.emitSearch({ ...failed });
       });
     } else {
-      void this.runSearch(id, resolved, normalized, extensions);
+      void this.runSearch(id, resolved, normalized, extensions, favorites);
     }
     return id;
   }
@@ -645,6 +720,7 @@ export class FilesystemService {
     root: string,
     tag: string,
     extensions?: string[],
+    favorites?: Set<string> | null,
   ): Promise<void> {
     const pageSize = 500;
     let offset = 0;
@@ -669,6 +745,7 @@ export class FilesystemService {
             path.isAbsolute(relative)
           ) continue;
           if (extensions?.length && !extensions.includes(asset.extension)) continue;
+          if (favorites && !favorites.has(favoritePathKey(asset.path))) continue;
           entries.push({
             path: asset.path,
             name: path.basename(asset.path),
@@ -713,6 +790,7 @@ export class FilesystemService {
     root: string,
     query: string,
     extensions?: string[],
+    favorites?: Set<string> | null,
   ): Promise<void> {
     const matchName = (name: string) =>
       !query || name.toLocaleLowerCase("en-US").includes(query);
@@ -739,7 +817,8 @@ export class FilesystemService {
                 if (entry.isDirectory) {
                   if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
                 } else if (matchName(entry.name) &&
-                  (!allowedExtensions || allowedExtensions.has(entry.extension))) {
+                  (!allowedExtensions || allowedExtensions.has(entry.extension)) &&
+                  (!favorites || favorites.has(favoritePathKey(entry.path)))) {
                   matches.push(entry);
                 }
               }

@@ -561,6 +561,14 @@ export class RefCanvasDatabase {
     return row ? this.hydrateAssets([mapAsset(row)])[0] : null;
   }
 
+  /** 全部活跃收藏素材的绝对路径（目录浏览「只看收藏」过滤用）。 */
+  getFavoriteAssetPaths(): string[] {
+    const rows = this.db.prepare(
+      "SELECT path FROM assets WHERE favorite = 1 AND lifecycle = 'active'",
+    ).all() as Array<{ path: string }>;
+    return rows.map((row) => row.path);
+  }
+
   getAssetBaseByPath(filename: string): AssetRecord | null {
     const row = this.db.prepare("SELECT * FROM assets WHERE path_key = ?").get(
       pathKeyFor(filename),

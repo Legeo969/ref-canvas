@@ -9,11 +9,13 @@ import type { FilesystemService } from "../services/filesystem-service";
 import type { LibraryService } from "../services/library-service";
 import type { ZipArchiveService } from "../services/zip-archive-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
+import { resolveNativeDragIcon } from "../platform/native-drag-icon";
 import { revealInFileManager } from "../platform/reveal-in-file-manager";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { assertAbsoluteLocalPath } from "../platform/local-path-security";
 import type { WriteAccessController } from "../platform/write-access-controller";
 import type { MountRoot } from "../../shared/contracts";
+import type { RefCanvasDatabase } from "../persistence/database";
 import {
   directoryPathsSchema,
   pathSchema,
@@ -29,6 +31,7 @@ const directorySelectionSchema = z.union([
     directoryPath: pathSchema,
     revision: z.string().min(1).max(128),
     excludedPaths: directoryPathsSchema,
+    favoritesOnly: z.boolean().optional(),
   }),
   z.object({
     mode: z.literal("search"),
@@ -47,11 +50,13 @@ const directoryBatchActionSchema = z.discriminatedUnion("type", [
 ]);
 
 interface FilesystemIpcDependencies {
+  getDatabase(): RefCanvasDatabase;
   getDirectoryBatches(): DirectoryBatchService;
   getDirectoryService(): FilesystemService;
   getFileOperations(): FileOperationsService;
   getLibrary(): LibraryService;
   getMountRoots(): MountRoot[];
+  getThumbnailCacheDirectory(): string;
   previewTokens: PreviewTokenRegistry;
   trashDirectoryPath(filename: string): Promise<void>;
   windowForSender(event: IpcMainInvokeEvent): Electron.BrowserWindow;
@@ -131,16 +136,18 @@ export function registerFilesystemIpc(
             .array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i))
             .max(256)
             .optional(),
+          favoritesOnly: z.boolean().optional(),
         })
         .optional()
         .parse(options),
     ),
   );
-  ipc.handle("filesystem:locate-entry", (filename, entryPath, revision) =>
+  ipc.handle("filesystem:locate-entry", (filename, entryPath, revision, favoritesOnly) =>
     service().locateEntry(
       assertAllowedPath(pathSchema.parse(filename)),
       assertAllowedPath(pathSchema.parse(entryPath)),
       z.string().min(1).max(128).parse(revision),
+      z.boolean().optional().parse(favoritesOnly),
     ),
   );
   ipc.handle("filesystem:start-search", (filename, query, options) =>
@@ -153,6 +160,7 @@ export function registerFilesystemIpc(
           .array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i))
           .max(256)
           .optional(),
+        favoritesOnly: z.boolean().optional(),
       }).optional().parse(options),
     ),
   );
@@ -424,17 +432,26 @@ export function registerFilesystemIpc(
       })
       .filter((filename) => existsSync(filename));
     if (!resolved.length) return;
-    const icon = nativeImage.createFromPath(resolved[0]);
-    const ready =
-      icon.isEmpty() || icon.getSize().width
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => setTimeout(resolve, 50));
-    void ready.then(() => {
-      event.sender.startDrag({
-        file: resolved[0],
-        files: resolved,
-        icon,
-      });
+    // 图标必须非空：Electron 的 startDrag 在图标为空时静默失败，拖拽不会开始。
+    // 非图片文件（.blend/.fbx 等）直读不出图标，由 resolveNativeDragIcon 逐级兜底。
+    const icon = resolveNativeDragIcon(
+      resolved[0],
+      {
+        createFromPath: (filePath) => nativeImage.createFromPath(filePath),
+        createFromDataUrl: (dataUrl) => nativeImage.createFromDataURL(dataUrl),
+      },
+      {
+        getAssetByPath: (filename) =>
+          dependencies.getDatabase().getAssetByPath(filename) ?? null,
+        thumbnailCacheDirectory: dependencies.getThumbnailCacheDirectory(),
+      },
+      app.getAppPath(),
+    );
+    if (icon.isEmpty()) return;
+    event.sender.startDrag({
+      file: resolved[0],
+      files: resolved,
+      icon,
     });
   });
 }

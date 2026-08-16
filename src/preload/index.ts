@@ -330,8 +330,14 @@ const api: RefCanvasApi = {
       return () =>
         ipcRenderer.removeListener("filesystem:directory-progress", listener);
     },
-    locateEntry: (path, entryPath, revision) =>
-      ipcRenderer.invoke("filesystem:locate-entry", path, entryPath, revision),
+    locateEntry: (path, entryPath, revision, favoritesOnly) =>
+      ipcRenderer.invoke(
+        "filesystem:locate-entry",
+        path,
+        entryPath,
+        revision,
+        favoritesOnly,
+      ),
     startSearch: (path, query, options) =>
       ipcRenderer.invoke("filesystem:start-search", path, query, options),
     cancelSearch: (id) => ipcRenderer.invoke("filesystem:cancel-search", id),

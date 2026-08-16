@@ -163,7 +163,12 @@ export function DirectoryCard({
     };
   }, [entry.path, entry.isDirectory, entry.extension, priority]);
 
-  const preview = useRetryingPreviewUrl(directoryThumbnailSource(thumbnailUrl, thumbnailOverride));
+  const preview = useRetryingPreviewUrl(
+    directoryThumbnailSource(thumbnailUrl, thumbnailOverride),
+    // .blend/.abc 由 Blender 渲染：滚动浏览时 abort 频繁、首帧生成慢，
+    // 用更长重试窗口避免缩略图被快速判死「不见」。
+    { dccSlowAsset: /\.(blend|abc)$/i.test(entry.extension) },
+  );
   const canPreview = !entry.isDirectory && preview.url && preview.status !== "failed";
   const isVideo = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(entry.extension);
   const hoverVideoUrl = thumbnailUrl?.replace("refbrowse://thumbnail/", "refbrowse://preview/").replace(/\?.*$/, "") ?? null;
@@ -319,6 +324,7 @@ export function DirectoryAssetPanel() {
   };
   const [query, setQuery] = useState("");
   const [formatFilter, setFormatFilter] = useState<DirectoryFormatFilter>("all");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [searchId, setSearchId] = useState<string | null>(null);
   const activeSearchIdRef = useRef<string | null>(null);
   const [searchPages, setSearchPages] = useState<Map<number, DirectoryEntry[]>>(
@@ -571,6 +577,7 @@ export function DirectoryAssetPanel() {
     foundSettings.showHiddenFiles,
     formatFilter,
     formatFilterExtensions,
+    favoritesOnly,
     store.directoryEntries,
     store.directoryPath,
     store.directoryTotal,
@@ -623,7 +630,7 @@ export function DirectoryAssetPanel() {
           window.refCanvas.filesystem.locateEntry
         ) {
           void window.refCanvas.filesystem
-            .locateEntry(store.directoryPath!, anchorPath, snapshot.revision)
+            .locateEntry(store.directoryPath!, anchorPath, snapshot.revision, favoritesOnly)
             .then((index) => {
               const nextIndex = index ?? topIndex;
               const nextOffset = Math.floor(nextIndex / directoryPageSize) * directoryPageSize;
@@ -684,6 +691,7 @@ export function DirectoryAssetPanel() {
       .startSearch(store.directoryPath, value.trim(), {
         collapseSequences: foundSettings.collapseImageSequences,
         extensions: formatFilterExtensions,
+        favoritesOnly,
       })
       .then(async (id) => {
         activeSearchIdRef.current = id;
@@ -720,6 +728,15 @@ export function DirectoryAssetPanel() {
     directorySelection.clear();
   };
 
+  const toggleFavoritesOnly = () => {
+    const next = !favoritesOnly;
+    setFavoritesOnly(next);
+    // 搜索中的结果跟随收藏过滤重新执行。
+    if (query.trim() && searchId) {
+      void runSearch(query);
+    }
+  };
+
   // FND-002 §5.2：每标签独立保存查询与滚动位置。
   // 切换标签/目录时从 BrowserTabState 恢复；变更时写回（滚动节流）。
   const activeTab = store.browserTabs.find((tab) => tab.id === store.activeTabId);
@@ -732,6 +749,7 @@ export function DirectoryAssetPanel() {
         .startSearch(store.directoryPath ?? "", activeTab.query, {
           collapseSequences: foundSettings.collapseImageSequences,
           extensions: formatFilterExtensions,
+          favoritesOnly,
         })
         .then((id) => {
           activeSearchIdRef.current = id;
@@ -808,9 +826,14 @@ export function DirectoryAssetPanel() {
     : entries;
   // Format chips filter assets, not navigation. Hide folders while a format is
   // active so the result grid contains only matching media.
-  const visibleEntries = formatFilter === "all"
+  // 「只看收藏」时服务端已过滤；这里补一层客户端过滤：把本地刚取消收藏的
+  // 条目立即隐藏（favorite !== false 兼容服务端条目不带 favorite 字段）。
+  const visibleEntries = (formatFilter === "all"
     ? sequenceVisibleEntries
-    : sequenceVisibleEntries.filter((entry) => !entry.isDirectory);
+    : sequenceVisibleEntries.filter((entry) => !entry.isDirectory)
+  ).filter(
+    (entry) => !favoritesOnly || (!entry.isDirectory && entry.favorite !== false),
+  );
   const files = visibleEntries.filter((entry) => !entry.isDirectory);
   const selectedCount = allMatchingSelected
     ? Math.max(
@@ -872,15 +895,27 @@ export function DirectoryAssetPanel() {
   }, [searchPages]);
   const activeIndexedEntries = useMemo(() => {
     const source = searchId ? indexedSearchEntries : indexedEntries;
-    if (!collapseLoadedSequences) return source;
-    const collapsed = [...source.entries()]
-      .sort(([left], [right]) => left - right)
-      .filter(([, entry]) => !hiddenSequencePaths.has(entry.path));
-    return new Map(
-      collapsed.map(([, entry], index) => [index, entry]),
-    );
+    let entries: Map<number, DirectoryEntry>;
+    if (!collapseLoadedSequences) {
+      entries = source;
+    } else {
+      const collapsed = [...source.entries()]
+        .sort(([left], [right]) => left - right)
+        .filter(([, entry]) => !hiddenSequencePaths.has(entry.path));
+      entries = new Map(
+        collapsed.map(([, entry], index) => [index, entry]),
+      );
+    }
+    if (!favoritesOnly) return entries;
+    // 「只看收藏」：服务端已按收藏过滤；这里补过滤本地刚取消收藏的条目，
+    // 并把结果标记为已收藏（星标全量展示）。
+    const filtered = [...entries.entries()]
+      .filter(([, entry]) => !entry.isDirectory && entry.favorite !== false)
+      .map(([, entry]) => ({ ...entry, favorite: true }));
+    return new Map(filtered.map((entry, index) => [index, entry]));
   }, [
     collapseLoadedSequences,
+    favoritesOnly,
     hiddenSequencePaths,
     indexedEntries,
     indexedSearchEntries,
@@ -1258,6 +1293,7 @@ export function DirectoryAssetPanel() {
       directoryRevision,
       excludedPaths,
       extensions: formatFilterExtensions,
+      favoritesOnly,
     });
     if (!selection) return false;
     const snapshot = await window.refCanvas.filesystem.startBatch(
@@ -1870,6 +1906,15 @@ export function DirectoryAssetPanel() {
         >
           OTHER
         </button>
+        <button
+          type="button"
+          className={favoritesOnly ? "active" : ""}
+          aria-pressed={favoritesOnly}
+          title={translate("directory.favoritesOnly")}
+          onClick={toggleFavoritesOnly}
+        >
+          <Star size={13} /> {translate("directory.favoritesOnly")}
+        </button>
       </div>
 
       {currentFlattenDepth > 0 && totalEntries > 5000 && (
@@ -2014,11 +2059,19 @@ export function DirectoryAssetPanel() {
           <span className="empty-icon">
             <FolderOpen size={25} />
           </span>
-          <h3>{translate(query ? "directory.searchEmpty" : "directory.empty")}</h3>
+          <h3>{translate(
+            favoritesOnly
+              ? "directory.favoritesOnlyEmpty"
+              : query
+                ? "directory.searchEmpty"
+                : "directory.empty",
+          )}</h3>
           <p>
-            {query
-              ? translate("directory.searchEmptyHint")
-              : translate("directory.emptyHint")}
+            {favoritesOnly
+              ? translate("directory.favoritesOnlyEmptyHint")
+              : query
+                ? translate("directory.searchEmptyHint")
+                : translate("directory.emptyHint")}
           </p>
         </div>
       )}
@@ -2286,6 +2339,7 @@ export function DirectoryAssetPanel() {
           showHidden: foundSettings.showHiddenFiles,
           collapseSequences: foundSettings.collapseImageSequences,
           extensions: formatFilterExtensions,
+          favoritesOnly,
         },
       );
       if (useAppStore.getState().directoryPath !== requestPath) return;

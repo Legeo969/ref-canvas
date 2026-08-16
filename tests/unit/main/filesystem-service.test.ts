@@ -549,6 +549,111 @@ describe("directory search", () => {
   });
 });
 
+describe("listDirectory favoritesOnly", () => {
+  it("只返回已收藏素材并隐藏文件夹", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
+    temporaryDirectories.push(root);
+    await mkdir(path.join(root, "art"));
+    await Promise.all([
+      writeFile(path.join(root, "keep.png"), Buffer.alloc(4)),
+      writeFile(path.join(root, "skip.png"), Buffer.alloc(4)),
+      writeFile(path.join(root, "keep.psd"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    const library = new LibraryService(database);
+    try {
+      const keep = await library.materializePath(path.join(root, "keep.png"));
+      await library.materializePath(path.join(root, "skip.png"));
+      await library.materializePath(path.join(root, "keep.psd"));
+      database.updateAsset(keep.asset.id, { favorite: true });
+
+      const page = await directory.listDirectory(root, { favoritesOnly: true });
+      expect(page.entries.map((entry) => entry.name)).toEqual(["keep.png"]);
+      expect(page.total).toBe(1);
+      expect(page.entries.every((entry) => !entry.isDirectory)).toBe(true);
+    } finally {
+      await directory.close?.();
+      await library.close();
+      database.close();
+    }
+  });
+
+  it("目录没有收藏时返回空页", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
+    temporaryDirectories.push(root);
+    await writeFile(path.join(root, "a.png"), Buffer.alloc(4));
+    const { database, directory } = createService();
+    try {
+      const page = await directory.listDirectory(root, { favoritesOnly: true });
+      expect(page.entries).toEqual([]);
+      expect(page.total).toBe(0);
+    } finally {
+      await directory.close?.();
+      database.close();
+    }
+  });
+
+  it("flatten 模式同样只返回收藏素材", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
+    temporaryDirectories.push(root);
+    const sub = path.join(root, "sub");
+    await mkdir(sub);
+    await Promise.all([
+      writeFile(path.join(root, "top.png"), Buffer.alloc(4)),
+      writeFile(path.join(sub, "inner.png"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    const library = new LibraryService(database);
+    try {
+      const inner = await library.materializePath(path.join(sub, "inner.png"));
+      database.updateAsset(inner.asset.id, { favorite: true });
+
+      const page = await directory.listDirectory(root, {
+        flattenDepth: 1,
+        favoritesOnly: true,
+      });
+      expect(page.entries.map((entry) => entry.name)).toEqual(["inner.png"]);
+      expect(page.total).toBe(1);
+    } finally {
+      await directory.close?.();
+      await library.close();
+      database.close();
+    }
+  });
+
+  it("搜索同样只返回收藏素材", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-fav-"));
+    temporaryDirectories.push(root);
+    await Promise.all([
+      writeFile(path.join(root, "keep.png"), Buffer.alloc(4)),
+      writeFile(path.join(root, "skip.png"), Buffer.alloc(4)),
+    ]);
+    const { database, directory } = createService();
+    const library = new LibraryService(database);
+    try {
+      const keep = await library.materializePath(path.join(root, "keep.png"));
+      database.updateAsset(keep.asset.id, { favorite: true });
+
+      const completed = new Promise<void>((resolve) => {
+        const unsubscribe = directory.onSearchProgress((snapshot) => {
+          if (snapshot.state !== "completed") return;
+          unsubscribe();
+          resolve();
+        });
+      });
+      const id = await directory.startSearch(root, "", { favoritesOnly: true });
+      await completed;
+      const snapshot = directory.getSearch(id)!;
+      expect(snapshot.entries.map((entry) => entry.name)).toEqual(["keep.png"]);
+      expect(snapshot.entries).toHaveLength(1);
+    } finally {
+      await directory.close?.();
+      await library.close();
+      database.close();
+    }
+  });
+});
+
 describe("quick access", () => {
   it("stores display name, order and expansion state per library", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));

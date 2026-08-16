@@ -24,6 +24,16 @@ describe("genericPlaceholderSvg", () => {
   it("falls back to FILE for empty extensions", () => {
     expect(genericPlaceholderSvg("", 480, 320)).toContain("FILE");
   });
+
+  it("shows DCC format hints for proprietary scene files", () => {
+    expect(genericPlaceholderSvg("max", 480, 320)).toContain("MAX");
+    expect(genericPlaceholderSvg("max", 480, 320)).toContain("3ds Max 场景");
+    expect(genericPlaceholderSvg("ma", 480, 320)).toContain("Maya 场景");
+    expect(genericPlaceholderSvg("c4d", 480, 320)).toContain("Cinema 4D 场景");
+    expect(genericPlaceholderSvg("hip", 480, 320)).toContain("Houdini 场景");
+    // 非 DCC 的格式保持通用文案。
+    expect(genericPlaceholderSvg("aep", 480, 320)).toContain("无可用缩略图");
+  });
 });
 
 describe("genericPlaceholderThumbnail", () => {

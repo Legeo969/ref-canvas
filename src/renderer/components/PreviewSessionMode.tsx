@@ -81,11 +81,12 @@ export function usePreviewSessionMode(
   const toggleFullscreen = useCallback(async () => {
     const next = !fullscreenRef.current;
     const previousFocused = focusedRef.current;
-    // 乐观更新：窗口级全屏的回推事件（enter-full-screen）偶发丢失时，
-    // overlay 类也必须立即加上，否则窗口已全屏但主界面直接铺满画面
-    // （回归：全屏后看到参考板栏/素材缩略图）。回推到达后最终同步；
-    // 主进程明确拒绝（返回 false）时回滚并恢复原聚焦状态。
+    // 乐观更新：窗口级全屏的回推事件（enter/leave-full-screen）偶发丢失时，
+    // overlay 类也必须立即加上/撤下，否则窗口已全屏但主界面直接铺满画面
+    // （回归：全屏后看到参考板栏/素材缩略图）。同步 ref，保证 IPC resolve
+    // 早于 React 提交时 rollback 守卫也能读到乐观值。回推到达后最终同步。
     setFullscreen(next);
+    fullscreenRef.current = next;
     if (next) setFocused(false);
     const rollback = () => {
       if (fullscreenRef.current !== next) return;
@@ -93,8 +94,11 @@ export function usePreviewSessionMode(
       if (next) setFocused(previousFocused);
     };
     try {
+      // 主进程契约：达到请求状态时返回请求值（进入成功 → true，
+      // 退出成功 → false），超时返回实际状态。只有「结果 ≠ 请求」才回滚：
+      // 退出成功返回的 false 绝不是「拒绝」，否则 UI 会回弹/卡在全屏。
       const applied = await window.refCanvas?.system?.setPresentationMode?.(next);
-      if (applied === false) rollback();
+      if (applied !== next) rollback();
     } catch {
       rollback();
     }
