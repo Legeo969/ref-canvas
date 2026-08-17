@@ -7,7 +7,29 @@ import type { RefCanvasApi } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { VideoPreview } from "../../../../src/renderer/components/VideoPreview";
 
+
+
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+// jsdom 的 Image 不会自动触发 onload；给预加载帧图提供可控 mock。
+class MockImage {
+  static failUrls = new Set<string>();
+  crossOrigin = "";
+  onload: (() => void) | null = null;
+  onerror: ((error?: unknown) => void) | null = null;
+  private _src = "";
+  set src(value: string) {
+    this._src = value;
+    if (MockImage.failUrls.has(value)) {
+      queueMicrotask(() => this.onerror?.(new Error("FRAME_IMAGE_LOAD_FAILED")));
+    } else {
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+  get src() { return this._src; }
+}
+vi.stubGlobal("Image", MockImage);
 
 setLanguage("zh-CN"); // 组件已迁移到 i18n key；断言基于简体中文 catalog。
 
@@ -20,6 +42,7 @@ describe("VideoPreview frame stepping", () => {
     });
     vi.restoreAllMocks();
     vi.useRealTimers();
+    MockImage.failUrls.clear();
     document.body.replaceChildren();
   });
 
@@ -436,18 +459,19 @@ describe("VideoPreview frame stepping", () => {
     });
     expect(current).toBeGreaterThan(10 / 24);
     const frozen = current;
-    // 松键：扫览停止，并做一次最终精确抓帧。
+    // 松键：扫览停止；快速浏览模式不再额外抓帧定格。
     await act(async () => {
       previewRoot.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }));
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(frame).toHaveBeenCalled();
     await act(async () => {
       vi.advanceTimersByTime(200);
       await Promise.resolve();
     });
     expect(current).toBe(frozen);
+    // 快速浏览过程中只 seek，不触发 ffmpeg 精确抓帧。
+    expect(frame).not.toHaveBeenCalled();
   });
 
   it("holds ArrowLeft to scrub backward, clamped at the start", async () => {
@@ -635,6 +659,8 @@ describe("VideoPreview frame stepping", () => {
 
   it("never shows the browser's broken-image placeholder for a failed frame grab", async () => {
     vi.useFakeTimers();
+    // 让预加载帧图失败，验证只重试一次并收敛到正式错误提示。
+    MockImage.failUrls.add("refbrowse://preview/token");
     // media:frame 的 token 按路径复用（tokenFor），同一目标重抓返回同一
     // URL；mock 与之保持一致。
     const frame = vi.fn(async () => ({
@@ -675,9 +701,17 @@ describe("VideoPreview frame stepping", () => {
       get: () => current,
       set: (value: number) => { current = value; },
     });
-    // 步进一次 → 抓帧返回 → 帧图渲染。
+    // 步进一次 → 抓帧返回 → 预加载失败 → 自动重试 → 再失败。
     await act(async () => {
       host.querySelector<HTMLButtonElement>('button[aria-label="下一帧"]')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
@@ -685,299 +719,10 @@ describe("VideoPreview frame stepping", () => {
     expect(frame.mock.calls.length).toBeGreaterThanOrEqual(1);
     // 同一 URL 至多重试一次（步进 + 重试 = 2 次调用封顶），失败不会无限循环。
     expect(frame.mock.calls.length).toBeLessThanOrEqual(2);
-    // 无论环境是否已自动触发过 error：手动补发，最终必须收敛到正式错误
-    // 提示，破图占位（img + alt 文本）不得留存，抓帧调用不再增长。
-    await act(async () => {
-      host.querySelector<HTMLImageElement>(".video-frame-step")?.dispatchEvent(new Event("error"));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await act(async () => {
-      host.querySelector<HTMLImageElement>(".video-frame-step")?.dispatchEvent(new Event("error"));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    // 预加载失败自动重试一次后仍失败：收敛到正式错误提示，破图占位不得留存。
     expect(host.querySelector<HTMLImageElement>(".video-frame-step")).toBeNull();
     expect(host.querySelector(".video-frame-error")).toBeTruthy();
     expect(frame.mock.calls.length).toBeLessThanOrEqual(2);
   });
 
-  it("至臻画质：轮询生成状态，就绪后切到增强代理并恢复播放位置", async () => {
-    vi.useFakeTimers();
-    let paused = true;
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => {
-      paused = false;
-      return Promise.resolve();
-    });
-    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {
-      paused = true;
-    });
-    const supremeVideoStatus = vi
-      .fn()
-      .mockResolvedValueOnce({ state: "generating", progress: 0.4, needsEnhancement: true, source: null, error: null })
-      .mockResolvedValueOnce({ state: "ready", progress: 1, needsEnhancement: true, source: "refbrowse://preview/supreme", error: null });
-    const supremeVideoCancel = vi.fn(async () => undefined);
-    Object.assign(window, {
-      refCanvas: {
-        media: {
-          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
-          frame: vi.fn(),
-          supremeVideoStatus,
-          supremeVideoCancel,
-        },
-      } as unknown as RefCanvasApi,
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-    await act(async () => {
-      root.render(
-        <VideoPreview
-          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
-          persistNotes={false}
-        />,
-      );
-      await Promise.resolve();
-    });
-    const video = host.querySelector("video")!;
-    let current = 3.5;
-    Object.defineProperty(video, "paused", { configurable: true, get: () => paused });
-    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
-    Object.defineProperty(video, "currentTime", {
-      configurable: true,
-      get: () => current,
-      set: (value: number) => { current = value; },
-    });
-    paused = false;
-    play.mockClear();
-    pause.mockClear();
-
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')?.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(supremeVideoStatus).toHaveBeenCalledWith("D:\\refs\\clip.mp4");
-    // 生成中：原源继续播放，浮层显示进度。
-    expect(video.getAttribute("src")).toBe("refbrowse://preview/video");
-    expect(host.querySelector(".video-supreme-chip")?.textContent).toContain("40%");
-
-    // 下一拍轮询 → ready → 切到代理源。
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(700);
-      await Promise.resolve();
-    });
-    expect(video.getAttribute("src")).toBe("refbrowse://preview/supreme");
-    // 切源后 loadedmetadata：恢复 3.5s 并继续播放。
-    await act(async () => {
-      video.dispatchEvent(new window.Event("loadedmetadata", { bubbles: true }));
-      await Promise.resolve();
-    });
-    expect(current).toBe(3.5);
-    expect(play).toHaveBeenCalled();
-    // 轮询已停止：再走 2 拍不再查询。
-    const settled = supremeVideoStatus.mock.calls.length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1400);
-      await Promise.resolve();
-    });
-    expect(supremeVideoStatus.mock.calls.length).toBe(settled);
-  });
-
-  it("至臻画质：关闭时取消生成并切回原源", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const supremeVideoStatus = vi.fn(async () => ({
-      state: "generating",
-      progress: null,
-      needsEnhancement: true,
-      source: null,
-      error: null,
-    }));
-    const supremeVideoCancel = vi.fn(async () => undefined);
-    Object.assign(window, {
-      refCanvas: {
-        media: {
-          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
-          frame: vi.fn(),
-          supremeVideoStatus,
-          supremeVideoCancel,
-        },
-      } as unknown as RefCanvasApi,
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-    await act(async () => {
-      root.render(
-        <VideoPreview
-          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
-          persistNotes={false}
-        />,
-      );
-      await Promise.resolve();
-    });
-    const button = host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')!;
-    await act(async () => {
-      button.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(host.querySelector(".video-supreme-chip")).toBeTruthy();
-    await act(async () => {
-      button.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(supremeVideoCancel).toHaveBeenCalledWith("D:\\refs\\clip.mp4");
-    expect(host.querySelector(".video-supreme-chip")).toBeNull();
-    expect(host.querySelector<HTMLVideoElement>("video")?.getAttribute("src")).toBe("refbrowse://preview/video");
-    expect(button.classList.contains("active")).toBe(false);
-  });
-
-  it("至臻画质：生成失败显示错误浮层并停止轮询", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const supremeVideoStatus = vi.fn(async () => ({
-      state: "failed",
-      progress: null,
-      needsEnhancement: true,
-      source: null,
-      error: "SUPREME_GENERATION_FAILED",
-    }));
-    Object.assign(window, {
-      refCanvas: {
-        media: {
-          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
-          frame: vi.fn(),
-          supremeVideoStatus,
-          supremeVideoCancel: vi.fn(async () => undefined),
-        },
-      } as unknown as RefCanvasApi,
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-    await act(async () => {
-      root.render(
-        <VideoPreview
-          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
-          persistNotes={false}
-        />,
-      );
-      await Promise.resolve();
-    });
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')?.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(host.querySelector(".video-supreme-chip.is-error")).toBeTruthy();
-    expect(host.querySelector<HTMLVideoElement>("video")?.getAttribute("src")).toBe("refbrowse://preview/video");
-    const settled = supremeVideoStatus.mock.calls.length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1400);
-      await Promise.resolve();
-    });
-    expect(supremeVideoStatus.mock.calls.length).toBe(settled);
-  });
-
-  it("至臻画质：源视频已是超高画质时保持原源", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const supremeVideoStatus = vi.fn(async () => ({
-      state: "ready",
-      progress: null,
-      needsEnhancement: false,
-      source: null,
-      error: null,
-    }));
-    Object.assign(window, {
-      refCanvas: {
-        media: {
-          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
-          frame: vi.fn(),
-          supremeVideoStatus,
-          supremeVideoCancel: vi.fn(async () => undefined),
-        },
-      } as unknown as RefCanvasApi,
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-    await act(async () => {
-      root.render(
-        <VideoPreview
-          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
-          persistNotes={false}
-        />,
-      );
-      await Promise.resolve();
-    });
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')?.click();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(host.querySelector<HTMLVideoElement>("video")?.getAttribute("src")).toBe("refbrowse://preview/video");
-    expect(host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')?.classList.contains("active")).toBe(true);
-  });
-
-  it("至臻画质：代理源加载失败自动回退原源", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const supremeVideoStatus = vi.fn(async () => ({
-      state: "ready",
-      progress: 1,
-      needsEnhancement: true,
-      source: "refbrowse://preview/supreme",
-      error: null,
-    }));
-    Object.assign(window, {
-      refCanvas: {
-        media: {
-          probe: vi.fn(async () => ({ duration: 10, extra: { frameRate: 24 } })),
-          frame: vi.fn(),
-          supremeVideoStatus,
-          supremeVideoCancel: vi.fn(async () => undefined),
-        },
-      } as unknown as RefCanvasApi,
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-    await act(async () => {
-      root.render(
-        <VideoPreview
-          asset={{ id: "video-1", path: "D:\\refs\\clip.mp4", previewUrl: "refbrowse://preview/video" }}
-          persistNotes={false}
-        />,
-      );
-      await Promise.resolve();
-    });
-    const video = host.querySelector<HTMLVideoElement>("video")!;
-    await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')?.click();
-      await Promise.resolve();
-      await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(700);
-      await Promise.resolve();
-    });
-    expect(video.getAttribute("src")).toBe("refbrowse://preview/supreme");
-    await act(async () => {
-      video.dispatchEvent(new window.Event("error", { bubbles: true }));
-      await Promise.resolve();
-    });
-    expect(video.getAttribute("src")).toBe("refbrowse://preview/video");
-    expect(host.querySelector<HTMLButtonElement>('button[aria-label="至臻画质"]')?.classList.contains("active")).toBe(false);
-  });
 });

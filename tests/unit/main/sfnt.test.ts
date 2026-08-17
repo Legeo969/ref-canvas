@@ -1,4 +1,5 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseFontBuffer } from "../../../src/main/services/media/sfnt";
@@ -19,7 +20,7 @@ function systemFont(candidates: string[]): string | null {
     for (const candidate of candidates) {
       const full = path.join(root, candidate);
       try {
-        stat(full);
+        statSync(full);
         return full;
       } catch {
         // 继续

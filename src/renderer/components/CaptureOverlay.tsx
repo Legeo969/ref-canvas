@@ -124,13 +124,26 @@ export function CaptureOverlay({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) onCancel();
+      if (event.key === "Escape" && !saving) {
+        // 截图是模态操作：Esc 必须独占，避免默认行为/其它 window 级
+        // handler（如预览面板的 Esc 关闭浮层）抢跑，也避免焦点残留触发。
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+        return;
+      }
       if (event.key === "Enter" && selection && !saving) {
+        // Enter 保存绝不能触发默认行为：窗口恢复焦点后焦点可能落在
+        // 标题栏按钮（如 AI 设计入口），Enter 的默认“激活聚焦元素”会
+        // 泄漏成点击，意外 dispatch refcanvas:open-ai-workbench 打开面板。
+        event.preventDefault();
+        event.stopPropagation();
         void saveSelection();
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    // capture 阶段：在其它 window 级 keydown 之前独占截图按键。
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onCancel, saveSelection, saving, selection]);
 
   return (

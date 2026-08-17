@@ -25,7 +25,6 @@ import { validateOcioConfigWithOpenImageIo } from "../services/media/openimageio
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
 import { exportSequenceToMp4, exportVideoToMp4 } from "../services/media/mp4-export";
-import { SupremeVideoService } from "../services/media/supreme-video";
 import {
   exportSequenceToGif,
   exportVideoToGif,
@@ -86,11 +85,6 @@ export function registerResourcesIpc(
       mediaJobs.delete(jobId);
     }
   }
-
-  const supremeVideos = new SupremeVideoService({
-    cacheDirectory: () => dependencies.getThumbnailCacheDirectory(),
-    previewTokens: dependencies.previewTokens,
-  });
 
   // --- mounts（计划 §7.2 / §13.4）---
 
@@ -327,20 +321,6 @@ export function registerResourcesIpc(
         jobId,
       };
     });
-  });
-  /**
-   * 至臻画质（仅视频；序列不参与）：查询/启动 4K 上采样 + 60fps 补帧
-   * 增强代理。首次调用即启动生成（不等待完成），renderer 轮询到
-   * ready/failed；ready 后经 refbrowse token 播放代理（Range 206）。
-   */
-  ipc.handle("media:supremeVideoStatus", async (filename) => {
-    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
-    return supremeVideos.status(resolved);
-  });
-  /** 取消至臻代理生成（并清失败标记，允许重试）。 */
-  ipc.handle("media:supremeVideoCancel", async (filename) => {
-    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
-    supremeVideos.cancel(resolved);
   });
   ipc.handle("media:palette", async (filename, options) => {
     const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));

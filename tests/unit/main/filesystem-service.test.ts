@@ -69,6 +69,21 @@ describe("listDirectory", () => {
     }
   });
 
+  it("rejects a file path with NOT_A_DIRECTORY instead of opendir ENOTDIR", async () => {
+    const directoryPath = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(directoryPath);
+    const filePath = path.join(directoryPath, "朝拜.mov");
+    await writeFile(filePath, Buffer.alloc(16));
+    const { directory } = createService();
+    try {
+      await expect(directory.listDirectory(filePath)).rejects.toThrow(
+        /NOT_A_DIRECTORY/,
+      );
+    } finally {
+      directory.close();
+    }
+  });
+
   it("falls back to mtime polling when native watch throws EINVAL", async () => {
     const directoryPath = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
     temporaryDirectories.push(directoryPath);
@@ -270,6 +285,25 @@ describe("listDirectory", () => {
     } finally {
       await directory.close?.();
       database.close();
+    }
+  });
+});
+
+describe("pathType", () => {
+  it("distinguishes directory, file, and missing paths", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
+    temporaryDirectories.push(root);
+    const filePath = path.join(root, "a.txt");
+    await writeFile(filePath, "hello");
+    const { directory } = createService();
+    try {
+      await expect(directory.pathType(root)).resolves.toBe("directory");
+      await expect(directory.pathType(filePath)).resolves.toBe("file");
+      await expect(
+        directory.pathType(path.join(root, "missing")),
+      ).resolves.toBe("missing");
+    } finally {
+      directory.close();
     }
   });
 });

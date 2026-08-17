@@ -273,10 +273,6 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("media:validateOcioConfig", path),
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
-    supremeVideoStatus: (path) =>
-      ipcRenderer.invoke("media:supremeVideoStatus", path),
-    supremeVideoCancel: (path) =>
-      ipcRenderer.invoke("media:supremeVideoCancel", path),
     palette: (path, options) =>
       ipcRenderer.invoke("media:palette", path, options),
     downscale: (request) => ipcRenderer.invoke("media:downscale", request),
@@ -326,6 +322,7 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("filesystem:set-observed-directory", path),
     listDirectory: (path, options) =>
       ipcRenderer.invoke("filesystem:list-directory", path, options),
+    pathType: (path) => ipcRenderer.invoke("filesystem:path-type", path),
     onDirectoryProgress: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
@@ -467,8 +464,6 @@ const api: RefCanvasApi = {
     openFilesWithDefaultApp: (paths) =>
       ipcRenderer.invoke("system:open-files-with-default-app", paths),
     revealInFolder: (path) => ipcRenderer.invoke("system:reveal", path),
-    openPreviewWindow: (path) =>
-      ipcRenderer.invoke("system:open-preview-window", path),
     openDataFolder: () => ipcRenderer.invoke("system:open-data-folder"),
     requestUninstall: () => ipcRenderer.invoke("system:request-uninstall"),
     pickDirectory: (options) =>
@@ -518,6 +513,8 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:capture-clipboard"),
     prepareRegionCapture: () =>
       ipcRenderer.invoke("system:prepare-region-capture"),
+    getCaptureSource: () =>
+      ipcRenderer.invoke("system:get-capture-source"),
     saveRegionCapture: (dataUrl) =>
       ipcRenderer.invoke("system:save-region-capture", dataUrl),
     cancelRegionCapture: () =>

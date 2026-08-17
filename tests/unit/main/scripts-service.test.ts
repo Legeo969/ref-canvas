@@ -7,6 +7,9 @@ import { RefCanvasDatabase } from "../../../src/main/persistence/database";
 
 const temporaryDirectories: string[] = [];
 
+// Windows 自带 python；Linux/macOS 通常只有 python3。
+const pythonCommand = process.platform === "win32" ? "python" : "python3";
+
 async function withTemp(): Promise<string> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-scripts-"));
   temporaryDirectories.push(directory);
@@ -33,7 +36,7 @@ describe("ScriptsService（阶段 5 §10.5：脚本信任）", () => {
     const database = createDatabase();
     try {
       const service = new ScriptsService(database, {
-        pythonCommand: "python",
+        pythonCommand,
       });
       const registered = await service.register(scriptPath, "hello", 5_000);
       expect(registered.hash).toHaveLength(64);
@@ -51,7 +54,7 @@ describe("ScriptsService（阶段 5 §10.5：脚本信任）", () => {
     const database = createDatabase();
     try {
       const service = new ScriptsService(database, {
-        pythonCommand: "python",
+        pythonCommand,
       });
       const registered = await service.register(scriptPath, "mutate", 5_000);
       // 修改脚本内容（hash 变化）。
@@ -71,7 +74,7 @@ describe("ScriptsService（阶段 5 §10.5：脚本信任）", () => {
     const database = createDatabase();
     try {
       const service = new ScriptsService(database, {
-        pythonCommand: "python",
+        pythonCommand,
       });
       const registered = await service.register(scriptPath, "echo", 10_000);
       const result = await service.run(registered.id, directory);
@@ -94,7 +97,7 @@ describe("ScriptsService（阶段 5 §10.5：脚本信任）", () => {
     const database = createDatabase();
     try {
       const service = new ScriptsService(database, {
-        pythonCommand: "python",
+        pythonCommand,
       });
       const registered = await service.register(scriptPath, "slow", 1_000);
       const result = await service.run(registered.id, directory);
@@ -113,7 +116,7 @@ describe("ScriptsService（阶段 5 §10.5：脚本信任）", () => {
     const database = createDatabase();
     try {
       const service = new ScriptsService(database, {
-        pythonCommand: "python",
+        pythonCommand,
       });
       const registered = await service.register(scriptPath, "noisy", 10_000);
       const result = await service.run(registered.id, directory);
@@ -131,7 +134,7 @@ describe("ScriptsService（阶段 5 §10.5：脚本信任）", () => {
     const database = createDatabase();
     try {
       const service = new ScriptsService(database, {
-        pythonCommand: "python",
+        pythonCommand,
       });
       const registered = await service.register(scriptPath, "gone", 5_000);
       service.unregister(registered.id);

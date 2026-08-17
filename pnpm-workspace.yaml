@@ -1,6 +1,7 @@
 nodeLinker: hoisted
 blockExoticSubdeps: false
 allowBuilds:
+  '@ffprobe-installer/linux-x64': true
   better-sqlite3: false
   canvas: false
   electron: true

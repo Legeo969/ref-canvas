@@ -142,6 +142,9 @@ export function registerFilesystemIpc(
         .parse(options),
     ),
   );
+  ipc.handle("filesystem:path-type", (filename) =>
+    service().pathType(assertAllowedPath(pathSchema.parse(filename))),
+  );
   ipc.handle("filesystem:locate-entry", (filename, entryPath, revision, favoritesOnly) =>
     service().locateEntry(
       assertAllowedPath(pathSchema.parse(filename)),

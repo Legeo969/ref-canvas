@@ -14,6 +14,7 @@ import {
   FolderPlus,
   LayoutGrid,
   List,
+  PanelsTopLeft,
   RefreshCw,
   Search,
   Scissors,
@@ -960,44 +961,54 @@ export function DirectoryAssetPanel() {
     if (/^[A-Za-z]:$/.test(target)) target += "\\";
     const pathKey = (candidate: string) =>
       candidate.replace(/\//g, "\\").replace(/\\\\+/g, "\\").toLowerCase();
+    // 先用轻量 pathType 探测身份：目录直接打开；文件/不存在再按文件路径
+    // 处理（探测所在目录并选中）。避免拿 listDirectory 探测文件路径而
+    // 在主进程打出 ENOTDIR 错误日志。
+    const resolveAsFile = () => {
+      const lastSeparator = Math.max(
+        target.lastIndexOf("\\"),
+        target.lastIndexOf("/"),
+      );
+      if (lastSeparator < 0) return;
+      let parent = target.slice(0, lastSeparator);
+      if (/^[A-Za-z]:$/.test(parent)) parent += "\\";
+      const wanted = pathKey(target);
+      void window.refCanvas.filesystem
+        .listDirectory(parent, { pageSize: 512 })
+        .then((page) => {
+          const match = page.entries.find(
+            (entry) =>
+              !entry.isDirectory && pathKey(entry.path) === wanted,
+          );
+          // 文件不在首批（超大目录）或不存在：不误开目录，落回搜索。
+          if (!match) return;
+          cancelSearch();
+          void store.openDirectory(parent).then(() => {
+            const loaded = useAppStore
+              .getState()
+              .directoryEntries.find(
+                (entry) => pathKey(entry.path) === wanted,
+              );
+            const entry = loaded ?? match;
+            store.selectDirectoryEntry(entry);
+            directorySelection.selectOnly(entry.path);
+          });
+        })
+        .catch(() => undefined);
+    };
     void window.refCanvas.filesystem
-      .listDirectory(target, { pageSize: 1 })
-      .then(() => {
-        cancelSearch();
-        void store.openDirectory(target);
+      .pathType(target)
+      .then((kind) => {
+        if (kind === "directory") {
+          cancelSearch();
+          void store.openDirectory(target);
+          return;
+        }
+        resolveAsFile();
       })
       .catch(() => {
-        // 不是目录（ENOTDIR）：按文件路径处理——探测所在目录并选中。
-        const lastSeparator = Math.max(
-          target.lastIndexOf("\\"),
-          target.lastIndexOf("/"),
-        );
-        if (lastSeparator < 0) return;
-        let parent = target.slice(0, lastSeparator);
-        if (/^[A-Za-z]:$/.test(parent)) parent += "\\";
-        const wanted = pathKey(target);
-        void window.refCanvas.filesystem
-          .listDirectory(parent, { pageSize: 512 })
-          .then((page) => {
-            const match = page.entries.find(
-              (entry) =>
-                !entry.isDirectory && pathKey(entry.path) === wanted,
-            );
-            // 文件不在首批（超大目录）或不存在：不误开目录，落回搜索。
-            if (!match) return;
-            cancelSearch();
-            void store.openDirectory(parent).then(() => {
-              const loaded = useAppStore
-                .getState()
-                .directoryEntries.find(
-                  (entry) => pathKey(entry.path) === wanted,
-                );
-              const entry = loaded ?? match;
-              store.selectDirectoryEntry(entry);
-              directorySelection.selectOnly(entry.path);
-            });
-          })
-          .catch(() => undefined);
+        // pathType 查询失败（权限等）视作非目录，沿用原文件探测逻辑。
+        resolveAsFile();
       });
     return true;
   };
@@ -2860,12 +2871,13 @@ export function DirectoryAssetPanel() {
         </button>
         <button
           type="button"
-          className={favoritesOnly ? "active" : ""}
+          className={`dir-favorites-filter${favoritesOnly ? " active" : ""}`}
           aria-pressed={favoritesOnly}
+          aria-label={translate("directory.favoritesOnly")}
           title={translate("directory.favoritesOnly")}
           onClick={toggleFavoritesOnly}
         >
-          <Star size={13} /> {translate("directory.favoritesOnly")}
+          <Star size={15} />
         </button>
         <div className="dir-sort-control" ref={sortRef}>
           <button
@@ -3098,6 +3110,16 @@ export function DirectoryAssetPanel() {
               >
                 <FolderOpen size={16} />
                 {translate("preview.reveal")}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() => {
+                  void store.addDirectoryEntriesToBoard([contextMenu.entry.path]);
+                  setContextMenu(null);
+                }}
+              >
+                <PanelsTopLeft size={16} />
+                {translate("directory.addToBoard")}
               </button>
             </>
           )}

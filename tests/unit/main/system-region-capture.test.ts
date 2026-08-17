@@ -30,6 +30,8 @@ import type { SecureIpcRegistrar } from "../../../src/main/platform/secure-ipc";
 function registerCaptureIpc(overrides: {
   getMainWindow?: () => unknown;
   restoreCaptureWindow?: () => void;
+  openCaptureWindow?: () => void;
+  closeCaptureWindow?: () => void;
 }) {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
   const ipc = {
@@ -40,7 +42,9 @@ function registerCaptureIpc(overrides: {
     on: vi.fn(),
   } as unknown as SecureIpcRegistrar;
   registerSystemIpc(ipc, {
-    state: {},
+    state: {
+      pendingCaptureSource: null,
+    },
     getDatabase: () => ({
       getSetting: () => undefined,
       setSetting: () => undefined,
@@ -51,6 +55,10 @@ function registerCaptureIpc(overrides: {
     getMainWindow: () => overrides.getMainWindow?.() ?? null,
     restoreCaptureWindow:
       overrides.restoreCaptureWindow ?? vi.fn(),
+    openCaptureWindow:
+      overrides.openCaptureWindow ?? vi.fn(),
+    closeCaptureWindow:
+      overrides.closeCaptureWindow ?? vi.fn(),
     windowForSender: vi.fn(() => ({})),
     writeAccess: {
       authorize: async (
@@ -76,9 +84,11 @@ describe("system prepare-region-capture", () => {
       show: vi.fn(),
       focus: vi.fn(),
     };
+    const openCaptureWindow = vi.fn();
     const handlers = registerCaptureIpc({
       getMainWindow: () => captureWindow,
       restoreCaptureWindow,
+      openCaptureWindow,
     });
 
     screenMock.getDisplayMatching.mockReturnValue({
@@ -98,7 +108,7 @@ describe("system prepare-region-capture", () => {
     expect(restoreCaptureWindow).toHaveBeenCalled();
     expect(captureWindow.hide).toHaveBeenCalled();
 
-    // 快照正常：返回 dataUrl/尺寸并进入全屏覆盖。
+    // 快照正常：暂存快照并打开独立覆盖窗口（不再把主窗口全屏）。
     desktopCapturer.getSources.mockResolvedValueOnce([
       {
         display_id: "42",
@@ -116,23 +126,31 @@ describe("system prepare-region-capture", () => {
     };
     expect(result.dataUrl).toBe("data:image/png;base64,xxx");
     expect(result.width).toBe(1920);
-    expect(captureWindow.setFullScreen).toHaveBeenCalledWith(true);
+    expect(captureWindow.setFullScreen).not.toHaveBeenCalled();
     expect(captureWindow.show).toHaveBeenCalled();
+    expect(openCaptureWindow).toHaveBeenCalled();
   });
 
-  it("saves the region capture and restores the window", async () => {
-    const restoreCaptureWindow = vi.fn();
-    const handlers = registerCaptureIpc({ restoreCaptureWindow });
+  it("consumes the pending capture source once for the overlay window", async () => {
+    const handlers = registerCaptureIpc({});
+    const source = await handlers.get("system:get-capture-source")!();
+    expect(source).toBeNull();
+  });
+
+  it("saves the region capture and closes the overlay window", async () => {
+    const closeCaptureWindow = vi.fn();
+    const handlers = registerCaptureIpc({ closeCaptureWindow });
 
     const result = await handlers.get("system:save-region-capture")!(
       {},
       "data:image/png;base64,png-bytes",
     );
 
-    // 保存完成返回素材记录占位（数据库返回 null），窗口恢复，不抛错。
+    // 保存完成返回素材记录占位（数据库返回 null），关闭覆盖窗口，不抛错。
     expect(result).toBeNull();
-    expect(restoreCaptureWindow).toHaveBeenCalled();
-    // 截图不再写入系统剪贴板（按需移除）：writeImage 不应被调用。
-    expect(clipboardMock.writeImage).not.toHaveBeenCalled();
+    expect(closeCaptureWindow).toHaveBeenCalled();
+    // 截图应同时写入系统剪贴板，便于在参考版（或任意应用）里 Ctrl+V 直接粘贴。
+    expect(nativeImageMock.createFromBuffer).toHaveBeenCalled();
+    expect(clipboardMock.writeImage).toHaveBeenCalled();
   });
 });

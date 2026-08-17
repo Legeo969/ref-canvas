@@ -50,7 +50,6 @@ describe("i18n runtime (FND-011)", () => {
     setLanguage("zh-CN");
     expect(translate("workspace.disk")).toBe("磁盘");
     expect(translate("collections.state.resolved")).toBe("可用");
-    expect(translate("preview.supreme")).toBe("至臻画质");
   });
 
   it("every MessageKey resolves to a non-empty string in every catalog", () => {

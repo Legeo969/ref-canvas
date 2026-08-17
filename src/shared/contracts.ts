@@ -1123,22 +1123,6 @@ export interface MediaFrameResult {
   jobId?: string;
 }
 
-/**
- * 至臻画质状态（视频预览增强代理，仅视频；序列不参与）。
- * ready 且 needsEnhancement 时经 source（refbrowse token）播放代理。
- */
-export interface SupremeVideoStatusResult {
-  /** generating = 代理生成中；ready = 可直接播放；failed = 生成失败。 */
-  state: "idle" | "generating" | "ready" | "failed";
-  /** 0..1；时长未知时为 null（不确定进度）。 */
-  progress: number | null;
-  /** false = 源视频已是超高画质（≥3840 宽且 ≥60fps），无需代理。 */
-  needsEnhancement: boolean;
-  /** ready 且 needsEnhancement 时的 refbrowse://preview/<token> 代理 URL。 */
-  source: string | null;
-  error: string | null;
-}
-
 /** media.waveform 波形结果（阶段 4：音频）。 */
 export interface MediaWaveformResult {
   /** 归一化 0..1 峰值包络（等时间间隔）。 */
@@ -1727,10 +1711,6 @@ export interface RefCanvasApi {
       path: string,
       options?: { timeMs?: number; width?: number; height?: number },
     ): Promise<MediaFrameResult>;
-    /** 至臻画质：查询/启动 4K 上采样 + 60fps 补帧增强代理（仅视频）。 */
-    supremeVideoStatus(path: string): Promise<SupremeVideoStatusResult>;
-    /** 取消至臻代理生成（并清失败标记，允许重试）。 */
-    supremeVideoCancel(path: string): Promise<void>;
     /** 从本地图片或视频时间点提取主色，不依赖 renderer 画布权限。 */
     palette(
       path: string,
@@ -1874,6 +1854,8 @@ export interface RefCanvasApi {
         favoritesOnly?: boolean;
       },
     ): Promise<DirectoryPage>;
+    /** 轻量路径类型探测（目录/文件/不存在），供打开目录前的身份判断。 */
+    pathType(path: string): Promise<"directory" | "file" | "missing">;
     onDirectoryProgress(
       callback: (snapshot: DirectoryProgressSnapshot) => void,
     ): () => void;
@@ -2032,7 +2014,7 @@ export interface RefCanvasApi {
     openFilesWithDefaultApp(paths: string[]): Promise<void>;
     revealInFolder(path: string): Promise<void>;
     /** FND-004：打开浮动预览窗口（独立窗口渲染统一预览会话）。 */
-    openPreviewWindow(path: string): Promise<void>;
+
     openDataFolder(): Promise<void>;
     /** 请求启动 Windows Squirrel 卸载器；调用前 Renderer 必须二次确认。 */
     requestUninstall(): Promise<boolean>;
@@ -2079,6 +2061,8 @@ export interface RefCanvasApi {
     onOpenDirectoryTab(callback: (path: string) => void): () => void;
     captureClipboard(): Promise<AssetRecord | null>;
     prepareRegionCapture(): Promise<CaptureSource | null>;
+    /** 独立覆盖窗口启动后一次性消费抓屏快照（?capture=1 模式）。 */
+    getCaptureSource(): Promise<CaptureSource | null>;
     saveRegionCapture(dataUrl: string): Promise<AssetRecord | null>;
     cancelRegionCapture(): Promise<void>;
     rebuildThumbnailCache(): Promise<void>;

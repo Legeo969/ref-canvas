@@ -19,7 +19,6 @@ import {
   ListTodo,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import type { BoardSettings, BoardSummary } from "../../shared/contracts";
 import {
@@ -40,7 +39,6 @@ import {
 } from "./presentation-mode";
 import { workspaceStatusHint } from "./workspace-status";
 import { parseBoardWindowParams } from "./board-window";
-import { parsePreviewWindowParams } from "./preview-window";
 import { usePreviewSettings } from "./preview-settings";
 import { translate, useAppLanguage } from "./i18n";
 import { ActionsPanel } from "../components/ActionsPanel";
@@ -48,8 +46,7 @@ import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { BrowserTabBar } from "../components/BrowserTabBar";
-import { CaptureOverlay } from "../components/CaptureOverlay";
-import { PreviewWindow } from "../components/PreviewWindow";
+import { CaptureWindow } from "../components/CaptureWindow";
 import { TaskCenter } from "../components/TaskCenter";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
 import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
@@ -72,14 +69,9 @@ export function App() {
     return <BoardWindow boardId={boardWindowParams.boardId} />;
   }
 
-  const previewWindowParams = parsePreviewWindowParams(window.location.search);
-  if (previewWindowParams) {
-    return (
-      <PreviewWindow
-        path={previewWindowParams.previewPath}
-        onClose={() => window.close()}
-      />
-    );
+  // 独立区域截图覆盖窗口（?capture=1）：主窗口保持可见，无需隐藏/关窗。
+  if (new URLSearchParams(window.location.search).get("capture") === "1") {
+    return <CaptureWindow />;
   }
 
   return <WorkspaceApp />;
@@ -120,9 +112,6 @@ function WorkspaceApp() {
   const [migrationFailure, setMigrationFailure] = useState<Awaited<
     ReturnType<typeof window.refCanvas.system.getMigrationFailure>
   > | null>(null);
-  const [captureSource, setCaptureSource] = useState<Awaited<
-    ReturnType<typeof window.refCanvas.system.prepareRegionCapture>
-  >>(null);
   const capturePreparingRef = useRef(false);
   const [capturePreparing, setCapturePreparing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -142,8 +131,9 @@ function WorkspaceApp() {
     capturePreparingRef.current = true;
     setCapturePreparing(true);
     try {
-      const source = await window.refCanvas.system.prepareRegionCapture();
-      if (source) setCaptureSource(source);
+      // 主进程抓屏后打开独立覆盖窗口（?capture=1），框选在覆盖窗口内完成，
+      // 主窗口保持可见。返回值仅供确认成功，不再在主窗口渲染覆盖层。
+      await window.refCanvas.system.prepareRegionCapture();
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "";
       setNotice(
@@ -475,22 +465,7 @@ function WorkspaceApp() {
         boardPresentationMode ? "presentation-mode" : ""
       }`}
     >
-      {captureSource &&
-        createPortal(
-          <CaptureOverlay
-            source={captureSource}
-            onComplete={async (dataUrl) => {
-              await window.refCanvas.system.saveRegionCapture(dataUrl);
-              setCaptureSource(null);
-              await store.reloadAssets();
-            }}
-            onCancel={() => {
-              setCaptureSource(null);
-              void window.refCanvas.system.cancelRegionCapture();
-            }}
-          />,
-          document.body,
-        )}
+
       {duplicatesOpen && (
         <DuplicatesPanel
           groups={store.duplicates}

@@ -8,6 +8,7 @@ import {
   screen,
   shell,
   type BrowserWindow,
+  type Display,
   type IpcMainInvokeEvent,
 } from "electron";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -17,6 +18,7 @@ import type {
   AppLanguage,
   AppPreferences,
   BoardSettings,
+  CaptureSource,
   SidebarLayoutPreference,
 } from "../../shared/contracts";
 import { SIDEBAR_LAYOUT_DEFAULTS } from "../../shared/contracts";
@@ -42,6 +44,8 @@ import { nativeDragIdsSchema } from "./schemas";
 export interface SystemIpcState {
   alwaysOnBottom: boolean;
   captureWasFullScreen: boolean;
+  /** 待传给独立覆盖窗口的抓屏快照；覆盖窗口启动后消费并清空。 */
+  pendingCaptureSource: CaptureSource | null;
   clickThrough: boolean;
   previewCacheIndex: PreviewCacheIndex | null;
   rendererInteractive: boolean;
@@ -59,7 +63,8 @@ interface SystemIpcDependencies {
   /** 启动期迁移失败时的恢复信息；失败时 Renderer 展示恢复页而非主工作区。 */
   getMigrationRecovery(): MigrationRecoveryInfo;
   getMainWindow(): BrowserWindow | null;
-  openPreviewWindow(filename: string): void;
+  closeCaptureWindow(): void;
+  openCaptureWindow(display: Display): void;
   overlayExitAccelerator: string;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
   registerOverlayEmergencyShortcut(): boolean;
@@ -199,11 +204,6 @@ export function registerSystemIpc(
     await revealInFileManager(
       assertAbsoluteLocalPath(z.string().min(1).max(32_768).parse(filename)),
       shell,
-    );
-  });
-  ipc.handle("system:open-preview-window", async (filename) => {
-    dependencies.openPreviewWindow(
-      assertAbsoluteLocalPath(z.string().min(1).max(32_768).parse(filename)),
     );
   });
   ipc.handle("system:open-data-folder", async () => {
@@ -377,11 +377,9 @@ export function registerSystemIpc(
   ipc.handle("system:prepare-region-capture", async () => {
     const window = mainWindow();
     if (!window) return null;
-    // The overlay is rendered by the main window, so capture the display that
-    // actually owns that window. Using the cursor display breaks global-shortcut
-    // capture when the pointer is on a different monitor.
+    // 抓取窗口所在显示器的屏幕快照。用独立覆盖窗口承载框选，主窗口无需
+    // 隐藏/全屏切换——这样不再“要关掉 RefCanvas 才能截图”。
     const display = screen.getDisplayMatching(window.getBounds());
-    state.captureWasFullScreen = window.isFullScreen();
     window.hide();
     try {
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -400,19 +398,27 @@ export function registerSystemIpc(
         // null 会让渲染端毫无反馈，用户只看到窗口闪一下（“点了没反应”）。
         throw new Error("SCREEN_CAPTURE_UNAVAILABLE");
       }
-      window.setFullScreen(true);
-      window.show();
-      window.focus();
       const size = source.thumbnail.getSize();
-      return {
+      state.pendingCaptureSource = {
         dataUrl: source.thumbnail.toDataURL(),
         width: size.width,
         height: size.height,
       };
+      // 主窗口重新可见，随后打开独立全屏覆盖窗口承载框选。
+      window.show();
+      window.focus();
+      dependencies.openCaptureWindow(display);
+      return state.pendingCaptureSource;
     } catch (error) {
       dependencies.restoreCaptureWindow();
       throw error;
     }
+  });
+  ipc.handle("system:get-capture-source", () => {
+    // 独立覆盖窗口启动后消费抓屏快照；一次性读取，避免残留。
+    const source = state.pendingCaptureSource;
+    state.pendingCaptureSource = null;
+    return source;
   });
   ipc.handleWithEvent("system:save-region-capture", async (event, dataUrl) => {
     try {
@@ -421,14 +427,17 @@ export function registerSystemIpc(
       ]);
       const png = dependencies.pngDataUrlToBuffer(z.string().parse(dataUrl));
       const filename = await dependencies.saveCapture(png, captureDirectory);
+      // 截图同时写入系统剪贴板：这样在参考版（或任何应用）里 Ctrl+V
+      // 就能直接粘贴刚截的图，无需先去文件管理器复制。
+      clipboard.writeImage(nativeImage.createFromBuffer(png));
       await library().importPaths([filename]);
       return database().getAssetByPath(filename);
     } finally {
-      dependencies.restoreCaptureWindow();
+      dependencies.closeCaptureWindow();
     }
   });
   ipc.handle("system:cancel-region-capture", () => {
-    dependencies.restoreCaptureWindow();
+    dependencies.closeCaptureWindow();
   });
   ipc.handle("system:rebuild-thumbnail-cache", async () => {
     const resolved = path.resolve(state.thumbnailCacheDirectory);

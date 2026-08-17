@@ -29,7 +29,7 @@ function fakeWindow() {
 describe("TrustedWindowRegistry", () => {
   beforeEach(() => electron.fromWebContents.mockReset());
 
-  it("accepts registered main, board and floating preview senders", () => {
+  it("accepts registered main, board and auxiliary senders", () => {
     const registry = new TrustedWindowRegistry();
     const windows = [fakeWindow(), fakeWindow(), fakeWindow()];
     windows.forEach((entry) => registry.register(entry.window));

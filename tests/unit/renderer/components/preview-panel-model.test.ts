@@ -56,13 +56,6 @@ describe("Preview toolbar model", () => {
     expect(previewToolbarCapabilities("sequence")).toMatchObject({ timeline: true, volume: false, gifExport: true });
   });
 
-  it("reserves the supreme quality toggle for video only (sequences excluded)", () => {
-    expect(previewToolbarCapabilities("video").supreme).toBe(true);
-    expect(previewToolbarCapabilities("sequence").supreme).toBe(false);
-    expect(previewToolbarCapabilities("gif").supreme).toBe(false);
-    expect(previewToolbarCapabilities("image").supreme).toBe(false);
-    expect(previewToolbarCapabilities("svg").supreme).toBe(false);
-  });
 });
 
 describe("formatPreviewTimecode", () => {

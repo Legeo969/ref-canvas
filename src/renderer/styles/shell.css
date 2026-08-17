@@ -1012,47 +1012,6 @@ body.sidebar-resizing {
   font-size: 12px;
 }
 
-/* --- 浮动预览窗口（FND-004） --- */
-
-.preview-window {
-  display: flex;
-  height: 100vh;
-  flex-direction: column;
-  background: var(--bg-base);
-  -webkit-app-region: drag;
-}
-
-.preview-window-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 40px;
-  padding: 0 8px 0 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.preview-window-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #aeb6b2;
-  font-size: 12px;
-}
-
-.preview-window-title-region {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.preview-window-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  -webkit-app-region: no-drag;
-}
-
 .preview-session-mode-actions {
   display: flex;
   align-items: center;
@@ -1122,46 +1081,6 @@ body.sidebar-resizing {
 .preview-session-subtitle {
   color: #747e79;
   font-variant-numeric: tabular-nums;
-}
-
-.preview-window:is(.preview-session-focused, .preview-session-window-fullscreen) .preview-window-header {
-  position: static;
-  width: 100%;
-  min-height: 40px;
-  padding: 0 8px 0 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  background: var(--bg-base);
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.preview-window:is(.preview-session-focused, .preview-session-window-fullscreen) .preview-window-title,
-.preview-window:is(.preview-session-focused, .preview-session-window-fullscreen) .preview-window-external-action {
-  display: none;
-}
-
-.preview-window-body {
-  display: grid;
-  min-height: 0;
-  flex: 1;
-  place-items: center;
-  overflow: hidden;
-}
-
-.preview-window-body > * {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.preview-window-loading,
-.preview-window-error {
-  color: #9aa39e;
-  font-size: 13px;
-}
-
-.preview-window-error {
-  color: #e08b7a;
 }
 
 /* --- 统一任务中心（FND-007 §8.3） --- */

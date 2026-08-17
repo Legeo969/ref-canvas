@@ -643,6 +643,16 @@ async function list(request: WorkerRequest): Promise<void> {
   const offset = Math.max(0, request.offset ?? 0);
   const pageSize = Math.max(1, Math.min(512, request.pageSize ?? 512));
   const info = await stat(directoryPath);
+  if (!info.isDirectory()) {
+    // 文件/特殊对象不是目录：直接回清晰错误，避免 scanDirectory 的
+    // opendir 抛 ENOTDIR 走异步失败清理路线。
+    parentPort!.postMessage({
+      id: request.id,
+      ok: false,
+      error: `NOT_A_DIRECTORY: ${directoryPath}`,
+    });
+    return;
+  }
   const db = database!;
   const cached = db.prepare(
     "SELECT revision, directory_mtime_ms, state, discovered, file_total FROM directory_scans WHERE directory_path = ?",

@@ -232,6 +232,19 @@ export class FilesystemService {
   }
 
   /**
+   * 轻量路径类型探测（目录/文件/不存在）。renderer 用它在打开目录前
+   * 判断目标身份，避免拿 listDirectory 对文件路径探测而抛 ENOTDIR。
+   */
+  async pathType(filename: string): Promise<"directory" | "file" | "missing"> {
+    const resolved = path.resolve(filename);
+    const info = await stat(resolved).catch(() => null);
+    if (!info) return "missing";
+    if (info.isDirectory()) return "directory";
+    if (info.isFile()) return "file";
+    return "missing";
+  }
+
+  /**
    * 收藏过滤：把素材库收藏路径裁剪到当前浏览范围（归一化后返回）。
    * recursive=true（flatten/搜索）取整个子树；否则只取目录直接子项。
    */
@@ -368,6 +381,12 @@ export class FilesystemService {
         nextCursor:
           start + pageSize < scoped.length ? String(start + pageSize) : null,
       };
+    }
+    // 路径必须是目录：文件/不存在直接以明确错误拒绝，避免 worker opendir
+    // 抛 ENOTDIR，也避免给文件路径建扫描索引。
+    const targetInfo = await stat(resolved).catch(() => null);
+    if (!targetInfo?.isDirectory()) {
+      throw new Error(`NOT_A_DIRECTORY: ${resolved}`);
     }
     if (this.indexClient) {
       const cursor = Number.parseInt(options.cursor ?? "0", 10);

@@ -652,6 +652,7 @@ export function BoardCanvas({
   const gifAnimatorsRef = useRef(new Map<string, GifAnimator>());
   const [cropTarget, setCropTarget] = useState<BoardCropTargetSnapshot | null>(null);
   const [dropNotice, setDropNotice] = useState<string | null>(null);
+  const dropNoticeTimerRef = useRef<number | null>(null);
   const [colorSampling, setColorSampling] = useState(false);
   const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
   const [focusPlaying, setFocusPlaying] = useState(false);
@@ -666,6 +667,22 @@ export function BoardCanvas({
   const [shortcutSettingsOpen, setShortcutSettingsOpen] = useState(false);
   const [shortcutBindings, setShortcutBindings] =
     useState<BoardShortcutBindings>(() => loadBoardShortcuts(null));
+
+  /** 显示临时提示（自动 2400ms 消隐）。 */
+  const showDropNotice = (message: string) => {
+    setDropNotice(message);
+    if (dropNoticeTimerRef.current !== null) window.clearTimeout(dropNoticeTimerRef.current);
+    dropNoticeTimerRef.current = window.setTimeout(() => setDropNotice(null), 2400);
+  };
+  const clearDropNotice = () => {
+    if (dropNoticeTimerRef.current !== null) window.clearTimeout(dropNoticeTimerRef.current);
+    dropNoticeTimerRef.current = null;
+    setDropNotice(null);
+  };
+  useEffect(() => () => {
+    if (dropNoticeTimerRef.current !== null) window.clearTimeout(dropNoticeTimerRef.current);
+    dropNoticeTimerRef.current = null;
+  }, []);
 
   const openCropDialog = (target: FabricImage) => {
     const boardObject = target as CanvasObjectWithData & FabricImage;
@@ -829,7 +846,7 @@ export function BoardCanvas({
           windowMode: "normal",
         };
         scheduleSaveRef.current?.();
-        setDropNotice(translate("board.exitClickThroughNotice"));
+        showDropNotice(translate("board.exitClickThroughNotice"));
       }),
     [],
   );
@@ -1228,6 +1245,8 @@ export function BoardCanvas({
       if (target) {
         propagateHierarchyTransform(canvas, target);
         setHudMessage(translate("board.hudRotate").replace("{angle}", String(Math.round(normalizeSignedAngle(target.angle ?? 0)))));
+        if (hudTimerRef.current) window.clearTimeout(hudTimerRef.current);
+        hudTimerRef.current = window.setTimeout(() => setHudMessage(null), 1400);
       }
     });
     controller.onCanvas(canvas, "mouse:dblclick", (event) => {
@@ -3212,7 +3231,7 @@ export function BoardCanvas({
   /** Arms one-shot canvas pixel sampling; the next canvas click reports color and scene coordinates. */
   const sampleColor = () => {
     setColorSampling(true);
-    setDropNotice(translate("board.samplingNotice"));
+    showDropNotice(translate("board.samplingNotice"));
   };
 
   const sampleCanvasPixel = async (
@@ -3227,7 +3246,7 @@ export function BoardCanvas({
     const element = canvasElementRef.current;
     if (!canvas || !element) return;
     setColorSampling(false);
-    setDropNotice(null);
+    clearDropNotice();
     const bounds = element.getBoundingClientRect();
     const pixelX = Math.max(
       0,
@@ -3292,7 +3311,7 @@ export function BoardCanvas({
         onSubmit: () => undefined,
       });
     } catch {
-      setDropNotice(translate("board.samplingReadFailed"));
+      showDropNotice(translate("board.samplingReadFailed"));
     }
   };
 
@@ -3536,7 +3555,7 @@ export function BoardCanvas({
         await window.refCanvas.system.setAlwaysOnBottom(false);
         await window.refCanvas.system.setWindowTransparent(true);
         await window.refCanvas.system.setClickThrough(true);
-        setDropNotice(translate("board.clickThroughNotice"));
+        showDropNotice(translate("board.clickThroughNotice"));
       } else if (mode === "locked") {
         toggleCanvasLock();
       }
@@ -3546,7 +3565,7 @@ export function BoardCanvas({
         scheduleSaveRef.current?.();
       }
     } catch {
-      setDropNotice(translate("board.windowModeFailed"));
+      showDropNotice(translate("board.windowModeFailed"));
     }
   };
 
@@ -3776,8 +3795,7 @@ export function BoardCanvas({
       onLibraryChanged,
     );
     if (!notice) return;
-    setDropNotice(notice);
-    window.setTimeout(() => setDropNotice(null), 2400);
+    showDropNotice(notice);
   };
 
   const handleShortcutCommand = (
@@ -3786,7 +3804,7 @@ export function BoardCanvas({
   ) => {
     switch (command) {
       case "cancelGesture": cancelPureRefGesture(); break;
-      case "cancelSampling": setColorSampling(false); setDropNotice(null); break;
+      case "cancelSampling": setColorSampling(false); clearDropNotice(); break;
       case "toggleCommandPalette":
         if (commandPaletteOpen) setCommandPaletteOpen(false);
         else openCommandPalette();
@@ -4208,12 +4226,11 @@ export function BoardCanvas({
     }
     canvas.requestRenderAll();
     scheduleSaveRef.current?.();
-    setDropNotice(
+    showDropNotice(
       assetIds.length > 500
         ? translate("board.dropLimited").replace("{count}", String(ids.length))
         : translate("board.dropPlaced").replace("{count}", String(added.length)),
     );
-    window.setTimeout(() => setDropNotice(null), 2400);
     return added.length;
   };
 

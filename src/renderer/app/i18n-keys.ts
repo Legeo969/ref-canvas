@@ -5,1321 +5,2625 @@
 
 export type MessageKey =
   | "ai.addReference"
+
   | "ai.addSelected"
+
   | "ai.cancel"
+
   | "ai.displayColor"
+
   | "ai.dropEmpty"
+
   | "ai.dropHint"
+
   | "ai.error.outputRequired"
+
   | "ai.error.promptRequired"
+
   | "ai.error.sourceRequired"
+
   | "ai.fileFilterAll"
+
   | "ai.fileFilterImages"
+
   | "ai.fileFilterVideos"
+
   | "ai.folderUnsupported"
+
   | "ai.original.dropOrPaste"
+
   | "ai.original.imageUnit"
+
   | "ai.original.majorChange"
+
   | "ai.original.placeholder"
+
   | "ai.original.professionalModify"
+
   | "ai.generate"
+
   | "ai.generating"
+
   | "ai.history"
+
   | "ai.input"
+
   | "ai.majorChange"
+
   | "ai.noJobs"
+
   | "ai.outputBrowse"
+
   | "ai.outputCount"
+
   | "ai.outputCountResult"
+
   | "ai.outputDirectory"
+
   | "ai.pickInput"
+
   | "ai.pickOutput"
+
   | "ai.pickReference"
+
   | "ai.pickSource"
+
   | "ai.prompt"
+
   | "ai.promptPlaceholder"
+
   | "ai.provider"
+
   | "ai.referenceCount"
+
   | "ai.referenceIndex"
+
   | "ai.references"
+
   | "ai.refresh"
+
   | "ai.removeInput"
+
   | "ai.removeSource"
+
   | "ai.retry"
+
   | "ai.selectMaterialFirst"
+
   | "ai.source"
+
   | "ai.state.cancelled"
+
   | "ai.state.completed"
+
   | "ai.state.downloading"
+
   | "ai.state.failed"
+
   | "ai.state.generating"
+
   | "ai.state.queued"
+
   | "ai.state.uploading"
+
   | "ai.subtitle"
+
   | "ai.title"
+
   | "ai.unavailable"
+
   | "aiSettings.binding"
+
   | "aiSettings.bindingBatchSize"
+
   | "aiSettings.bindingInvalid"
+
   | "aiSettings.bindingOutputs"
+
   | "aiSettings.bindingPrompt"
+
   | "aiSettings.bindingReferences"
+
   | "aiSettings.bindingSource"
+
   | "aiSettings.clearToken"
+
   | "aiSettings.comfyuiAddress"
+
   | "aiSettings.defaultProvider"
+
   | "aiSettings.enabledProviders"
+
   | "aiSettings.fileFilterWorkflow"
+
   | "aiSettings.healthCheck"
+
   | "aiSettings.healthChecking"
+
   | "aiSettings.healthy"
+
   | "aiSettings.imported"
+
   | "aiSettings.importWorkflow"
+
   | "aiSettings.noNodes"
+
   | "aiSettings.notConfigured"
+
   | "aiSettings.remoteToken"
+
   | "aiSettings.remoteTokenPlaceholder"
+
   | "aiSettings.remoteUrl"
+
   | "aiSettings.saveToken"
+
   | "aiSettings.title"
+
   | "aiSettings.tokenConfigured"
+
   | "aiSettings.tokenUnconfigured"
+
   | "aiSettings.unhealthy"
+
   | "aiSettings.urlRejected"
+
   | "aiSettings.workflowErrors"
+
   | "aiSettings.workflowFile"
+
   | "annotations.add"
+
   | "annotations.addDescription"
+
   | "annotations.addTitle"
+
   | "annotations.cancelAdd"
+
   | "annotations.close"
+
   | "annotations.contentLabel"
+
   | "annotations.contentPlaceholder"
+
   | "annotations.count"
+
   | "annotations.deleteFailed"
+
   | "annotations.deleteNamed"
+
   | "annotations.editNamed"
+
   | "annotations.editTitle"
+
   | "annotations.emptyHint"
+
   | "annotations.emptyTitle"
+
   | "annotations.eyebrow"
+
   | "annotations.loadFailed"
+
   | "annotations.loading"
+
   | "annotations.moveFailed"
+
   | "annotations.moveHint"
+
   | "annotations.navigateHint"
+
   | "annotations.placeHint"
+
   | "annotations.relocateNamed"
+
   | "annotations.spaceComments"
+
   | "annotations.viewNamed"
+
   | "app.createBoardConfirm"
+
   | "app.deleteBoardConfirm"
+
   | "app.loadingWorkspace"
+
   | "app.name"
+
   | "app.newBoardDescription"
+
   | "app.openBackupDirectory"
+
   | "app.operationFailed"
+
   | "app.quit"
+
   | "app.recoveryBackupDirectory"
+
   | "app.recoveryDatabaseFile"
+
   | "app.recoveryDescription"
+
   | "app.recoveryTitle"
+
   | "app.workspaceInitFailed"
+
   | "audio.loadingWaveform"
+
   | "audio.metaAuthor"
+
   | "audio.metaFormat"
+
   | "audio.metaLength"
+
   | "audio.metaName"
+
   | "audio.sampleCount"
+
   | "board.addArrow"
+
   | "board.addChecklist"
+
   | "board.addGuideX"
+
   | "board.addGuideY"
+
   | "board.addNote"
+
   | "board.addRectangle"
+
   | "board.addRectangleObject"
+
   | "board.addText"
+
   | "board.alignBottom"
+
   | "board.alignCenterX"
+
   | "board.alignCenterY"
+
   | "board.alignLeft"
+
   | "board.alignRight"
+
   | "board.alignTop"
+
   | "board.appearanceBackgroundLabel"
+
   | "board.appearanceDescription"
+
   | "board.appearanceGridLabel"
+
   | "board.appearanceHexError"
+
   | "board.appearanceTitle"
+
   | "board.apply"
+
   | "board.arrangeByAdded"
+
   | "board.arrangeByLayer"
+
   | "board.arrangeByName"
+
   | "board.arrangeByPath"
+
   | "board.arrangeCompact"
+
   | "board.arrangeCompactSelection"
+
   | "board.arrangeRandom"
+
   | "board.arrangeStack"
+
   | "board.backgroundGrid"
+
   | "board.boardAssetDefaultTitle"
+
   | "board.canvasGrayscale"
+
   | "board.canvasGrayscaleWhole"
+
   | "board.checklistItemsLabel"
+
   | "board.checklistNewDescription"
+
   | "board.checklistNewTitle"
+
   | "board.clickThroughNotice"
+
   | "board.close3DPreview"
+
   | "board.closeDrawingSettings"
+
   | "board.closeInspector"
+
   | "board.closeLayers"
+
   | "board.closeMoreTools"
+
   | "board.closePreview"
+
   | "board.closeWindow"
+
   | "board.commandPaletteCount"
+
   | "board.commandPaletteEmpty"
+
   | "board.commandPaletteEmptyHint"
+
   | "board.commandPaletteExecute"
+
   | "board.commandPaletteLabel"
+
   | "board.commandPalettePlaceholder"
+
   | "board.commandPaletteRecent"
+
   | "board.commandPaletteSearchLabel"
+
   | "board.commandPaletteSelect"
+
   | "board.commandPaletteShortcutSettings"
+
   | "board.commandPaletteTitle"
+
   | "board.commentAdd"
+
   | "board.commentAddShort"
+
   | "board.commentDescription"
+
   | "board.commentEdit"
+
   | "board.commentEditShort"
+
   | "board.commentLabel"
+
   | "board.commentObjectLabel"
+
   | "board.commentPlaceholder"
+
   | "board.commentSave"
+
   | "board.conflictCopyName"
+
   | "board.conflictDescription"
+
   | "board.conflictSaveCopy"
+
   | "board.conflictTitle"
+
   | "board.copyClipboard"
+
   | "board.crop"
+
   | "board.cropImage"
+
   | "board.currentBoard"
+
   | "board.delete"
+
   | "board.deleteBoard"
+
   | "board.deleteBoardConfirm"
+
   | "board.deleteBoardDescription"
+
   | "board.distributeX"
+
   | "board.distributeY"
+
   | "board.drawEllipse"
+
   | "board.drawingColor"
+
   | "board.drawingDashed"
+
   | "board.drawingLineStyle"
+
   | "board.drawingNameEllipse"
+
   | "board.drawingNameLine"
+
   | "board.drawingNamePencil"
+
   | "board.drawingNameRectangle"
+
   | "board.drawingSettings"
+
   | "board.drawingShiftHint"
+
   | "board.drawingSolid"
+
   | "board.drawingToolEllipse"
+
   | "board.drawingToolLine"
+
   | "board.drawingToolPencil"
+
   | "board.drawingToolRectangle"
+
   | "board.drawingTools"
+
   | "board.drawingTypeGroup"
+
   | "board.drawingWidth"
+
   | "board.drawLine"
+
   | "board.drawRectangle"
+
   | "board.dropLimited"
+
   | "board.dropPlaced"
+
   | "board.duplicate"
+
   | "board.editNote"
+
   | "board.enableDrawing"
+
   | "board.eraser"
+
   | "board.exitClickThroughNotice"
+
   | "board.exitDrawing"
+
   | "board.exitFocus"
+
   | "board.exportPngSelection"
+
   | "board.fitAll"
+
   | "board.fitSelection"
+
   | "board.flipH"
+
   | "board.flipV"
+
   | "board.focus"
+
   | "board.focusInterval"
+
   | "board.focusIntervalSeconds"
+
   | "board.focusNext"
+
   | "board.focusOrder"
+
   | "board.focusOrderMode"
+
   | "board.focusOverlayLabel"
+
   | "board.focusPause"
+
   | "board.focusPlay"
+
   | "board.focusPrevious"
+
   | "board.focusRandom"
+
   | "board.focusSelection"
+
   | "board.focusShuffle"
+
   | "board.gifPause"
+
   | "board.gifPlay"
+
   | "board.grayscaleGlyph"
+
   | "board.gridStyle"
+
   | "board.gridStyleCycle"
+
   | "board.group"
+
   | "board.groupArrange"
+
   | "board.groupBoard"
+
   | "board.groupDefaultName"
+
   | "board.groupEdit"
+
   | "board.groupExport"
+
   | "board.groupImage"
+
   | "board.groupInsert"
+
   | "board.groupObject"
+
   | "board.groupSettings"
+
   | "board.groupTools"
+
   | "board.groupTransform"
+
   | "board.groupView"
+
   | "board.groupWindow"
+
   | "board.guideHorizontal"
+
   | "board.guideVertical"
+
   | "board.hideGrid"
+
   | "board.hudCanvasCoords"
+
   | "board.hudColorCopied"
+
   | "board.hudCropHint"
+
   | "board.hudCropPanHint"
+
   | "board.hudCropZoomHint"
+
   | "board.hudCropZoomPercent"
+
   | "board.hudFlipHint"
+
   | "board.hudImageCoords"
+
   | "board.hudOpacity"
+
   | "board.hudPixelReadFailed"
+
   | "board.hudRotate"
+
   | "board.hudScaleHint"
+
   | "board.hudZoomHint"
+
   | "board.hudZoomPercent"
+
   | "board.imageDefaultName"
+
   | "board.importPlaced"
+
   | "board.importUnsupported"
+
   | "board.inspectorClose"
+
   | "board.inspectorEmpty"
+
   | "board.inspectorHeight"
+
   | "board.inspectorLabel"
+
   | "board.inspectorMultiSelection"
+
   | "board.inspectorOpacity"
+
   | "board.inspectorRotation"
+
   | "board.inspectorTitle"
+
   | "board.inspectorWidth"
+
   | "board.layerDragHint"
+
   | "board.layerHide"
+
   | "board.layerLocateSelect"
+
   | "board.layerLock"
+
   | "board.layerMoreActions"
+
   | "board.layerMoveDown"
+
   | "board.layerMoveUp"
+
   | "board.layerName"
+
   | "board.layerSearch"
+
   | "board.layerShow"
+
   | "board.layersTitle"
+
   | "board.layerUnlock"
+
   | "board.layerUnparentDrop"
+
   | "board.loading"
+
   | "board.locateInIndex"
+
   | "board.lockCanvas"
+
   | "board.lockCanvasWhole"
+
   | "board.lockUnlock"
+
   | "board.maskCircle"
+
   | "board.maskCircleShort"
+
   | "board.maskRect"
+
   | "board.maskRectShort"
+
   | "board.moreTools"
+
   | "board.moveBottom"
+
   | "board.moveTop"
+
   | "board.normalizeHeight"
+
   | "board.normalizeWidth"
+
   | "board.noteChecklistLabel"
+
   | "board.noteContentLabel"
+
   | "board.noteEditContentLabel"
+
   | "board.noteEditTitle"
+
   | "board.noteLinkLabel"
+
   | "board.noteLinkOptionalLabel"
+
   | "board.noteNewDescription"
+
   | "board.noteNewTitle"
+
   | "board.noteWidthLabel"
+
   | "board.objectDefaultName"
+
   | "board.objectIndexName"
+
   | "board.opacity"
+
   | "board.opacityLabel"
+
   | "board.opacityTitle"
+
   | "board.openCommandPalette"
+
   | "board.openInspector"
+
   | "board.openLayers"
+
   | "board.parent"
+
   | "board.parentWithHint"
+
   | "board.paste"
+
   | "board.pasteObject"
+
   | "board.redo"
+
   | "board.relink"
+
   | "board.relinkCandidateLabel"
+
   | "board.relinkConfirm"
+
   | "board.relinkDescription"
+
   | "board.relinkPickTitle"
+
   | "board.relinkTitle"
+
   | "board.relinkTitleHint"
+
   | "board.renameBoard"
+
   | "board.renameBoardTitle"
+
   | "board.renameLayer"
+
   | "board.resetCrop"
+
   | "board.resetTransform"
+
   | "board.resetView"
+
   | "board.resetViewport"
+
   | "board.restoreCanvasColor"
+
   | "board.restoreColor"
+
   | "board.rotate90"
+
   | "board.sampleColor"
+
   | "board.sampleColorTitle"
+
   | "board.samplingBilinear"
+
   | "board.samplingColorLabel"
+
   | "board.samplingNearest"
+
   | "board.samplingNotice"
+
   | "board.samplingReadFailed"
+
   | "board.samplingResultDescription"
+
   | "board.samplingResultTitle"
+
   | "board.samplingTitle"
+
   | "board.samplingXLabel"
+
   | "board.samplingYLabel"
+
   | "board.saved"
+
   | "board.saveName"
+
   | "board.saving"
+
   | "board.shortcutClear"
+
   | "board.shortcutComment"
+
   | "board.shortcutConflict"
+
   | "board.shortcutDefault"
+
   | "board.shortcutGroupInterface"
+
   | "board.shortcutHint"
+
   | "board.shortcutModify"
+
   | "board.shortcutRecording"
+
   | "board.shortcutReserved"
+
   | "board.shortcutResetAll"
+
   | "board.shortcutResetTransform"
+
   | "board.shortcuts"
+
   | "board.shortcutSettingsClose"
+
   | "board.shortcutSettingsDescription"
+
   | "board.shortcutSettingsEyebrow"
+
   | "board.shortcutSettingsTitle"
+
   | "board.shortcutToggleGrid"
+
   | "board.shortcutUnset"
+
   | "board.showGrid"
+
   | "board.switchBoard"
+
   | "board.textDefaultContent"
+
   | "board.toggleGrayscale"
+
   | "board.toggleGrayscaleShort"
+
   | "board.toggleLock"
+
   | "board.toggleSampling"
+
   | "board.toggleSamplingLabel"
+
   | "board.toolbarLabel"
+
   | "board.toolSelect"
+
   | "board.undo"
+
   | "board.undoStroke"
+
   | "board.ungroup"
+
   | "board.uniformArea"
+
   | "board.uniformScale"
+
   | "board.unlockCanvas"
+
   | "board.unparent"
+
   | "board.windowAlwaysBottom"
+
   | "board.windowLocked"
+
   | "board.windowModeFailed"
+
   | "board.windowNormal"
+
   | "board.windowOverlay"
+
   | "board.zoom100"
+
   | "boards.createConfirm"
+
   | "boards.nameLabel"
+
   | "boards.new"
+
   | "boards.unavailable"
+
   | "browser.closeTabNamed"
+
   | "browser.empty"
+
   | "browser.tab.close"
+
   | "browser.tab.new"
+
   | "browser.tabList"
+
   | "capture.cancel"
+
   | "capture.error"
+
   | "capture.instructions"
+
   | "capture.save"
   | "capture.unavailable"
   | "capture.saving"
+
   | "collections.acknowledge"
+
   | "collections.addFailed"
+
   | "collections.addFailedDesc"
+
   | "collections.addFiles"
+
   | "collections.addFilesNamed"
+
   | "collections.cancelExport"
+
   | "collections.childNameLabel"
+
   | "collections.collapse"
+
   | "collections.containsScope"
+
   | "collections.create"
+
   | "collections.createConfirm"
+
   | "collections.createFromFiles"
+
   | "collections.default"
+
   | "collections.delete"
+
   | "collections.deleteConfirm"
+
   | "collections.deleteNamed"
+
   | "collections.description"
+
   | "collections.dropActive"
+
   | "collections.empty"
+
   | "collections.emptyHint"
+
   | "collections.expand"
+
   | "collections.export"
+
   | "collections.exported"
+
   | "collections.exporting"
+
   | "collections.exportNamed"
+
   | "collections.exportSummary"
+
   | "collections.fingerprintChanged"
+
   | "collections.fingerprintChangedDesc"
+
   | "collections.itemCount"
+
   | "collections.menu"
+
   | "collections.moveDown"
+
   | "collections.moveUp"
+
   | "collections.nameLabel"
+
   | "collections.newChild"
+
   | "collections.openInNewTab"
+
   | "collections.pickFiles"
+
   | "collections.recursiveDelete"
+
   | "collections.relink"
+
   | "collections.removeItem"
+
   | "collections.rename"
+
   | "collections.resolve"
+
   | "collections.resolving"
+
   | "collections.save"
+
   | "collections.scopeChildrenItems"
+
   | "collections.scopeItems"
+
   | "collections.skippedDirectories"
+
   | "collections.state.ambiguous"
+
   | "collections.state.missing"
+
   | "collections.state.offline"
+
   | "collections.state.resolved"
+
   | "crop.apply"
+
   | "crop.cancel"
+
   | "crop.named"
+
   | "crop.reset"
+
   | "crop.title"
+
   | "dialogs.browse"
+
   | "dialogs.cancel"
+
   | "dialogs.close"
+
   | "dialogs.confirm"
+
   | "dialogs.invalidNumber"
+
   | "dialogs.max"
+
   | "dialogs.maxLength"
+
   | "dialogs.min"
+
   | "dialogs.pickDirectoryFor"
+
   | "dialogs.processing"
+
   | "dialogs.required"
+
   | "directory.actionChangeExtension"
+
   | "directory.actionCompress"
+
   | "directory.actionConvert"
+
   | "directory.actionExportCsv"
+
   | "directory.actionExportFolder"
+
   | "directory.actionMergeImages"
+
   | "directory.actionVideoToGif"
+
   | "directory.actionWebp"
+
   | "directory.addToBoard"
+
   | "directory.aiDesignSupervisor"
+
   | "directory.all"
+
   | "directory.assetMetadata"
+
   | "directory.assetWorkbench"
+
   | "directory.back"
+
   | "directory.backgroundTasks"
+
   | "directory.backupAndDownscale"
+
   | "directory.backupOverwriteDescription"
+
   | "directory.backupOverwriteTitle"
+
   | "directory.batchCancelled"
+
   | "directory.batchCompleted"
+
   | "directory.batchFailed"
+
   | "directory.batchProcessing"
+
   | "directory.batchTagDescription"
+
   | "directory.cancelBatch"
+
   | "directory.cancelSearch"
+
   | "directory.cancelTask"
+
   | "directory.clearClipboard"
+
   | "directory.clearSelection"
+
   | "directory.clipboardCopy"
+
   | "directory.clipboardCount"
+
   | "directory.clipboardCut"
+
   | "directory.collapse"
+
   | "directory.collapseDrive"
+
   | "directory.collapseTasksPanel"
+
   | "directory.conflictDescription"
+
   | "directory.conflictOverwritePrompt"
+
   | "directory.conflictRename"
+
   | "directory.conflictReplace"
+
   | "directory.conflictSkip"
+
   | "directory.conflictStrategy"
+
   | "directory.conflictTitle"
+
   | "directory.continue"
+
   | "directory.convertPreset"
+
   | "directory.copyFailed"
+
   | "directory.copyFailedCount"
+
   | "directory.copySelectedPaths"
+
   | "directory.copyTo"
+
   | "directory.copyToClipboard"
+
   | "directory.create"
+
   | "directory.currentOnly"
+
   | "directory.cut"
+
   | "directory.deleteNamed"
+
   | "directory.deleteSelectedCount"
+
   | "directory.directoryLabel"
+
   | "directory.downscale"
+
   | "directory.downscaleEllipsis"
+
   | "directory.downscaleMode"
+
   | "directory.downscaleModeBackup"
+
   | "directory.downscaleModeSubdirectory"
+
   | "directory.downscaleModeSuffix"
+
   | "directory.empty"
+
   | "directory.emptyHint"
+
   | "directory.expand"
+
   | "directory.expandDrive"
+
   | "directory.export"
+
   | "directory.exportFrames"
+
   | "directory.exportMp4"
+
   | "directory.exportMp4Failed"
+
   | "directory.exportMp4NoPresets"
+
   | "directory.exportSequenceToMp4"
+
   | "directory.exportUtf8PathList"
+
   | "directory.extensionCount"
+
   | "directory.failedCount"
+
   | "directory.failedToUpdateAsset"
+
   | "directory.favorited"
+
   | "directory.favoriteDir"
+
   | "directory.favoritedNamed"
+
   | "directory.favoriteHint"
+
   | "directory.favoriteNamed"
+
   | "directory.favoritesOnly"
+
   | "directory.favoritesOnlyEmpty"
+
   | "directory.favoritesOnlyEmptyHint"
+
   | "directory.fileFallback"
+
   | "directory.files"
+
   | "directory.filesCount"
+
   | "directory.flattenWarning"
+
   | "directory.folder"
+
   | "directory.folderName"
+
   | "directory.folders"
+
   | "directory.foldersCount"
+
   | "directory.formatFilter"
+
   | "directory.forward"
+
   | "directory.fpsBaseline"
+
   | "directory.fpsBaselineHint"
+
   | "directory.fpsPresetDrawer"
+
   | "directory.generated"
+
   | "directory.gifFromVideos"
+
   | "directory.gifWorkbench"
+
   | "directory.gridView"
+
   | "directory.includeAllDepths"
+
   | "directory.includeDepth"
+
   | "directory.includeSubdirectories"
+
   | "directory.itemCount"
+
   | "directory.itemsSelected"
+
   | "directory.listView"
+
   | "directory.loading"
+
   | "directory.loadingDrives"
+
   | "directory.local"
+
   | "directory.maxDimensionLabel"
+
   | "directory.mergeSequences"
+
   | "directory.moveFailed"
+
   | "directory.moveFailedCount"
+
   | "directory.moveTo"
+
   | "directory.mp4Exported"
+
   | "directory.newFolder"
+
   | "directory.newTab"
+
   | "directory.noActionableAssets"
+
   | "directory.noBackgroundTasks"
+
   | "directory.noDrives"
+
   | "directory.noPermissionDirectories"
+
   | "directory.open"
+
   | "directory.openDirectory"
+
   | "directory.openMultiVideoGifWorkbench"
+
   | "directory.openTasksPanel"
+
   | "directory.operationFailed"
+
   | "directory.other"
+
   | "directory.outputDirectory"
+
   | "directory.overwrite"
+
   | "directory.pasteFailedCount"
+
   | "directory.pasteToCurrent"
+
   | "directory.pickCopyTarget"
+
   | "directory.pickMoveTarget"
+
   | "directory.preset"
+
   | "directory.previewSettings"
+
   | "directory.ratedNamed"
+
   | "directory.ratingClearedNamed"
+
   | "directory.ratingStars"
+
   | "directory.refresh"
+
   | "directory.removeFromList"
+
   | "directory.retryFailedItems"
+
   | "directory.revealInFolder"
+
   | "directory.runScript"
+
   | "directory.scriptExitCode"
+
   | "directory.scriptHashChanged"
+
   | "directory.scriptHashChangedDescription"
+
   | "directory.scriptNoOutput"
+
   | "directory.scriptRunFailed"
+
   | "directory.scriptRunFailedTitle"
+
   | "directory.scriptTimedOut"
+
   | "directory.searchComplete"
+
   | "directory.searchCurrent"
+
   | "directory.searchEmpty"
+
   | "directory.searchEmptyHint"
+
   | "directory.searchFailedDirectories"
+
   | "directory.searchPlaceholder"
+
   | "directory.searchPlaceholderShort"
+
   | "directory.selectAssetFirst"
+
   | "directory.sequenceFrames"
+
   | "directory.skip"
+
   | "directory.sortBy"
+
   | "directory.sortModified"
+
   | "directory.sortName"
+
   | "directory.sortSize"
+
   | "directory.start"
+
   | "directory.statePreparing"
+
   | "directory.stateReviewing"
+
   | "directory.subdirectories"
+
   | "directory.tagDescription"
+
   | "directory.tagsLabel"
+
   | "directory.tasks"
+
   | "directory.transcodeToMp4"
+
   | "directory.trashBatchDescription"
+
   | "directory.trashDescription"
+
   | "directory.unfavorite"
+
   | "directory.unfavoritedNamed"
+
   | "directory.unfavoriteNamed"
+
   | "directory.unmount"
+
   | "directory.unmountDescription"
+
   | "directory.unmountNamed"
+
   | "directory.untitled"
+
   | "directory.up"
+
   | "directory.viewMode"
+
   | "directory.viewOptions"
+
   | "directory.workbenchEmptyHint"
+
   | "directory.workbenchTabs"
+
   | "directory.zoom"
+
   | "duplicates.count"
+
   | "duplicates.empty"
+
   | "duplicates.emptyHint"
+
   | "duplicates.keep"
+
   | "duplicates.merge"
+
   | "duplicates.mergeConfirm"
+
   | "duplicates.subtitle"
+
   | "duplicates.title"
+
   | "font.glyphCount"
+
   | "font.loadFailed"
+
   | "font.loading"
+
   | "font.variableAxes"
+
   | "gif.about"
+
   | "gif.addVideos"
+
   | "gif.cancelExport"
+
   | "gif.clipCount"
+
   | "gif.clipDuration"
+
   | "gif.closeStudio"
+
   | "gif.colorCount"
+
   | "gif.colors"
+
   | "gif.decodeFailed"
+
   | "gif.dither"
+
   | "gif.ditherOff"
+
   | "gif.ditherSierra"
+
   | "gif.dropZone"
+
   | "gif.durationSeconds"
+
   | "gif.estimatedSize"
+
   | "gif.estimateHint"
+
   | "gif.exported"
+
   | "gif.exportFailed"
+
   | "gif.exportFrame"
+
   | "gif.faster"
+
   | "gif.fileName"
+
   | "gif.generate"
+
   | "gif.inPoint"
+
   | "gif.maxWidth"
+
   | "gif.moveDown"
+
   | "gif.moveUp"
+
   | "gif.outPoint"
+
   | "gif.pickClips"
+
   | "gif.pickOutputDir"
+
   | "gif.readFailed"
+
   | "gif.reading"
+
   | "gif.removeClip"
+
   | "gif.showFile"
+
   | "gif.slower"
+
   | "gif.studio"
+
   | "gif.studioHint"
+
   | "gif.timeline"
+
   | "gif.videoFilter"
+
   | "hdr.addOcioConfig"
+
   | "hdr.addOcioConfigTitle"
+
   | "hdr.adjustExposure"
+
   | "hdr.alt"
+
   | "hdr.auto"
+
   | "hdr.channels"
+
   | "hdr.channelsGroup"
+
   | "hdr.colorManagement"
+
   | "hdr.composite"
+
   | "hdr.exportChannelFailed"
+
   | "hdr.exportChannelHint"
+
   | "hdr.exportChannelTitle"
+
   | "hdr.exportCurrentChannel"
+
   | "hdr.exporting"
+
   | "hdr.exposure"
+
   | "hdr.exposureValue"
+
   | "hdr.failed"
+
   | "hdr.generating"
+
   | "hdr.layers"
+
   | "hdr.layersSelect"
+
   | "hdr.mapping"
+
   | "hdr.noExtraLayers"
+
   | "hdr.ocioColorManagement"
+
   | "hdr.ocioLoadFailed"
+
   | "hdr.ocioLoadFailedDetail"
+
   | "hdr.ocioMenu"
+
   | "hdr.resetExposure"
+
   | "hdr.retry"
+
   | "hdr.revealExported"
+
   | "hdr.toolbar"
+
   | "hdr.unknownError"
+
   | "hdr.waiting"
+
   | "imageReview.checker"
+
   | "imageReview.copied"
+
   | "imageReview.copy"
+
   | "imageReview.displayColorNote"
+
   | "imageReview.error"
+
   | "imageReview.eyedrop"
+
   | "imageReview.fit"
+
   | "imageReview.fitShort"
+
   | "imageReview.layerNote"
+
   | "imageReview.layers"
+
   | "imageReview.noLayers"
+
   | "imageReview.original"
+
   | "imageReview.palette"
+
   | "imageReview.paletteLabel"
+
   | "imageReview.rotate"
+
   | "imageReview.zoomIn"
+
   | "imageReview.zoomOut"
+
   | "import.indexing"
+
   | "mediaInfo.animationCount"
+
   | "mediaInfo.audioTracks"
+
   | "mediaInfo.audioTracksCodec"
+
   | "mediaInfo.audioTracksValue"
+
   | "mediaInfo.bitDepth"
+
   | "mediaInfo.bitRate"
+
   | "mediaInfo.channels"
+
   | "mediaInfo.charCount"
+
   | "mediaInfo.chromaticities"
+
   | "mediaInfo.codec"
+
   | "mediaInfo.colorPrimaries"
+
   | "mediaInfo.colorRange"
+
   | "mediaInfo.colorSpace"
+
   | "mediaInfo.colorTransfer"
+
   | "mediaInfo.compression"
+
   | "mediaInfo.container"
+
   | "mediaInfo.coverArt"
+
   | "mediaInfo.dataWindow"
+
   | "mediaInfo.displayAspectRatio"
+
   | "mediaInfo.displayWindow"
+
   | "mediaInfo.duration"
+
   | "mediaInfo.family"
+
   | "mediaInfo.firstLine"
+
   | "mediaInfo.flavor"
+
   | "mediaInfo.frameRate"
+
   | "mediaInfo.glyphCount"
+
   | "mediaInfo.has"
+
   | "mediaInfo.italic"
+
   | "mediaInfo.level"
+
   | "mediaInfo.lineCount"
+
   | "mediaInfo.materialCount"
+
   | "mediaInfo.meshCount"
+
   | "mediaInfo.no"
+
   | "mediaInfo.none"
+
   | "mediaInfo.normals"
+
   | "mediaInfo.note"
+
   | "mediaInfo.pixelAspectRatio"
+
   | "mediaInfo.pixelFormat"
+
   | "mediaInfo.profile"
+
   | "mediaInfo.resolution"
+
   | "mediaInfo.sampleRate"
+
   | "mediaInfo.size"
+
   | "mediaInfo.style"
+
   | "mediaInfo.text"
+
   | "mediaInfo.textureCount"
+
   | "mediaInfo.timeBase"
+
   | "mediaInfo.title"
+
   | "mediaInfo.triangleCount"
+
   | "mediaInfo.variableAxes"
+
   | "mediaInfo.vertexColors"
+
   | "mediaInfo.vertexCount"
+
   | "mediaInfo.weight"
+
   | "mediaInfo.yes"
+
   | "model.camera"
+
   | "model.cameraCount"
+
   | "model.defaultView"
+
   | "model.displayMode"
+
   | "model.previewFailed"
+
   | "model.resetView"
+
   | "model.saveCurrentView"
+
   | "model.saved"
+
   | "model.saveFailed"
+
   | "model.saveView"
+
   | "model.saving"
+
   | "model.setAssetThumbnail"
+
   | "model.setThumbnail"
+
   | "model.settingThumbnail"
+
   | "model.showUvChecker"
+
   | "model.showWireframe"
+
   | "model.solid"
+
   | "model.solidMaterial"
+
   | "model.thumbnailFailed"
+
   | "model.thumbnailUpdated"
+
   | "model.uvCheck"
+
   | "model.viewActions"
+
   | "model.viewFront"
+
   | "model.viewLeft"
+
   | "model.viewRight"
+
   | "model.viewTop"
+
   | "model.wireframe"
+
   | "notes.addAssetNote"
+
   | "notes.addAtFrame"
+
   | "notes.addAtTime"
+
   | "notes.addLinked"
+
   | "notes.asset"
+
   | "notes.draft"
+
   | "notes.edit"
+
   | "notes.framePosition"
+
   | "notes.jumpTo"
+
   | "notes.jumpToFrame"
+
   | "notes.panel"
+
   | "notes.saveNote"
+
   | "panorama.error"
+
   | "panorama.flat"
+
   | "panorama.viewer"
+
   | "presentation.exit"
+
   | "preview.addLut"
+
   | "preview.assetDetails"
+
   | "preview.auto"
+
   | "preview.clearColors"
+
   | "preview.clearSampled"
+
   | "preview.clickToCopy"
+
   | "preview.clickToView"
+
   | "preview.close"
-  | "preview.closeFloating"
+
   | "preview.closeQuick"
+
   | "preview.closeTool"
+
   | "preview.collapseColors"
+
   | "preview.colorBar"
+
   | "preview.colorExtractFailed"
+
   | "preview.colorToolbarLabel"
+
   | "preview.copyColor"
+
   | "preview.copyPath"
+
   | "preview.displayModeGroup"
+
   | "preview.duration"
+
   | "preview.emptyHint"
+
   | "preview.error"
+
   | "preview.exitFocus"
+
   | "preview.exitFullscreen"
+
   | "preview.expandColors"
+
   | "preview.exportFrames"
+
   | "preview.exportGif"
+
   | "preview.extensionFile"
+
   | "preview.extractColors"
+
   | "preview.eyedropUnsupported"
+
   | "preview.fit"
+
   | "preview.fixedPaletteLabel"
-  | "preview.floating"
+
   | "preview.focus"
+
   | "preview.frameLabel"
+
   | "preview.fullscreen"
+
   | "preview.generating"
+
   | "preview.grid"
+
   | "preview.importLut"
+
   | "preview.loading"
+
   | "preview.loop"
+
   | "preview.lut"
+
   | "preview.lutMenu"
+
   | "preview.moveToTrash"
+
   | "preview.multichannel"
+
   | "preview.mute"
+
   | "preview.nextAsset"
+
   | "preview.nextFile"
+
   | "preview.nextFrame"
+
   | "preview.noLut"
+
   | "preview.none"
+
   | "preview.notes"
+
   | "preview.notesAddHere"
+
   | "preview.notesCollapse"
+
   | "preview.notesDelete"
+
   | "preview.notesEmpty"
+
   | "preview.notesPlaceholder"
+
   | "preview.notesSeekTitle"
+
   | "preview.notesToggle"
+
   | "preview.open"
+
   | "preview.openAsset"
+
   | "preview.originalUnavailable"
+
   | "preview.outputDirectory"
+
   | "preview.palette"
+
   | "preview.paletteCollapse"
+
   | "preview.paletteError"
+
   | "preview.paletteExpand"
+
   | "preview.paletteLoading"
+
   | "preview.paletteToggleTitle"
+
   | "preview.panelError"
+
   | "preview.panelLabel"
+
   | "preview.panelLoading"
+
   | "preview.panoramaMode"
+
   | "preview.path"
+
   | "preview.pause"
+
   | "preview.play"
+
   | "preview.previewNamed"
+
   | "preview.previousAsset"
+
   | "preview.previousFile"
+
   | "preview.previousFrame"
+
   | "preview.quickNamed"
+
   | "preview.rateFps"
+
   | "preview.rateFpsMenu"
+
   | "preview.rateSpeed"
+
   | "preview.reflectionBall"
+
   | "preview.resolution"
+
   | "preview.reveal"
+
   | "preview.revealInExplorer"
+
   | "preview.revealShort"
+
   | "preview.sampleColor"
+
   | "preview.sampledColors"
+
   | "preview.sequenceLabel"
+
   | "preview.sequenceMeta"
+
   | "preview.setTags"
+
   | "preview.size"
-  | "preview.supreme"
-  | "preview.supremeGeneratingTitle"
-  | "preview.supremeShort"
-  | "preview.supremeTitle"
+
+
+
+
+
   | "preview.tab.ai"
+
   | "preview.tab.preview"
+
   | "preview.timeline"
+
   | "preview.toolbarLabel"
+
   | "preview.trayLabel"
+
   | "preview.trim"
+
   | "preview.type"
+
   | "preview.viewColor"
+
   | "preview.volume"
+
   | "preview.waiting"
+
   | "sequence.cardLabel"
+
   | "sequence.chooseConvertPreset"
+
   | "sequence.closeGifExport"
+
   | "sequence.closeMp4Export"
+
   | "sequence.closeNamed"
+
   | "sequence.confirmExportGif"
+
   | "sequence.confirmExportMp4"
+
   | "sequence.dragRangeHint"
+
   | "sequence.exportedGif"
+
   | "sequence.exportedMp4"
+
   | "sequence.exportFailed"
+
   | "sequence.exportGif"
+
   | "sequence.exportGifTitle"
+
   | "sequence.exporting"
+
   | "sequence.exportingGif"
+
   | "sequence.exportingMp4"
+
   | "sequence.exportMp4"
+
   | "sequence.exportMp4Title"
+
   | "sequence.exportPreset"
+
   | "sequence.exportSelectedFrames"
+
   | "sequence.exportWithPreset"
+
   | "sequence.fps"
+
   | "sequence.fpsPresetMenu"
+
   | "sequence.frameAlt"
+
   | "sequence.frameLoadFailed"
+
   | "sequence.framesMeta"
+
   | "sequence.framesShort"
+
   | "sequence.gifEndFrame"
+
   | "sequence.gifExportSettings"
+
   | "sequence.gifFramesSummary"
+
   | "sequence.gifStartFrame"
+
   | "sequence.missingFrames"
+
   | "sequence.missingMore"
+
   | "sequence.missingSuffix"
+
   | "sequence.mp4ExportSettings"
+
   | "sequence.mp4PresetGroup"
+
   | "sequence.nextFrame"
+
   | "sequence.pause"
+
   | "sequence.pickGifDir"
+
   | "sequence.pickMp4Dir"
+
   | "sequence.play"
+
   | "sequence.playbackMeta"
+
   | "sequence.previewNamed"
+
   | "sequence.previousFrame"
+
   | "sequence.resolutionOriginal"
+
   | "sequence.retryPreview"
+
   | "sequence.revealGif"
+
   | "sequence.selectGifRange"
+
   | "sequence.selectGifRangeTitle"
+
   | "sequence.timeline"
+
   | "settings.about"
+
   | "settings.about.copyVersion"
+
   | "settings.about.databaseSchema"
+
   | "settings.about.dataDirectory"
+
   | "settings.about.indexDatabase"
+
   | "settings.about.installChannel"
+
   | "settings.about.libraryNotOpen"
+
   | "settings.about.openDataFolder"
+
   | "settings.about.platform"
+
   | "settings.addedAt"
+
   | "settings.ai"
+
   | "settings.automaticBackup"
+
   | "settings.backgroundResidency"
+
   | "settings.backgroundResidencyHint"
+
   | "settings.backupNow"
+
   | "settings.backupNowHint"
+
   | "settings.board"
+
   | "settings.board.bringToFront"
+
   | "settings.board.bringToFrontHint"
+
   | "settings.board.controls"
+
   | "settings.board.controlsHint"
+
   | "settings.board.controlsPureRef"
+
   | "settings.board.controlsStandard"
+
   | "settings.board.sampling"
+
   | "settings.board.samplingBilinear"
+
   | "settings.board.samplingHint"
+
   | "settings.board.samplingNearest"
+
   | "settings.board.snap"
+
   | "settings.board.snapHint"
+
   | "settings.board.undoLimit"
+
   | "settings.board.undoLimitHint"
+
   | "settings.board.undoSteps"
+
   | "settings.close"
+
   | "settings.exportDiagnostics"
+
   | "settings.exportDiagnosticsHint"
+
   | "settings.general"
+
   | "settings.globalShortcuts"
+
   | "settings.globalShortcutsHint"
+
   | "settings.groups"
+
   | "settings.language"
+
   | "settings.languageHint"
+
   | "settings.layout"
+
   | "settings.localBackups"
+
   | "settings.maintenance"
+
   | "settings.maintenanceSubtitle"
+
   | "settings.maintenanceTitle"
+
   | "settings.manualBackup"
+
   | "settings.mediaRebuildCancelled"
+
   | "settings.mediaRebuildCompleted"
+
   | "settings.mediaRebuildSummary"
+
   | "settings.migrateFromRoot"
+
   | "settings.migratePaths"
+
   | "settings.migratePathsDescription"
+
   | "settings.migrateResult"
+
   | "settings.migrateToRoot"
+
   | "settings.noWatchRoots"
+
   | "settings.options"
+
   | "settings.parsingMedia"
+
   | "settings.parsingMediaOffline"
+
   | "settings.preview.add"
+
   | "settings.preview.addExtensionFor"
+
   | "settings.preview.addWhitelistExtension"
+
   | "settings.preview.advancedPreview"
+
   | "settings.preview.alphaBackground"
+
   | "settings.preview.alphaBackgroundHint"
+
   | "settings.preview.alphaBlack"
+
   | "settings.preview.alphaChecker"
+
   | "settings.preview.alphaCustom"
+
   | "settings.preview.alphaWhite"
+
   | "settings.preview.autoplayModel3d"
+
   | "settings.preview.autoplayModel3dHint"
+
   | "settings.preview.autoplaySequence"
+
   | "settings.preview.autoplaySequenceHint"
+
   | "settings.preview.autoplayVideo"
+
   | "settings.preview.autoplayVideoHint"
+
   | "settings.preview.closeBehavior"
+
   | "settings.preview.closeBehaviorHint"
+
   | "settings.preview.closeQuit"
+
   | "settings.preview.closeTray"
+
   | "settings.preview.colorManagement"
+
   | "settings.preview.currentLut"
+
   | "settings.preview.customAlphaColor"
+
   | "settings.preview.debugLogging"
+
   | "settings.preview.debugLoggingHint"
+
   | "settings.preview.deletePreset"
+
   | "settings.preview.downscaleBackupMode"
+
   | "settings.preview.downscaleMode"
+
   | "settings.preview.downscaleModeHint"
+
   | "settings.preview.downscaleSubdirectory"
+
   | "settings.preview.downscaleSubdirMode"
+
   | "settings.preview.downscaleSuffix"
+
   | "settings.preview.downscaleSuffixMode"
+
   | "settings.preview.extensionPlaceholder"
+
   | "settings.preview.folderOpenDouble"
+
   | "settings.preview.folderOpenMode"
+
   | "settings.preview.folderOpenModeHint"
+
   | "settings.preview.folderOpenSingle"
+
   | "settings.preview.formatSupport"
+
   | "settings.preview.local"
+
   | "settings.preview.locate"
+
   | "settings.preview.locateLut"
+
   | "settings.preview.locateOcioConfig"
+
   | "settings.preview.lutCacheInvalidate"
+
   | "settings.preview.lutMissing"
+
   | "settings.preview.lutPlaceholder"
+
   | "settings.preview.mp4PresetDefault"
+
   | "settings.preview.mp4Presets"
+
   | "settings.preview.mp4PresetsHint"
+
   | "settings.preview.noScripts"
+
   | "settings.preview.ocioConfigPath"
+
   | "settings.preview.ocioConfigPathHint"
+
   | "settings.preview.ocioDetected"
+
   | "settings.preview.ocioNotDetected"
+
   | "settings.preview.otherWhitelist"
+
   | "settings.preview.outputWorkflow"
+
   | "settings.preview.performance"
+
   | "settings.preview.presetCodec"
+
   | "settings.preview.presetEnabled"
+
   | "settings.preview.presetName"
+
   | "settings.preview.presetQuality"
+
   | "settings.preview.presetResolution"
+
   | "settings.preview.previewConcurrency"
+
   | "settings.preview.previewConcurrencyHint"
+
   | "settings.preview.qualityBest"
+
   | "settings.preview.qualityHigh"
+
   | "settings.preview.qualityMedium"
+
   | "settings.preview.register"
+
   | "settings.preview.registerFailed"
+
   | "settings.preview.registerScript"
+
   | "settings.preview.registerScriptDescription"
+
   | "settings.preview.registerScriptEllipsis"
+
   | "settings.preview.remove"
+
   | "settings.preview.removeExtension"
+
   | "settings.preview.removeWhitelistExtension"
+
   | "settings.preview.resolutionHalf"
+
   | "settings.preview.resolutionOriginal"
+
   | "settings.preview.resolutionQuarter"
+
   | "settings.preview.scriptMeta"
+
   | "settings.preview.scriptPathLabel"
+
   | "settings.preview.scripts"
+
   | "settings.preview.scriptsHint"
+
   | "settings.preview.scriptTimeoutLabel"
+
   | "settings.preview.sequenceFpsPresets"
+
   | "settings.preview.sequenceFpsPresetsHint"
+
   | "settings.preview.setAsDefault"
+
   | "settings.preview.setDefaultPreset"
+
   | "settings.preview.showHiddenFiles"
+
   | "settings.preview.showHiddenFilesHint"
+
   | "settings.preview.thumbnailWorkerThreads"
+
   | "settings.preview.thumbnailWorkerThreadsHint"
+
   | "settings.preview.uiScale"
+
   | "settings.preview.uiScaleHint"
+
   | "settings.preview.whitelistHint"
+
   | "settings.rebuildMediaMetadata"
+
   | "settings.rebuildMediaMetadataHint"
+
   | "settings.rebuildThumbnails"
+
   | "settings.rebuildThumbnailsHint"
+
   | "settings.restore"
+
   | "settings.restoreBackupDescription"
+
   | "settings.restoreBackupTitle"
+
   | "settings.restoreConfirm"
+
   | "settings.restoreLayout"
+
   | "settings.startMigration"
+
   | "settings.stopWatch"
+
   | "settings.stopWatchConfirm"
+
   | "settings.subtitle"
+
   | "settings.title"
+
   | "settings.uninstall"
+
   | "settings.uninstallConfirmButton"
+
   | "settings.uninstallConfirmDescription"
+
   | "settings.uninstallConfirmTitle"
+
   | "settings.uninstallFailed"
+
   | "settings.uninstallHint"
+
   | "settings.watchRoots"
+
   | "sidebar.adjustHeight"
+
   | "sidebar.boards"
+
   | "sidebar.collections"
+
   | "sidebar.directory"
+
   | "sidebar.drives"
+
   | "sidebar.hideHiddenFiles"
+
   | "sidebar.openRecycleBin"
+
   | "sidebar.quickAccess"
+
   | "sidebar.recycleBin"
+
   | "sidebar.showHiddenFiles"
+
   | "similar.analyzing"
+
   | "similar.cancelIndex"
+
   | "similar.comparing"
+
   | "similar.findFor"
+
   | "similar.indexing"
+
   | "similar.indexingHint"
+
   | "similar.lowerThresholdHint"
+
   | "similar.noResults"
+
   | "similar.refresh"
+
   | "similar.results"
+
   | "similar.similarity"
+
   | "similar.title"
+
   | "status.boardReady"
+
   | "status.diskReady"
+
   | "status.hint.boardPureRef"
+
   | "status.hint.boardStandard"
+
   | "status.hint.directory"
+
   | "status.importing"
+
   | "tasks.cancel"
+
   | "tasks.cancelTask"
+
   | "tasks.empty"
+
   | "tasks.kind.ai"
+
   | "tasks.kind.archive"
+
   | "tasks.kind.batch"
+
   | "tasks.kind.convert"
+
   | "tasks.kind.export"
+
   | "tasks.kind.import"
+
   | "tasks.retry"
+
   | "tasks.retryTask"
+
   | "tasks.state.cancelled"
+
   | "tasks.state.completed"
+
   | "tasks.state.failed"
+
   | "tasks.state.queued"
+
   | "tasks.state.running"
+
   | "tasks.subtitle"
+
   | "tasks.title"
+
   | "text.meta"
+
   | "text.readFailed"
+
   | "text.truncated"
+
   | "titlebar.ai"
+
   | "titlebar.clipboard"
+
   | "titlebar.collectedProject"
+
   | "titlebar.collectProject"
+
   | "titlebar.exportJson"
+
   | "titlebar.exportPng"
+
   | "titlebar.focusBoard"
+
   | "titlebar.openBoardWindow"
+
   | "titlebar.openFolder"
+
   | "titlebar.pin"
+
   | "titlebar.presentBoard"
+
   | "titlebar.professionalSettings"
+
   | "titlebar.screenshot"
+
   | "titlebar.settings"
+
   | "titlebar.tasks"
+
   | "titlebar.unpin"
+
   | "titlebar.workspace"
+
   | "video.closeFramesExport"
+
   | "video.exportedGif"
+
   | "video.exporting"
+
   | "video.format"
+
   | "video.fpsPreset"
+
   | "video.fpsPresetTitle"
+
   | "video.frameAlt"
+
   | "video.frameError"
+
   | "video.framesExport"
+
   | "video.framesExportDialog"
+
   | "video.framesExported"
+
   | "video.framesExportFailed"
+
   | "video.framesExportHint"
+
   | "video.framesExportShort"
+
   | "video.gifExport"
+
   | "video.inPoint"
+
   | "video.jpgQuality"
+
   | "video.jpgSmaller"
+
   | "video.keepSourceFps"
+
   | "video.mute"
+
   | "video.openDirectory"
+
   | "video.outPoint"
+
   | "video.pickFramesOutputDir"
+
   | "video.pngLossless"
+
   | "video.startExport"
-  | "video.supreme"
-  | "video.supremeFailed"
-  | "video.supremeGenerating"
-  | "video.supremeTitle"
+
+
+
+
+
   | "video.timeline"
+
   | "workspace.adjustPanelWidth"
+
   | "workspace.board"
+
   | "workspace.boardDefault"
+
   | "workspace.disk"
+
   | "workspace.panelAsset"
+
   | "workspace.panelDetails"
+
   | "workspace.panelSidebar";

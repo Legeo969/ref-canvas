@@ -50,7 +50,6 @@ describe("preview session controls", () => {
     expect(found).not.toMatch(/\.preview-toolbar-tail\s*{[^}]*box-shadow:/s);
     expect(found).toMatch(/\.preview-context-tray\s*{[^}]*max-height:\s*min\(38vh, 320px\);[^}]*overflow:\s*auto/s);
     expect(found).not.toMatch(/\.preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.preview-tab-bar\s*{[^}]*position:\s*absolute/s);
-    expect(shell).toMatch(/\.preview-window:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.preview-window-header\s*{[^}]*position:\s*static/s);
     expect(directory).toMatch(/\.directory-workbench-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.workbench-header\s*{[^}]*position:\s*static/s);
   });
 

@@ -222,6 +222,8 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     setPlaybackRate: (value) => setRate(Math.min(8, Math.max(0.25, value))),
     setMuted: () => undefined,
     setVolume: () => undefined,
+    startScrub: undefined,
+    stopScrub: undefined,
   });
 
   if (error) {

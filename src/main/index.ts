@@ -169,6 +169,8 @@ let aiSecretStore: AiSecretStore;
 let taskCenter: TaskCenterService;
 let zipArchiveService: ZipArchiveService;
 let captureWasFullScreen = false;
+let pendingCaptureSource: import("./ipc/system-ipc").SystemIpcState["pendingCaptureSource"] = null;
+let captureWindow: Electron.BrowserWindow | null = null;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
 let alwaysOnBottom = false;
@@ -291,6 +293,58 @@ function restoreCaptureWindow(): void {
   mainWindow.setFullScreen(captureWasFullScreen);
   mainWindow.show();
   mainWindow.focus();
+}
+
+/** 打开独立全屏区域截图覆盖窗口；主窗口保持可见，无需“关掉 RefCanvas”。 */
+function openCaptureWindow(display: Electron.Display): void {
+  if (captureWindow && !captureWindow.isDestroyed()) {
+    captureWindow.focus();
+    return;
+  }
+  const window = new BrowserWindow({
+    x: display.bounds.x,
+    y: display.bounds.y,
+    width: display.bounds.width,
+    height: display.bounds.height,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: "#050606",
+    show: false,
+    webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
+  });
+  captureWindow = window;
+  trustedWindows.register(window);
+  hardenWindowNavigation(window.webContents);
+  window.once("ready-to-show", () => {
+    if (captureWindow === window && !window.isDestroyed()) {
+      window.show();
+      window.focus();
+    }
+  });
+  window.on("closed", () => {
+    if (captureWindow === window) captureWindow = null;
+  });
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    void window.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}?capture=1`);
+  } else {
+    void window.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      { query: { capture: "1" } },
+    );
+  }
+}
+
+function closeCaptureWindow(): void {
+  const window = captureWindow;
+  captureWindow = null;
+  if (window && !window.isDestroyed()) window.destroy();
 }
 
 function safeFilename(value: string): string {
@@ -904,7 +958,8 @@ function registerIpc(): void {
     getLibraryManager: () => libraryManager,
     getMigrationRecovery: () => migrationRecovery,
     getMainWindow: () => mainWindow,
-    openPreviewWindow,
+    closeCaptureWindow,
+    openCaptureWindow,
     overlayExitAccelerator,
     pngDataUrlToBuffer,
     registerOverlayEmergencyShortcut,
@@ -923,6 +978,12 @@ function registerIpc(): void {
       },
       set captureWasFullScreen(value) {
         captureWasFullScreen = value;
+      },
+      get pendingCaptureSource() {
+        return pendingCaptureSource;
+      },
+      set pendingCaptureSource(value) {
+        pendingCaptureSource = value;
       },
       get clickThrough() {
         return clickThrough;
@@ -1205,8 +1266,6 @@ async function closeWindowAfterBoardFlush(
   }
 }
 
-const previewWindows = new Set<BrowserWindow>();
-
 function setFullscreenTitleBarOverlay(window: BrowserWindow | null, fullscreen: boolean): void {
   if (!window || window.isDestroyed()) return;
   // setTitleBarOverlay 仅 Windows/macOS 支持；Linux 上直接跳过，避免抛错。
@@ -1223,66 +1282,6 @@ function setFullscreenTitleBarOverlay(window: BrowserWindow | null, fullscreen: 
 function bindFullscreenTitleBarOverlay(window: BrowserWindow): void {
   window.on("enter-html-full-screen", () => setFullscreenTitleBarOverlay(window, true));
   window.on("leave-html-full-screen", () => setFullscreenTitleBarOverlay(window, false));
-}
-
-/** base64url 编码预览路径（renderer 侧 preview-window.ts 解码）。 */
-function encodePreviewWindowPath(filename: string): string {
-  return Buffer.from(filename, "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-/** 打开浮动预览窗口（FND-004 §5 会话）；主窗口退出时一并关闭。 */
-function openPreviewWindow(filename: string): void {
-  const existing = [...previewWindows].find((window) => !window.isDestroyed());
-  if (existing) {
-    if (existing.isMinimized()) existing.restore();
-    existing.focus();
-    return;
-  }
-  const encoded = encodePreviewWindowPath(filename);
-  const window = new BrowserWindow({
-    width: 960,
-    height: 720,
-    minWidth: 480,
-    minHeight: 360,
-    backgroundColor: "#171a1c",
-    show: false,
-    title: "RefCanvas · 浮动预览",
-    titleBarStyle: "hidden",
-    titleBarOverlay: {
-      color: "#171a1c",
-      symbolColor: "#aeb5b2",
-      height: 40,
-    },
-    webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
-  });
-  trustedWindows.register(window);
-  hardenWindowNavigation(window.webContents);
-  bindFullscreenTitleBarOverlay(window);
-  window.once("ready-to-show", () => window.show());
-  window.on("closed", () => previewWindows.delete(window));
-  previewWindows.add(window);
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void window.loadURL(
-      `${MAIN_WINDOW_VITE_DEV_SERVER_URL}?preview=${encodeURIComponent(encoded)}&mode=window`,
-    );
-  } else {
-    void window.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-      { query: { preview: encoded, mode: "window" } },
-    );
-  }
-}
-
-/** 关闭全部浮动预览窗口（主窗口退出时）。 */
-function closeAllPreviewWindows(): void {
-  for (const window of previewWindows) {
-    if (!window.isDestroyed()) window.close();
-  }
-  previewWindows.clear();
 }
 
 void app.whenReady().then(async () => {
@@ -1518,7 +1517,6 @@ async function shutdownServices(): Promise<void> {
   }
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();
-  closeAllPreviewWindows();
   mainWindow?.destroy();
   cancelBackgroundServicesStart();
   globalShortcut.unregisterAll();

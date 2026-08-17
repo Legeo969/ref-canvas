@@ -47,6 +47,8 @@ describe("PreviewTransportProvider", () => {
       setPlaybackRate: vi.fn(),
       setMuted: vi.fn(),
       setVolume: vi.fn(),
+      startScrub: vi.fn(),
+      stopScrub: vi.fn(),
     };
 
     function Renderer() {
@@ -80,7 +82,7 @@ describe("PreviewTransportProvider", () => {
     function Renderer() {
       usePreviewTransportRegistration(snapshot, {
         togglePlaying: vi.fn(), seek: vi.fn(), stepFrames: vi.fn(),
-        setLooping: vi.fn(), setPlaybackRate: vi.fn(), setMuted: vi.fn(), setVolume: vi.fn(),
+        setLooping: vi.fn(), setPlaybackRate: vi.fn(), setMuted: vi.fn(), setVolume: vi.fn(), startScrub: vi.fn(), stopScrub: vi.fn(),
       });
       return null;
     }

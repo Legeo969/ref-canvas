@@ -1675,6 +1675,95 @@ describe("DirectoryAssetPanel", () => {
     expect(useAppStore.getState().workspaceMode).toBe("board");
   });
 
+  it("adds a single file to the reference board from the context menu", async () => {
+    const asset = {
+      id: "33333333-3333-4333-8333-333333333333",
+      title: "b.png",
+      path: "D:\\refs\\b.png",
+    };
+    const materialize = vi.fn(async () => ({
+      asset,
+      created: true,
+      copied: false,
+      verified: false,
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          onSearchProgress: () => () => undefined,
+          materialize,
+          open: vi.fn(async () => undefined),
+          reveal: vi.fn(async () => undefined),
+        },
+        system: {
+          writeClipboard: vi.fn(async () => undefined),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      activeBoard: {
+        id: "22222222-2222-4222-8222-222222222222",
+        title: "参考板 01",
+        createdAt: "2026-08-05T00:00:00.000Z",
+        updatedAt: "2026-08-05T00:00:00.000Z",
+        revision: 1,
+      },
+      assets: [],
+      pendingBoardAssetIds: [],
+      workspaceMode: "directory",
+      directoryPath: "D:\\refs",
+      directoryEntries: [
+        {
+          path: "D:\\refs\\b.png",
+          name: "b.png",
+          isDirectory: false,
+          extension: "png",
+          size: 8,
+        },
+      ],
+      directoryTotal: 1,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryAssetPanel />
+        </DialogProvider>,
+      );
+    });
+    const cardWrap = document.querySelector<HTMLElement>(
+      ".directory-card-wrap",
+    );
+    await act(async () => {
+      cardWrap?.dispatchEvent(
+        new window.MouseEvent("contextmenu", {
+          bubbles: true,
+          clientX: 60,
+          clientY: 60,
+        }),
+      );
+    });
+    const addButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".asset-context-menu button",
+      ),
+    ).find((button) => button.textContent?.trim() === "加入参考板");
+    expect(addButton).toBeTruthy();
+
+    await act(async () => {
+      addButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(materialize).toHaveBeenCalledWith("D:\\refs\\b.png");
+    expect(useAppStore.getState().pendingBoardAssetIds).toEqual([asset.id]);
+    expect(useAppStore.getState().workspaceMode).toBe("board");
+  });
+
   it("Ctrl+A selects all files in the current view", async () => {
     Object.assign(window, {
       refCanvas: {
@@ -1957,12 +2046,14 @@ describe("DirectoryAssetPanel", () => {
       total: 0,
       nextCursor: null,
     }));
+    const pathType = vi.fn(async () => "directory" as const);
     const startSearch = vi.fn(async () => "search-1");
     const openDirectory = vi.fn(async () => undefined);
     Object.assign(window, {
       refCanvas: {
         filesystem: {
           listDirectory,
+          pathType,
           startSearch,
           cancelSearch: vi.fn(async () => true),
           getSearch: vi.fn(async () => null),
@@ -1999,7 +2090,10 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(listDirectory).toHaveBeenCalledWith(
+    expect(pathType).toHaveBeenCalledWith(
+      "D:\\AiWork\\ref-canvas\\out\\RefCanvas-win32-x64",
+    );
+    expect(listDirectory).not.toHaveBeenCalledWith(
       "D:\\AiWork\\ref-canvas\\out\\RefCanvas-win32-x64",
       { pageSize: 1 },
     );
@@ -2017,12 +2111,10 @@ describe("DirectoryAssetPanel", () => {
       extension: "psd",
       size: 128,
     };
-    const listDirectory = vi.fn(async (pathname: string) => {
-      if (pathname === "D:\\refs\\concept.psd") {
-        throw new Error("ENOTDIR");
-      }
+    const listDirectory = vi.fn(async (_pathname: string) => {
       return { entries: [fileEntry], total: 1, nextCursor: null };
     });
+    const pathType = vi.fn(async () => "file" as const);
     const openDirectory = vi.fn(async (_pathname: string) => {
       // 模拟真实 openDirectory：完成后首批条目进入 store。
       useAppStore.setState({ directoryEntries: [fileEntry] });
@@ -2037,6 +2129,7 @@ describe("DirectoryAssetPanel", () => {
       refCanvas: {
         filesystem: {
           listDirectory,
+          pathType,
           startSearch,
           cancelSearch: vi.fn(async () => true),
           getSearch: vi.fn(async () => null),
@@ -2077,6 +2170,7 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
     // 打开的是所在目录，并选中该文件。
+    expect(pathType).toHaveBeenCalledWith("D:\\refs\\concept.psd");
     expect(openDirectory).toHaveBeenCalledWith("D:\\refs");
     expect(selectDirectoryEntry).toHaveBeenCalledWith(
       expect.objectContaining({ path: "D:\\refs\\concept.psd" }),
@@ -2087,15 +2181,18 @@ describe("DirectoryAssetPanel", () => {
   });
 
   it("falls back to keyword search for non-path input and invalid paths", async () => {
-    const listDirectory = vi.fn(async (pathname: string) => {
-      if (pathname === "D:\\no\\such\\dir") throw new Error("NOT_A_DIRECTORY");
-      return { entries: [], total: 0, nextCursor: null };
-    });
+    const listDirectory = vi.fn(async () => ({
+      entries: [],
+      total: 0,
+      nextCursor: null,
+    }));
+    const pathType = vi.fn(async () => "missing" as const);
     const startSearch = vi.fn(async () => "search-1");
     Object.assign(window, {
       refCanvas: {
         filesystem: {
           listDirectory,
+          pathType,
           startSearch,
           cancelSearch: vi.fn(async () => true),
           getSearch: vi.fn(async () => null),
@@ -2147,7 +2244,8 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(listDirectory).toHaveBeenCalledWith("D:\\no\\such\\dir", {
+    expect(pathType).toHaveBeenCalledWith("D:\\no\\such\\dir");
+    expect(listDirectory).not.toHaveBeenCalledWith("D:\\no\\such\\dir", {
       pageSize: 1,
     });
     // 等待在途 debounce 到期：避免残留 timer 在后续用例中调用已被替换的

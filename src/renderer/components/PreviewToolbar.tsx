@@ -8,7 +8,6 @@ import {
   Scissors,
   SkipBack,
   SkipForward,
-  Sparkles,
   Volume2,
   VolumeX,
   Grid3x3,
@@ -93,6 +92,9 @@ export interface PreviewToolbarProps {
   progressColor?: string;
   muted?: boolean;
   onMutedToggle?: () => void;
+  /** 音量 0–1（视频/GIF 等有声源）。 */
+  volume?: number;
+  onVolumeChange?: (value: number) => void;
   onTrim?: () => void;
   trimActive?: boolean;
   onGifExport?: () => void;
@@ -100,6 +102,10 @@ export interface PreviewToolbarProps {
   playing?: boolean;
   onPlayingToggle?: () => void;
   onStepFrames?: (delta: number) => void;
+  /** 长按上一帧/下一帧时开始连续扫览（direction 1=前进，-1=后退）。 */
+  onScrubStart?: (direction: 1 | -1) => void;
+  /** 长按扫览结束（finalize 定格到最终精确帧）。 */
+  onScrubStop?: (finalize: boolean) => void;
   onFit?: () => void;
   /** Renderer-specific controls share this row instead of creating another toolbar. */
   rendererControlsRef?: RefCallback<HTMLDivElement>;
@@ -107,14 +113,6 @@ export interface PreviewToolbarProps {
   multichannelActive?: boolean;
   /** Actions pinned to the right edge, outside the horizontally scrolling tools. */
   trailingActions?: ReactNode;
-  /** 至臻画质开启状态（仅视频）。 */
-  supremeOn?: boolean;
-  /** 至臻画质代理生成中（仅视频）。 */
-  supremeGenerating?: boolean;
-  /** 至臻画质生成进度 0..1（仅视频；时长未知为 null）。 */
-  supremeProgress?: number | null;
-  /** 至臻画质开关（仅视频）。 */
-  onSupremeToggle?: () => void;
 }
 
 export function PreviewToolbar({
@@ -154,6 +152,8 @@ export function PreviewToolbar({
   progressColor,
   muted = false,
   onMutedToggle,
+  volume = 1,
+  onVolumeChange,
   onTrim,
   trimActive = false,
   onGifExport,
@@ -161,15 +161,13 @@ export function PreviewToolbar({
   playing = false,
   onPlayingToggle,
   onStepFrames,
+  onScrubStart,
+  onScrubStop,
   onFit,
   rendererControlsRef,
   multichannelButtonRef,
   multichannelActive = false,
   trailingActions,
-  supremeOn = false,
-  supremeGenerating = false,
-  supremeProgress = null,
-  onSupremeToggle,
 }: PreviewToolbarProps) {
   const capabilities = previewToolbarCapabilities(variant);
   const hasTimeline = capabilities.timeline && showUpperRow;
@@ -180,6 +178,46 @@ export function PreviewToolbar({
   const [lutMenuPosition, setLutMenuPosition] = useState({ left: 0, bottom: 0 });
   const [rateMenuPosition, setRateMenuPosition] = useState({ left: 0, bottom: 0 });
   const rateAriaLabel = variant === "sequence" ? translate("preview.rateFps") : translate("preview.rateSpeed");
+
+  // 上一帧/下一帧按住连续扫览：短按（<250ms）= 单击步进一帧；长按 =
+  // 启动 transport 的连续扫览，松键定格到最终精确帧。用 suppressStepRef
+  // 避免长按松键后 onClick 又补一步（与长按首拍重复）。
+  const scrubHoldRef = useRef<{ timer: number | null; direction: 1 | -1; active: boolean } | null>(null);
+  const suppressStepRef = useRef(false);
+  const stopScrubHold = useCallback((finalize = true, resetSuppress = false) => {
+    const hold = scrubHoldRef.current;
+    if (!hold) return;
+    if (hold.timer !== null) window.clearTimeout(hold.timer);
+    if (hold.active) {
+      onScrubStop?.(finalize);
+      if (resetSuppress) suppressStepRef.current = false;
+    }
+    scrubHoldRef.current = null;
+  }, [onScrubStop]);
+  const startScrubHold = useCallback((direction: 1 | -1) => {
+    if (scrubHoldRef.current) stopScrubHold();
+    const hold: { timer: number | null; direction: 1 | -1; active: boolean } = { timer: null, direction, active: false };
+    scrubHoldRef.current = hold;
+    hold.timer = window.setTimeout(() => {
+      if (scrubHoldRef.current !== hold) return;
+      hold.active = true;
+      suppressStepRef.current = true;
+      onScrubStart?.(direction);
+    }, 250);
+  }, [onScrubStart, stopScrubHold]);
+  const handleStepClick = useCallback((delta: number) => {
+    if (suppressStepRef.current) {
+      suppressStepRef.current = false;
+      return;
+    }
+    onStepFrames?.(delta);
+  }, [onStepFrames]);
+  const onStepPointerDown = useCallback((event: React.PointerEvent, direction: 1 | -1) => {
+    if (event.button !== 0) return;
+    if (!onScrubStart || !onScrubStop) return;
+    event.preventDefault();
+    startScrubHold(direction);
+  }, [onScrubStart, onScrubStop, startScrubHold]);
   const positionLutMenu = useCallback(() => {
     const rect = lutButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -220,6 +258,7 @@ export function PreviewToolbar({
       window.removeEventListener("scroll", positionRateMenu, true);
     };
   }, [rateActive, rateMenu, positionRateMenu]);
+  useEffect(() => () => stopScrubHold(false, true), [stopScrubHold]);
   return (
     <nav className={`preview-toolbar preview-toolbar-${variant}`} aria-label={translate("preview.toolbarLabel")} data-variant={variant}>
       {showUpperRow && (
@@ -231,11 +270,11 @@ export function PreviewToolbar({
               onClick={onLoopToggle}
               disabled={!onLoopToggle}
             ><Repeat size={13} /></button>}
-          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.previousFrame")} aria-label={translate("preview.previousFrame")} onClick={() => onStepFrames?.(-1)} disabled={!onStepFrames}><SkipBack size={13} /></button>}
+          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.previousFrame")} aria-label={translate("preview.previousFrame")} onClick={() => handleStepClick(-1)} disabled={!onStepFrames} onPointerDown={(event) => onStepPointerDown(event, -1)} onPointerUp={() => stopScrubHold()} onPointerLeave={() => stopScrubHold(false, true)} onPointerCancel={() => stopScrubHold(false, true)} onBlur={() => stopScrubHold(false, true)}><SkipBack size={13} /></button>}
           {capabilities.timeline && <button className="preview-tool-btn" title={playing ? translate("preview.pause") : translate("preview.play")} aria-label={playing ? translate("preview.pause") : translate("preview.play")} onClick={onPlayingToggle} disabled={!onPlayingToggle}>
             {playing ? <Pause size={13} /> : <Play size={13} />}
           </button>}
-          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.nextFrame")} aria-label={translate("preview.nextFrame")} onClick={() => onStepFrames?.(1)} disabled={!onStepFrames}><SkipForward size={13} /></button>}
+          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.nextFrame")} aria-label={translate("preview.nextFrame")} onClick={() => handleStepClick(1)} disabled={!onStepFrames} onPointerDown={(event) => onStepPointerDown(event, 1)} onPointerUp={() => stopScrubHold()} onPointerLeave={() => stopScrubHold(false, true)} onPointerCancel={() => stopScrubHold(false, true)} onBlur={() => stopScrubHold(false, true)}><SkipForward size={13} /></button>}
           {hasTimeline && <span className="preview-timecode">{timecode}</span>}
           {hasTimeline && <PreviewSlider
               value={seekPosition}
@@ -244,13 +283,25 @@ export function PreviewToolbar({
               fillColor={progressColor ?? previewToolbarProgressColor(variant)}
             />}
           {capabilities.trim && <button className={`preview-tool-btn${trimActive ? " active" : ""}`} title={translate("preview.trim")} aria-label={translate("preview.trim")} aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
-          {capabilities.volume && <button
-              className="preview-tool-btn circle"
-              title={muted ? translate("preview.mute") : translate("preview.volume")}
-              aria-label={translate("preview.volume")}
-              onClick={onMutedToggle}
-              disabled={!onMutedToggle}
-            >{muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>}
+          {capabilities.volume && (
+            <div className="preview-volume-control">
+              <button
+                className="preview-tool-btn circle"
+                title={muted ? translate("preview.mute") : translate("preview.volume")}
+                aria-label={translate("preview.volume")}
+                aria-pressed={muted}
+                onClick={onMutedToggle}
+                disabled={!onMutedToggle}
+              >{muted ? <VolumeX size={13} /> : <Volume2 size={13} />}</button>
+              {onVolumeChange && (
+                <PreviewSlider
+                  value={muted ? 0 : volume}
+                  onChange={onVolumeChange}
+                  fillColor="var(--preview-accent)"
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
       {showLowerRow && paletteVisible && (
@@ -335,20 +386,6 @@ export function PreviewToolbar({
             title={rateAriaLabel}
             onClick={onRateToggle}
           >{rateLabel}</button>}
-          {capabilities.supreme && <button
-            type="button"
-            className={`preview-tool-label preview-supreme-trigger${supremeOn ? " active" : ""}${supremeGenerating ? " generating" : ""}`}
-            aria-label={translate("preview.supreme")}
-            aria-pressed={supremeOn}
-            title={supremeGenerating && supremeProgress != null
-              ? translate("preview.supremeGeneratingTitle").replace("{progress}", String(Math.round(supremeProgress * 100)))
-              : translate("preview.supremeTitle")}
-            onClick={onSupremeToggle}
-            disabled={!onSupremeToggle}
-          >
-            <Sparkles size={13} />
-            {translate("preview.supremeShort")}
-          </button>}
           {onGridToggle && <button
             className={`preview-tool-btn${gridActive ? " active" : ""}`}
             title={translate("preview.grid")}

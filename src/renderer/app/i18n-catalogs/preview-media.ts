@@ -4,9 +4,7 @@ export const catalog = {
   en: {
     "preview.open": "Open",
     "preview.reveal": "Show in File Explorer",
-    "preview.floating": "Floating Preview",
     "preview.close": "Close",
-    "preview.closeFloating": "Close floating preview",
     "preview.previewNamed": "Preview {name}",
     "preview.revealShort": "Reveal",
     "preview.copyPath": "Copy path",
@@ -331,9 +329,7 @@ export const catalog = {
   zhCN: {
     "preview.open": "打开",
     "preview.reveal": "在资源管理器中显示",
-    "preview.floating": "浮动预览",
     "preview.close": "关闭",
-    "preview.closeFloating": "关闭浮动预览",
     "preview.previewNamed": "预览 {name}",
     "preview.revealShort": "定位",
     "preview.copyPath": "复制路径",

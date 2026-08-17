@@ -40,6 +40,8 @@ export function parseByteRange(
 function contentType(filename: string): string {
   switch (path.extname(filename).toLowerCase()) {
     case ".mp4": return "video/mp4";
+    case ".m3u8": return "application/vnd.apple.mpegurl";
+    case ".ts": return "video/mp2t";
     case ".mov": return "video/quicktime";
     case ".webm": return "video/webm";
     case ".mkv": return "video/x-matroska";

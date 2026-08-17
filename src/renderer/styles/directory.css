@@ -2146,11 +2146,11 @@
 
 .dir-view-mode button {
   display: grid;
-  width: 28px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: 5px;
   background: transparent;
   color: #7f8984;
   cursor: pointer;
@@ -2179,13 +2179,13 @@
 
 .dir-sort-control .dir-sort-trigger {
   display: inline-flex;
-  height: 30px;
+  height: 28px;
   min-width: 0;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
+  padding: 0 9px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   box-shadow: none;
   color: #8b9590;
@@ -2297,13 +2297,13 @@
 /* 筛选行 ⚙ 设置入口：与视图选项按钮同款主题图标按钮。 */
 .dir-format-filter .dir-filter-settings {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex: none;
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   box-shadow: none;
   color: #8b9590;
@@ -2316,4 +2316,33 @@
 .dir-format-filter .dir-filter-settings:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #dbe3df;
+}
+
+/* 只看收藏：纯星号图标按钮，与 ⚙ 设置入口同款紧凑尺寸。 */
+.dir-format-filter .dir-favorites-filter {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: #8b9590;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.dir-format-filter .dir-favorites-filter:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #dbe3df;
+}
+
+.dir-format-filter .dir-favorites-filter.active {
+  background: var(--accent-soft);
+  color: #8cdec5;
 }

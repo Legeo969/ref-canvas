@@ -551,6 +551,8 @@ export function SequencePreviewDialog({
     setPlaybackRate: (value) => setFps(Math.min(240, Math.max(1, Math.round(value)))),
     setMuted: () => undefined,
     setVolume: () => undefined,
+    startScrub: undefined,
+    stopScrub: undefined,
     exportGif: () => void exportGif(),
   });
 

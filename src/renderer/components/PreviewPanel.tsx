@@ -627,10 +627,10 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onStepFrames={(delta) => transport.actions?.stepFrames(delta)}
                     muted={transport.snapshot?.muted ?? false}
                     onMutedToggle={() => transport.actions?.setMuted(!(transport.snapshot?.muted ?? false))}
-                    supremeOn={transport.snapshot?.supremeOn ?? false}
-                    supremeGenerating={transport.snapshot?.supremeGenerating ?? false}
-                    supremeProgress={transport.snapshot?.supremeProgress ?? null}
-                    onSupremeToggle={() => transport.actions?.toggleSupreme?.()}
+                    volume={transport.snapshot?.volume ?? 1}
+                    onVolumeChange={(value) => transport.actions?.setVolume(value)}
+                    onScrubStart={toolbarVariant === "video" ? (direction) => transport.actions?.startScrub?.(direction) : undefined}
+                    onScrubStop={toolbarVariant === "video" ? (finalize) => transport.actions?.stopScrub?.(finalize) : undefined}
                     rateLabel={toolbarVariant === "video"
                       ? `${Number((transport.snapshot?.playbackRate ?? 1).toFixed(2))}×`
                       : toolbarVariant === "sequence"
