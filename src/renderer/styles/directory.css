@@ -685,14 +685,15 @@
 }
 
 .dir-view-options-popover {
-  position: absolute;
-  z-index: 90;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
+  z-index: 120;
+  top: 0;
+  left: 0;
   display: grid;
   gap: 4px;
   min-width: 220px;
   padding: 6px;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #262b2c;

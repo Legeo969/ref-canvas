@@ -262,6 +262,36 @@ export const MIGRATIONS: readonly MigrationStep[] = [
 ];
 
 /**
+ * Highest schema version this build knows how to open. Derived from the
+ * migration steps (never hand-written) so bumping the schema automatically
+ * raises the guard. A database whose `user_version` exceeds this was created
+ * by a newer RefCanvas and must be rejected rather than silently opened.
+ */
+export const APP_MAX_SCHEMA_VERSION = MIGRATIONS.reduce(
+  (max, step) => Math.max(max, step.version),
+  0,
+);
+
+/**
+ * Thrown when a database's `user_version` exceeds the schema version this build
+ * understands. The database was created by a newer RefCanvas; refusing to open
+ * it prevents silent corruption from guessing/downgrading the schema.
+ */
+export class DatabaseSchemaTooNewError extends Error {
+  readonly databaseVersion: number;
+  readonly appMaxVersion: number;
+
+  constructor(databaseVersion: number, appMaxVersion: number) {
+    super(
+      `DB_SCHEMA_TOO_NEW: database schema v${databaseVersion} is newer than this build (max v${appMaxVersion})`,
+    );
+    this.name = "DatabaseSchemaTooNewError";
+    this.databaseVersion = databaseVersion;
+    this.appMaxVersion = appMaxVersion;
+  }
+}
+
+/**
  * Stateless helper that owns the legacy baseline DDL. Kept separate from the
  * database class so the ordered migration steps remain pure functions of a
  * `Database` connection (no instance state), which is what makes them safe to
@@ -710,6 +740,9 @@ export function runMigrationSteps(
 
   let current = db.pragma("user_version", { simple: true }) as number;
   if (typeof current !== "number" || Number.isNaN(current)) current = 0;
+  if (current > APP_MAX_SCHEMA_VERSION) {
+    throw new DatabaseSchemaTooNewError(current, APP_MAX_SCHEMA_VERSION);
+  }
 
   const insertLog = db.prepare(
     `INSERT INTO migration_log
@@ -835,6 +868,9 @@ export class MigrationRepository {
     this.ensureLog();
     let current = this.db.pragma("user_version", { simple: true }) as number;
     if (typeof current !== "number" || Number.isNaN(current)) current = 0;
+    if (current > APP_MAX_SCHEMA_VERSION) {
+      throw new DatabaseSchemaTooNewError(current, APP_MAX_SCHEMA_VERSION);
+    }
     for (const step of steps) {
       if (step.version <= current) continue;
       const startedAt = new Date().toISOString();

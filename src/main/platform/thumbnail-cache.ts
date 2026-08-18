@@ -20,7 +20,7 @@ export function thumbnailCacheFilename(
   if (variant !== "composite") identity.update(`:${variant}`);
   const signature = identity.digest("hex")
     .slice(0, 20);
-  return `${safeId(asset.id)}-${signature}.png`;
+  return `${safeId(asset.id)}-${signature}.webp`;
 }
 
 export async function pruneStaleThumbnails(

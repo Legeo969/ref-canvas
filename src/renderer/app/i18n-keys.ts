@@ -236,6 +236,24 @@ export type MessageKey =
 
   | "app.quit"
 
+  | "app.degradedBanner"
+
+  | "app.degradedReadOnly"
+
+  | "app.safeModeTitle"
+
+  | "app.safeModeDescription"
+
+  | "app.safeModeRestore"
+
+  | "app.safeModeNewDatabase"
+
+  | "app.safeModeNoBackups"
+
+  | "app.schemaTooNewTitle"
+
+  | "app.schemaTooNewDescription"
+
   | "app.recoveryBackupDirectory"
 
   | "app.recoveryDatabaseFile"
@@ -2147,6 +2165,20 @@ export type MessageKey =
   | "settings.exportDiagnostics"
 
   | "settings.exportDiagnosticsHint"
+
+  | "settings.exportLibrary"
+
+  | "settings.exportLibraryHint"
+
+  | "settings.importLibrary"
+
+  | "settings.importLibraryHint"
+
+  | "settings.importBundleTitle"
+
+  | "settings.importBundleConfirm"
+
+  | "settings.bundleExported"
 
   | "settings.general"
 

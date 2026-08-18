@@ -18,9 +18,12 @@ export interface TaskSources {
   listImports(): ImportJobSnapshot[];
   listBatches(): DirectoryBatchSnapshot[];
   listAiJobs(): AiJobSnapshot[];
+  /** 媒体导出/转换任务（GIF/MP4/帧/通道/降采样等）统一快照。 */
+  listMediaJobs(): TaskSnapshot[];
   cancelImport(id: string): Promise<boolean>;
   cancelBatch(id: string): Promise<boolean>;
   cancelAi(id: string): Promise<boolean>;
+  cancelMedia(id: string): Promise<boolean>;
 }
 
 export class TaskCenterService {
@@ -48,6 +51,7 @@ export class TaskCenterService {
       ...this.sources.listImports().map((job) => importToTask(job)),
       ...this.sources.listBatches().map((batch) => batchToTask(batch)),
       ...this.sources.listAiJobs().map((job) => aiToTask(job)),
+      ...this.sources.listMediaJobs(),
     ];
     collected.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return collected.slice(0, limit);
@@ -68,6 +72,8 @@ export class TaskCenterService {
       cancelled = await this.sources.cancelBatch(id);
     } else if (task.kind === "ai") {
       cancelled = await this.sources.cancelAi(id);
+    } else if (task.kind === "convert" || task.kind === "export") {
+      cancelled = await this.sources.cancelMedia(id);
     }
     return cancelled ? (this.get(id) ?? task) : task;
   }

@@ -3,11 +3,8 @@ import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-  deriveExrDisplayLayers,
-  parseExrHeader,
-  selectDefaultExrLayer,
-} from "./exr-header";
+import { defaultExrLayer } from "./exr-header";
+import { prepareExrSequenceForConcat } from "./exr-export-png";
 import { packagedFfmpegPath } from "./ffmpeg-tools";
 import { readFfprobeFullMetadata } from "./ffprobe-full";
 
@@ -86,12 +83,6 @@ async function probeGif(outputPath: string): Promise<GifExportResult> {
   };
 }
 
-async function defaultExrLayer(files: string[]): Promise<string | null> {
-  if (path.extname(files[0] ?? "").toLowerCase() !== ".exr") return null;
-  const header = await parseExrHeader(files[0]);
-  if (!header.valid) return null;
-  return selectDefaultExrLayer(deriveExrDisplayLayers(header.channels))?.name ?? null;
-}
 
 export async function exportSequenceToGif(
   options: SequenceGifExportOptions,
@@ -99,14 +90,25 @@ export async function exportSequenceToGif(
 ): Promise<GifExportResult> {
   if (!options.files.length) throw new Error("GIF_EXPORT_EMPTY");
   const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-gif-"));
+  let exrPngDirectory: string | null = null;
   try {
+    // Unreal 多层 EXR 常用 PIZ/DWAA 压缩，ffmpeg 内置解码器解不了（decode_block
+    // failed → 空白 GIF）。用 OIIO 逐帧解码成临时 PNG 再 concat。
+    const exrPng = await prepareExrSequenceForConcat(
+      options.files, null, signal,
+    );
+    const frames = exrPng?.files ?? options.files;
+    exrPngDirectory = exrPng?.tempDirectory ?? null;
     const listPath = path.join(tempDirectory, "frames.txt");
     const frameDuration = 1 / Math.max(1, options.fps);
-    const lines = options.files
-      .map((file) => `file '${file.replaceAll("'", "'\\''")}'`)
+    // Windows 反斜杠会被 concat demuxer 当作转义符解析，统一转正斜杠，
+    // 避免 `D:\Unreal Projects\...` 在 frames.txt 里被截断导致 GIF 失败。
+    const lines = frames
+      .map((file) => `file '${file.replace(/\\/g, "/").replaceAll("'", "'\\''")}'`)
       .join(`\nduration ${frameDuration}\n`);
     await writeFile(listPath, `${lines}\nduration ${frameDuration}\n`, "utf8");
-    const layer = await defaultExrLayer(options.files);
+    // 已走 OIIO 预解码（PNG）时不要传 -layer；仅 ffmpeg 直读 EXR 时需要。
+    const layer = exrPng ? null : await defaultExrLayer(options.files);
     await execFileAsync(packagedFfmpegPath(), [
       "-y",
       ...(layer ? ["-layer", layer] : []),
@@ -124,6 +126,9 @@ export async function exportSequenceToGif(
     return probeGif(options.outputPath);
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
+    if (exrPngDirectory) {
+      await rm(exrPngDirectory, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 

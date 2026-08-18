@@ -27,10 +27,20 @@ import { parseHdrHeader } from "../../../src/main/services/media/hdr-header";
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  // Windows 上 sharp/libvips 写完 WebP 后句柄延迟释放，rm 触发 EBUSY。
+  await new Promise((resolve) => setImmediate(resolve));
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }),
-    ),
+    temporaryDirectories.splice(0).map(async (directory) => {
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          await rm(directory, { recursive: true, force: true });
+          break;
+        } catch (error) {
+          if (attempt === 7) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+    }),
   );
 });
 
@@ -42,7 +52,9 @@ async function tempDirectory(prefix: string): Promise<string> {
 
 /** 读取 PNG 中心像素的 RGB（验证 tone map 输出）。 */
 async function centerPixelRgb(pngPath: string): Promise<[number, number, number]> {
-  const { data, info } = await sharp(pngPath)
+  // 用 readFile 读入 buffer 再交给 sharp，避免 sharp 持有文件句柄导致
+  // Windows 上 afterEach 清理临时目录时 EBUSY。
+  const { data, info } = await sharp(await readFile(pngPath))
     .raw()
     .toBuffer({ resolveWithObject: true });
   const x = Math.floor(info.width / 2);
@@ -388,8 +400,8 @@ describe("stage 3 media providers", () => {
       width: 320, height: 240, outputPath,
     });
     expect(result.path).toBe(outputPath);
-    const metadata = await sharp(outputPath).metadata();
-    expect(metadata).toMatchObject({ format: "png", width: 320, height: 240 });
+    const metadata = await sharp(await readFile(outputPath)).metadata();
+    expect(metadata).toMatchObject({ format: "webp", width: 320, height: 240 });
   });
 
   it("probes ASCII and binary STL files", async () => {

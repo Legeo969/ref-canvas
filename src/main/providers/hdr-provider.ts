@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -141,7 +141,13 @@ async function publishTemporaryPng(
   signal?: AbortSignal,
 ): Promise<void> {
   await yieldAndCheck(signal);
-  await rename(temporary, outputPath);
+  // ffmpeg/oiiotool 写入的是 PNG 临时文件；统一用 sharp 转码为 WebP
+  // 再落到最终缓存路径，保证全链路输出格式一致。
+  const sharp = (await import("sharp")).default;
+  await sharp(temporary)
+    .webp({ quality: 85 })
+    .toFile(outputPath);
+  await rm(temporary, { force: true }).catch(() => undefined);
 }
 
 function findDecodedLayer(
@@ -631,9 +637,8 @@ export class HdrProvider implements ResourceProvider {
           fit: "inside",
           withoutEnlargement: true,
         })
-        .png()
-        .toFile(temporary);
-      await publishTemporaryPng(temporary, input.outputPath, input.signal);
+        .webp({ quality: 85 })
+        .toFile(input.outputPath);
       return {
         path: input.outputPath,
         width: info.width,

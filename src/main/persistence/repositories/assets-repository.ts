@@ -491,4 +491,59 @@ export class AssetsRepository {
     return rows.map((row) => row.id).filter((id) => !excluded.has(id));
   }
 
+  /**
+   * SPEC-4：分批迭代 selection 命中的 id，避免"全选→操作"把几十万 UUID 一次
+   * materialize 进内存。游标基于稳定排序的 `created_at` + `id`。ids 模式直接
+   * 分批切片；query 模式用键集分页。
+   */
+  forEachSelectionId(
+    scope: SelectionScope,
+    batchSize: number,
+    callback: (ids: string[]) => void | Promise<void>,
+  ): Promise<void> {
+    const limit = Math.max(1, Math.min(batchSize, 1_000));
+    if (scope.mode === "ids") {
+      const unique = [...new Set(scope.ids)];
+      return (async () => {
+        for (let offset = 0; offset < unique.length; offset += limit) {
+          await callback(unique.slice(offset, offset + limit));
+        }
+      })();
+    }
+    const excluded = new Set(scope.excludedIds);
+    // 固定按 created_at + id 排序分页（selection 语义不依赖用户排序）。
+    const query = this.buildSearch({ ...scope.query, cursor: undefined }, false);
+    let lastCreatedAt: string | null = null;
+    let lastId: string | null = null;
+    return (async () => {
+      for (;;) {
+        let rows: Array<{ id: string; created_at: string }>;
+        if (lastCreatedAt === null) {
+          rows = this.db.prepare(`
+            SELECT DISTINCT a.id, a.created_at FROM assets a ${query.joins} ${query.where}
+            ORDER BY a.created_at ASC, a.id ASC LIMIT ?
+          `).all(...query.params, limit) as Array<{ id: string; created_at: string }>;
+        } else {
+          rows = this.db.prepare(`
+            SELECT DISTINCT a.id, a.created_at FROM assets a ${query.joins} ${query.where}
+              AND (a.created_at > ? OR (a.created_at = ? AND a.id > ?))
+            ORDER BY a.created_at ASC, a.id ASC LIMIT ?
+          `).all(...query.params, lastCreatedAt, lastCreatedAt, lastId, limit) as Array<{
+            id: string;
+            created_at: string;
+          }>;
+        }
+        if (rows.length === 0) break;
+        const ids = rows
+          .map((row) => row.id)
+          .filter((id) => !excluded.has(id));
+        await callback(ids);
+        const tail = rows[rows.length - 1]!;
+        lastCreatedAt = tail.created_at;
+        lastId = tail.id;
+        if (rows.length < limit) break;
+      }
+    })();
+  }
+
 }

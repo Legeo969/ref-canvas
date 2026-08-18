@@ -1,11 +1,11 @@
 import { app } from "electron";
-import { copyFile } from "node:fs/promises";
 import { z } from "zod";
 import type { BackupService } from "../services/backup-service";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryService } from "../services/library-service";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
 import { assertAbsoluteLocalPath } from "../platform/local-path-security";
+import { copyFileDurable } from "../platform/fsync";
 
 interface BackupIpcDependencies {
   getBackups(): BackupService;
@@ -29,13 +29,14 @@ export function registerBackupIpc(
     const rollback = `${databaseFilename}.before-restore`;
     await dependencies.getLibrary().close();
     dependencies.getDatabase().close();
-    await copyFile(databaseFilename, rollback);
+    // SPEC-6：回滚副本用原子写 + fsync，防止断电时回滚副本半截。
+    await copyFileDurable(databaseFilename, rollback);
     try {
-      await copyFile(parsed, databaseFilename);
+      await copyFileDurable(parsed, databaseFilename);
       app.relaunch();
       app.exit(0);
     } catch (error) {
-      await copyFile(rollback, databaseFilename);
+      await copyFileDurable(rollback, databaseFilename);
       throw error;
     }
   });

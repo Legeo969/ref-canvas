@@ -2,6 +2,7 @@ import { utilityProcess, type UtilityProcess } from "electron";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
+import { fsyncDirectory, fsyncFile } from "./fsync";
 
 interface WorkerReply {
   id: string;
@@ -53,7 +54,7 @@ export class ThumbnailWorkerClient {
     if (signal?.aborted) throw new Error("THUMBNAIL_WORKER_ABORTED");
     await mkdir(path.dirname(finalPath), { recursive: true });
     const id = randomUUID();
-    const outputPath = `${finalPath}.${id}.tmp.png`;
+    const outputPath = `${finalPath}.${id}.tmp.webp`;
     const child = this.ensureChild();
     let timer: NodeJS.Timeout | null = null;
     const promise = new Promise<Buffer>((resolve, reject) => {
@@ -156,7 +157,13 @@ export class ThumbnailWorkerClient {
       return;
     }
     try {
+      // SPEC-6：rename 前先把 tmp 文件 fsync 落盘，防止断电时 rename 的
+      // 元数据与文件数据不一致导致缩略图丢失。
+      await fsyncFile(pending.outputPath);
       await rename(pending.outputPath, pending.finalPath);
+      // 父目录 fsync（best-effort）：Windows 上目录 fd 的 fsync 行为有限，
+      // Linux/Mac 上保证 rename 元数据落盘。
+      await fsyncDirectory(path.dirname(pending.finalPath)).catch(() => undefined);
       pending.resolve(await readFile(pending.finalPath));
     } catch (error) {
       await rm(pending.outputPath, { force: true });

@@ -1,32 +1,32 @@
 import { createHash } from "node:crypto";
 
-// Bump after replacing FFmpeg EXR decoding with the OpenEXR WASM pipeline so
-// stale gray/failed proxies are regenerated from Composite/Beauty.
-export const PREVIEW_CACHE_VERSION = "preview-v5";
+// Bump after changing the thumbnail encode pipeline (PNG→WebP) so stale
+// PNG caches are regenerated instead of being served with a WebP header.
+export const PREVIEW_CACHE_VERSION = "preview-v6";
 
 export interface PreviewCacheIdentity {
   realPath: string;
   size: number;
   mtimeMs: number;
   variant:
-    | "thumbnail-480x320-png"
-    | "thumbnail-shell-480x320-png"
-    | "thumbnail-480x480-png"
-    | "thumbnail-shell-480x480-png"
-    | `thumbnail-480x320-png-${string}`
-    | `thumbnail-shell-480x320-png-${string}`
-    | `thumbnail-480x480-png-${string}`
-    | `thumbnail-shell-480x480-png-${string}`
-    | "thumbnail-960x960-png"
-    | "thumbnail-shell-960x960-png"
-    | `thumbnail-960x960-png-${string}`
-    | `thumbnail-shell-960x960-png-${string}`
-    | "thumbnail-1920x1920-png"
-    | "thumbnail-shell-1920x1920-png"
-    | `thumbnail-1920x1920-png-${string}`
-    | `thumbnail-shell-1920x1920-png-${string}`
-    | "palette-320-png"
-    | `board-${512 | 1024 | 2048}-png`;
+    | "thumbnail-480x320-webp"
+    | "thumbnail-shell-480x320-webp"
+    | "thumbnail-480x480-webp"
+    | "thumbnail-shell-480x480-webp"
+    | `thumbnail-480x320-webp-${string}`
+    | `thumbnail-shell-480x320-webp-${string}`
+    | `thumbnail-480x480-webp-${string}`
+    | `thumbnail-shell-480x480-webp-${string}`
+    | "thumbnail-960x960-webp"
+    | "thumbnail-shell-960x960-webp"
+    | `thumbnail-960x960-webp-${string}`
+    | `thumbnail-shell-960x960-webp-${string}`
+    | "thumbnail-1920x1920-webp"
+    | "thumbnail-shell-1920x1920-webp"
+    | `thumbnail-1920x1920-webp-${string}`
+    | `thumbnail-shell-1920x1920-webp-${string}`
+    | "palette-320-webp"
+    | `board-${512 | 1024 | 2048}-webp`;
 }
 
 /** 生成只用于文件名的缓存键；绝对路径不会出现在返回值中。 */

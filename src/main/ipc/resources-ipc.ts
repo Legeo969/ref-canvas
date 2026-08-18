@@ -45,6 +45,7 @@ import {
   assertAbsoluteLocalPath,
 } from "../platform/local-path-security";
 import type { WriteAccessController } from "../platform/write-access-controller";
+import type { MediaJobRegistry, MediaJobStartMeta } from "../services/media-job-registry";
 
 interface ResourcesIpcDependencies {
   getDatabase(): RefCanvasDatabase;
@@ -58,6 +59,7 @@ interface ResourcesIpcDependencies {
   notifyMountsChanged(change: MountChangedEvent): void;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
   writeAccess: WriteAccessController;
+  getMediaJobRegistry(): MediaJobRegistry;
 }
 
 /**
@@ -74,13 +76,27 @@ export function registerResourcesIpc(
   async function runMediaJob<T>(
     requestedId: string | undefined,
     task: (signal: AbortSignal, jobId: string) => Promise<T>,
+    track?: MediaJobStartMeta,
   ): Promise<T & { jobId: string }> {
     const jobId = requestedId ?? randomUUID();
     if (mediaJobs.has(jobId)) throw new Error("MEDIA_JOB_EXISTS");
     const controller = new AbortController();
     mediaJobs.set(jobId, controller);
+    const registry = track ? dependencies.getMediaJobRegistry() : null;
+    if (registry && track) {
+      registry.start(jobId, track);
+      registry.attachController(jobId, controller);
+    }
     try {
-      return { ...(await task(controller.signal, jobId)), jobId };
+      const result = await task(controller.signal, jobId);
+      registry?.complete(jobId, track?.output ?? null);
+      return { ...result, jobId };
+    } catch (error) {
+      if (registry) {
+        const message = error instanceof Error ? error.message : String(error ?? "MEDIA_JOB_FAILED");
+        registry.fail(jobId, "MEDIA_JOB_FAILED", message);
+      }
+      throw error;
     } finally {
       mediaJobs.delete(jobId);
     }
@@ -347,30 +363,30 @@ export function registerResourcesIpc(
         size: info.size,
         mtimeMs: info.mtimeMs,
       };
-      let sourcePng: string | null = null;
+      let sourceWebp: string | null = null;
       const displayVariants = [
-        "thumbnail-1920x1920-png",
-        "thumbnail-960x960-png",
-        "thumbnail-480x480-png",
+        "thumbnail-1920x1920-webp",
+        "thumbnail-960x960-webp",
+        "thumbnail-480x480-webp",
       ] as const;
       for (const variant of displayVariants) {
         const candidate = path.join(
           cacheDirectory,
           "directory",
-          `${previewCacheKey({ ...identity, variant })}.png`,
+          `${previewCacheKey({ ...identity, variant })}.webp`,
         );
         if (await stat(candidate).then(() => true, () => false)) {
-          sourcePng = candidate;
+          sourceWebp = candidate;
           break;
         }
       }
-      if (!sourcePng) {
+      if (!sourceWebp) {
         const paletteFile = path.join(
           cacheDirectory,
-          `palette-${previewCacheKey({ ...identity, variant: "palette-320-png" })}.png`,
+          `palette-${previewCacheKey({ ...identity, variant: "palette-320-webp" })}.webp`,
         );
         if (await stat(paletteFile).then(() => true, () => false)) {
-          sourcePng = paletteFile;
+          sourceWebp = paletteFile;
         } else {
           await invokeThumbnail(dependencies.getProviderRegistry(), {
             path: resolved,
@@ -380,10 +396,10 @@ export function registerResourcesIpc(
             height: 320,
             outputPath: paletteFile,
           });
-          sourcePng = paletteFile;
+          sourceWebp = paletteFile;
         }
       }
-      samplePath = sourcePng;
+      samplePath = sourceWebp;
       // removeSample 保持 false：样本持久缓存，二次打开与逐帧刷新直接复用。
     } else if (kind === "video" || extension === "bmp") {
       // BMP 必须走 ffmpeg 抽帧：本构建的 sharp/libvips 不含 BMP 解码器
@@ -479,14 +495,18 @@ export function registerResourcesIpc(
       );
       signal.throwIfAborted();
       return { ...result, jobId: currentJobId };
+    }, {
+      kind: "convert",
+      stage: "converting",
+      output: null,
     });
   });
   ipc.handle("media:cancel", (jobId) => {
     const parsed = z.string().min(1).max(128).parse(jobId);
+    const registry = dependencies.getMediaJobRegistry();
     const controller = mediaJobs.get(parsed);
-    if (!controller) return false;
-    controller.abort(new Error("MEDIA_JOB_CANCELLED"));
-    return true;
+    if (controller) controller.abort(new Error("MEDIA_JOB_CANCELLED"));
+    return registry ? registry.cancel(parsed) : Boolean(controller);
   });
   ipc.handleWithEvent("media:exportGif", async (event, request) => {
     const parsed = z.object({
@@ -532,6 +552,10 @@ export function registerResourcesIpc(
             inputPath: inputPath!,
           }, signal);
       return { ...result, outputPath, frameCount: null, jobId };
+    }, {
+      kind: "export",
+      stage: "exporting",
+      output: outputPath,
     });
   });
   ipc.handleWithEvent("media:exportFrames", async (event, request) => {
@@ -559,7 +583,11 @@ export function registerResourcesIpc(
         outputDirectory,
       }, signal)),
       jobId,
-    }));
+    }), {
+      kind: "export",
+      stage: "exporting frames",
+      output: outputDirectory,
+    });
   });
   ipc.handleWithEvent("media:exportMp4", async (event, request) => {
     const parsed = z.object({
@@ -598,6 +626,10 @@ export function registerResourcesIpc(
         height: result.height,
         jobId,
       };
+    }, {
+      kind: "export",
+      stage: "exporting",
+      output: outputPath,
     });
   });
   ipc.handleWithEvent("media:exportDisplayChannel", async (event, request) => {
@@ -651,6 +683,10 @@ export function registerResourcesIpc(
         channel: parsed.channel ?? null,
         jobId,
       };
+    }, {
+      kind: "export",
+      stage: "exporting display channel",
+      output: authorizedOutputPath,
     });
   });
 
@@ -737,6 +773,10 @@ export function registerResourcesIpc(
         height: result.height,
         jobId,
       };
+    }, {
+      kind: "export",
+      stage: "exporting",
+      output: outputPath,
     });
   });
 
@@ -773,6 +813,10 @@ export function registerResourcesIpc(
         frameCount: parsed.files.length,
         jobId,
       };
+    }, {
+      kind: "export",
+      stage: "exporting",
+      output: outputPath,
     });
   });
 
@@ -884,6 +928,10 @@ export function registerResourcesIpc(
         modifiesSources: parsed.mode === "backup",
         jobId,
       };
+    }, {
+      kind: "export",
+      stage: "downscaling",
+      output: null,
     });
   });
 

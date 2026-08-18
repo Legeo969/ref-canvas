@@ -11,6 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { fsyncFile } from "./fsync";
 import { assetKindForExtension } from "../../shared/asset-kind";
 import { readPreviewSettings } from "../ipc/preview-settings";
 import type { RefCanvasDatabase } from "../persistence/database";
@@ -140,6 +141,8 @@ async function readBlendEmbeddedPreviewSafe(
 async function writeCacheAtomically(filename: string, data: Buffer): Promise<void> {
   const temporary = `${filename}.${randomUUID()}.tmp`;
   await writeFile(temporary, data);
+  // SPEC-6：rename 前 fsync tmp，防止断电时缓存元数据与内容不一致。
+  await fsyncFile(temporary);
   await rename(temporary, filename).catch(async (error) => {
     await rm(temporary, { force: true });
     throw error;
@@ -178,16 +181,17 @@ async function generateThumbnail(
       const { default: sharp } = await import("sharp");
       const rgba = bgraToRgba(embedded.pixels);
       const side = Math.max(size.width, size.height);
-      const png = await sharp(rgba, {
+      const webp = await sharp(rgba, {
         raw: { width: embedded.rectx, height: embedded.recty, channels: 4 },
       })
         .resize(side, side, {
           fit: "contain",
           background: { r: 29, g: 31, b: 30, alpha: 1 },
         })
-        .png()
+        .webp({ quality: 85 })
         .toBuffer();
-      return png;
+      await writeCacheAtomically(cacheFile, webp);
+      return webp;
     }
     const placeholder = await fileIconPlaceholderThumbnail(source, extension, size);
     await writeCacheAtomically(cacheFile, placeholder);
@@ -290,9 +294,12 @@ async function generateThumbnail(
     await writeCacheAtomically(cacheFile, placeholder);
     return placeholder;
   }
-  const png = thumbnail.toPNG();
-  await writeCacheAtomically(cacheFile, png);
-  return png;
+  const { default: sharp } = await import("sharp");
+  const webp = await sharp(thumbnail.toPNG())
+    .webp({ quality: 85 })
+    .toBuffer();
+  await writeCacheAtomically(cacheFile, webp);
+  return webp;
 }
 
 const HDR_DISPLAY_TRANSFORMS = new Set(["linear-srgb", "aces-1.3", "aces-2.0", "raw"] as const);
@@ -378,13 +385,13 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
             realPath: source,
             size: info.size,
             mtimeMs: info.mtimeMs,
-            variant: `board-${proxySize}-png`,
+            variant: `board-${proxySize}-webp`,
           });
           cacheKey = `board:${identity}`;
           cacheFile = path.join(
             dependencies.getThumbnailCacheDirectory(),
             "board",
-            `${identity}.png`,
+            `${identity}.webp`,
           );
         } else {
           const channel = url.searchParams.get("channel")?.trim() || null;
@@ -413,7 +420,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         if (cached) {
           dependencies.getPreviewCacheIndex()?.recordSuccess(cacheKey, cacheFile, cached.byteLength);
           return new Response(new Uint8Array(cached), {
-            headers: protocolResponseHeaders(access, "image/png"),
+            headers: protocolResponseHeaders(access, "image/webp"),
           });
         }
         const png = await dependencies.thumbnailQueue.enqueue(`asset:${cacheFile}`, async (signal) => {
@@ -446,7 +453,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
           signal: request.signal,
         });
         return new Response(new Uint8Array(png), {
-          headers: protocolResponseHeaders(access, "image/png"),
+          headers: protocolResponseHeaders(access, "image/webp"),
         });
       } catch (error) {
         if (request.signal.aborted) {
@@ -538,8 +545,8 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
         const colorVariant = hdrColorVariant(url);
         const thumbnailSize = directoryThumbnailSize(url);
         const variant = `${imageVariant
-          ? `thumbnail-${thumbnailSize}x${thumbnailSize}-png`
-          : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-png`}${channel ? `-${channel}` : ""}${colorVariant}` as PreviewCacheIdentity["variant"];
+          ? `thumbnail-${thumbnailSize}x${thumbnailSize}-webp`
+          : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-webp`}${channel ? `-${channel}` : ""}${colorVariant}` as PreviewCacheIdentity["variant"];
         const key = previewCacheKey({
           realPath: real,
           size: info.size,
@@ -550,7 +557,7 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
           dependencies.getThumbnailCacheDirectory(),
           "directory",
         );
-        const cacheFile = path.join(cacheDirectory, `${key}.png`);
+        const cacheFile = path.join(cacheDirectory, `${key}.webp`);
         await mkdir(cacheDirectory, { recursive: true });
         const indexed = dependencies.getPreviewCacheIndex()?.get(key);
         if (indexed?.status === "failed") {
@@ -584,7 +591,7 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
           signal: request.signal,
         });
         return new Response(Uint8Array.from(png), {
-          headers: protocolResponseHeaders(access, "image/png"),
+          headers: protocolResponseHeaders(access, "image/webp"),
         });
       } catch (error) {
         if (request.signal.aborted) {
@@ -597,8 +604,8 @@ function registerRefBrowseProtocol(dependencies: ProtocolDependencies): void {
           const colorVariant = hdrColorVariant(url);
           const thumbnailSize = directoryThumbnailSize(url);
           const variant = `${imageVariant
-            ? `thumbnail-${thumbnailSize}x${thumbnailSize}-png`
-            : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-png`}${channel ? `-${channel}` : ""}${colorVariant}` as PreviewCacheIdentity["variant"];
+            ? `thumbnail-${thumbnailSize}x${thumbnailSize}-webp`
+            : `thumbnail-shell-${thumbnailSize}x${thumbnailSize}-webp`}${channel ? `-${channel}` : ""}${colorVariant}` as PreviewCacheIdentity["variant"];
           const failedKey = previewCacheKey({
             realPath: real,
             size: info.size,

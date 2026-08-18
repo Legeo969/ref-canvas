@@ -112,6 +112,9 @@ function WorkspaceApp() {
   const [migrationFailure, setMigrationFailure] = useState<Awaited<
     ReturnType<typeof window.refCanvas.system.getMigrationFailure>
   > | null>(null);
+  const [startupHealth, setStartupHealth] = useState<Awaited<
+    ReturnType<typeof window.refCanvas.system.getStartupHealth>
+  > | null>(null);
   const capturePreparingRef = useRef(false);
   const [capturePreparing, setCapturePreparing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -152,6 +155,7 @@ function WorkspaceApp() {
     if (recoveryMode) {
       void window.refCanvas.system.getMigrationFailure().then(setMigrationFailure);
     }
+    void window.refCanvas.system.getStartupHealth().then(setStartupHealth);
   }, [recoveryMode]);
 
   useEffect(() => {
@@ -183,6 +187,17 @@ function WorkspaceApp() {
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    const onToast = (event: Event) => {
+      const message = (event as CustomEvent<string>).detail;
+      if (!message) return;
+      setNotice(message);
+      window.setTimeout(() => setNotice(null), 4200);
+    };
+    window.addEventListener("refcanvas:toast", onToast);
+    return () => window.removeEventListener("refcanvas:toast", onToast);
   }, []);
 
   useEffect(() => {
@@ -329,18 +344,30 @@ function WorkspaceApp() {
   }, []);
 
   if (recoveryMode) {
+    const isSafe = startupHealth?.mode === "safe";
+    const isTooNew = startupHealth?.mode === "too-new";
     return (
       <div className="recovery-screen">
         <div className="recovery-card">
           <span className="brand-mark">R</span>
-          <h1>{translate("app.recoveryTitle")}</h1>
+          <h1>
+            {isTooNew
+              ? translate("app.schemaTooNewTitle")
+              : isSafe
+                ? translate("app.safeModeTitle")
+                : translate("app.recoveryTitle")}
+          </h1>
           <p>
-            {translate("app.recoveryDescription")}
+            {isTooNew
+              ? translate("app.schemaTooNewDescription")
+              : isSafe
+                ? translate("app.safeModeDescription")
+                : translate("app.recoveryDescription")}
           </p>
           <dl>
             <div>
               <dt>{translate("app.recoveryDatabaseFile")}</dt>
-              <dd>{migrationFailure?.databasePath ?? "…"}</dd>
+              <dd>{startupHealth?.databasePath ?? migrationFailure?.databasePath ?? "…"}</dd>
             </div>
             <div>
               <dt>{translate("app.recoveryBackupDirectory")}</dt>
@@ -357,6 +384,33 @@ function WorkspaceApp() {
             </div>
           ))}
           <div className="recovery-actions">
+            {isSafe && (
+              <>
+                <button
+                  className="secondary-button"
+                  onClick={() => {
+                    void window.refCanvas.system.recoverNewDatabase();
+                  }}
+                >
+                  {translate("app.safeModeNewDatabase")}
+                </button>
+                <button
+                  className="secondary-button"
+                  onClick={async () => {
+                    const backups = await window.refCanvas.system.recoverListBackups();
+                    if (!backups.length) {
+                      setNotice(translate("app.safeModeNoBackups"));
+                      window.setTimeout(() => setNotice(null), 4200);
+                      return;
+                    }
+                    const backup = backups[0]; // 最近备份
+                    void window.refCanvas.system.recoverRestoreBackup(backup.filename);
+                  }}
+                >
+                  {translate("app.safeModeRestore")}
+                </button>
+              </>
+            )}
             <button
               className="secondary-button"
               onClick={() => {
@@ -484,6 +538,12 @@ function WorkspaceApp() {
       )}
       {taskCenterOpen && <TaskCenter onClose={() => setTaskCenterOpen(false)} />}
       {notice && <div className="app-toast">{notice}</div>}
+      {startupHealth?.mode === "degraded" && (
+        <div className="degraded-banner" role="alert">
+          <span className="degraded-banner-icon">⚠</span>
+          <span>{translate("app.degradedBanner")}</span>
+        </div>
+      )}
       <header className="titlebar">
         <div className="titlebar-left">
           <div className="brand">

@@ -62,6 +62,20 @@ interface SystemIpcDependencies {
   getLibraryManager(): LibraryManager;
   /** 启动期迁移失败时的恢复信息；失败时 Renderer 展示恢复页而非主工作区。 */
   getMigrationRecovery(): MigrationRecoveryInfo;
+  /** SPEC-1/SPEC-7：启动健康状态（正常 / 只读降级 / 安全模式 / 版本过新）。 */
+  getStartupHealth(): {
+    mode: "ok" | "degraded" | "safe" | "too-new";
+    databasePath: string | null;
+    reason: string | null;
+  };
+  /** SPEC-1 安全模式：列出最近备份（供"从最近备份恢复"）。 */
+  recoverListBackups(): Promise<
+    Array<{ filename: string; path: string; createdAt: string }>
+  >;
+  /** SPEC-1 安全模式：从指定备份恢复主库并重启。 */
+  recoverRestoreBackup(filename: string): Promise<void>;
+  /** SPEC-1 安全模式：新建空库（删除损坏主库）并重启。 */
+  recoverNewDatabase(): Promise<void>;
   getMainWindow(): BrowserWindow | null;
   closeCaptureWindow(): void;
   openCaptureWindow(display: Display): void;
@@ -621,6 +635,19 @@ export function registerSystemIpc(
   ipc.handle("system:get-migration-failure", () => {
     // 迁移失败时不依赖 database（可能未打开），恢复信息由启动流程缓存提供。
     return dependencies.getMigrationRecovery();
+  });
+  ipc.handle("system:get-startup-health", () => {
+    return dependencies.getStartupHealth();
+  });
+  ipc.handle("system:recover-list-backups", () => {
+    return dependencies.recoverListBackups();
+  });
+  ipc.handle("system:recover-restore-backup", async (filename) => {
+    const parsed = z.string().min(1).max(32_768).parse(filename);
+    await dependencies.recoverRestoreBackup(parsed);
+  });
+  ipc.handle("system:recover-new-database", async () => {
+    await dependencies.recoverNewDatabase();
   });
   ipc.handle("system:write-clipboard", (text) => {
     const value = z.string().max(100_000).parse(text);

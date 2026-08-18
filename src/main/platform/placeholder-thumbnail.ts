@@ -61,7 +61,7 @@ export async function genericPlaceholderThumbnail(
   const width = Math.max(64, Math.min(640, Math.round(size.width)));
   const height = Math.max(48, Math.min(480, Math.round(size.height)));
   return sharp(Buffer.from(genericPlaceholderSvg(extension, width, height)))
-    .png()
+    .webp({ quality: 85 })
     .toBuffer();
 }
 
@@ -94,7 +94,7 @@ export async function fileIconPlaceholderThumbnail(
   <image href="data:image/png;base64,${iconPng.toString("base64")}" x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}"/>
   <text x="${Math.round(width / 2)}" y="${labelY}" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" font-weight="600" fill="#a7b0ab">${label}</text>
 </svg>`;
-    return sharp(Buffer.from(svg)).png().toBuffer();
+    return sharp(Buffer.from(svg)).webp({ quality: 85 }).toBuffer();
   } catch {
     return genericPlaceholderThumbnail(extension, size);
   }
@@ -126,7 +126,7 @@ export async function systemFileIconThumbnail(
         fit: "contain",
         background: { r: 255, g: 255, b: 255, alpha: 1 },
       })
-      .png()
+      .webp({ quality: 85 })
       .toBuffer();
   } catch {
     return genericPlaceholderThumbnail(extension, size);

@@ -1880,6 +1880,22 @@
   user-select: text;
 }
 
+.degraded-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #3a2620;
+  color: #f0c0a0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(229, 140, 90, 0.35);
+}
+
+.degraded-banner-icon {
+  flex: none;
+  font-size: 13px;
+}
+
 .capture-overlay > img,
 .capture-shade {
   position: absolute;

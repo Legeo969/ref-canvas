@@ -11,9 +11,20 @@ describe("resources IPC mount events", () => {
   const temporaryDirectories: string[] = [];
 
   afterEach(async () => {
-    await Promise.all(temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true })
-    ));
+    // Windows 上 sharp/libvips 写完 WebP 后文件句柄可能延迟释放，
+    // 直接 rm 会触发 EBUSY；短暂等待并重试几次。
+    const removeWithRetry = async (directory: string, retries = 5) => {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          await rm(directory, { recursive: true, force: true });
+          return;
+        } catch (error) {
+          if (attempt === retries - 1) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+      }
+    };
+    await Promise.all(temporaryDirectories.splice(0).map(removeWithRetry));
   });
 
   it("broadcasts successful mount additions and removals", async () => {
@@ -64,6 +75,7 @@ describe("resources IPC mount events", () => {
       getScriptsService: () => ({}),
       previewTokens: {},
       notifyMountsChanged,
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1];
     registerResourcesIpc(ipc, dependencies);
 
@@ -115,6 +127,7 @@ describe("resources IPC mount events", () => {
       getScriptsService: () => ({}),
       previewTokens: {},
       notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1];
     registerResourcesIpc(ipc, dependencies);
 
@@ -146,6 +159,7 @@ describe("resources IPC mount events", () => {
       getProviderRegistry: () => ({}), getThumbnailWorker: () => null,
       getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
     const palette = await handlers.get("media:palette")?.(filename, { limit: 2 });
@@ -163,7 +177,7 @@ describe("resources IPC mount events", () => {
       const outputPath = input.outputPath!;
       await sharp({
         create: { width: 8, height: 4, channels: 4, background: { r: 80, g: 140, b: 210, alpha: 1 } },
-      }).png().toFile(outputPath);
+      }).webp({ quality: 85 }).toFile(outputPath);
       return { path: outputPath, width: 8, height: 4 };
     });
     const provider = { thumbnail };
@@ -183,6 +197,7 @@ describe("resources IPC mount events", () => {
       getProviderRegistry: () => registry, getThumbnailWorker: () => null,
       getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
     const palette = await handlers.get("media:palette")?.(filename, { limit: 3 });
@@ -201,7 +216,7 @@ describe("resources IPC mount events", () => {
       const outputPath = input.outputPath!;
       await sharp({
         create: { width: 8, height: 4, channels: 4, background: { r: 80, g: 140, b: 210, alpha: 1 } },
-      }).png().toFile(outputPath);
+      }).webp({ quality: 85 }).toFile(outputPath);
       return { path: outputPath, width: 8, height: 4 };
     });
     const registry = {
@@ -220,6 +235,7 @@ describe("resources IPC mount events", () => {
       getProviderRegistry: () => registry, getThumbnailWorker: () => null,
       getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
     await handlers.get("media:palette")?.(filename, { limit: 3 });
@@ -237,13 +253,13 @@ describe("resources IPC mount events", () => {
       realPath: filename,
       size,
       mtimeMs,
-      variant: "thumbnail-1920x1920-png",
+      variant: "thumbnail-1920x1920-webp",
     });
     const displayDirectory = path.join(directory, "directory");
     await mkdir(displayDirectory, { recursive: true });
     await sharp({
       create: { width: 8, height: 4, channels: 4, background: { r: 200, g: 40, b: 20, alpha: 1 } },
-    }).png().toFile(path.join(displayDirectory, `${displayKey}.png`));
+    }).webp({ quality: 85 }).toFile(path.join(displayDirectory, `${displayKey}.webp`));
     const thumbnail = vi.fn();
     const registry = {
       invoke: vi.fn(async (_kind, _extension, capability, run) => ({
@@ -261,6 +277,7 @@ describe("resources IPC mount events", () => {
       getProviderRegistry: () => registry, getThumbnailWorker: () => null,
       getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
     const palette = await handlers.get("media:palette")?.(filename, { limit: 3 });
@@ -290,6 +307,7 @@ describe("resources IPC mount events", () => {
       getScriptsService: () => ({ list: () => [], unregister: vi.fn(), register, run }),
       previewTokens: {},
       notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
     expect(() => handlers.get("scripts:register")?.({
@@ -329,6 +347,7 @@ describe("resources IPC mount events", () => {
       getScriptsService: () => ({}),
       previewTokens: {},
       notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
       windowForSender: () => ({}) as Electron.BrowserWindow,
       writeAccess: { authorize },
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);

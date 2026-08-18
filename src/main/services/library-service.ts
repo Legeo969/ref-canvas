@@ -551,15 +551,24 @@ export class LibraryService {
     }
     const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
     const minScore = Math.min(Math.max(options.minScore ?? 70, 0), 100);
-    return this.database
-      .listVisualSignatures(id)
-      .map((candidate) => ({
-        id: candidate.id,
-        score: visualSimilarity(source!, candidate),
-      }))
-      .filter((candidate) => candidate.score >= minScore)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, limit)
+    // SPEC-4：分批消费签名并维护有界 top-N 堆，避免全库签名一次 materialize。
+    const best: Array<{ id: string; score: number }> = [];
+    const pushCandidate = (candidate: { id: string; score: number }): void => {
+      if (candidate.score < minScore) return;
+      best.push(candidate);
+      best.sort((left, right) => right.score - left.score);
+      if (best.length > limit) best.length = limit;
+    };
+    await this.database.forEachVisualSignature(256, (batch) => {
+      for (const candidate of batch) {
+        if (candidate.id === id) continue; // 排除源资产自身
+        pushCandidate({
+          id: candidate.id,
+          score: visualSimilarity(source!, candidate),
+        });
+      }
+    });
+    return best
       .flatMap((candidate) => {
         const similar = this.database.getAsset(candidate.id);
         return similar ? [{ asset: similar, score: candidate.score }] : [];
@@ -1154,15 +1163,18 @@ export class LibraryService {
   }
   async refreshLinkStates(): Promise<number> {
     let missing = 0;
-    for (const asset of this.database.listAllAssetPaths()) {
-      try {
-        await stat(asset.path);
-        this.database.setLinkState(asset.id, "online");
-      } catch {
-        this.database.setLinkState(asset.id, "missing");
-        missing += 1;
+    // SPEC-4：分批消费，避免几十万资产路径一次全量加载。
+    await this.database.forEachActiveAssetPath(256, async (assets) => {
+      for (const asset of assets) {
+        try {
+          await stat(asset.path);
+          this.database.setLinkState(asset.id, "online");
+        } catch {
+          this.database.setLinkState(asset.id, "missing");
+          missing += 1;
+        }
       }
-    }
+    });
     this.emitLibraryChanged({ reason: "reconcile", paths: [] });
     return missing;
   }
@@ -1179,24 +1191,31 @@ export class LibraryService {
    * kept as purged records so canvases keep loading.
    */
   async removeFromLibrary(scope: SelectionScope): Promise<number> {
-    const ids = this.database.resolveSelection(scope);
     let removed = 0;
-    for (const id of ids) {
-      const asset = this.database.getAsset(id);
-      if (!asset || asset.lifecycle !== "active") continue;
-      this.database.deleteFileIdentityByAsset(id);
-      this.database.purgeRecord(id);
-      removed += 1;
-    }
+    // SPEC-4：分批消费 selection，避免几十万资产一次 materialize。
+    await this.database.forEachSelectionId(scope, 256, async (ids) => {
+      for (const id of ids) {
+        const asset = this.database.getAsset(id);
+        if (!asset || asset.lifecycle !== "active") continue;
+        this.database.deleteFileIdentityByAsset(id);
+        this.database.purgeRecord(id);
+        removed += 1;
+      }
+    });
     return removed;
   }
 
   async trashAssets(scope: SelectionScope): Promise<number> {
-    const ids = this.database.resolveSelection(scope);
-    return this.trashAssetsByAuthorizedPaths(ids.map((id) => ({
-      id,
-      sourcePath: this.database.getAsset(id)?.path ?? "",
-    })));
+    // SPEC-4：分批消费 selection，逐批回收，避免几十万资产一次 materialize。
+    let moved = 0;
+    await this.database.forEachSelectionId(scope, 256, async (ids) => {
+      const entries = ids.map((id) => ({
+        id,
+        sourcePath: this.database.getAsset(id)?.path ?? "",
+      }));
+      moved += await this.trashAssetsByAuthorizedPaths(entries);
+    });
+    return moved;
   }
 
   async trashAssetsByAuthorizedPaths(
@@ -1393,25 +1412,28 @@ export class LibraryService {
     };
     const normalizedFrom = path.resolve(fromRoot);
     const normalizedTo = path.resolve(toRoot);
-    for (const item of this.database.listAllAssetPaths()) {
-      const relative = path.relative(normalizedFrom, item.path);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) {
-        report.skipped += 1;
-        continue;
+    // SPEC-4：分批消费，避免几十万资产路径一次全量加载。
+    await this.database.forEachActiveAssetPath(256, async (assets) => {
+      for (const item of assets) {
+        const relative = path.relative(normalizedFrom, item.path);
+        if (relative.startsWith("..") || path.isAbsolute(relative)) {
+          report.skipped += 1;
+          continue;
+        }
+        const target = path.join(normalizedTo, relative);
+        if (!(await exists(target))) {
+          report.missing += 1;
+          continue;
+        }
+        const conflicting = this.database.getAssetByPath(target);
+        if (conflicting && conflicting.id !== item.id) {
+          report.conflicts += 1;
+          continue;
+        }
+        await this.relinkAsset(item.id, target);
+        report.updated += 1;
       }
-      const target = path.join(normalizedTo, relative);
-      if (!(await exists(target))) {
-        report.missing += 1;
-        continue;
-      }
-      const conflicting = this.database.getAssetByPath(target);
-      if (conflicting && conflicting.id !== item.id) {
-        report.conflicts += 1;
-        continue;
-      }
-      await this.relinkAsset(item.id, target);
-      report.updated += 1;
-    }
+    });
     return report;
   }
 
@@ -1604,31 +1626,34 @@ export class LibraryService {
       .filter((rule) => rule.enabled && rule.tags.length > 0);
     if (!rules.length) return 0;
     let tagged = 0;
-    for (const asset of this.database.listActiveAssets()) {
-      const filename = path.basename(asset.path);
-      const directory = path.dirname(asset.path);
-      const matched = new Set<string>();
-      for (const rule of rules) {
-        if (
-          (rule.filenamePattern &&
-            !globMatch(rule.filenamePattern, filename)) ||
-          (rule.pathPattern &&
-            directory.toLocaleLowerCase("en-US").includes(
-              rule.pathPattern.toLocaleLowerCase("en-US"),
-            )) ||
-          (rule.extension && asset.extension !== rule.extension.toLowerCase())
-        ) {
-          continue;
+    // SPEC-4：分批消费 active assets，避免几十万资产一次全量 materialize。
+    await this.database.forEachActiveAsset(256, (assets) => {
+      for (const asset of assets) {
+        const filename = path.basename(asset.path);
+        const directory = path.dirname(asset.path);
+        const matched = new Set<string>();
+        for (const rule of rules) {
+          if (
+            (rule.filenamePattern &&
+              !globMatch(rule.filenamePattern, filename)) ||
+            (rule.pathPattern &&
+              directory.toLocaleLowerCase("en-US").includes(
+                rule.pathPattern.toLocaleLowerCase("en-US"),
+              )) ||
+            (rule.extension && asset.extension !== rule.extension.toLowerCase())
+          ) {
+            continue;
+          }
+          for (const tag of rule.tags) matched.add(tag);
         }
-        for (const tag of rule.tags) matched.add(tag);
+        if (!matched.size) continue;
+        const combined = [...new Set([...asset.tags, ...matched])];
+        if (combined.length !== asset.tags.length) {
+          this.database.setAssetTags(asset.id, combined);
+          tagged += 1;
+        }
       }
-      if (!matched.size) continue;
-      const combined = [...new Set([...asset.tags, ...matched])];
-      if (combined.length !== asset.tags.length) {
-        this.database.setAssetTags(asset.id, combined);
-        tagged += 1;
-      }
-    }
+    });
     return tagged;
   }
 

@@ -90,9 +90,17 @@ export function GifExportStudio({
   const [result, setResult] = useState<ExportGifResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const probedRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
   const usesSharedTimelineRange = variant === "panel" && (
     sequence !== undefined || (initialPaths.length === 1 && initialRange !== undefined)
   );
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     for (const clip of clips) {
@@ -132,11 +140,11 @@ export function GifExportStudio({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (variant === "dialog" && event.key === "Escape" && !jobId) onClose();
+      if (variant === "dialog" && event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [jobId, onClose, variant]);
+  }, [onClose, variant]);
 
   const selectedSequenceFiles = useMemo(() => {
     if (!sequence) return [];
@@ -186,38 +194,57 @@ export function GifExportStudio({
     setJobId(nextJobId);
     setError(null);
     setResult(null);
-    try {
-      const exported = sequence
-        ? await window.refCanvas.sequences.exportGif({
-            files: selectedSequenceFiles,
-            outputDirectory,
-            baseName,
-            fps,
-            maxWidth,
-            colors,
-            dither,
-            jobId: nextJobId,
-          })
-        : await window.refCanvas.media.exportGif({
-            clips: clips.map((clip) => ({
-              inputPath: clip.inputPath,
-              startMs: Math.round(clip.startMs),
-              endMs: Math.round(clip.endMs),
-            })),
-            outputDirectory,
-            baseName,
-            fps,
-            maxWidth,
-            colors,
-            dither,
-            jobId: nextJobId,
-          });
-      setResult(exported);
-    } catch (value) {
-      setError(value instanceof Error ? value.message : translate("gif.exportFailed"));
-    } finally {
-      setJobId(null);
-    }
+    // 后台静默导出：不阻塞界面，用户可随时关闭工作台；进度在任务中心。
+    // 完成后若工作台已关闭（组件卸载），通过全局事件弹出完成提示。
+    const exportTask = sequence
+      ? window.refCanvas.sequences.exportGif({
+          files: selectedSequenceFiles,
+          outputDirectory,
+          baseName,
+          fps,
+          maxWidth,
+          colors,
+          dither,
+          jobId: nextJobId,
+        })
+      : window.refCanvas.media.exportGif({
+          clips: clips.map((clip) => ({
+            inputPath: clip.inputPath,
+            startMs: Math.round(clip.startMs),
+            endMs: Math.round(clip.endMs),
+          })),
+          outputDirectory,
+          baseName,
+          fps,
+          maxWidth,
+          colors,
+          dither,
+          jobId: nextJobId,
+        });
+    void exportTask
+      .then((exported) => {
+        if (!mountedRef.current) {
+          window.dispatchEvent(new CustomEvent("refcanvas:toast", {
+            detail: translate("gif.exported")
+              .replace("{size}", exported.sizeBytes ? formatBytes(exported.sizeBytes, "") : ""),
+          }));
+          return;
+        }
+        setResult(exported);
+      })
+      .catch((value) => {
+        const message = value instanceof Error
+          ? value.message
+          : translate("gif.exportFailed");
+        if (!mountedRef.current) {
+          window.dispatchEvent(new CustomEvent("refcanvas:toast", { detail: message }));
+          return;
+        }
+        setError(message);
+      })
+      .finally(() => {
+        if (mountedRef.current) setJobId(null);
+      });
   };
 
   const move = (index: number, delta: number) => {
@@ -234,7 +261,7 @@ export function GifExportStudio({
     <div
       className={variant === "panel" ? "workbench-embedded" : "quick-preview-backdrop"}
       role="presentation"
-      onMouseDown={() => variant === "dialog" && !jobId && onClose()}
+      onMouseDown={() => variant === "dialog" && onClose()}
     >
       <section
         className={`gif-export-studio ${variant === "panel" ? "embedded" : ""}`}
@@ -253,7 +280,7 @@ export function GifExportStudio({
       >
         <header>
           <div><Film size={18} /><div><h2>{translate("gif.studio")}</h2><p>{translate("gif.studioHint")}</p></div></div>
-          {variant === "dialog" && <button className="mini-icon-button" aria-label={translate("gif.closeStudio")} disabled={Boolean(jobId)} onClick={onClose}><X size={17} /></button>}
+          {variant === "dialog" && <button className="mini-icon-button" aria-label={translate("gif.closeStudio")} onClick={onClose}><X size={17} /></button>}
         </header>
 
         <div className="gif-studio-body">

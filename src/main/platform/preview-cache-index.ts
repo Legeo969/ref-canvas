@@ -18,13 +18,47 @@ export interface PreviewCacheRecord {
 const FAILURE_TTL_MS = 30_000;
 const ACCESS_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 
+/** SPEC-5：触发式 prune 的累计新增字节阈值（超过则触发一次 prune）。 */
+const PRUNE_TRIGGER_BYTES = 200 * 1024 * 1024;
+/** SPEC-5：两次 prune 之间的最小间隔。 */
+const PRUNE_MIN_INTERVAL_MS = 10 * 60 * 1_000;
+
+export interface PreviewCacheIndexOptions {
+  /** 超过该上限（字节）时 prune 会清理最久未访问的条目。默认 2GB。 */
+  maximumBytes?: number;
+  /** SPEC-5：触发式 prune 的累计新增阈值（默认 200MB）。 */
+  pruneTriggerBytes?: number;
+  /** SPEC-5：两次 prune 最小间隔（默认 10 分钟）。 */
+  pruneMinIntervalMs?: number;
+  /** SPEC-5：prune 完成后回调（供上层记日志 / 回收文件）。 */
+  onPrune?: (result: {
+    removedFiles: string[];
+    totalBefore: number;
+    totalAfter: number;
+    elapsedMs: number;
+  }) => void;
+}
+
 export class PreviewCacheIndex {
   private readonly database: Database.Database;
+  private readonly maximumBytes: number;
+  private readonly pruneTriggerBytes: number;
+  private readonly pruneMinIntervalMs: number;
+  private readonly onPrune?: PreviewCacheIndexOptions["onPrune"];
+  /** 自上次 prune 以来成功写入累计的字节数。 */
+  private accumulatedBytes = 0;
+  /** 上次执行 prune 的时间戳。 */
+  private lastPruneAtMs = 0;
+  /** 避免 setImmediate 排队时重复调度。 */
+  private pruneScheduled = false;
 
-  constructor(
-    filename: string,
-    private readonly maximumBytes = 2 * 1024 * 1024 * 1024,
-  ) {
+  constructor(filename: string, options: PreviewCacheIndexOptions | number = {}) {
+    const resolved: PreviewCacheIndexOptions =
+      typeof options === "number" ? { maximumBytes: options } : options;
+    this.maximumBytes = resolved.maximumBytes ?? 2 * 1024 * 1024 * 1024;
+    this.pruneTriggerBytes = resolved.pruneTriggerBytes ?? PRUNE_TRIGGER_BYTES;
+    this.pruneMinIntervalMs = resolved.pruneMinIntervalMs ?? PRUNE_MIN_INTERVAL_MS;
+    this.onPrune = resolved.onPrune;
     mkdirSync(path.dirname(filename), { recursive: true });
     this.database = new Database(filename);
     this.database.pragma("journal_mode = WAL");
@@ -86,7 +120,12 @@ export class PreviewCacheIndex {
   }
 
   recordSuccess(key: string, filename: string, size: number, now = Date.now()): void {
+    // SPEC-5：累计新增字节，超过阈值时在后台调度一次 prune（节流）。
+    this.accumulatedBytes += size;
     this.upsert(key, filename, size, "success", 0, now);
+    if (this.accumulatedBytes >= this.pruneTriggerBytes) {
+      this.schedulePrune();
+    }
   }
 
   recordFailure(key: string, now = Date.now()): void {
@@ -100,7 +139,45 @@ export class PreviewCacheIndex {
       .run(key);
   }
 
+  /**
+   * SPEC-5：事件触发 + 节流的后台 prune。用 setImmediate 不阻塞主线程，
+   * 且两次执行间隔不少于 `pruneMinIntervalMs`。
+   */
+  private schedulePrune(): void {
+    if (this.pruneScheduled) return;
+    if (Date.now() - this.lastPruneAtMs < this.pruneMinIntervalMs) {
+      // 节流期内：重置累计值但本周期内不再触发（避免刚 prune 完又排队）。
+      this.accumulatedBytes = 0;
+      return;
+    }
+    this.pruneScheduled = true;
+    setImmediate(() => {
+      this.pruneScheduled = false;
+      this.accumulatedBytes = 0;
+      const started = Date.now();
+      const totalBefore = this.database
+        .prepare("SELECT COALESCE(SUM(size), 0) AS total FROM preview_cache WHERE status = 'success'")
+        .get() as { total: number };
+      const removedFiles = this.pruneInternal(Date.now());
+      const totalAfter = this.database
+        .prepare("SELECT COALESCE(SUM(size), 0) AS total FROM preview_cache WHERE status = 'success'")
+        .get() as { total: number };
+      this.lastPruneAtMs = Date.now();
+      this.onPrune?.({
+        removedFiles,
+        totalBefore: totalBefore.total,
+        totalAfter: totalAfter.total,
+        elapsedMs: Date.now() - started,
+      });
+    });
+  }
+
   prune(now = Date.now()): string[] {
+    this.lastPruneAtMs = Date.now();
+    return this.pruneInternal(now);
+  }
+
+  private pruneInternal(now = Date.now()): string[] {
     const expired = this.database
       .prepare(
         "SELECT filename FROM preview_cache WHERE accessed_at_ms < ? AND filename <> ''",
@@ -140,7 +217,40 @@ export class PreviewCacheIndex {
     this.database.exec("DELETE FROM preview_cache");
   }
 
+  /**
+   * SPEC-2：列出所有有效（success）缓存文件路径，用于库打包导出。
+   * 只返回仍存在的文件，避免打包已被 LRU 剔除的孤儿文件。
+   */
+  listValidFilenames(): string[] {
+    const rows = this.database
+      .prepare(
+        "SELECT filename FROM preview_cache WHERE status = 'success' AND filename <> ''",
+      )
+      .all() as Array<{ filename: string }>;
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const row of rows) {
+      if (seen.has(row.filename)) continue;
+      seen.add(row.filename);
+      result.push(row.filename);
+    }
+    return result;
+  }
+
+  /**
+   * SPEC-8：主动 WAL checkpoint（PASSIVE 不阻塞读者；TRUNCATE 仅在退出前）。
+   */
+  checkpoint(mode: "PASSIVE" | "TRUNCATE" = "PASSIVE"): void {
+    try {
+      this.database.pragma(`wal_checkpoint(${mode})`);
+    } catch {
+      // best-effort。
+    }
+  }
+
   close(): void {
+    // SPEC-8：退出前 TRUNCATE 收缩 WAL。
+    this.checkpoint("TRUNCATE");
     this.database.close();
   }
 

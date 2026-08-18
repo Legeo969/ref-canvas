@@ -5,6 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { packagedFfmpegPath } from "./ffmpeg-tools";
 import { readFfprobeFullMetadata } from "./ffprobe-full";
+import { defaultExrLayer } from "./exr-header";
+import { prepareExrSequenceForConcat } from "./exr-export-png";
 
 const execFileAsync = promisify(execFile);
 
@@ -56,17 +58,30 @@ export async function exportSequenceToMp4(
 ): Promise<Mp4ExportResult> {
   if (!options.files.length) throw new Error("MP4_EXPORT_EMPTY");
   const tempDirectory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-mp4-"));
+  let exrPngDirectory: string | null = null;
   try {
+    // Unreal 多层 EXR 常用 PIZ/DWAA 压缩，ffmpeg 内置解码器解不了。用 OIIO
+    // 逐帧解码成临时 PNG 再 concat，避免导出空白 MP4。保持源尺寸（H.264
+    // 需要偶数尺寸，源 EXR 通常是偶数；不缩放避免奇数高度）。
+    const exrPng = await prepareExrSequenceForConcat(
+      options.files, null, signal,
+    );
+    const frames = exrPng?.files ?? options.files;
+    exrPngDirectory = exrPng?.tempDirectory ?? null;
     const listPath = path.join(tempDirectory, "frames.txt");
     const frameDuration = 1 / Math.max(1, options.fps);
     // concat demuxer：每帧显式 duration；缺帧天然跳过（文件列表只含存在的帧）。
-    const lines = options.files
-      .map((file) => `file '${file.replaceAll("'", "'\\''")}'`)
+    // Windows 反斜杠会被 concat demuxer 当作转义符解析，统一转正斜杠。
+    const lines = frames
+      .map((file) => `file '${file.replace(/\\/g, "/").replaceAll("'", "'\\''")}'`)
       .join(`\nduration ${frameDuration}\n`);
     await writeFile(listPath, `${lines}\nduration ${frameDuration}\n`, "utf8");
+    // 已走 OIIO 预解码（PNG）时不要传 -layer；仅 ffmpeg 直读 EXR 时需要。
+    const layer = exrPng ? null : await defaultExrLayer(options.files);
 
     const args = [
       "-y",
+      ...(layer ? ["-layer", layer] : []),
       "-f", "concat",
       "-safe", "0",
       "-i", listPath,
@@ -107,6 +122,9 @@ export async function exportSequenceToMp4(
     return { width, height, durationSeconds };
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
+    if (exrPngDirectory) {
+      await rm(exrPngDirectory, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 

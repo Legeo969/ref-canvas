@@ -30,7 +30,7 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type {
   DirectoryBatchAction,
@@ -67,6 +67,7 @@ import {
 import { useAppStore } from "../app/store";
 import { translate } from "../app/i18n";
 import { placeTriggerMenu } from "../app/menu-position";
+import { useStableCallback } from "../app/use-stable-callback";
 import { useDialog } from "./DialogProvider";
 import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
 import { FolderGlyph } from "./FolderGlyph";
@@ -131,10 +132,10 @@ interface DirectoryCardProps {
   tags?: string[];
   selected: boolean;
   query: string;
-  onEnter(): void;
-  onSelect(event: React.MouseEvent): void;
-  onPreview(): void;
-  onDragOut(): void;
+  onEnter(entry: DirectoryEntry): void;
+  onSelect(entry: DirectoryEntry, event: React.MouseEvent): void;
+  onPreview(entry: DirectoryEntry): void;
+  onDragOut(entry: DirectoryEntry): void;
   /** 阶段 5：文件夹打开方式（single = 单击进入，double = 双击进入）。 */
   folderClickMode: "single" | "double";
   /** 阶段 5：flatten 视图下显示相对路径（子目录条目）。 */
@@ -153,7 +154,7 @@ export function directoryThumbnailSource(
 }
 
 /** 未索引文件的预览/操作卡片（目录模式下复用虚拟网格布局）。 */
-export function DirectoryCard({
+export const DirectoryCard = memo(function DirectoryCard({
   entry,
   tags,
   selected,
@@ -235,18 +236,18 @@ export function DirectoryCard({
           requestToken(priority);
           preview.retry();
         }
-        if (entry.isDirectory && folderClickMode === "single") onEnter();
-        else onSelect(event);
+        if (entry.isDirectory && folderClickMode === "single") onEnter(entry);
+        else onSelect(entry, event);
       }}
       onDoubleClick={() => {
-        if (entry.isDirectory && folderClickMode === "double") onEnter();
-        else if (!entry.isDirectory) onPreview();
+        if (entry.isDirectory && folderClickMode === "double") onEnter(entry);
+        else if (!entry.isDirectory) onPreview(entry);
       }}
       draggable
       onDragStart={(event) => {
         if (event.altKey && !entry.isDirectory) {
           event.preventDefault();
-          onDragOut();
+          onDragOut(entry);
           return;
         }
         // 文件/文件夹均可拖入侧栏：文件建立索引引用，文件夹进入目录浏览。
@@ -324,12 +325,12 @@ export function DirectoryCard({
       </span>
     </button>
   );
-}
+});
 
 /** 文件夹区紧凑行（迅雷式多列行）：FolderGlyph + 暖黄名称，行高 40px。
  * 交互与 DirectoryRow 一致（单击/双击进入、选中、拖拽、右键菜单）。
  * 仅出现在文件夹区（索引空间 [0, folderCount) 全为目录条目）。 */
-export function FolderRow({
+export const FolderRow = memo(function FolderRow({
   entry,
   selected,
   query,
@@ -343,10 +344,10 @@ export function FolderRow({
   entry: DirectoryEntry;
   selected: boolean;
   query: string;
-  onEnter(): void;
-  onSelect(event: React.MouseEvent): void;
-  onPreview(): void;
-  onDragOut(): void;
+  onEnter(entry: DirectoryEntry): void;
+  onSelect(entry: DirectoryEntry, event: React.MouseEvent): void;
+  onPreview(entry: DirectoryEntry): void;
+  onDragOut(entry: DirectoryEntry): void;
   folderClickMode: "single" | "double";
   displayName?: string;
 }) {
@@ -355,17 +356,17 @@ export function FolderRow({
       className={`directory-folder-row ${selected ? "selected" : ""}`}
       draggable
       onClick={(event) => {
-        if (entry.isDirectory && folderClickMode === "single") onEnter();
-        else onSelect(event);
+        if (entry.isDirectory && folderClickMode === "single") onEnter(entry);
+        else onSelect(entry, event);
       }}
       onDoubleClick={() => {
-        if (entry.isDirectory && folderClickMode === "double") onEnter();
-        else if (!entry.isDirectory) onPreview();
+        if (entry.isDirectory && folderClickMode === "double") onEnter(entry);
+        else if (!entry.isDirectory) onPreview(entry);
       }}
       onDragStart={(event) => {
         if (event.altKey && !entry.isDirectory) {
           event.preventDefault();
-          onDragOut();
+          onDragOut(entry);
           return;
         }
         event.dataTransfer.setData(
@@ -383,7 +384,7 @@ export function FolderRow({
       </span>
     </button>
   );
-}
+});
 
 /** 目录排序键：名称 / 修改时间 / 大小。名称 = 服务端既有顺序。 */
 export type DirectorySortMode = "name" | "mtime" | "size";
@@ -415,17 +416,17 @@ interface DirectoryRowProps {
   query: string;
   /** 序列首帧条目在列表视图下展示帧数。 */
   sequenceFrameCount?: number;
-  onEnter(): void;
-  onSelect(event: React.MouseEvent): void;
-  onPreview(): void;
-  onDragOut(): void;
+  onEnter(entry: DirectoryEntry): void;
+  onSelect(entry: DirectoryEntry, event: React.MouseEvent): void;
+  onPreview(entry: DirectoryEntry): void;
+  onDragOut(entry: DirectoryEntry): void;
   folderClickMode: "single" | "double";
   displayName?: string;
 }
 
 /** 列表视图行：图标 + 名称 + 元信息，复用与 DirectoryCard 相同的交互
  *（单击选中 / 双击预览 / 文件夹单击或双击进入 / 拖拽 / Alt 拖出）。 */
-export function DirectoryRow({
+export const DirectoryRow = memo(function DirectoryRow({
   entry,
   selected,
   query,
@@ -442,17 +443,17 @@ export function DirectoryRow({
       className={`directory-row ${selected ? "selected" : ""}`}
       draggable
       onClick={(event) => {
-        if (entry.isDirectory && folderClickMode === "single") onEnter();
-        else onSelect(event);
+        if (entry.isDirectory && folderClickMode === "single") onEnter(entry);
+        else onSelect(entry, event);
       }}
       onDoubleClick={() => {
-        if (entry.isDirectory && folderClickMode === "double") onEnter();
-        else if (!entry.isDirectory) onPreview();
+        if (entry.isDirectory && folderClickMode === "double") onEnter(entry);
+        else if (!entry.isDirectory) onPreview(entry);
       }}
       onDragStart={(event) => {
         if (event.altKey && !entry.isDirectory) {
           event.preventDefault();
-          onDragOut();
+          onDragOut(entry);
           return;
         }
         event.dataTransfer.setData(
@@ -481,7 +482,7 @@ export function DirectoryRow({
       </span>
     </button>
   );
-}
+});
 
 /** 目录模式素材区：虚拟网格 + 顶部目录搜索（流式/可取消）+ 导航/预览。 */
 export function DirectoryAssetPanel() {
@@ -553,6 +554,12 @@ export function DirectoryAssetPanel() {
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const viewOptionsRef = useRef<HTMLDivElement>(null);
+  const viewOptionsMenuRef = useRef<HTMLDivElement | null>(null);
+  const [viewOptionsPosition, setViewOptionsPosition] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+  } | null>(null);
   // 参考图重设计：视图模式 / 卡片缩放 / 分组折叠 / 排序键。
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [cardScale, setCardScale] = useState(1);
@@ -769,28 +776,57 @@ export function DirectoryAssetPanel() {
 
   // 视图选项 popover：点击外部 / Escape / 窗口缩放或滚动时关闭，
   // 与仓库其他 popover（如图层菜单）的外部点击 dismiss 模式一致。
+  // portal 到 body 逃逸 .dir-format-filter 的 overflow-x: auto 裁剪。
+  const updateViewOptionsPosition = useCallback(() => {
+    const trigger = viewOptionsRef.current;
+    if (!trigger) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuHeight = viewOptionsMenuRef.current?.offsetHeight ?? 280;
+    const placement = placeTriggerMenu(
+      triggerRect,
+      { width: 220, height: menuHeight },
+      { width: window.innerWidth, height: window.innerHeight },
+      6,
+      8,
+      "right",
+    );
+    setViewOptionsPosition(placement);
+  }, []);
+
   useEffect(() => {
     if (!viewOptionsOpen) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!viewOptionsRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !viewOptionsRef.current?.contains(target) &&
+        !viewOptionsMenuRef.current?.contains(target)
+      ) {
         setViewOptionsOpen(false);
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setViewOptionsOpen(false);
     };
-    const dismiss = () => setViewOptionsOpen(false);
+    const reposition = () => updateViewOptionsPosition();
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", dismiss);
-    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", dismiss);
-      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
     };
-  }, [viewOptionsOpen]);
+  }, [viewOptionsOpen, updateViewOptionsPosition]);
+
+  useLayoutEffect(() => {
+    if (!viewOptionsOpen) {
+      setViewOptionsPosition(null);
+      return;
+    }
+    updateViewOptionsPosition();
+  }, [viewOptionsOpen, updateViewOptionsPosition]);
 
   // 排序菜单：portal 到 body 逃逸 .dir-format-filter 的 overflow-x: auto 裁剪。
   // 外部点击 / Escape 关闭；滚动与窗口尺寸变化时重定位（fixed 坐标）。
@@ -1698,25 +1734,39 @@ export function DirectoryAssetPanel() {
           initialValue: defaultDirectory,
         },
       ],
-      onSubmit: async (values) => {
-        if (isVideo) {
-          const result = await window.refCanvas.media.exportMp4({
-            inputPath: entry.path,
-            outputDirectory: values.outputDirectory,
-            baseName,
-            presetId: values.preset,
-          });
-          showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
-        } else {
-          const result = await window.refCanvas.sequences.exportMp4({
-            files: sequenceGroup ? sequenceGroup.files : [entry.path],
-            fps,
-            presetId: values.preset,
-            outputDirectory: values.outputDirectory,
-            baseName,
-          });
-          showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
-        }
+      onSubmit: (values) => {
+        // 后台静默导出：点击后立即关闭对话框，导出转后台执行（进度见任务
+        // 中心），完成后底部提示，避免长时间占用工作界面。
+        const outputDirectory = values.outputDirectory;
+        const presetId = values.preset;
+        void (async () => {
+          try {
+            if (isVideo) {
+              const result = await window.refCanvas.media.exportMp4({
+                inputPath: entry.path,
+                outputDirectory,
+                baseName,
+                presetId,
+              });
+              showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
+            } else {
+              const result = await window.refCanvas.sequences.exportMp4({
+                files: sequenceGroup ? sequenceGroup.files : [entry.path],
+                fps,
+                presetId,
+                outputDirectory,
+                baseName,
+              });
+              showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
+            }
+          } catch (error) {
+            showShortcutNotice(
+              error instanceof Error
+                ? error.message
+                : translate("directory.exportMp4Failed"),
+            );
+          }
+        })();
       },
     });
   };
@@ -2274,6 +2324,14 @@ export function DirectoryAssetPanel() {
    * 空间的起点（文件夹区 0，文件区 folderCount）。两区各自的行高/列数
    * 不同：文件夹区 = 紧凑多列行（40px），文件区 = 大缩略图卡片网格。
    */
+  // 稳定回调：卡片组件是 memo 的，回调引用必须稳定才能让 memo 浅比较
+  // 生效，否则每次父渲染传入新箭头函数导致全部卡片重建。
+  const stableEnter = useStableCallback((entry: DirectoryEntry) =>
+    store.openDirectory(entry.path),
+  );
+  const stableSelect = useStableCallback(selectEntry);
+  const stablePreview = useStableCallback(openPreview);
+  const stableDragOut = useStableCallback(dragOutEntry);
   const renderGridCell = (
     item: { entry: DirectoryEntry | null; absoluteIndex: number },
     topBase: number,
@@ -2333,10 +2391,10 @@ export function DirectoryAssetPanel() {
             }
             query={query}
             sequenceFrameCount={group?.files.length}
-            onEnter={() => void store.openDirectory(item.entry!.path)}
-            onSelect={(event) => selectEntry(item.entry!, event)}
-            onPreview={() => openPreview(item.entry!)}
-            onDragOut={() => dragOutEntry(item.entry!)}
+            onEnter={stableEnter}
+            onSelect={stableSelect}
+            onPreview={stablePreview}
+            onDragOut={stableDragOut}
             folderClickMode={previewSettings.folderClickMode}
             displayName={
               flattenMark
@@ -2388,10 +2446,10 @@ export function DirectoryAssetPanel() {
                 : selectedPaths.has(item.entry.path)
             }
             query={query}
-            onEnter={() => void store.openDirectory(item.entry!.path)}
-            onSelect={(event) => selectEntry(item.entry!, event)}
-            onPreview={() => openPreview(item.entry!)}
-            onDragOut={() => dragOutEntry(item.entry!)}
+            onEnter={stableEnter}
+            onSelect={stableSelect}
+            onPreview={stablePreview}
+            onDragOut={stableDragOut}
             folderClickMode={previewSettings.folderClickMode}
             displayName={
               flattenMark
@@ -2479,10 +2537,10 @@ export function DirectoryAssetPanel() {
               : selectedPaths.has(item.entry.path)
           }
           query={query}
-          onEnter={() => void store.openDirectory(item.entry!.path)}
-          onSelect={(event) => selectEntry(item.entry!, event)}
-          onPreview={() => openPreview(item.entry!)}
-          onDragOut={() => dragOutEntry(item.entry!)}
+          onEnter={stableEnter}
+          onSelect={stableSelect}
+          onPreview={stablePreview}
+          onDragOut={stableDragOut}
           folderClickMode={previewSettings.folderClickMode}
           displayName={
             flattenMark
@@ -2767,11 +2825,18 @@ export function DirectoryAssetPanel() {
           >
             <SlidersHorizontal size={16} />
           </button>
-          {viewOptionsOpen && (
+          {viewOptionsOpen && typeof document !== "undefined" && createPortal(
             <div
+              ref={viewOptionsMenuRef}
               className="dir-view-options-popover"
               role="group"
               aria-label={translate("directory.viewOptions")}
+              style={{
+                left: viewOptionsPosition?.left ?? 0,
+                top: viewOptionsPosition?.top ?? 0,
+                maxHeight: viewOptionsPosition?.maxHeight ?? 280,
+                visibility: viewOptionsPosition ? "visible" : "hidden",
+              }}
             >
               <div className="dir-view-options-section">
                 <span className="dir-view-options-label">
@@ -2834,7 +2899,8 @@ export function DirectoryAssetPanel() {
                 />
                 <span>{translate("directory.mergeSequences")}</span>
               </label>
-            </div>
+            </div>,
+            document.body,
           )}
         </div>
         </div>

@@ -7,13 +7,14 @@
  *   导出相对路径、跳过原因与导出时间。
  * - 部分失败不回滚已成功复制的文件；返回 copied/skipped/failed 摘要。
  */
-import { constants, copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
+import { constants, copyFile, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import type {
   CollectionExportSnapshot,
   ReferenceCollectionItem,
 } from "../../shared/contracts";
 import type { CollectionsRepository } from "../persistence/repositories/collections-repository-v17";
+import { writeFileDurable } from "../platform/fsync";
 
 export type { CollectionExportSnapshot } from "../../shared/contracts";
 
@@ -152,7 +153,10 @@ export class CollectionExportService {
       };
       const manifestPath = path.join(root, ".refcanvas-collection.json");
       try {
-        await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+        // SPEC-6：manifest 用原子写 + fsync，防止断电时清单半截导致导入失败。
+        await writeFileDurable(manifestPath, JSON.stringify(manifest, null, 2), {
+          encoding: "utf8",
+        });
       } catch {
         // manifest 写入失败不阻塞文件复制结果；manifestPath 保留为 null 语义由
         // 调用方按 failed 状态处理。

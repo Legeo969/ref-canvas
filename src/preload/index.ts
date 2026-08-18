@@ -161,6 +161,9 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("library:collect-project", boardId),
     migratePaths: (fromRoot, toRoot) =>
       ipcRenderer.invoke("library:migrate-paths", fromRoot, toRoot),
+    exportBundle: () => ipcRenderer.invoke("library:export-bundle"),
+    importBundle: (options) =>
+      ipcRenderer.invoke("library:import-bundle", options),
     stats: () => ipcRenderer.invoke("library:stats"),
   },
   libraries: {
@@ -538,6 +541,14 @@ const api: RefCanvasApi = {
     getAppInfo: () => ipcRenderer.invoke("system:get-app-info"),
     getMigrationFailure: () =>
       ipcRenderer.invoke("system:get-migration-failure"),
+    getStartupHealth: () =>
+      ipcRenderer.invoke("system:get-startup-health"),
+    recoverListBackups: () =>
+      ipcRenderer.invoke("system:recover-list-backups"),
+    recoverRestoreBackup: (filename) =>
+      ipcRenderer.invoke("system:recover-restore-backup", filename),
+    recoverNewDatabase: () =>
+      ipcRenderer.invoke("system:recover-new-database"),
     writeClipboard: (text) =>
       ipcRenderer.invoke("system:write-clipboard", text),
     getNavigationState: () =>

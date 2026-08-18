@@ -70,5 +70,5 @@ export async function renderObjThumbnail(
     return `<polygon points="${points}" fill="rgb(${value},${value + 4},${value + 2})" stroke="rgba(20,24,23,0.55)" stroke-width="0.7"/>`;
   }).join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#202423"/>${body}</svg>`;
-  await sharp(Buffer.from(svg)).png().toFile(outputPath);
+  await sharp(Buffer.from(svg)).webp({ quality: 85 }).toFile(outputPath);
 }

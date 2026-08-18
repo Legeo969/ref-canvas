@@ -1,4 +1,5 @@
 import { open } from "node:fs/promises";
+import path from "node:path";
 
 // Multi-channel renders (especially Unreal/OCIO output) can carry thousands
 // of channel and custom attributes. A 4 KiB prefix truncates valid headers
@@ -155,6 +156,17 @@ function readInt32LE(buffer: Buffer, offset: number): number {
 
 function readFloatLE(buffer: Buffer, offset: number): number {
   return buffer.readFloatLE(offset);
+}
+
+/**
+ * 从序列首帧解析默认显示层（Beauty/Final Image）。非 EXR 返回 null；
+ * 解析失败返回 null，调用方按无层处理（ffmpeg 默认读取顶层通道）。
+ */
+export async function defaultExrLayer(files: string[]): Promise<string | null> {
+  if (path.extname(files[0] ?? "").toLowerCase() !== ".exr") return null;
+  const header = await parseExrHeader(files[0]);
+  if (!header.valid) return null;
+  return selectDefaultExrLayer(deriveExrDisplayLayers(header.channels))?.name ?? null;
 }
 
 /**

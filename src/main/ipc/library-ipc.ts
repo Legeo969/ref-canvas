@@ -5,7 +5,10 @@ import { z } from "zod";
 import { assetColorLabels } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryService } from "../services/library-service";
+import type { LibraryManager } from "../services/library-manager";
+import { BundleService } from "../services/bundle-service";
 import type { SecureIpcRegistrar } from "../platform/secure-ipc";
+import { assertAbsoluteLocalPath } from "../platform/local-path-security";
 import type { WriteAccessController } from "../platform/write-access-controller";
 import {
   idSchema,
@@ -21,6 +24,9 @@ interface LibraryIpcDependencies {
   copyProjectAsset(assetId: string, destination: string): Promise<unknown>;
   getDatabase(): RefCanvasDatabase;
   getLibrary(): LibraryService;
+  getLibraryManager(): LibraryManager;
+  getThumbnailCacheDirectory(): string;
+  getPreviewCacheIndexFilenames(): string[];
   safeFilename(value: string): string;
   windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
   writeAccess: WriteAccessController;
@@ -111,7 +117,7 @@ export function registerLibraryIpc(
     database().deleteAssetAnnotation(idSchema.parse(id)),
   );
   ipc.handle("library:batch-update", (scope, patch) =>
-    database().batchUpdate(
+    database().batchUpdatePaged(
       selectionSchema.parse(scope),
       z.object({
         addTags: z.array(z.string().trim().min(1).max(64)).max(64).optional(),
@@ -125,7 +131,7 @@ export function registerLibraryIpc(
     ),
   );
   ipc.handle("library:batch-rename", (scope, pattern) =>
-    database().batchRename(
+    database().batchRenamePaged(
       selectionSchema.parse(scope),
       z.string().trim().min(1).max(256).parse(pattern),
     ),
@@ -476,4 +482,59 @@ export function registerLibraryIpc(
     return destination;
   });
   ipc.handle("library:stats", () => database().getLibraryStats());
+
+  // SPEC-2：库可移植性 —— 整机库打包导出 / 导入。
+  ipc.handleWithEvent("library:export-bundle", async (event) => {
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: "选择库导出目录",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const [targetDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "export",
+      [{ path: result.filePaths[0], mode: "destination" }],
+    );
+    const bundle = new BundleService({
+      getDatabase: dependencies.getDatabase,
+      getLibraryManager: dependencies.getLibraryManager,
+      getThumbnailCacheDirectory: dependencies.getThumbnailCacheDirectory,
+      getPreviewCacheIndexFilenames: dependencies.getPreviewCacheIndexFilenames,
+    });
+    return bundle.exportBundle(
+      targetDirectory,
+      `RefCanvas-库-${new Date().toISOString().slice(0, 10)}`,
+    );
+  });
+  ipc.handle("library:import-bundle", async (options) => {
+    const parsed = z
+      .object({
+        bundlePath: z.string().min(1).max(32_768),
+        rootRules: z
+          .array(
+            z.object({
+              from: z.string().min(1).max(32_768),
+              to: z.string().min(1).max(32_768),
+            }),
+          )
+          .max(128)
+          .default([]),
+      })
+      .parse(options);
+    const bundle = new BundleService({
+      getDatabase: dependencies.getDatabase,
+      getLibraryManager: dependencies.getLibraryManager,
+      getThumbnailCacheDirectory: dependencies.getThumbnailCacheDirectory,
+      getPreviewCacheIndexFilenames: dependencies.getPreviewCacheIndexFilenames,
+    });
+    const result = await bundle.importBundle(
+      assertAbsoluteLocalPath(parsed.bundlePath),
+      parsed.rootRules,
+    );
+    // 导入后自动重启以应用新库与路径重映射（仿备份恢复）。
+    const { app } = await import("electron");
+    app.relaunch();
+    app.exit(0);
+    return { ...result, requiresRestart: true };
+  });
 }

@@ -48,9 +48,12 @@ import { CollectionService } from "../services/collection-service";
 import { CollectionResolutionService } from "../services/collection-resolution-service";
 import { SettingsRepository } from "./repositories/settings-repository";
 import { hasSameAssetContentIdentity } from "./asset-content-identity";
+import { remapPath, pathKeyFor as remapPathKeyFor } from "../services/path-remap";
 
 export {
   DATABASE_SCHEMA_VERSION,
+  APP_MAX_SCHEMA_VERSION,
+  DatabaseSchemaTooNewError,
   readMigrationLog,
   runMigrationSteps,
 } from "./repositories/migration-repository";
@@ -193,6 +196,13 @@ export interface RefCanvasDatabaseOptions {
    * databases).
    */
   migrationBackupDirectory?: string;
+  /**
+   * Open the database read-only (SPEC-1 degraded mode). Used when the primary
+   * library fails its startup `quick_check`: we keep browse/read working but
+   * refuse every write instead of silently mutating a corrupt database.
+   * Enforces `PRAGMA query_only = ON` and skips migration/WAL setup.
+   */
+  readonly?: boolean;
 }
 
 export class RefCanvasDatabase {
@@ -204,10 +214,13 @@ export class RefCanvasDatabase {
   private readonly collectionsRepository: CollectionsRepository;
   private closed = false;
   readonly filename: string;
+  /** True when opened in SPEC-1 degraded (read-only) mode. */
+  readonly readOnly: boolean;
 
   constructor(filename: string, options: RefCanvasDatabaseOptions = {}) {
     this.filename = filename;
-    this.db = new Database(filename);
+    this.readOnly = options.readonly === true;
+    this.db = new Database(filename, this.readOnly ? { readonly: true } : {});
     this.assetsRepository = new AssetsRepository(this.db);
     this.boardsRepository = new BoardsRepository(this.db);
     this.migrationRepository = new MigrationRepository(
@@ -216,6 +229,12 @@ export class RefCanvasDatabase {
     );
     this.settingsRepository = new SettingsRepository(this.db);
     this.collectionsRepository = new CollectionsRepository(this.db);
+    if (this.readOnly) {
+      // 只读降级：不迁移、不设 WAL（写操作由 SQLite 层直接拒绝），
+      // 仅保留浏览/读取能力。
+      this.db.pragma("query_only = ON");
+      return;
+    }
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.migrate();
@@ -242,12 +261,28 @@ export class RefCanvasDatabase {
 
   /** 在内部连接的显式事务中执行操作（失败自动回滚）。 */
   transaction<T>(fn: () => T): T {
+    if (this.readOnly) {
+      throw new Error("DATABASE_READ_ONLY");
+    }
     const run = this.db.transaction(fn);
     return run();
   }
 
   async backupTo(filename: string): Promise<void> {
     await this.db.backup(filename);
+  }
+
+  /**
+   * SPEC-8：主动 WAL checkpoint。`PASSIVE` 不阻塞读者，用于 idle/导入完成后；
+   * `TRUNCATE` 阻塞读者把 WAL 收缩到最小，仅在退出前调用。只读模式跳过。
+   */
+  checkpoint(mode: "PASSIVE" | "TRUNCATE" = "PASSIVE"): void {
+    if (this.readOnly || this.closed) return;
+    try {
+      this.db.pragma(`wal_checkpoint(${mode})`);
+    } catch {
+      // best-effort：checkpoint 失败不影响主流程。
+    }
   }
 
   upsertAsset(
@@ -587,6 +622,18 @@ export class RefCanvasDatabase {
   resolveSelection(scope: SelectionScope): string[] {
     return this.assetsRepository.resolveSelection(scope);
   }
+
+  /**
+   * SPEC-4：分批迭代 selection 命中的 id，避免"全选→操作"把几十万 UUID 一次
+   * materialize 进内存。
+   */
+  forEachSelectionId(
+    scope: SelectionScope,
+    batchSize: number,
+    callback: (ids: string[]) => void | Promise<void>,
+  ): Promise<void> {
+    return this.assetsRepository.forEachSelectionId(scope, batchSize, callback);
+  }
   updateAsset(
     id: string,
     patch: {
@@ -780,6 +827,39 @@ export class RefCanvasDatabase {
     return ids.length;
   }
 
+  /**
+   * SPEC-4：分批批量更新，避免"全选→操作"一次 materialize 几十万 UUID。
+   * 返回处理的资产数。
+   */
+  async batchUpdatePaged(
+    scope: SelectionScope,
+    patch: BatchAssetPatch,
+  ): Promise<number> {
+    let count = 0;
+    await this.forEachSelectionId(scope, 256, async (ids) => {
+      for (const id of ids) {
+        const current = this.getAsset(id);
+        if (!current) continue;
+        this.updateAsset(id, {
+          favorite: patch.favorite,
+          rating: patch.rating,
+          colorLabel: patch.colorLabel,
+          notes: patch.notes,
+        });
+        if (patch.replaceTags) {
+          this.setAssetTags(id, patch.replaceTags);
+        } else if (patch.addTags?.length || patch.removeTags?.length) {
+          const tags = new Set(current.tags);
+          for (const tag of patch.addTags ?? []) tags.add(tag);
+          for (const tag of patch.removeTags ?? []) tags.delete(tag);
+          this.setAssetTags(id, [...tags]);
+        }
+        count += 1;
+      }
+    });
+    return count;
+  }
+
   batchRename(scope: SelectionScope, pattern: string): number {
     const ids = this.resolveSelection(scope);
     this.db.transaction(() => {
@@ -795,6 +875,30 @@ export class RefCanvasDatabase {
       });
     })();
     return ids.length;
+  }
+
+  /**
+   * SPEC-4：分批批量重命名，避免"全选→操作"一次 materialize 几十万 UUID。
+   * 返回处理的资产数。
+   */
+  async batchRenamePaged(scope: SelectionScope, pattern: string): Promise<number> {
+    let count = 0;
+    let index = 0;
+    await this.forEachSelectionId(scope, 256, (ids) => {
+      for (const id of ids) {
+        const asset = this.getAsset(id);
+        index += 1;
+        if (!asset) continue;
+        const title = pattern
+          .replaceAll("{name}", asset.title)
+          .replaceAll("{index}", String(index).padStart(3, "0"))
+          .trim();
+        if (!title || title.length > 256) throw new Error("INVALID_BATCH_TITLE");
+        this.updateAsset(id, { title });
+        count += 1;
+      }
+    });
+    return count;
   }
 
   setLinkState(id: string, state: AssetRecord["linkState"]): void {
@@ -899,6 +1003,48 @@ export class RefCanvasDatabase {
     ).all() as Array<{ id: string; path: string }>;
   }
 
+  /**
+   * SPEC-4：分批迭代 active 资产路径，避免 `listAllAssetPaths` 全量加载。
+   * 游标基于稳定排序的 `created_at` + `id`。
+   */
+  forEachActiveAssetPath(
+    batchSize: number,
+    callback: (assets: Array<{ id: string; path: string }>) => void | Promise<void>,
+  ): Promise<void> {
+    const limit = Math.max(1, Math.min(batchSize, 1_000));
+    let lastCreatedAt: string | null = null;
+    let lastId: string | null = null;
+    return (async () => {
+      for (;;) {
+        let rows: Array<{ id: string; path: string; created_at: string }>;
+        if (lastCreatedAt === null) {
+          rows = this.db.prepare(`
+            SELECT id, path, created_at FROM assets WHERE lifecycle = 'active'
+            ORDER BY created_at ASC, id ASC LIMIT ?
+          `).all(limit) as Array<{ id: string; path: string; created_at: string }>;
+        } else {
+          rows = this.db.prepare(`
+            SELECT id, path, created_at FROM assets WHERE lifecycle = 'active'
+              AND (created_at > ? OR (created_at = ? AND id > ?))
+            ORDER BY created_at ASC, id ASC LIMIT ?
+          `).all(lastCreatedAt, lastCreatedAt, lastId, limit) as Array<{
+            id: string;
+            path: string;
+            created_at: string;
+          }>;
+        }
+        if (rows.length === 0) break;
+        await callback(
+          rows.map(({ id, path: assetPath }) => ({ id, path: assetPath })),
+        );
+        const tail = rows[rows.length - 1]!;
+        lastCreatedAt = tail.created_at;
+        lastId = tail.id;
+        if (rows.length < limit) break;
+      }
+    })();
+  }
+
   setContentHash(id: string, hash: string): void {
     this.db.prepare("UPDATE assets SET content_hash = ? WHERE id = ?").run(hash, id);
   }
@@ -974,6 +1120,61 @@ export class RefCanvasDatabase {
       visualHash: row.visual_hash,
       colorSignature: row.color_signature,
     }));
+  }
+
+  /**
+   * SPEC-4：分批迭代 visual signatures，避免全库签名一次 materialize 做查重。
+   * 游标基于稳定排序的 `created_at` + `id`。
+   */
+  forEachVisualSignature(
+    batchSize: number,
+    callback: (signatures: Array<{
+      id: string;
+      visualHash: string;
+      colorSignature: string;
+    }>) => void | Promise<void>,
+  ): Promise<void> {
+    const limit = Math.max(1, Math.min(batchSize, 1_000));
+    let lastCreatedAt: string | null = null;
+    let lastId: string | null = null;
+    return (async () => {
+      for (;;) {
+        let rows: Array<{
+          id: string;
+          visual_hash: string;
+          color_signature: string;
+          created_at: string;
+        }>;
+        if (lastCreatedAt === null) {
+          rows = this.db.prepare(`
+            SELECT id, visual_hash, color_signature, created_at FROM assets
+            WHERE lifecycle = 'active' AND kind = 'image'
+              AND visual_hash IS NOT NULL AND color_signature IS NOT NULL
+            ORDER BY created_at ASC, id ASC LIMIT ?
+          `).all(limit) as typeof rows;
+        } else {
+          rows = this.db.prepare(`
+            SELECT id, visual_hash, color_signature, created_at FROM assets
+            WHERE lifecycle = 'active' AND kind = 'image'
+              AND visual_hash IS NOT NULL AND color_signature IS NOT NULL
+              AND (created_at > ? OR (created_at = ? AND id > ?))
+            ORDER BY created_at ASC, id ASC LIMIT ?
+          `).all(lastCreatedAt, lastCreatedAt, lastId, limit) as typeof rows;
+        }
+        if (rows.length === 0) break;
+        await callback(
+          rows.map((row) => ({
+            id: row.id,
+            visualHash: row.visual_hash,
+            colorSignature: row.color_signature,
+          })),
+        );
+        const tail = rows[rows.length - 1]!;
+        lastCreatedAt = tail.created_at;
+        lastId = tail.id;
+        if (rows.length < limit) break;
+      }
+    })();
   }
 
   markTrashed(id: string, trashPath: string): void {
@@ -1781,6 +1982,44 @@ export class RefCanvasDatabase {
     return this.hydrateAssets(rows.map(mapAsset));
   }
 
+  /**
+   * SPEC-4：分批迭代 active assets，避免几十万资产一次全量 materialize 进
+   * 内存。游标基于稳定排序的 `created_at` + `id`（created_at 可重复），每批
+   * 最多 `batchSize` 条；返回 false 表示已无更多。调用方应分批消费，不要
+   * 自行累积成全集。
+   */
+  forEachActiveAsset(
+    batchSize: number,
+    callback: (assets: AssetRecord[]) => void | Promise<void>,
+  ): Promise<void> {
+    const limit = Math.max(1, Math.min(batchSize, 1_000));
+    let lastCreatedAt: string | null = null;
+    let lastId: string | null = null;
+    return (async () => {
+      for (;;) {
+        let rows: AssetRow[];
+        if (lastCreatedAt === null) {
+          rows = this.db.prepare(
+            "SELECT * FROM assets WHERE lifecycle = 'active' ORDER BY created_at ASC, id ASC LIMIT ?",
+          ).all(limit) as AssetRow[];
+        } else {
+          rows = this.db.prepare(`
+            SELECT * FROM assets WHERE lifecycle = 'active'
+              AND (created_at > ? OR (created_at = ? AND id > ?))
+            ORDER BY created_at ASC, id ASC LIMIT ?
+          `).all(lastCreatedAt, lastCreatedAt, lastId, limit) as AssetRow[];
+        }
+        if (rows.length === 0) break;
+        const batch = this.hydrateAssets(rows.map(mapAsset));
+        await callback(batch);
+        const tail = rows[rows.length - 1]!;
+        lastCreatedAt = tail.created_at;
+        lastId = tail.id;
+        if (rows.length < limit) break;
+      }
+    })();
+  }
+
   setCustomThumbnail(id: string, pathOrNull: string | null): AssetRecord {
     if (!this.getAsset(id)) throw new Error("ASSET_NOT_FOUND");
     this.db.prepare(
@@ -2028,8 +2267,183 @@ export class RefCanvasDatabase {
     return this.settingsRepository.setPlayback(assetId, state);
   }
 
+  /**
+   * SPEC-2 库可移植性：把主库内所有绝对路径字段按根映射规则改写为新机器的
+   * 路径，并重算 `path_key` / `root_path` 等派生键。导入 bundle 后调用。
+   *
+   * 覆盖表：
+   * - assets: path / path_key / trash_path / original_source_path / custom_thumbnail_path
+   * - watch_roots: path
+   * - mount_roots: path
+   * - file_identities: path_key / root_path
+   * - reconcile_queue: root_path / filename
+   * - file_operations: source_path / target_path
+   * - collection_items: last_resolved_path / path_key / relative_path
+   * - boards document_json: 重写 `refasset://asset|thumbnail/<id>` 的 src（id 不变，无需改）
+   *
+   * 返回被改写的表名清单，供 BundleService 报告。`rules` 为空时不做任何改动。
+   */
+  remapPaths(
+    rules: Array<{ from: string; to: string }>,
+  ): Array<{ table: string; updated: number }> {
+    if (!rules.length) return [];
+    const result: Array<{ table: string; updated: number }> = [];
+    const now = new Date().toISOString();
+    const remap = (value: string | null): string | null =>
+      value && path.isAbsolute(value) ? remapPath(value, rules) : value;
+    const remapKey = (value: string | null): string | null =>
+      value && path.isAbsolute(value) ? remapPathKeyFor(remapPath(value, rules)!) : value;
+
+    // assets
+    const assetRows = this.db
+      .prepare("SELECT id, path, path_key, trash_path, original_source_path, custom_thumbnail_path FROM assets")
+      .all() as Array<{
+        id: string;
+        path: string;
+        path_key: string;
+        trash_path: string | null;
+        original_source_path: string | null;
+        custom_thumbnail_path: string | null;
+      }>;
+    let assetUpdated = 0;
+    const updateAssetPath = this.db.prepare(`
+      UPDATE assets SET path = ?, path_key = ?, trash_path = ?,
+        original_source_path = ?, custom_thumbnail_path = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    for (const row of assetRows) {
+      const newPath = remap(row.path);
+      const newTrash = remap(row.trash_path);
+      const newOriginal = remap(row.original_source_path);
+      const newCustom = remap(row.custom_thumbnail_path);
+      if (newPath === row.path && newTrash === row.trash_path &&
+          newOriginal === row.original_source_path && newCustom === row.custom_thumbnail_path) {
+        continue;
+      }
+      updateAssetPath.run(
+        newPath, newPath ? remapPathKeyFor(newPath) : row.path_key,
+        newTrash, newOriginal, newCustom, now, row.id,
+      );
+      assetUpdated += 1;
+    }
+    if (assetUpdated) result.push({ table: "assets", updated: assetUpdated });
+
+    // watch_roots
+    const watchRows = this.db
+      .prepare("SELECT id, path FROM watch_roots")
+      .all() as Array<{ id: string; path: string }>;
+    let watchUpdated = 0;
+    const updateWatch = this.db.prepare("UPDATE watch_roots SET path = ? WHERE id = ?");
+    for (const row of watchRows) {
+      const newPath = remap(row.path);
+      if (newPath === row.path) continue;
+      updateWatch.run(newPath, row.id);
+      watchUpdated += 1;
+    }
+    if (watchUpdated) result.push({ table: "watch_roots", updated: watchUpdated });
+
+    // mount_roots
+    const mountRows = this.db
+      .prepare("SELECT id, path FROM mount_roots")
+      .all() as Array<{ id: string; path: string }>;
+    let mountUpdated = 0;
+    const updateMount = this.db.prepare("UPDATE mount_roots SET path = ? WHERE id = ?");
+    for (const row of mountRows) {
+      const newPath = remap(row.path);
+      if (newPath === row.path) continue;
+      updateMount.run(newPath, row.id);
+      mountUpdated += 1;
+    }
+    if (mountUpdated) result.push({ table: "mount_roots", updated: mountUpdated });
+
+    // file_identities
+    const identityRows = this.db
+      .prepare("SELECT id, path_key, root_path FROM file_identities")
+      .all() as Array<{ id: string; path_key: string; root_path: string }>;
+    let identityUpdated = 0;
+    const updateIdentity = this.db.prepare(
+      "UPDATE file_identities SET path_key = ?, root_path = ? WHERE id = ?",
+    );
+    for (const row of identityRows) {
+      const newKey = remapKey(row.path_key);
+      const newRoot = remap(row.root_path);
+      if (newKey === row.path_key && newRoot === row.root_path) continue;
+      updateIdentity.run(newKey, newRoot, row.id);
+      identityUpdated += 1;
+    }
+    if (identityUpdated) result.push({ table: "file_identities", updated: identityUpdated });
+
+    // reconcile_queue
+    const reconcileRows = this.db
+      .prepare("SELECT id, root_path, filename FROM reconcile_queue")
+      .all() as Array<{ id: string; root_path: string; filename: string }>;
+    let reconcileUpdated = 0;
+    const updateReconcile = this.db.prepare(
+      "UPDATE reconcile_queue SET root_path = ?, filename = ? WHERE id = ?",
+    );
+    for (const row of reconcileRows) {
+      const newRoot = remap(row.root_path);
+      const newFile = remap(row.filename);
+      if (newRoot === row.root_path && newFile === row.filename) continue;
+      updateReconcile.run(newRoot, newFile, row.id);
+      reconcileUpdated += 1;
+    }
+    if (reconcileUpdated) result.push({ table: "reconcile_queue", updated: reconcileUpdated });
+
+    // file_operations
+    const opRows = this.db
+      .prepare("SELECT id, source_path, target_path FROM file_operations")
+      .all() as Array<{ id: string; source_path: string; target_path: string }>;
+    let opUpdated = 0;
+    const updateOp = this.db.prepare(
+      "UPDATE file_operations SET source_path = ?, target_path = ? WHERE id = ?",
+    );
+    for (const row of opRows) {
+      const newSource = remap(row.source_path);
+      const newTarget = remap(row.target_path);
+      if (newSource === row.source_path && newTarget === row.target_path) continue;
+      updateOp.run(newSource, newTarget, row.id);
+      opUpdated += 1;
+    }
+    if (opUpdated) result.push({ table: "file_operations", updated: opUpdated });
+
+    // collection_items
+    const itemRows = this.db
+      .prepare(
+        "SELECT id, collection_id, relative_path, last_resolved_path, path_key FROM collection_items",
+      )
+      .all() as Array<{
+        id: string;
+        collection_id: string;
+        relative_path: string | null;
+        last_resolved_path: string;
+        path_key: string;
+      }>;
+    let itemUpdated = 0;
+    const updateItem = this.db.prepare(`
+      UPDATE collection_items SET relative_path = ?, last_resolved_path = ?,
+        path_key = ?, updated_at = ? WHERE id = ?
+    `);
+    for (const row of itemRows) {
+      const newRelative = row.relative_path ? remap(row.relative_path) : row.relative_path;
+      const newResolved = remap(row.last_resolved_path);
+      const newKey = newResolved ? remapPathKeyFor(newResolved) : row.path_key;
+      if (newRelative === row.relative_path && newResolved === row.last_resolved_path &&
+          newKey === row.path_key) {
+        continue;
+      }
+      updateItem.run(newRelative, newResolved, newKey, now, row.id);
+      itemUpdated += 1;
+    }
+    if (itemUpdated) result.push({ table: "collection_items", updated: itemUpdated });
+
+    return result;
+  }
+
   close(): void {
     if (this.closed) return;
+    // SPEC-8：退出前 TRUNCATE 收缩 WAL 到最小。
+    this.checkpoint("TRUNCATE");
     this.closed = true;
     this.db.close();
   }

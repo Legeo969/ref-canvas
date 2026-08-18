@@ -109,7 +109,7 @@ export class FontProvider implements ResourceProvider {
       input.extension,
     );
     const sharp = (await import("sharp")).default;
-    await sharp(Buffer.from(svg)).png().toFile(input.outputPath);
+    await sharp(Buffer.from(svg)).webp({ quality: 85 }).toFile(input.outputPath);
     return { path: input.outputPath, width: input.width, height: input.height };
   }
 

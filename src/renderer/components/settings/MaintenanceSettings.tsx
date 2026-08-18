@@ -1,10 +1,14 @@
-import { ArchiveRestore, DatabaseBackup, FileWarning, ScanLine } from "lucide-react";
+import { ArchiveRestore, DatabaseBackup, FileWarning, PackageOpen, ScanLine } from "lucide-react";
 import type { BackupRecord, MediaMetadataSnapshot } from "../../../shared/contracts";
 import { translate } from "../../app/i18n";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function confirm(message: string): boolean {
+  return window.confirm(message);
 }
 
 export function MaintenanceSettings({
@@ -18,6 +22,23 @@ export function MaintenanceSettings({
   onCreateBackup(): void;
   onRestoreBackup(backup: BackupRecord): void;
 }) {
+  const exportLibrary = async () => {
+    const result = await window.refCanvas.library.exportBundle();
+    if (result) {
+      window.alert(translate("settings.bundleExported").replace("{path}", result.path));
+    }
+  };
+  const importLibrary = async () => {
+    const pick = await window.refCanvas.system.pickFile({
+      title: translate("settings.importBundleTitle"),
+      filters: [{ name: "RefCanvas 库", extensions: ["refcanvas-bundle"] }],
+    });
+    const bundlePath = pick[0];
+    if (!bundlePath) return;
+    if (!confirm(translate("settings.importBundleConfirm"))) return;
+    // 主进程导入成功后自动重启（仿备份恢复）。
+    await window.refCanvas.library.importBundle({ bundlePath, rootRules: [] });
+  };
   return (
     <div className="settings-group">
       <h3>{translate("settings.maintenance")}</h3>
@@ -29,6 +50,14 @@ export function MaintenanceSettings({
         <button className="maintenance-action" onClick={() => void window.refCanvas.system.rebuildThumbnailCache()}>
           <ArchiveRestore size={17} />
           <span><strong>{translate("settings.rebuildThumbnails")}</strong><small>{translate("settings.rebuildThumbnailsHint")}</small></span>
+        </button>
+        <button className="maintenance-action" onClick={() => void exportLibrary()}>
+          <PackageOpen size={17} />
+          <span><strong>{translate("settings.exportLibrary")}</strong><small>{translate("settings.exportLibraryHint")}</small></span>
+        </button>
+        <button className="maintenance-action" onClick={() => void importLibrary()}>
+          <PackageOpen size={17} />
+          <span><strong>{translate("settings.importLibrary")}</strong><small>{translate("settings.importLibraryHint")}</small></span>
         </button>
         <button className="maintenance-action" onClick={() => void window.refCanvas.system.exportDiagnostics()}>
           <FileWarning size={17} />

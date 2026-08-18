@@ -134,7 +134,7 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
 
-    const depths = host.querySelector<HTMLElement>(
+    const depths = document.querySelector<HTMLElement>(
       '[data-testid="directory-flatten-depth"]',
     );
     expect(depths).toBeTruthy();
@@ -206,13 +206,13 @@ describe("DirectoryAssetPanel", () => {
     );
     expect(toggle).toBeTruthy();
     expect(toggle?.getAttribute("aria-label")).toBe("视图选项");
-    expect(host.querySelector(".dir-view-options-popover")).toBeNull();
+    expect(document.querySelector(".dir-view-options-popover")).toBeNull();
 
     await act(async () => {
       toggle?.click();
       await Promise.resolve();
     });
-    const popover = host.querySelector<HTMLElement>(".dir-view-options-popover");
+    const popover = document.querySelector<HTMLElement>(".dir-view-options-popover");
     expect(popover).toBeTruthy();
     expect(popover?.getAttribute("role")).toBe("group");
     expect(popover?.getAttribute("aria-label")).toBe("视图选项");
@@ -223,7 +223,7 @@ describe("DirectoryAssetPanel", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
       await Promise.resolve();
     });
-    expect(host.querySelector(".dir-view-options-popover")).toBeNull();
+    expect(document.querySelector(".dir-view-options-popover")).toBeNull();
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
 
     // 再次打开后，点击 popover 外部关闭。
@@ -231,14 +231,14 @@ describe("DirectoryAssetPanel", () => {
       toggle?.click();
       await Promise.resolve();
     });
-    expect(host.querySelector(".dir-view-options-popover")).toBeTruthy();
+    expect(document.querySelector(".dir-view-options-popover")).toBeTruthy();
     await act(async () => {
       document.body.dispatchEvent(
         new MouseEvent("pointerdown", { bubbles: true }),
       );
       await Promise.resolve();
     });
-    expect(host.querySelector(".dir-view-options-popover")).toBeNull();
+    expect(document.querySelector(".dir-view-options-popover")).toBeNull();
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -299,7 +299,7 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
 
-    const sequenceToggle = host.querySelector<HTMLInputElement>(
+    const sequenceToggle = document.querySelector<HTMLInputElement>(
       '[data-testid="directory-sequence-toggle"]',
     );
     expect(sequenceToggle).toBeTruthy();

@@ -37,7 +37,7 @@ parentPort.on("message", (event) => {
       fit: "inside",
       withoutEnlargement: true,
     })
-    .png()
+    .webp({ quality: 85 })
     .toFile(request.outputPath)
     .then((info) =>
       parentPort.postMessage({

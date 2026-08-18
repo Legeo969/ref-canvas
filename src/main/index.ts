@@ -17,18 +17,20 @@ import {
   copyFile,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import Database from "better-sqlite3";
+import { copyFileDurable } from "./platform/fsync";
 import { BackupService } from "./services/backup-service";
 import { ActionService } from "./services/action-service";
-import { RefCanvasDatabase } from "./persistence/database";
+import { RefCanvasDatabase, APP_MAX_SCHEMA_VERSION } from "./persistence/database";
 import type { MigrationRecoveryInfo } from "./ipc/system-ipc";
 import {
   rewriteBoardAssetId,
@@ -53,6 +55,11 @@ import { DirectoryBatchService } from "./services/directory-batch-service";
 import { PreviewTokenRegistry } from "./platform/refbrowse";
 import { PreviewQueue } from "./platform/preview-queue";
 import { PreviewCacheIndex } from "./platform/preview-cache-index";
+import { reconcileCacheDatabase } from "./platform/cache-db-guard";
+import {
+  inspectPrimaryDatabase,
+  backupCorruptPrimary,
+} from "./platform/database-health";
 import { ThumbnailWorkerClient } from "./platform/thumbnail-worker-client";
 import { ProviderRegistry } from "./platform/provider-registry";
 import { WorkerSupervisor } from "./platform/worker-supervisor";
@@ -110,6 +117,7 @@ import {
   type ComfyWorkflowBinding,
 } from "./services/ai/comfyui-workflow";
 import { TaskCenterService } from "./services/task-center-service";
+import { MediaJobRegistry } from "./services/media-job-registry";
 import { ZipArchiveService } from "./services/zip-archive-service";
 import { trayIconPaths } from "./platform/tray-icon";
 import {
@@ -167,6 +175,7 @@ let boardReferences: BoardReferenceService;
 let aiJobService: AiJobService;
 let aiSecretStore: AiSecretStore;
 let taskCenter: TaskCenterService;
+let mediaJobRegistry: MediaJobRegistry;
 let zipArchiveService: ZipArchiveService;
 let captureWasFullScreen = false;
 let pendingCaptureSource: import("./ipc/system-ipc").SystemIpcState["pendingCaptureSource"] = null;
@@ -234,16 +243,65 @@ const squirrelFirstRun = isSquirrelFirstRun(process.argv);
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
+/** Windows 并行 worker/预览流下句柄释放有延迟：rename 带短重试（EBUSY 安全）。 */
+async function renameWithRetry(
+  from: string,
+  to: string,
+  attempts = 8,
+): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt === attempts - 1 || (code !== "EBUSY" && code !== "EPERM")) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+}
+
+/** Windows 下删除被占用文件同样可能 EBUSY：rm 带短重试。 */
+async function rmWithRetry(
+  filename: string,
+  attempts = 8,
+): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await rm(filename, { force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt === attempts - 1 || (code !== "EBUSY" && code !== "EPERM")) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+}
+
 async function trashDirectoryPath(filename: string): Promise<void> {
   try {
     await shell.trashItem(filename);
   } catch {
     const fallback = directoryService.fallbackTrashRoot;
     await mkdir(fallback, { recursive: true });
-    await rename(
-      filename,
-      path.join(fallback, `${path.basename(filename)}-${Date.now()}`),
+    const target = path.join(
+      fallback,
+      `${path.basename(filename)}-${Date.now()}`,
     );
+    try {
+      // 优先同卷 rename；句柄未释放时短重试。
+      await renameWithRetry(filename, target);
+    } catch (error) {
+      // 跨卷（EXDEV）或重试后仍占用：复制到回收站，再删除原文件。
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EXDEV" && code !== "EBUSY" && code !== "EPERM") throw error;
+      await copyFile(filename, target);
+      await rmWithRetry(filename);
+    }
   }
   const existing = database.getAssetByPath(filename);
   if (existing && existing.lifecycle === "active") {
@@ -646,6 +704,24 @@ let migrationRecovery: MigrationRecoveryInfo = {
 };
 
 /**
+ * SPEC-1：主库损坏时进入只读降级模式。为 true 时 UI 顶部展示持久横幅
+ * "数据库损坏，已进入只读模式"，且所有数据库写操作被 SQLite `query_only`
+ * 拒绝。仅主库 quick_check 失败但仍可只读打开时为 true。
+ */
+let degradedMode = false;
+
+/**
+ * SPEC-1/SPEC-7：启动健康状态，供渲染端展示降级横幅或安全模式恢复入口。
+ * `ok` / `degraded` 会进入主工作区（degraded 带只读横幅）；`safe` /
+ * `too-new` 停留在恢复页。
+ */
+let startupHealth: {
+  mode: "ok" | "degraded" | "safe" | "too-new";
+  databasePath: string | null;
+  reason: string | null;
+} = { mode: "ok", databasePath: null, reason: null };
+
+/**
  * 读取迁移日志，生成恢复页所需信息。
  *
  * 迁移失败时 `RefCanvasDatabase` 构造函数抛错、实例不存在，但失败的日志行
@@ -694,11 +770,126 @@ function computeMigrationRecovery(
   };
 }
 
+/** 备份文件名模式（与 BackupService 保持一致）。 */
+const RECOVERY_BACKUP_PATTERN = /^refcanvas-(auto|manual)-(\d{4}-\d{2}-\d{2}T[\d-]+Z)\.backup$/;
+
+/**
+ * SPEC-1 安全模式：列出备份目录中的最近备份。安全模式下服务未初始化，
+ * 仅依赖备份目录路径，可独立运行。
+ */
+async function recoverListBackups(): Promise<
+  Array<{ filename: string; path: string; createdAt: string }>
+> {
+  const entry = libraryManager?.currentEntry();
+  const backupDirectory = entry ? backupDirectoryFor(entry) : null;
+  if (!backupDirectory) return [];
+  await mkdir(backupDirectory, { recursive: true });
+  const records: Array<{ filename: string; path: string; createdAt: string }> = [];
+  for (const filename of await readdir(backupDirectory)) {
+    const match = RECOVERY_BACKUP_PATTERN.exec(filename);
+    if (!match) continue;
+    const fullPath = path.join(backupDirectory, filename);
+    try {
+      const fileStat = statSync(fullPath);
+      records.push({
+        filename,
+        path: fullPath,
+        createdAt: fileStat.birthtime.toISOString(),
+      });
+    } catch {
+      // 忽略不可读备份。
+    }
+  }
+  return records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/**
+ * SPEC-1 安全模式：从指定备份恢复主库并重启。备份目录是安全的绝对路径，
+ * 校验备份确实位于备份目录内（防路径穿越）。
+ */
+async function recoverRestoreBackup(filename: string): Promise<void> {
+  const entry = libraryManager?.currentEntry();
+  if (!entry) throw new Error("RECOVERY_ENTRY_UNAVAILABLE");
+  const backupDirectory = backupDirectoryFor(entry);
+  await mkdir(backupDirectory, { recursive: true });
+  const fullPath = path.resolve(backupDirectory, filename);
+  const backupRoot = path.resolve(backupDirectory) + path.sep;
+  if (fullPath !== path.resolve(backupDirectory, filename) || !fullPath.startsWith(backupRoot)) {
+    throw new Error("RECOVERY_BACKUP_PATH_INVALID");
+  }
+  if (!existsSync(fullPath)) throw new Error("RECOVERY_BACKUP_MISSING");
+  const databaseTarget = databasePathFor(entry);
+  // 关闭任何可能打开的连接（安全模式下通常未打开）。
+  try {
+    database?.close();
+  } catch {
+    /* ignore */
+  }
+  // SPEC-6：恢复拷贝用原子写 + fsync，防止断电时主库半截。
+  await copyFileDurable(fullPath, databaseTarget);
+  app.relaunch();
+  app.exit(0);
+}
+
+/**
+ * SPEC-1 安全模式：新建空库（删除损坏主库及 WAL/SHM 侧车）并重启。
+ * 下次启动会创建全新数据库。
+ */
+async function recoverNewDatabase(): Promise<void> {
+  const entry = libraryManager?.currentEntry();
+  if (!entry) throw new Error("RECOVERY_ENTRY_UNAVAILABLE");
+  try {
+    database?.close();
+  } catch {
+    /* ignore */
+  }
+  const databaseTarget = databasePathFor(entry);
+  await rm(databaseTarget, { force: true });
+  await rm(`${databaseTarget}-wal`, { force: true });
+  await rm(`${databaseTarget}-shm`, { force: true });
+  app.relaunch();
+  app.exit(0);
+}
+
+/**
+ * SPEC-2：导入 bundle 后重启，若存在待重映射标记则执行路径重映射并清标记。
+ * 标记由 BundleService.importBundle 写入（`<userData>/pending-bundle-remap.json`）。
+ */
+async function applyPendingBundleRemap(databasePath: string): Promise<void> {
+  const remapFile = path.join(path.dirname(databasePath), "pending-bundle-remap.json");
+  let raw: string;
+  try {
+    raw = await readFile(remapFile, "utf8");
+  } catch {
+    return; // 无标记 → 正常启动。
+  }
+  try {
+    const parsed = JSON.parse(raw) as {
+      rules: Array<{ from: string; to: string }>;
+    };
+    if (!Array.isArray(parsed.rules) || parsed.rules.length === 0) {
+      await rm(remapFile, { force: true });
+      return;
+    }
+    const remapped = database.remapPaths(parsed.rules);
+    console.log(
+      `BUNDLE_REMAP ${JSON.stringify(remapped)}`,
+    );
+  } catch (error) {
+    console.error("BUNDLE_REMAP_FAILED", error);
+  } finally {
+    await rm(remapFile, { force: true }).catch(() => undefined);
+  }
+}
+
 /**
  * Tears down the currently open library connections and reopens them bound to
  * the given library entry. Used at startup and when switching libraries.
  */
-async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgroundServicesStart();
+async function reopenLibrary(
+  entry: LibraryEntry,
+  options: { readonly?: boolean } = {},
+): Promise<void> {  cancelBackgroundServicesStart();
   actions?.close();
   directoryBatches?.close();
   directoryService?.close();
@@ -708,6 +899,7 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   databaseFilename = databasePathFor(entry);
   database = new RefCanvasDatabase(databaseFilename, {
     migrationBackupDirectory: backupDirectoryFor(entry),
+    readonly: options.readonly === true,
   });
   library = new LibraryService(database, trashPathFor(entry), {
     libraryRoot: entry.root,
@@ -724,7 +916,24 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
     fallbackTrashRoot: path.join(entry.root, "trash", "files"),
     indexClient: new DirectoryIndexClient(
       path.join(__dirname, "directory-index-worker.js"),
-      path.join(app.getPath("userData"), "cache", "directory-index.sqlite"),
+      (() => {
+        const directoryIndexPath = path.join(
+          app.getPath("userData"),
+          "cache",
+          "directory-index.sqlite",
+        );
+        // 缓存库可重建：损坏或 schema 过新时删除，worker 下次打开自动重建。
+        const reconcile = reconcileCacheDatabase(
+          directoryIndexPath,
+          APP_MAX_SCHEMA_VERSION,
+        );
+        if (reconcile.recreated) {
+          console.warn(
+            `DIRECTORY_INDEX_RECONCILED ${reconcile.reason ?? "unknown"}`,
+          );
+        }
+        return directoryIndexPath;
+      })(),
     ),
   });
   directoryService.onSearchProgress((snapshot) => {
@@ -790,26 +999,39 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
   aiJobService = new AiJobService(database.aiJobs(), await buildAiProviders());
   // 重启恢复：对非终态 job 尝试 Provider.recover，不支持则标记 failed。
   void aiJobService.recoverInterrupted();
-  // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/AI 任务。
+  // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/AI/媒体导出任务。
+  mediaJobRegistry = new MediaJobRegistry();
   zipArchiveService = new ZipArchiveService();
   taskCenter = new TaskCenterService({
     listImports: () => library.listImportJobs(),
     listBatches: () => directoryBatches.list(),
     listAiJobs: () => aiJobService.list(100),
+    listMediaJobs: () => mediaJobRegistry.list(200),
     cancelImport: async (id) => library.cancelImport(id),
     cancelBatch: async (id) => directoryBatches.cancel(id),
     cancelAi: async (id) => {
       await aiJobService.cancel(id);
       return true;
     },
+    cancelMedia: async (id) => mediaJobRegistry.cancel(id),
   });
   library.onImportProgress((snapshot) => {
     broadcastAll("library:import-progress", snapshot);
     taskCenter?.notify("import");
+    // SPEC-8：大批量导入完成后主动 PASSIVE checkpoint 回收 WAL。
+    if (snapshot.state === "completed" || snapshot.state === "failed") {
+      scheduleWalCheckpoint();
+    }
   });
   directoryBatches.onProgress((snapshot) => {
     broadcastAll("filesystem:batch-progress", snapshot);
     taskCenter?.notify("batch");
+  });
+  taskCenter.onChanged((snapshot) => {
+    broadcastAll("tasks:changed", snapshot);
+  });
+  mediaJobRegistry.onChanged((snapshot) => {
+    broadcastAll("tasks:changed", snapshot);
   });
   // mount 恢复（online）：增量 reconcile 修正该挂载根的链接状态。
   mountService.onMountStateChanged(({ mountId, state }) => {
@@ -818,8 +1040,11 @@ async function reopenLibrary(entry: LibraryEntry): Promise<void> {  cancelBackgr
     const root = database.listWatchRoots().find((item) => item.id === mountId);
     if (root) void library.reconcileRoots(root.id);
   });
-  await library.recoverPendingOperations();
-  library.resumePendingMetadata();
+  // 只读降级模式：不执行写恢复/元数据回填（SQLite query_only 会拒绝这些写）。
+  if (!database.readOnly) {
+    await library.recoverPendingOperations();
+    library.resumePendingMetadata();
+  }
   library.onLibraryChanged((event) => {
     broadcastAll("library:changed", event);
   });
@@ -856,13 +1081,47 @@ function cancelBackgroundServicesStart(): void {
   backgroundStartTimer = null;
 }
 
+// SPEC-8：idle / 导入完成 checkpoint 的节流定时器。PASSIVE 不阻塞读者。
+let walCheckpointTimer: NodeJS.Timeout | null = null;
+
+/** 立即对三个库做一次 PASSIVE checkpoint（尽力而为，失败不影响主流程）。 */
+function checkpointPassive(): void {
+  try {
+    database?.checkpoint("PASSIVE");
+  } catch {
+    /* ignore */
+  }
+  try {
+    previewCacheIndex?.checkpoint("PASSIVE");
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * SPEC-8：节流式 idle checkpoint。应用空闲（无 IPC 活动）若干秒后触发一次
+ * PASSIVE checkpoint；导入完成等写密集场景也调用此入口合并进同一节流。
+ */
+function scheduleWalCheckpoint(delayMs = 3_000): void {
+  if (walCheckpointTimer) clearTimeout(walCheckpointTimer);
+  walCheckpointTimer = setTimeout(() => {
+    walCheckpointTimer = null;
+    checkpointPassive();
+  }, delayMs);
+  walCheckpointTimer.unref();
+}
+
 function registerIpc(): void {
-  const ipc = new SecureIpcRegistrar(validateSender);
+  const ipc = new SecureIpcRegistrar(validateSender, () => scheduleWalCheckpoint());
 
   registerLibraryIpc(ipc, {
     copyProjectAsset,
     getDatabase: () => database,
     getLibrary: () => library,
+    getLibraryManager: () => libraryManager,
+    getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
+    getPreviewCacheIndexFilenames: () =>
+      previewCacheIndex?.listValidFilenames() ?? [],
     safeFilename,
     windowForSender,
     writeAccess,
@@ -942,6 +1201,7 @@ function registerIpc(): void {
     notifyMountsChanged: (change) => broadcastAll("mounts:changed", change),
     windowForSender,
     writeAccess,
+    getMediaJobRegistry: () => mediaJobRegistry,
   });
 
   registerActionIpc(ipc, {
@@ -957,6 +1217,10 @@ function registerIpc(): void {
     getLibrary: () => library,
     getLibraryManager: () => libraryManager,
     getMigrationRecovery: () => migrationRecovery,
+    getStartupHealth: () => startupHealth,
+    recoverListBackups,
+    recoverRestoreBackup,
+    recoverNewDatabase,
     getMainWindow: () => mainWindow,
     closeCaptureWindow,
     openCaptureWindow,
@@ -1316,8 +1580,52 @@ void app.whenReady().then(async () => {
   const userData = app.getPath("userData");
   libraryManager = new LibraryManager(userData);
   const initialEntry = await libraryManager.bootstrapLegacy();
+  // 注册 IPC handler 必须早于恢复窗口/健康检查分支：safe/too-new 分支会
+  // `createRecoveryWindow()` 并立即 return，而恢复页依赖 `system:get-startup-health`
+  // 与 `system:get-migration-failure` 获取数据。所有 handler 都是惰性闭包，
+  // 注册本身不访问尚未初始化的服务，安全。
+  registerIpc();
+  const databasePath = databasePathFor(initialEntry);
+  // SPEC-1/SPEC-7：启动前先探主库健康，决定正常 / 只读降级 / 拒绝(过新) /
+  // 安全模式，而不是让 `new Database` / `migrate` 直接崩溃。
+  const primaryHealth = inspectPrimaryDatabase(databasePath, APP_MAX_SCHEMA_VERSION);
+  let openReadOnly = false;
+  if (primaryHealth.status === "too-new") {
+    migrationRecovery = {
+      failed: true,
+      databasePath,
+      backupDirectory: backupDirectoryFor(initialEntry),
+      entries: [],
+    };
+    startupHealth = { mode: "too-new", databasePath, reason: `schema v${primaryHealth.schemaVersion} > app max v${APP_MAX_SCHEMA_VERSION}` };
+    createRecoveryWindow();
+    return;
+  }
+  if (primaryHealth.status === "unsafe") {
+    // 安全模式：库完全打不开，不打开、不初始化服务；展示恢复页并提供
+    // "从最近备份恢复" / "新建空库" 入口。
+    backupCorruptPrimary(databasePath, userData);
+    migrationRecovery = {
+      failed: true,
+      databasePath,
+      backupDirectory: backupDirectoryFor(initialEntry),
+      entries: [],
+    };
+    startupHealth = { mode: "safe", databasePath, reason: primaryHealth.reason };
+    createRecoveryWindow();
+    return;
+  }
+  if (primaryHealth.status === "degraded") {
+    // 只读降级：quick_check 失败但仍可只读打开 → 保留浏览，拒绝写。
+    const backup = backupCorruptPrimary(databasePath, userData);
+    console.warn(
+      `PRIMARY_DB_DEGRADED ${primaryHealth.reason}; corrupted backup: ${backup ?? "none"}`,
+    );
+    degradedMode = true;
+    openReadOnly = true;
+  }
   try {
-    await reopenLibrary(initialEntry);
+    await reopenLibrary(initialEntry, { readonly: openReadOnly });
   } catch (error) {
     // FND-001：迁移失败时停留在恢复页，不进入主工作区。记录可诊断信息，
     // 创建恢复窗口展示数据库/备份位置。
@@ -1329,10 +1637,32 @@ void app.whenReady().then(async () => {
     createRecoveryWindow();
     return;
   }
+  // SPEC-2：导入 bundle 后重启，执行待处理的路径重映射（linked 资产根映射）。
+  await applyPendingBundleRemap(databasePath);
   thumbnailCacheDirectory = path.join(userData, "cache", "thumbnails");
-  previewCacheIndex = new PreviewCacheIndex(
-    path.join(userData, "cache", "preview-index.sqlite"),
+  const previewIndexPath = path.join(userData, "cache", "preview-index.sqlite");
+  // 缓存库是可重建的派生数据：损坏或 schema 比本应用新时直接删除重建
+  // （SPEC-1/SPEC-7），而不是卡死启动。
+  const previewIndexReconcile = reconcileCacheDatabase(
+    previewIndexPath,
+    APP_MAX_SCHEMA_VERSION,
   );
+  if (previewIndexReconcile.recreated) {
+    console.warn(
+      `PREVIEW_CACHE_RECONCILED ${previewIndexReconcile.reason ?? "unknown"}`,
+    );
+  }
+  previewCacheIndex = new PreviewCacheIndex(previewIndexPath, {
+    // SPEC-5：运行中事件触发 prune 时记录日志并回收对应缓存文件。
+    onPrune: ({ removedFiles, totalBefore, totalAfter, elapsedMs }) => {
+      for (const filename of removedFiles) {
+        void rm(filename, { force: true });
+      }
+      console.log(
+        `PREVIEW_CACHE_PRUNE removed=${removedFiles.length} before=${totalBefore} after=${totalAfter} ms=${elapsedMs}`,
+      );
+    },
+  });
   // 性能偏好（§10.2）启动回填：并发设置此前只在「改动时」套用，重启后
   // 队列回到硬编码默认 4、worker 回到 sharp 默认核数，直到用户再次改动。
   const previewSettings = readPreviewSettings(database);
@@ -1435,19 +1765,26 @@ void app.whenReady().then(async () => {
           ],
     },
   });
-  registerIpc();
   if (database.getSetting("globalShortcuts", false)) {
     configureGlobalShortcuts(true);
   }
   // 启动时修复存量 watch root 与 mount root 的 1:1 关联，再刷新挂载状态。
-  repairMountRoots();
+  // 只读降级模式下跳过（这些是写操作，query_only 会拒绝）。
+  if (!degradedMode) {
+    repairMountRoots();
+  }
   const refreshMounts = () => {
     void mountService.refreshAll();
   };
-  refreshMounts();
+  if (!degradedMode) {
+    refreshMounts();
+  }
   // 运行期间受控轮询挂载状态，检测断连/重连（计划 §7.5 外部增删改语义）。
-  const mountPollTimer = setInterval(refreshMounts, 15_000);
-  mountPollTimer.unref();
+  // 只读降级模式下跳过（刷新会写库）。
+  if (!degradedMode) {
+    const mountPollTimer = setInterval(refreshMounts, 15_000);
+    mountPollTimer.unref();
+  }
 
   const commandLineFiles = process.argv
     .slice(app.isPackaged ? 1 : 2)

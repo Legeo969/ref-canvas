@@ -60,7 +60,8 @@ describe("genericPlaceholderThumbnail", () => {
     });
     expect(Buffer.isBuffer(png)).toBe(true);
     // PNG 魔数。
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
+    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
     expect(png.byteLength).toBeGreaterThan(100);
   });
 });
@@ -84,7 +85,8 @@ describe("fileIconPlaceholderThumbnail", () => {
       { width: 480, height: 320 },
     );
     expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
+    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
     expect(app.getFileIcon).toHaveBeenCalledWith("D:\\refs\\shot.max", {
       size: "large",
     });
@@ -98,7 +100,8 @@ describe("fileIconPlaceholderThumbnail", () => {
       { width: 480, height: 320 },
     );
     expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
+    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
   });
 
   it("marks DCC extensions for icon placeholders", () => {
@@ -142,7 +145,8 @@ describe("systemFileIconThumbnail", () => {
       { width: 480, height: 320 },
     );
     expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
+    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
     expect(app.getFileIcon).toHaveBeenCalledWith("D:\\refs\\shot.blend1", {
       size: "large",
     });
@@ -162,7 +166,8 @@ describe("systemFileIconThumbnail", () => {
       { width: 480, height: 320 },
     );
     expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
+    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
   });
 
   it("falls back to the generic placeholder when getFileIcon throws", async () => {
@@ -173,6 +178,7 @@ describe("systemFileIconThumbnail", () => {
       { width: 480, height: 320 },
     );
     expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
+    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
   });
 });

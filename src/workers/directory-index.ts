@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { existsSync, statSync } from "node:fs";
 import { opendir, stat } from "node:fs/promises";
 import path from "node:path";
 import { detectFileSequences } from "../shared/file-sequence";
@@ -147,6 +148,42 @@ function initialize(filename: string): Database.Database {
     database.exec(
       "ALTER TABLE directory_searches ADD COLUMN collapse_sequences INTEGER NOT NULL DEFAULT 1",
     );
+  }
+  // SPEC-3：worker 重启后，残留的 `running` 搜索没有对应的运行中任务（内存
+  // 状态已清空），标记为 failed 让用户重试（搜索成本低，不做续搜）。同时
+  // 清理 `scanning` 但目录已不存在的 stale 扫描记录。
+  database
+    .prepare(`
+      UPDATE directory_searches SET state = 'failed', completed_at = ?,
+        failed_json = ? WHERE state = 'running'
+    `)
+    .run(
+      new Date().toISOString(),
+      JSON.stringify([{ path: "", reason: "SEARCH_INTERRUPTED_RESTART" }]),
+    );
+  try {
+    const staleScans = database
+      .prepare("SELECT directory_path FROM directory_scans WHERE state = 'scanning'")
+      .all() as Array<{ directory_path: string }>;
+    for (const stale of staleScans) {
+      let exists = false;
+      try {
+        exists = existsSync(stale.directory_path)
+          ? statSync(stale.directory_path).isDirectory()
+          : false;
+      } catch {
+        exists = false;
+      }
+      if (exists) continue;
+      database
+        .prepare("DELETE FROM directory_entries WHERE directory_path = ?")
+        .run(stale.directory_path);
+      database
+        .prepare("DELETE FROM directory_scans WHERE directory_path = ?")
+        .run(stale.directory_path);
+    }
+  } catch {
+    // stale 扫描清理是 best-effort，失败不阻塞启动。
   }
   return database;
 }
@@ -546,22 +583,41 @@ async function fillMetadata(directoryPath: string, entries: DirectoryEntry[]): P
   }
 }
 
-async function scanDirectory(directoryPath: string, state: ScanState, mtimeMs: number): Promise<void> {
+async function scanDirectory(
+  directoryPath: string,
+  state: ScanState,
+  mtimeMs: number,
+  resume = false,
+): Promise<void> {
   const db = database!;
+  // SPEC-3 续扫：上次中断时已扫条目保留在 directory_entries 中，用
+  // INSERT OR IGNORE 幂等跳过，避免重复插入；全量重扫（首次/目录变化）
+  // 用 INSERT OR REPLACE 覆盖。
   const insert = db.prepare(`
-    INSERT OR REPLACE INTO directory_entries(
+    ${resume ? "INSERT OR IGNORE" : "INSERT OR REPLACE"} INTO directory_entries(
       directory_path, entry_path, name, is_directory, extension, discovery_ordinal
     ) VALUES (?, ?, ?, ?, ?, ?)
   `);
+  // 返回实际新增的条数：续扫用 INSERT OR IGNORE 跳过已存在路径（changes=0），
+  // 据此精确累计 discovered/fileTotal，避免与预置的已扫计数重复相加。
   const insertBatch = db.transaction((entries: DirectoryEntry[], base: number) => {
-    entries.forEach((entry, index) => insert.run(
-      directoryPath,
-      entry.path,
-      entry.name,
-      entry.isDirectory ? 1 : 0,
-      entry.extension,
-      base + index,
-    ));
+    let added = 0;
+    let addedFiles = 0;
+    entries.forEach((entry, index) => {
+      const result = insert.run(
+        directoryPath,
+        entry.path,
+        entry.name,
+        entry.isDirectory ? 1 : 0,
+        entry.extension,
+        base + index,
+      );
+      if (result.changes > 0) {
+        added += 1;
+        if (!entry.isDirectory) addedFiles += 1;
+      }
+    });
+    return { added, addedFiles };
   });
   const sequenceCandidates: DirectoryEntry[] = [];
   let batch: DirectoryEntry[] = [];
@@ -581,9 +637,9 @@ async function scanDirectory(directoryPath: string, state: ScanState, mtimeMs: n
         sequenceCandidates.push(entry);
       }
       if (batch.length < 1_000) continue;
-      insertBatch(batch, state.discovered);
-      state.discovered += batch.length;
-      state.fileTotal += batch.filter((item) => !item.isDirectory).length;
+      const { added, addedFiles } = insertBatch(batch, state.discovered);
+      state.discovered += added;
+      state.fileTotal += addedFiles;
       db.prepare(
         "UPDATE directory_scans SET discovered = ?, file_total = ? WHERE directory_path = ?",
       ).run(state.discovered, state.fileTotal, directoryPath);
@@ -605,9 +661,9 @@ async function scanDirectory(directoryPath: string, state: ScanState, mtimeMs: n
   }
   if (state.cancelled) return;
   if (batch.length) {
-    insertBatch(batch, state.discovered);
-    state.discovered += batch.length;
-    state.fileTotal += batch.filter((item) => !item.isDirectory).length;
+    const { added, addedFiles } = insertBatch(batch, state.discovered);
+    state.discovered += added;
+    state.fileTotal += addedFiles;
   }
   const sequences = detectFileSequences(sequenceCandidates);
   const updateSequence = db.prepare(
@@ -680,26 +736,41 @@ async function list(request: WorkerRequest): Promise<void> {
     return;
   }
   let scan = scans.get(directoryPath);
+  // SPEC-3 断点续传：上次 worker 崩溃/强退时 `state='scanning'` 且目录 mtime
+  // 未变 → 续扫而非重扫。已有条目保留在 directory_entries（已扫部分可见），
+  // scanDirectory 用 INSERT OR IGNORE 幂等跳过已存在路径，只追加新增。
+  const resume =
+    cached?.state === "scanning" &&
+    cached.directory_mtime_ms === info.mtimeMs &&
+    !scan;
   if (!scan || scan.cancelled || scan.complete) {
-    db.prepare("DELETE FROM directory_entries WHERE directory_path = ?").run(directoryPath);
-    const revision = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    if (!resume) {
+      // 全量重扫（首次 / 目录 mtime 变化 / 上次扫描已取消或完成）。
+      db.prepare("DELETE FROM directory_entries WHERE directory_path = ?").run(directoryPath);
+    }
+    const revision = resume
+      ? cached!.revision
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const discovered = resume ? cached!.discovered : 0;
+    const fileTotal = resume ? cached!.file_total : 0;
     db.prepare(`
       INSERT INTO directory_scans(directory_path, revision, directory_mtime_ms, state, discovered, file_total, last_access_ms)
-      VALUES (?, ?, ?, 'scanning', 0, 0, ?)
+      VALUES (?, ?, ?, 'scanning', ?, ?, ?)
       ON CONFLICT(directory_path) DO UPDATE SET revision = excluded.revision,
         directory_mtime_ms = excluded.directory_mtime_ms, state = 'scanning',
-        discovered = 0, file_total = 0, last_access_ms = excluded.last_access_ms
-    `).run(directoryPath, revision, info.mtimeMs, Date.now());
+        discovered = excluded.discovered, file_total = excluded.file_total,
+        last_access_ms = excluded.last_access_ms
+    `).run(directoryPath, revision, info.mtimeMs, discovered, fileTotal, Date.now());
     scan = {
       revision,
-      discovered: 0,
-      fileTotal: 0,
+      discovered,
+      fileTotal,
       complete: false,
       cancelled: false,
       waiters: [],
     };
     scans.set(directoryPath, scan);
-    void scanDirectory(directoryPath, scan, info.mtimeMs).catch((error) => {
+    void scanDirectory(directoryPath, scan, info.mtimeMs, resume).catch((error) => {
       scan!.cancelled = true;
       scans.delete(directoryPath);
       db.transaction(() => {
@@ -938,6 +1009,12 @@ parentPort.on("message", (event) => {
         "SELECT search_id FROM directory_searches WHERE state = 'running'",
       ).all() as Array<{ search_id: string }> ?? []) {
         cancelledSearches.add(row.search_id);
+      }
+      // SPEC-8：退出前 TRUNCATE 收缩 WAL 到最小。
+      try {
+        database?.pragma("wal_checkpoint(TRUNCATE)");
+      } catch {
+        // best-effort。
       }
       database?.close();
       database = null;

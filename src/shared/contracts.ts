@@ -1623,6 +1623,36 @@ export interface RefCanvasApi {
     references(id: string): Promise<AssetReference[]>;
     collectProject(boardId: string): Promise<string | null>;
     migratePaths(fromRoot: string, toRoot: string): Promise<PathMigrationReport>;
+    /**
+     * SPEC-2：导出整个库为 `.refcanvas-bundle`（db 快照 + 缩略图 + bundle.json）。
+     * 打开目录选择器；取消返回 null。
+     */
+    exportBundle(): Promise<{
+      path: string;
+      size: number;
+      manifest: {
+        format: "refcanvas-bundle";
+        version: number;
+        schemaVersion: number;
+        exportedAt: string;
+        pathRoots: string[];
+        includesManaged: boolean;
+        includesThumbnails: boolean;
+      };
+    } | null>;
+    /**
+     * SPEC-2：导入 `.refcanvas-bundle`。解包到 userData 后需重启应用以应用
+     * 新库与路径重映射；返回 `requiresRestart: true`。
+     * `rootRules` 为路径根映射（导出根 → 导入根），空数组表示用默认建议。
+     */
+    importBundle(options: {
+      bundlePath: string;
+      rootRules: Array<{ from: string; to: string }>;
+    }): Promise<{
+      pendingRemapFile: string;
+      rules: Array<{ from: string; to: string }>;
+      requiresRestart: boolean;
+    }>;
     stats(): Promise<LibraryStats>;
   };
   libraries: {
@@ -2078,6 +2108,24 @@ export interface RefCanvasApi {
      * Renderer 据此展示数据库路径、备份目录与失败步骤。
      */
     getMigrationFailure(): Promise<MigrationRecoveryInfo>;
+    /**
+     * SPEC-1/SPEC-7 启动健康状态：`ok` 正常；`degraded` 只读降级（主库损坏
+     * 仍可浏览，顶部横幅提示，写操作被拒绝）；`safe` 安全模式（库打不开，
+     * 提供恢复/重建入口）；`too-new` 库由更新版本创建，拒绝打开。
+     */
+    getStartupHealth(): Promise<{
+      mode: "ok" | "degraded" | "safe" | "too-new";
+      databasePath: string | null;
+      reason: string | null;
+    }>;
+    /** SPEC-1 安全模式：列出最近备份（供"从最近备份恢复"）。 */
+    recoverListBackups(): Promise<
+      Array<{ filename: string; path: string; createdAt: string }>
+    >;
+    /** SPEC-1 安全模式：从指定备份恢复主库并重启。 */
+    recoverRestoreBackup(filename: string): Promise<void>;
+    /** SPEC-1 安全模式：新建空库（删除损坏主库）并重启。 */
+    recoverNewDatabase(): Promise<void>;
     /** 写入系统剪贴板文本（用于"复制版本信息"）。 */
     writeClipboard(text: string): Promise<void>;
     getNavigationState(): Promise<string | null>;

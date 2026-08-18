@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -26,8 +26,20 @@ async function withTemp(): Promise<string> {
 
 afterEach(async () => {
   if (tempDirectory) {
-    await rm(tempDirectory, { recursive: true, force: true });
+    // Windows 上 sharp/libvips 写完 WebP 后句柄延迟释放，rm 触发 EBUSY。
+    // 先 yield 让事件循环回收句柄，再重试删除。
+    const dir = tempDirectory;
     tempDirectory = null;
+    await new Promise((resolve) => setImmediate(resolve));
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        await rm(dir, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        if (attempt === 7) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
   }
 });
 
@@ -151,7 +163,7 @@ describe("AudioProvider（阶段 4：音频）", () => {
     });
     expect(result.path).toBe(outputPath);
     const { default: sharp } = await import("sharp");
-    const metadata = await sharp(outputPath).metadata();
+    const metadata = await sharp(await readFile(outputPath)).metadata();
     expect(metadata.width).toBeGreaterThan(0);
     await provider.dispose();
   });
@@ -165,7 +177,7 @@ describe("AudioProvider（阶段 4：音频）", () => {
       path: target, kind: "audio", extension: "wav", width: 480, height: 320, outputPath,
     });
     const { default: sharp } = await import("sharp");
-    const metadata = await sharp(outputPath).metadata();
+    const metadata = await sharp(await readFile(outputPath)).metadata();
     expect(metadata.width).toBe(480);
     await provider.dispose();
   });
@@ -204,7 +216,7 @@ describe("FontProvider（阶段 4：字体）", () => {
       path: font, kind: "font", extension: "ttf", width: 480, height: 320, outputPath,
     });
     const { default: sharp } = await import("sharp");
-    const metadata = await sharp(outputPath).metadata();
+    const metadata = await sharp(await readFile(outputPath)).metadata();
     expect(metadata.width).toBe(480);
     await provider.dispose();
   });
@@ -303,7 +315,7 @@ describe("DocumentProvider（阶段 4：文档）", () => {
       path: target, kind: "generic", extension: "md", width: 480, height: 320, outputPath,
     });
     const { default: sharp } = await import("sharp");
-    const metadata = await sharp(outputPath).metadata();
+    const metadata = await sharp(await readFile(outputPath)).metadata();
     expect(metadata.width).toBe(480);
     await provider.dispose();
   });
