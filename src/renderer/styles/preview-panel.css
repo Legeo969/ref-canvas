@@ -1611,3 +1611,41 @@ button.preview-color-palette-status {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
+/* ─── 预览窗口去白框（用户反馈） ───
+   预览面板 / 快速预览 / 工作台 / 序列预览里的键盘焦点外框和媒体白描边
+   统一去掉，避免播放/步进/拖动时出现难看的白色框。 */
+.preview-panel :focus,
+.preview-panel :focus-visible,
+.quick-preview-shell :focus,
+.quick-preview-shell :focus-visible,
+.workbench-preview-shell :focus,
+.workbench-preview-shell :focus-visible,
+.sequence-preview-shell :focus,
+.sequence-preview-shell :focus-visible,
+.directory-preview :focus,
+.directory-preview :focus-visible {
+  outline: none;
+}
+
+.preview-panel .image-review-img,
+.preview-panel .sequence-preview-stage img,
+.preview-panel .panorama-preview > img,
+.preview-panel .workbench-preview-shell img,
+.preview-panel .workbench-preview-shell video,
+.preview-panel .workbench-preview-shell canvas,
+.quick-preview-shell .image-review-img,
+.quick-preview-shell .sequence-preview-stage img,
+.quick-preview-shell .panorama-preview > img,
+.quick-preview-shell .workbench-preview-shell img,
+.quick-preview-shell .workbench-preview-shell video,
+.quick-preview-shell .workbench-preview-shell canvas,
+.workbench-preview-shell .image-review-img,
+.workbench-preview-shell .sequence-preview-stage img,
+.workbench-preview-shell .panorama-preview > img,
+.workbench-preview-shell img,
+.workbench-preview-shell video,
+.workbench-preview-shell canvas,
+.sequence-preview-shell .sequence-preview-stage img {
+  outline: 0;
+}
+
