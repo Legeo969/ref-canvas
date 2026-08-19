@@ -3882,11 +3882,65 @@
 
 .video-workbench-seek {
   width: 100%;
-  height: 18px;
+  height: 20px;
   flex: 0 0 auto;
-  margin: 7px 0 0;
+  margin: 6px 0 0;
   accent-color: #369b7c;
   cursor: pointer;
+  background: transparent;
+}
+
+/* 工作台视频时间轴：深色轨道 + 主题色进度填充，替代浏览器原生 range 外观。 */
+.video-workbench-seek {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      to right,
+      #3ab28f 0%,
+      #3ab28f var(--seek-fill, 0%),
+      rgba(255, 255, 255, 0.12) var(--seek-fill, 0%),
+      rgba(255, 255, 255, 0.12) 100%
+    );
+}
+
+.video-workbench-seek::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.video-workbench-seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border: 2px solid #0d1110;
+  border-radius: 50%;
+  background: #3ab28f;
+  box-shadow: 0 0 0 1px rgba(58, 178, 143, 0.4);
+}
+
+.video-workbench-seek::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.video-workbench-seek::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: #3ab28f;
+}
+
+.video-workbench-seek::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #0d1110;
+  border-radius: 50%;
+  background: #3ab28f;
+  box-shadow: 0 0 0 1px rgba(58, 178, 143, 0.4);
 }
 
 .video-frame-step {
@@ -3915,20 +3969,27 @@
 .video-step-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .video-step-controls button {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  width: 34px;
+  height: 34px;
+  border: 0;
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   color: #c8d1cc;
   cursor: pointer;
+  transition-property: background-color, color, scale;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
 }
 
 .video-step-controls .video-gif-button {

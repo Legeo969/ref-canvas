@@ -1502,6 +1502,12 @@
   outline-offset: -1px;
 }
 
+/* 视频精确帧/视频本体不要加白色描边：步进/扫览时会出现难看的白边。 */
+.workbench-preview-shell .video-preview video,
+.workbench-preview-shell .video-frame-step {
+  outline: 0;
+}
+
 .workbench-asset-label {
   position: absolute;
   z-index: 4;

@@ -587,6 +587,7 @@ export function VideoPreview({
             max={duration || 0}
             step={effectiveFrameRate ? 1 / effectiveFrameRate : 0.01}
             value={Math.min(timecode, duration || 0)}
+            style={{ "--seek-fill": `${duration > 0 ? Math.min(100, (timecode / duration) * 100) : 0}%` } as React.CSSProperties}
             onChange={(event) => {
               const video = videoRef.current;
               if (!video) return;
