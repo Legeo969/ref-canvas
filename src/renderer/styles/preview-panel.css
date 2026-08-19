@@ -1375,6 +1375,13 @@ button.preview-color-palette-status {
   touch-action: none;
 }
 
+/* 进度条获得键盘焦点时不要出现白色外框；保留可操作手感，但去掉难看的白边。 */
+.preview-slider:focus,
+.preview-slider:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
 .preview-slider-track {
   position: relative;
   width: 100%;
