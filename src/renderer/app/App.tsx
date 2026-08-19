@@ -1,9 +1,7 @@
 import {
   Camera,
-  Clipboard,
   Expand,
   FileJson,
-  FolderOpen,
   HardDrive,
   ImageDown,
   MonitorPlay,
@@ -13,7 +11,6 @@ import {
   PinOff,
   PackageOpen,
   Settings,
-  ScanLine,
   Sparkles,
   SquareArrowOutUpRight,
   ListTodo,
@@ -595,28 +592,6 @@ function WorkspaceApp() {
         <div className="titlebar-actions">
           <button
             className="titlebar-button"
-            onClick={async () => {
-              const directory = await window.refCanvas.system.pickDirectory({
-                title: translate("titlebar.openFolder"),
-              });
-              if (directory) await openPickedDirectory(directory);
-            }}
-          >
-            <FolderOpen size={15} />
-            {translate("titlebar.openFolder")}
-          </button>
-          <button
-            className="titlebar-button"
-            onClick={async () => {
-              await window.refCanvas.system.captureClipboard();
-              await store.reloadAssets();
-            }}
-          >
-            <Clipboard size={15} />
-            {translate("titlebar.clipboard")}
-          </button>
-          <button
-            className="titlebar-button"
             onClick={() => void prepareRegionCapture()}
             disabled={capturePreparing}
           >
@@ -728,16 +703,6 @@ function WorkspaceApp() {
             title={translate("directory.aiDesignSupervisor")}
           >
             <Sparkles size={16} />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => {
-              setSettingsTab("preview");
-              setMaintenanceOpen(true);
-            }}
-            aria-label={translate("titlebar.professionalSettings")}
-          >
-            <ScanLine size={16} />
           </button>
           <button
             className="icon-button"
