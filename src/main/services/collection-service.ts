@@ -17,7 +17,11 @@ import type {
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { CollectionsRepository } from "../persistence/repositories/collections-repository-v17";
 import { CollectionResolutionService } from "./collection-resolution-service";
-import { CollectionExportService, type CollectionExportSnapshot } from "./collection-export-service";
+import {
+  CollectionExportService,
+  type CollectionExportOptions,
+  type CollectionExportSnapshot,
+} from "./collection-export-service";
 import { quickFingerprint } from "./library-service";
 
 export class CollectionService {
@@ -164,7 +168,7 @@ export class CollectionService {
   export(
     collectionId: string,
     targetDirectory: string,
-    options?: { jobId?: string },
+    options?: CollectionExportOptions,
   ): Promise<CollectionExportSnapshot> {
     return this.exportService.export(collectionId, targetDirectory, options);
   }

@@ -914,6 +914,8 @@ export type MessageKey =
 
   | "collections.containsScope"
 
+  | "collections.continue"
+
   | "collections.create"
 
   | "collections.createConfirm"
@@ -947,6 +949,18 @@ export type MessageKey =
   | "collections.exportNamed"
 
   | "collections.exportSummary"
+
+  | "collections.exportConflictTitle"
+
+  | "collections.exportConflictDescription"
+
+  | "collections.exportConflictStrategy"
+
+  | "collections.exportConflictRename"
+
+  | "collections.exportConflictReplace"
+
+  | "collections.exportConflictSkip"
 
   | "collections.fingerprintChanged"
 

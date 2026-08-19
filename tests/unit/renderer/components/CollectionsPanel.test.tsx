@@ -305,10 +305,21 @@ describe("CollectionsPanel", () => {
       );
       exportItem?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    // 冲突策略表单出现；默认 rename，直接提交。
+    await act(async () => {
+      expect(document.querySelector(".form-dialog select")).toBeTruthy();
+      host
+        .querySelector<HTMLButtonElement>(".form-dialog button[type='submit']")
+        ?.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
     expect(api.export).toHaveBeenCalledWith(
       "c-1",
       "D:\\out",
-      expect.objectContaining({ jobId: expect.any(String) }),
+      expect.objectContaining({
+        jobId: expect.any(String),
+        conflictAction: "rename",
+      }),
     );
   });
 

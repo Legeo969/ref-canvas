@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -122,6 +122,79 @@ describe("collection export (§6.3)", () => {
         await readFile(path.join(target, ".refcanvas-collection.json"), "utf8"),
       ) as { entries: Array<{ state: string; reason: string | null }> };
       expect(manifest.entries[0].reason).toBe("not-offline");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("skips existing files when conflictAction=skip and records conflict-skip", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-export-skip-"));
+    temporaryDirectories.push(directory);
+    const db = new RefCanvasDatabase(path.join(directory, "app.db"));
+    try {
+      db.upsertMountRoot({
+        id: "mount-1",
+        path: directory,
+        displayName: "test",
+        state: "online",
+      });
+      const service = db.collectionService();
+      const collection = service.create({ name: "跳过集" });
+      const source = path.join(directory, "a.png");
+      await writeFile(source, Buffer.alloc(64, 1));
+      await service.addPaths(collection.id, [source]);
+
+      const target = path.join(directory, "out-skip");
+      await mkdir(target, { recursive: true });
+      await writeFile(path.join(target, "a.png"), Buffer.alloc(32, 9));
+
+      const snapshot = await service.export(collection.id, target, {
+        conflictAction: "skip",
+      });
+      expect(snapshot.copied).toBe(0);
+      expect(snapshot.skipped).toBe(1);
+      const manifest = JSON.parse(
+        await readFile(path.join(target, ".refcanvas-collection.json"), "utf8"),
+      ) as { entries: Array<{ relativePath: string; reason: string | null }> };
+      expect(manifest.entries[0].reason).toBe("conflict-skip");
+      // 已有文件未被覆盖。
+      await expect(readFile(path.join(target, "a.png"))).resolves.toEqual(
+        Buffer.alloc(32, 9),
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it("replaces existing files when conflictAction=replace", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-export-replace-"));
+    temporaryDirectories.push(directory);
+    const db = new RefCanvasDatabase(path.join(directory, "app.db"));
+    try {
+      db.upsertMountRoot({
+        id: "mount-1",
+        path: directory,
+        displayName: "test",
+        state: "online",
+      });
+      const service = db.collectionService();
+      const collection = service.create({ name: "覆盖集" });
+      const source = path.join(directory, "a.png");
+      await writeFile(source, Buffer.alloc(64, 1));
+      await service.addPaths(collection.id, [source]);
+
+      const target = path.join(directory, "out-replace");
+      await mkdir(target, { recursive: true });
+      await writeFile(path.join(target, "a.png"), Buffer.alloc(32, 9));
+
+      const snapshot = await service.export(collection.id, target, {
+        conflictAction: "replace",
+      });
+      expect(snapshot.copied).toBe(1);
+      expect(snapshot.skipped).toBe(0);
+      await expect(readFile(path.join(target, "a.png"))).resolves.toEqual(
+        Buffer.alloc(64, 1),
+      );
     } finally {
       db.close();
     }

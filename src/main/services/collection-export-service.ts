@@ -2,7 +2,8 @@
  * 集合导出服务（§6.3）。
  *
  * - 只复制 `resolved` 条目；不移动源文件。
- * - 重名默认生成 `name (2).ext`，绝不覆盖目标文件。
+ * - 冲突策略与文件操作一致：rename（默认，生成 `name (2).ext`）、
+ *   skip（跳过已有同名文件）、replace（覆盖已有同名文件）。
  * - 导出目录写入 `.refcanvas-collection.json` 清单：集合层级、原引用、
  *   导出相对路径、跳过原因与导出时间。
  * - 部分失败不回滚已成功复制的文件；返回 copied/skipped/failed 摘要。
@@ -11,6 +12,7 @@ import { constants, copyFile, mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import type {
   CollectionExportSnapshot,
+  FileConflictAction,
   ReferenceCollectionItem,
 } from "../../shared/contracts";
 import type { CollectionsRepository } from "../persistence/repositories/collections-repository-v17";
@@ -19,8 +21,8 @@ import { writeFileDurable } from "../platform/fsync";
 export type { CollectionExportSnapshot } from "../../shared/contracts";
 
 export interface CollectionExportOptions {
-  /** 已存在的同名文件使用编号（默认 true）。 */
-  conflictRename?: boolean;
+  /** 目标目录已有同名文件时的处理策略（默认 rename，与文件操作一致）。 */
+  conflictAction?: FileConflictAction;
   /** 调用方提供的任务 id（用于提前取消）；缺省时服务内部生成。 */
   jobId?: string;
 }
@@ -62,13 +64,11 @@ export class CollectionExportService {
   async export(
     collectionId: string,
     targetDirectory: string,
-    _options: CollectionExportOptions = {},
+    options: CollectionExportOptions = {},
   ): Promise<CollectionExportSnapshot> {
     const collection = this.collections.get(collectionId);
     if (!collection) throw new Error("COLLECTION_NOT_FOUND");
-    // 冲突重命名由 nextUnique 在导出前统一处理（不会覆盖已有文件）；
-    // 当前实现恒为编号策略，conflictRename=false 语义留给后续调用方扩展。
-    void _options.conflictRename;
+    const conflictAction = options.conflictAction ?? "rename";
     const hierarchy = this.collectionHierarchy(collectionId);
     const items = this.collections.listItems(collectionId);
     const resolvedItems = items.filter((item) => item.state === "resolved");
@@ -76,7 +76,7 @@ export class CollectionExportService {
     const root = path.resolve(targetDirectory);
 
     // 取消令牌先于任何异步磁盘操作注册：调用方从 export() 返回即可取消。
-    const exportId = _options.jobId ?? `export-${collectionId}-${Date.now()}`;
+    const exportId = options.jobId ?? `export-${collectionId}-${Date.now()}`;
     const token = { cancelled: false };
     inFlightExports.set(exportId, token);
 
@@ -116,7 +116,16 @@ export class CollectionExportService {
         const safeBase = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,191}$/.test(base)
           ? base
           : `item_${item.id.slice(0, 8)}.bin`;
-        const unique = this.nextUnique(takenNames, safeBase);
+        const targetExists = takenNames.has(safeBase);
+        if (targetExists && conflictAction === "skip") {
+          entries.push(this.entryFor(item, collectionId, source, "", item.fingerprint, "conflict-skip"));
+          skipped += 1;
+          continue;
+        }
+        const unique =
+          targetExists && conflictAction === "rename"
+            ? this.nextUnique(takenNames, safeBase)
+            : safeBase;
         const relative = unique;
         const target = path.join(root, unique);
         if (target !== root && !target.startsWith(root + path.sep)) {
@@ -125,8 +134,14 @@ export class CollectionExportService {
           continue;
         }
         try {
-          await copyFile(source, target, constants.COPYFILE_EXCL);
+          // rename/skip 用 EXCL 防覆盖；replace 显式覆盖目标（与文件操作一致）。
+          if (conflictAction === "replace" && targetExists) {
+            await copyFile(source, target);
+          } else {
+            await copyFile(source, target, constants.COPYFILE_EXCL);
+          }
           copied += 1;
+          takenNames.add(unique);
           entries.push(this.entryFor(item, collectionId, source, relative, item.fingerprint, null));
         } catch {
           failed += 1;

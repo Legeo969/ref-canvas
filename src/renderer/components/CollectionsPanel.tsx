@@ -43,6 +43,7 @@ import type {
   CollectionAddResult,
   CollectionExportSnapshot,
   CollectionItemState,
+  FileConflictAction,
   ReferenceCollection,
   ReferenceCollectionItem,
 } from "../../shared/contracts";
@@ -91,6 +92,33 @@ function notifySkippedDirectories(
     ),
     confirmLabel: translate("collections.acknowledge"),
   });
+}
+
+/** 询问导出冲突处理策略（apply-to-all：一次选择应用于全部冲突）。 */
+async function askExportConflictAction(
+  dialog: ReturnType<typeof useDialog>,
+): Promise<FileConflictAction | null> {
+  const values = await dialog.requestForm({
+    title: translate("collections.exportConflictTitle"),
+    description: translate("collections.exportConflictDescription"),
+    confirmLabel: translate("collections.continue"),
+    fields: [
+      {
+        name: "strategy",
+        label: translate("collections.exportConflictStrategy"),
+        type: "select",
+        initialValue: "rename",
+        options: [
+          { value: "rename", label: translate("collections.exportConflictRename") },
+          { value: "replace", label: translate("collections.exportConflictReplace") },
+          { value: "skip", label: translate("collections.exportConflictSkip") },
+        ],
+      },
+    ],
+    onSubmit: () => undefined,
+  });
+  if (!values) return null;
+  return String(values.strategy) as FileConflictAction;
 }
 
 interface CollectionNodeProps {
@@ -607,6 +635,8 @@ export function CollectionDetailsPanel() {
       title: `${translate("collections.export")}“${collection.name}”`,
     });
     if (!targetDirectory) return;
+    const conflictAction = await askExportConflictAction(dialog);
+    if (!conflictAction) return;
     setExporting(true);
     setExportSnapshot(null);
     const jobId = `collection-export-${collectionId}-${Date.now()}`;
@@ -615,7 +645,7 @@ export function CollectionDetailsPanel() {
       const snapshot = await window.refCanvas.collections.export(
         collectionId,
         targetDirectory,
-        { jobId },
+        { jobId, conflictAction },
       );
       setExportSnapshot(snapshot);
     } finally {
@@ -884,8 +914,11 @@ export function CollectionsPanel({
       title: translate("collections.exportNamed").replace("{name}", collection.name),
     });
     if (!targetDirectory) return;
+    const conflictAction = await askExportConflictAction(dialog);
+    if (!conflictAction) return;
     await window.refCanvas.collections.export(id, targetDirectory, {
       jobId: `collection-export-${id}-${Date.now()}`,
+      conflictAction,
     });
   };
 

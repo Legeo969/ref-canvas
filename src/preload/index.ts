@@ -214,6 +214,7 @@ const api: RefCanvasApi = {
         collectionId,
         targetDirectory,
         jobId: options?.jobId,
+        conflictAction: options?.conflictAction,
       }),
     cancelExport: (jobId) =>
       ipcRenderer.invoke("collections:cancel-export", jobId),

@@ -55,6 +55,7 @@ const exportSchema = z.object({
   collectionId: collectionIdSchema,
   targetDirectory: pathSchemaLocal,
   jobId: z.string().min(1).max(256).optional(),
+  conflictAction: z.enum(["skip", "rename", "replace"]).optional(),
 });
 
 const exportJobIdSchema = z.string().min(1).max(256);
@@ -151,6 +152,7 @@ export function registerCollectionsIpc(
     );
     return service().export(parsed.collectionId, targetDirectory, {
       jobId: parsed.jobId,
+      conflictAction: parsed.conflictAction,
     });
   });
 
