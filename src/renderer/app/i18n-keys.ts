@@ -238,6 +238,8 @@ export type MessageKey =
 
   | "app.degradedBanner"
 
+  | "app.previousCrash"
+
   | "app.degradedReadOnly"
 
   | "app.safeModeTitle"
@@ -473,6 +475,8 @@ export type MessageKey =
   | "board.dropLimited"
 
   | "board.dropPlaced"
+
+  | "board.importOptimized"
 
   | "board.duplicate"
 

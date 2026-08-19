@@ -91,4 +91,24 @@ describe("PreviewCacheIndex", () => {
       index.close();
     }
   });
+
+  it("removes index rows whose cache files no longer exist", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-preview-index-"));
+    directories.push(root);
+    const index = new PreviewCacheIndex(path.join(root, "index.sqlite"));
+    try {
+      const existing = path.join(root, "existing.webp");
+      const missing = path.join(root, "missing.webp");
+      await import("node:fs/promises").then(({ writeFile }) =>
+        writeFile(existing, "data"),
+      );
+      index.recordSuccess("existing", existing, 4, 1_000);
+      index.recordSuccess("missing", missing, 4, 1_000);
+      expect(index.removeMissingFiles()).toBe(1);
+      expect(index.get("existing", 2_000)).not.toBeNull();
+      expect(index.get("missing", 2_000)).toBeNull();
+    } finally {
+      index.close();
+    }
+  });
 });

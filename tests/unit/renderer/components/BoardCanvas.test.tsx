@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 
-import { Canvas as FabricCanvas } from "fabric";
+import { Canvas as FabricCanvas, FabricImage, Group } from "fabric";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardHistoryController } from "../../../../src/renderer/features/board/controllers/history-controller";
 import type {
+  AssetRecord,
   BoardDocumentV3,
   BoardSummary,
   RefCanvasApi,
@@ -102,6 +103,9 @@ describe("BoardCanvas selection persistence", () => {
             },
           })),
           onWindowModeReset: vi.fn(() => () => undefined),
+        },
+        library: {
+          get: vi.fn(async () => null),
         },
       } as unknown as RefCanvasApi,
     });
@@ -302,5 +306,113 @@ describe("BoardCanvas selection persistence", () => {
     ).not.toThrow();
     expect(canvas.selection).toBe(true);
     expect(canvas.skipTargetFind).toBe(false);
+  });
+
+  it("loads non-image assets (video) as a real FabricImage using thumbnailUrl, not a format card", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const loadFromJSON = vi.spyOn(FabricCanvas.prototype, "loadFromJSON");
+    vi.spyOn(FabricCanvas.prototype, "requestRenderAll").mockImplementation(() => undefined);
+    vi.spyOn(FabricCanvas.prototype, "add").mockImplementation((function add(
+      this: FabricCanvas,
+      ...objects: unknown[]
+    ) {
+      const obj = objects[0] as unknown;
+      (this as unknown as { _objects: unknown[] })._objects.push(obj);
+      return this as unknown as FabricCanvas;
+    }) as unknown as FabricCanvas["add"]);
+    vi.spyOn(FabricCanvas.prototype, "setActiveObject").mockImplementation((function setActiveObject(
+      this: FabricCanvas,
+      object: unknown,
+    ) {
+      (this as unknown as { _activeObject: unknown })._activeObject = object;
+      return this as unknown as FabricCanvas;
+    }) as unknown as FabricCanvas["setActiveObject"]);
+
+    // mock library.get 返回一个 video 资产。
+    const videoAsset: AssetRecord = {
+      id: "video-1",
+      title: "clip.mp4",
+      kind: "video",
+      path: "D:\\refs\\clip.mp4",
+      extension: "mp4",
+      size: 1000,
+      mtimeMs: 1,
+      fingerprint: "fp",
+      contentHash: null,
+      lifecycle: "active",
+      deletedAt: null,
+      trashPath: null,
+      favorite: false,
+      rating: 0,
+      colorLabel: "none",
+      linkState: "online",
+      notes: "",
+      width: 1920,
+      height: 1080,
+      duration: 10,
+      metadataStatus: "ready",
+      metadataError: null,
+      metadataUpdatedAt: null,
+      bpm: null,
+      customFields: {},
+      customThumbnailPath: null,
+      tags: [],
+      createdAt: "2026-08-18T00:00:00.000Z",
+      updatedAt: "2026-08-18T00:00:00.000Z",
+      previewUrl: "refasset://preview/video-1",
+      thumbnailUrl: "refasset://thumbnail/video-1",
+    };
+    (window.refCanvas.library.get as ReturnType<typeof vi.fn>).mockResolvedValue(videoAsset);
+
+    // mock FabricImage.fromURL：返回带 width/height 的假 image。
+    const fromURL = vi.spyOn(FabricImage, "fromURL").mockResolvedValue(
+      Object.assign(Object.create(FabricImage.prototype), {
+        width: 1920,
+        height: 1080,
+        set() { return this; },
+        setCoords() {},
+      }) as unknown as FabricImage,
+    );
+
+    await act(async () => {
+      root?.render(
+        <DialogProvider>
+          <BoardCanvas
+            board={board}
+            document={boardDocument}
+            assets={[]}
+            boards={[board]}
+            onSelectAsset={vi.fn()}
+            onSave={vi.fn(async () => ({ ...board, revision: board.revision + 1 }))}
+            onSwitchBoard={async () => undefined}
+            onCreateBoard={async () => undefined}
+            onRenameBoard={async () => undefined}
+            onDeleteBoard={async () => undefined}
+            onLibraryChanged={async () => undefined}
+            pendingAssetIds={["video-1"]}
+          />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const initialLoad = loadFromJSON.mock.results[0]?.value;
+    await act(async () => {
+      await initialLoad;
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const canvas = loadFromJSON.mock.instances[0] as FabricCanvas & {
+      _objects: unknown[];
+    };
+    // video 资产应加载为 FabricImage（用 thumbnailUrl），而不是格式卡片 Group。
+    expect(fromURL).toHaveBeenCalledWith("refasset://thumbnail/video-1");
+    expect(canvas._objects.some((object) => object instanceof FabricImage)).toBe(true);
+    // 不应出现格式卡片 Group（含 Rect + 扩展名 Text）。
+    expect(canvas._objects.some((object) => object instanceof Group)).toBe(false);
   });
 });

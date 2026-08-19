@@ -2117,6 +2117,8 @@ export interface RefCanvasApi {
       mode: "ok" | "degraded" | "safe" | "too-new";
       databasePath: string | null;
       reason: string | null;
+      /** 上次是否异常退出（clean-shutdown 标记缺失）。 */
+      previousCrash: boolean;
     }>;
     /** SPEC-1 安全模式：列出最近备份（供"从最近备份恢复"）。 */
     recoverListBackups(): Promise<

@@ -40,6 +40,7 @@ import { readPreviewSettings } from "./preview-settings";
 import { idSchema, pathSchema } from "./schemas";
 import { extractDominantPalette } from "../../shared/color-palette";
 import { previewCacheKey } from "../platform/preview-cache-key";
+import type { PreviewCacheIndex } from "../platform/preview-cache-index";
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import {
   assertAbsoluteLocalPath,
@@ -54,6 +55,7 @@ interface ResourcesIpcDependencies {
   getProviderRegistry(): ProviderRegistry;
   getThumbnailWorker(): ThumbnailWorkerClient | null;
   getThumbnailCacheDirectory(): string;
+  getPreviewCacheIndex(): PreviewCacheIndex | null;
   getScriptsService(): ScriptsService;
   previewTokens: PreviewTokenRegistry;
   notifyMountsChanged(change: MountChangedEvent): void;
@@ -101,6 +103,16 @@ export function registerResourcesIpc(
       mediaJobs.delete(jobId);
     }
   }
+
+  const recordCacheFile = async (
+    index: PreviewCacheIndex | null,
+    key: string,
+    filename: string,
+  ): Promise<void> => {
+    if (!index) return;
+    const info = await stat(filename).catch(() => null);
+    if (info?.isFile()) index.recordSuccess(key, filename, info.size);
+  };
 
   // --- mounts（计划 §7.2 / §13.4）---
 
@@ -277,6 +289,11 @@ export function registerResourcesIpc(
       if (lutPath) {
         await applyLut3dToPng(result.path, lutPath, target);
       }
+      await recordCacheFile(
+        dependencies.getPreviewCacheIndex(),
+        `media:${path.normalize(target)}`,
+        target,
+      );
       return {
         path: result.path,
         width: result.width,
@@ -292,6 +309,11 @@ export function registerResourcesIpc(
     if (lutPath) {
       await applyLut3dToPng(target, lutPath, target);
     }
+    await recordCacheFile(
+      dependencies.getPreviewCacheIndex(),
+      `media:${path.normalize(target)}`,
+      target,
+    );
     return {
       path: target,
       width: parsed.width ?? 480,
@@ -329,6 +351,11 @@ export function registerResourcesIpc(
           height: parsed.height ?? 540,
         }, undefined, signal);
       }
+      await recordCacheFile(
+        dependencies.getPreviewCacheIndex(),
+        `frame:${signature}`,
+        target,
+      );
       const token = dependencies.previewTokens.tokenFor(target);
       return {
         source: `refbrowse://preview/${token}`,
@@ -350,6 +377,7 @@ export function registerResourcesIpc(
     const kind = assetKindForExtension(extension);
     let samplePath = resolved;
     let removeSample = false;
+    let persistentPaletteFile: string | null = null;
     if (extension === "exr" || extension === "hdr") {
       const cacheDirectory = dependencies.getThumbnailCacheDirectory();
       if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
@@ -398,6 +426,7 @@ export function registerResourcesIpc(
           });
           sourceWebp = paletteFile;
         }
+        persistentPaletteFile = paletteFile;
       }
       samplePath = sourceWebp;
       // removeSample 保持 false：样本持久缓存，二次打开与逐帧刷新直接复用。
@@ -417,6 +446,13 @@ export function registerResourcesIpc(
         width: 320,
         height: 320,
       });
+    }
+    if (persistentPaletteFile) {
+      await recordCacheFile(
+        dependencies.getPreviewCacheIndex(),
+        `palette:${path.basename(persistentPaletteFile)}`,
+        persistentPaletteFile,
+      );
     }
     if (kind !== "image" && kind !== "video") {
       throw new Error("PALETTE_UNSUPPORTED_MEDIA");

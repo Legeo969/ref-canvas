@@ -544,6 +544,12 @@ function WorkspaceApp() {
           <span>{translate("app.degradedBanner")}</span>
         </div>
       )}
+      {startupHealth?.previousCrash && startupHealth.mode !== "safe" && startupHealth.mode !== "too-new" && (
+        <div className="degraded-banner previous-crash-banner" role="alert">
+          <span className="degraded-banner-icon">⚠</span>
+          <span>{translate("app.previousCrash")}</span>
+        </div>
+      )}
       <header className="titlebar">
         <div className="titlebar-left">
           <div className="brand">

@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 export type PreviewCacheStatus = "success" | "failed";
@@ -235,6 +235,32 @@ export class PreviewCacheIndex {
       result.push(row.filename);
     }
     return result;
+  }
+
+  /**
+   * 删除索引中已不存在的缓存文件记录（如迁移后磁盘文件被清理）。
+   * 返回删除的记录数。只处理 success 且 filename 非空的行。
+   */
+  removeMissingFiles(): number {
+    const rows = this.database
+      .prepare(
+        "SELECT cache_key, filename FROM preview_cache WHERE status = 'success' AND filename <> ''",
+      )
+      .all() as Array<{ cache_key: string; filename: string }>;
+    const remove = this.database.prepare(
+      "DELETE FROM preview_cache WHERE cache_key = ?",
+    );
+    let removed = 0;
+    const transaction = this.database.transaction(() => {
+      for (const row of rows) {
+        if (!existsSync(row.filename)) {
+          remove.run(row.cache_key);
+          removed += 1;
+        }
+      }
+    });
+    transaction();
+    return removed;
   }
 
   /**

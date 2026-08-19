@@ -1456,9 +1456,14 @@ export function DirectoryAssetPanel() {
         }
       }
       const paths: string[] = [];
+      const visiblePaths = new Set<string>();
       for (let index = start; index < end && paths.length < 256; index += 1) {
         const entry = activeIndexedEntries.get(index);
-        if (entry && !entry.isDirectory) paths.push(entry.path);
+        if (!entry || entry.isDirectory) continue;
+        paths.push(entry.path);
+        if (index >= windowStartIndex && index < windowEndIndex) {
+          visiblePaths.add(entry.path);
+        }
       }
       if (!paths.length || !window.refCanvas.filesystem.previewTokens) return;
       const batchController = new AbortController();
@@ -1469,6 +1474,13 @@ export function DirectoryAssetPanel() {
           void fetch(`refbrowse://thumbnail/${item.token}?priority=prefetch`, {
             signal: batchController.signal,
           }).catch(() => undefined);
+          // Found 式后台预热：当前可视窗口额外预生成 960 档，
+          // 预览面板/缩放网格打开时避免现场解码。
+          if (visiblePaths.has(item.path)) {
+            void fetch(`refbrowse://thumbnail/${item.token}?priority=prefetch&size=960`, {
+              signal: batchController.signal,
+            }).catch(() => undefined);
+          }
         }
       }).catch(() => undefined);
     }, 150);

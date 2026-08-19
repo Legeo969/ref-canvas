@@ -61,6 +61,7 @@ import {
   backupCorruptPrimary,
 } from "./platform/database-health";
 import { ThumbnailWorkerClient } from "./platform/thumbnail-worker-client";
+import { cleanupOrphanThumbnails } from "./platform/thumbnail-cache";
 import { ProviderRegistry } from "./platform/provider-registry";
 import { WorkerSupervisor } from "./platform/worker-supervisor";
 import { WorkerBackedProvider } from "./platform/provider-worker-client";
@@ -719,7 +720,9 @@ let startupHealth: {
   mode: "ok" | "degraded" | "safe" | "too-new";
   databasePath: string | null;
   reason: string | null;
-} = { mode: "ok", databasePath: null, reason: null };
+  /** 上次是否异常退出（clean-shutdown 标记缺失）。 */
+  previousCrash: boolean;
+} = { mode: "ok", databasePath: null, reason: null, previousCrash: false };
 
 /**
  * 读取迁移日志，生成恢复页所需信息。
@@ -1196,6 +1199,7 @@ function registerIpc(): void {
     getProviderRegistry: () => providerRegistry!,
     getThumbnailWorker: () => thumbnailWorker,
     getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
+    getPreviewCacheIndex: () => previewCacheIndex,
     getScriptsService: () => scriptsService,
     previewTokens,
     notifyMountsChanged: (change) => broadcastAll("mounts:changed", change),
@@ -1597,7 +1601,7 @@ void app.whenReady().then(async () => {
       backupDirectory: backupDirectoryFor(initialEntry),
       entries: [],
     };
-    startupHealth = { mode: "too-new", databasePath, reason: `schema v${primaryHealth.schemaVersion} > app max v${APP_MAX_SCHEMA_VERSION}` };
+    startupHealth = { mode: "too-new", databasePath, reason: `schema v${primaryHealth.schemaVersion} > app max v${APP_MAX_SCHEMA_VERSION}`, previousCrash: false };
     createRecoveryWindow();
     return;
   }
@@ -1611,7 +1615,7 @@ void app.whenReady().then(async () => {
       backupDirectory: backupDirectoryFor(initialEntry),
       entries: [],
     };
-    startupHealth = { mode: "safe", databasePath, reason: primaryHealth.reason };
+    startupHealth = { mode: "safe", databasePath, reason: primaryHealth.reason, previousCrash: false };
     createRecoveryWindow();
     return;
   }
@@ -1639,6 +1643,14 @@ void app.whenReady().then(async () => {
   }
   // SPEC-2：导入 bundle 后重启，执行待处理的路径重映射（linked 资产根映射）。
   await applyPendingBundleRemap(databasePath);
+  // 崩溃检测：正常退出会在 shutdownServices 写 clean-shutdown 标记；启动时
+  // 标记缺失说明上次异常退出。白板数据是即时持久化的（500ms debounce 已落
+  // 库），故只提示、不恢复未保存数据。检测后立即清除标记（本次启动即重写）。
+  startupHealth = {
+    ...startupHealth,
+    previousCrash: database.getSetting<boolean>("cleanShutdown", false) === false,
+  };
+  database.setSetting("cleanShutdown", false);
   thumbnailCacheDirectory = path.join(userData, "cache", "thumbnails");
   const previewIndexPath = path.join(userData, "cache", "preview-index.sqlite");
   // 缓存库是可重建的派生数据：损坏或 schema 比本应用新时直接删除重建
@@ -1744,6 +1756,19 @@ void app.whenReady().then(async () => {
   });
   for (const cachedFile of previewCacheIndex.prune()) {
     void rm(cachedFile, { force: true });
+  }
+  // 统一清理：移除未被索引的 frame/palette/media 残留以及 WebP 迁移前的旧
+  // .png 缩略图；随后删除索引中已指向不存在文件的记录，保持索引与磁盘一致。
+  const orphanRemoved = await cleanupOrphanThumbnails(
+    thumbnailCacheDirectory,
+    new Set(previewCacheIndex.listValidFilenames()),
+  );
+  if (orphanRemoved.length > 0) {
+    console.log(`THUMBNAIL_CACHE_ORPHAN_CLEANUP removed=${orphanRemoved.length}`);
+  }
+  const missingRemoved = previewCacheIndex.removeMissingFiles();
+  if (missingRemoved > 0) {
+    console.log(`PREVIEW_CACHE_INDEX_RECONCILE removed=${missingRemoved}`);
   }
   await mkdir(backupDirectoryFor(initialEntry), { recursive: true });
   registerProtocols({
@@ -1852,6 +1877,8 @@ async function shutdownServices(): Promise<void> {
   if (flushed.some((saved) => !saved)) {
     throw new Error("BOARD_FLUSH_FAILED");
   }
+  // 崩溃检测：正常退出写 clean-shutdown 标记，供下次启动判断是否异常退出。
+  database?.setSetting("cleanShutdown", true);
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();
   mainWindow?.destroy();

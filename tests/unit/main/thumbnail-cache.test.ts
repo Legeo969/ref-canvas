@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  cleanupOrphanThumbnails,
   pruneStaleThumbnails,
   thumbnailCacheFilename,
 } from "../../../src/main/platform/thumbnail-cache";
@@ -66,6 +67,62 @@ describe("thumbnail cache identity", () => {
         "asset-1-current.png",
         "asset-2-old.png",
       ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("cleanupOrphanThumbnails", () => {
+  it("removes unindexed frame/palette/media and legacy png files", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-orphan-"));
+    try {
+      const files = [
+        "current.webp",
+        "frame-orphan.png",
+        "frame-keep.png",
+        "palette-orphan.webp",
+        "media-orphan.png",
+        "legacy.png",
+      ];
+      await Promise.all(files.map((file) => writeFile(path.join(directory, file), "data")));
+      const indexedFiles = new Set([
+        path.join(directory, "current.webp"),
+        path.join(directory, "frame-keep.png"),
+        path.join(directory, "legacy.png"),
+      ]);
+      const removed = await cleanupOrphanThumbnails(directory, indexedFiles);
+
+      expect(removed.sort()).toEqual([
+        path.join(directory, "frame-orphan.png"),
+        path.join(directory, "legacy.png"),
+        path.join(directory, "media-orphan.png"),
+        path.join(directory, "palette-orphan.webp"),
+      ].sort());
+      expect((await readdir(directory)).sort()).toEqual([
+        "current.webp",
+        "frame-keep.png",
+      ]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("removes nested legacy png files while preserving indexed webp variants", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-orphan-nested-"));
+    try {
+      const nested = path.join(directory, "directory");
+      const { mkdir } = await import("node:fs/promises");
+      await mkdir(nested, { recursive: true });
+      const webp = path.join(nested, "hash.webp");
+      const png = path.join(nested, "hash.png");
+      await Promise.all([
+        writeFile(webp, "webp"),
+        writeFile(png, "png"),
+      ]);
+      const removed = await cleanupOrphanThumbnails(directory, new Set([webp]));
+      expect(removed).toEqual([png]);
+      expect((await readdir(nested)).sort()).toEqual(["hash.webp"]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

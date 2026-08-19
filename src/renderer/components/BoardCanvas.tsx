@@ -144,6 +144,7 @@ import {
   boardProxySizeForPixels,
   boardProxyUrl,
   loadBoardImageWithFallback,
+  type BoardProxySize,
 } from "../app/board-proxy";
 import { ModelPreview, type ModelView } from "./ModelPreview";
 import { AssetPreview } from "./AssetPreview";
@@ -883,9 +884,47 @@ export function BoardCanvas({
         controller.setZoom(pendingZoom);
       });
     };
+    const applyProxyLevel = (
+      image: CanvasObjectWithData & FabricImage,
+      asset: AssetRecord,
+      desired: BoardProxySize,
+      current: BoardProxySize | 0,
+    ) => {
+      if (desired === current) return;
+      const displayWidth = image.getScaledWidth();
+      const displayHeight = image.getScaledHeight();
+      const signX = (image.scaleX ?? 1) < 0 ? -1 : 1;
+      const signY = (image.scaleY ?? 1) < 0 ? -1 : 1;
+      image.data = {
+        ...(image.data ?? {}),
+        sourceUrl: asset.previewUrl,
+        boardProxySize: desired,
+      };
+      void image
+        .setSrc(boardProxyUrl(asset.thumbnailUrl, desired), {
+          crossOrigin: "anonymous",
+        })
+        .then(() => {
+          image.set({
+            scaleX: (signX * displayWidth) / Math.max(1, image.width),
+            scaleY: (signY * displayHeight) / Math.max(1, image.height),
+            dirty: true,
+          });
+          image.setCoords();
+          scheduleRender();
+        })
+        .catch(() => {
+          if (image.data?.boardProxySize === desired) {
+            image.data = {
+              ...image.data,
+              boardProxySize: current || undefined,
+            };
+          }
+        });
+    };
     const refreshVisibleImageProxies = () => {
       for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
-        if (!(object instanceof FabricImage) || !object.isOnScreen()) continue;
+        if (!(object instanceof FabricImage)) continue;
         const image = object as CanvasObjectWithData & FabricImage;
         const asset = eventBindingsRef.current.assets.find(
           (item) => item.id === image.data?.assetId,
@@ -903,45 +942,25 @@ export function BoardCanvas({
           });
           continue;
         }
+        // 只有 image 类型走 board proxy 分级；非 image（视频/PDF/3D/字体等）
+        // 使用 provider 生成的固定缩略图，不做 proxy 升降级。
+        if (asset.kind !== "image") continue;
         image.set({ opacity: 1, stroke: null, strokeWidth: 0 });
         if ((image.cropX ?? 0) !== 0 || (image.cropY ?? 0) !== 0) continue;
+        const current = image.data?.boardProxySize ?? 0;
+        // 视口外对象：降到最低档（512）释放高分辨率 proxy，滚回时再按需升级。
+        if (!image.isOnScreen()) {
+          if (current > 512) applyProxyLevel(image, asset, 512, current);
+          continue;
+        }
         const pixels =
           Math.max(image.getScaledWidth(), image.getScaledHeight()) *
           canvas.getZoom() *
           window.devicePixelRatio;
         const desired = boardProxySizeForPixels(pixels);
-        const current = image.data?.boardProxySize ?? 0;
-        if (desired <= current) continue;
-        const displayWidth = image.getScaledWidth();
-        const displayHeight = image.getScaledHeight();
-        const signX = (image.scaleX ?? 1) < 0 ? -1 : 1;
-        const signY = (image.scaleY ?? 1) < 0 ? -1 : 1;
-        image.data = {
-          ...(image.data ?? {}),
-          sourceUrl: asset.previewUrl,
-          boardProxySize: desired,
-        };
-        void image
-          .setSrc(boardProxyUrl(asset.thumbnailUrl, desired), {
-            crossOrigin: "anonymous",
-          })
-          .then(() => {
-            image.set({
-              scaleX: (signX * displayWidth) / Math.max(1, image.width),
-              scaleY: (signY * displayHeight) / Math.max(1, image.height),
-              dirty: true,
-            });
-            image.setCoords();
-            scheduleRender();
-          })
-          .catch(() => {
-            if (image.data?.boardProxySize === desired) {
-              image.data = {
-                ...image.data,
-                boardProxySize: current || undefined,
-              };
-            }
-          });
+        // 精确匹配：放大升级、缩小降级，避免长期持有超出显示所需的分辨率。
+        if (desired === current) continue;
+        applyProxyLevel(image, asset, desired, current);
       }
     };
     const scheduleProxyRefresh = () => {
@@ -4050,22 +4069,32 @@ export function BoardCanvas({
         ? parent.data.objectId
         : undefined;
 
-    if (asset.kind === "image" && asset.linkState === "online") {
+    // 所有非 generic 类型都有可解码的缩略图（refasset://thumbnail 对
+    // 视频 poster 帧 / 3D 渲染 / 字体样张 / 文本卡片 / DCC 图标 / EXR-HDR
+    // 转码都会生成真实图）。generic 无 thumbnail 能力，保持格式卡。
+    if (asset.kind !== "generic" && asset.linkState === "online") {
       try {
-        const initialProxySize = boardProxySizeForPixels(
-          Math.max(
-            Math.min(asset.width ?? 300, 300),
-            Math.min(asset.height ?? 230, 230),
-          ) * window.devicePixelRatio,
-        );
         const loadImage = (url: string) => FabricImage.fromURL(url);
-        const loaded = asset.extension === "gif"
-          ? { image: await loadImage(asset.previewUrl), source: "original" as const }
-          : await loadBoardImageWithFallback(
-              boardProxyUrl(asset.thumbnailUrl, initialProxySize),
-              asset.previewUrl,
-              loadImage,
-            );
+        let loaded: { image: FabricImage; source: "proxy" | "original" };
+        let initialProxySize: BoardProxySize | undefined;
+        if (asset.kind === "image") {
+          initialProxySize = boardProxySizeForPixels(
+            Math.max(
+              Math.min(asset.width ?? 300, 300),
+              Math.min(asset.height ?? 230, 230),
+            ) * window.devicePixelRatio,
+          );
+          loaded = asset.extension === "gif"
+            ? { image: await loadImage(asset.previewUrl), source: "original" as const }
+            : await loadBoardImageWithFallback(
+                boardProxyUrl(asset.thumbnailUrl, initialProxySize),
+                asset.previewUrl,
+                loadImage,
+              );
+        } else {
+          // 非图片类型：直接用 thumbnailUrl（provider 已生成真实缩略图）。
+          loaded = { image: await loadImage(asset.thumbnailUrl), source: "original" as const };
+        }
         const image = loaded.image;
         const width = image.width || 1;
         const height = image.height || 1;
@@ -4083,9 +4112,9 @@ export function BoardCanvas({
             type: "asset",
             assetId: asset.id,
             sourceUrl: asset.previewUrl,
-            ...(asset.extension === "gif" || loaded.source === "original"
-              ? {}
-              : { boardProxySize: initialProxySize }),
+            ...(asset.kind === "image" && asset.extension !== "gif" && loaded.source === "proxy"
+              ? { boardProxySize: initialProxySize }
+              : {}),
             objectId: crypto.randomUUID(),
             name: asset.title,
             ...(parentId ? { parentId } : {}),
@@ -4169,6 +4198,14 @@ export function BoardCanvas({
       )
     ).filter((asset): asset is AssetRecord => Boolean(asset));
     if (!droppedAssets.length) return 0;
+    // 导入优化规则：统计超大图（任一边 > 2048px），它们会被 proxy 自动降档
+    // 加载（512/1024/2048），不占用全分辨率内存；提示用户已优化。
+    const optimizedCount = droppedAssets.filter(
+      (asset) =>
+        asset.kind === "image" &&
+        (asset.width ?? 0) > 2048 &&
+        (asset.height ?? 0) > 2048,
+    ).length;
     const sizes = droppedAssets.map((asset) => {
       if (asset.kind !== "image" || !asset.width || !asset.height) {
         return { width: 220, height: 138 };
@@ -4226,10 +4263,13 @@ export function BoardCanvas({
     }
     canvas.requestRenderAll();
     scheduleSaveRef.current?.();
+    const baseNotice = assetIds.length > 500
+      ? translate("board.dropLimited").replace("{count}", String(ids.length))
+      : translate("board.dropPlaced").replace("{count}", String(added.length));
     showDropNotice(
-      assetIds.length > 500
-        ? translate("board.dropLimited").replace("{count}", String(ids.length))
-        : translate("board.dropPlaced").replace("{count}", String(added.length)),
+      optimizedCount > 0
+        ? `${baseNotice} ${translate("board.importOptimized").replace("{count}", String(optimizedCount))}`
+        : baseNotice,
     );
     return added.length;
   };

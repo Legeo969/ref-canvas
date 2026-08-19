@@ -124,6 +124,7 @@ describe("resources IPC mount events", () => {
       getProviderRegistry: () => ({}),
       getThumbnailWorker: () => null,
       getThumbnailCacheDirectory: () => directory,
+      getPreviewCacheIndex: () => null,
       getScriptsService: () => ({}),
       previewTokens: {},
       notifyMountsChanged: vi.fn(),
@@ -157,7 +158,7 @@ describe("resources IPC mount events", () => {
     registerResourcesIpc(ipc, {
       getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
       getProviderRegistry: () => ({}), getThumbnailWorker: () => null,
-      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      getThumbnailCacheDirectory: () => directory, getPreviewCacheIndex: () => null, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
@@ -195,7 +196,7 @@ describe("resources IPC mount events", () => {
     registerResourcesIpc(ipc, {
       getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
       getProviderRegistry: () => registry, getThumbnailWorker: () => null,
-      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      getThumbnailCacheDirectory: () => directory, getPreviewCacheIndex: () => null, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
@@ -233,7 +234,7 @@ describe("resources IPC mount events", () => {
     registerResourcesIpc(ipc, {
       getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
       getProviderRegistry: () => registry, getThumbnailWorker: () => null,
-      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      getThumbnailCacheDirectory: () => directory, getPreviewCacheIndex: () => null, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
@@ -275,7 +276,7 @@ describe("resources IPC mount events", () => {
     registerResourcesIpc(ipc, {
       getDatabase: () => ({}), getLibrary: () => ({}), getMountService: () => ({}),
       getProviderRegistry: () => registry, getThumbnailWorker: () => null,
-      getThumbnailCacheDirectory: () => directory, getScriptsService: () => ({}),
+      getThumbnailCacheDirectory: () => directory, getPreviewCacheIndex: () => null, getScriptsService: () => ({}),
       previewTokens: {}, notifyMountsChanged: vi.fn(),
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);

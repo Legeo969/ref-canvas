@@ -1896,6 +1896,12 @@
   font-size: 13px;
 }
 
+.previous-crash-banner {
+  background: #2a2f26;
+  color: #c8d0a8;
+  border-bottom-color: rgba(180, 200, 120, 0.35);
+}
+
 .capture-overlay > img,
 .capture-shade {
   position: absolute;
