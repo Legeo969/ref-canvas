@@ -215,6 +215,26 @@ export function VideoPreview({
   // frameRetriedRef：一次抓帧流程（用户步进/seek/扫览落位）中，帧图
   // 加载失败只自动重抓一次；重抓后无论成败都不再自动重试，转正式错误。
   const frameRetriedRef = useRef(false);
+  /** 帧提取/加载失败时回退到 video 原生当前帧：不中断浏览，也不显示
+   *  “无法提取该帧”的致命错误条。精确帧仍优先，失败只是降级显示。 */
+  const fallbackToVideoFrame = (next: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    lastFrameTimeRef.current = next;
+    setFrameSource(null);
+    setPlaying(false);
+    setFailed(false);
+    setFailureReason(null);
+    try {
+      video.currentTime = next;
+    } catch {
+      // 某些容器在 metadata 就绪前不允许 seek；静默忽略即可。
+    }
+    setTimecode(next);
+    onTimeChange?.(next);
+    if (onOpenTool) schedulePalette(next, true);
+  };
   const grabFrameAt = (next: number, { retry = false } = {}) => {
     const video = videoRef.current;
     if (!video) return;
@@ -246,18 +266,18 @@ export function VideoPreview({
               setFrameSource(null);
               grabFrameAt(next, { retry: true });
             } else {
-              setFailed(true);
-              setFailureReason("FRAME_IMAGE_LOAD_FAILED");
+              // 图片加载失败（如 token 协议瞬时拒绝）不再致命：回退 video 帧。
+              fallbackToVideoFrame(next);
             }
           }
         }
       })
       .catch((error: unknown) => {
         if (assetPathRef.current === requestPath && epoch === grabEpochRef.current) {
-          setFailed(true);
-          setFailureReason(
-            error instanceof Error ? error.message : String(error ?? "unknown"),
-          );
+          // ffmpeg 提取失败不再显示致命错误条：回退 video 原生 seek，
+          // 用户可继续浏览；具体原因保留在 console 便于诊断。
+          console.warn(`[VideoPreview] frame extraction failed at ${next}s`, error);
+          fallbackToVideoFrame(next);
         }
       })
       .finally(() => {

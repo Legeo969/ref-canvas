@@ -719,9 +719,10 @@ describe("VideoPreview frame stepping", () => {
     expect(frame.mock.calls.length).toBeGreaterThanOrEqual(1);
     // 同一 URL 至多重试一次（步进 + 重试 = 2 次调用封顶），失败不会无限循环。
     expect(frame.mock.calls.length).toBeLessThanOrEqual(2);
-    // 预加载失败自动重试一次后仍失败：收敛到正式错误提示，破图占位不得留存。
+    // 预加载失败自动重试一次后仍失败：回退到 video 原生帧，破图占位不得留存，
+    // 也不显示致命错误条（用户可继续浏览）。
     expect(host.querySelector<HTMLImageElement>(".video-frame-step")).toBeNull();
-    expect(host.querySelector(".video-frame-error")).toBeTruthy();
+    expect(host.querySelector(".video-frame-error")).toBeNull();
     expect(frame.mock.calls.length).toBeLessThanOrEqual(2);
   });
 
