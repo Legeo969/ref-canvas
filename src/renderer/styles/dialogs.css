@@ -3922,6 +3922,13 @@
   box-shadow: 0 0 0 1px rgba(58, 178, 143, 0.4);
 }
 
+/* 快进/步进时进度条获得焦点：去掉浏览器/全局 focus 白边，保持深色专业外观。 */
+.video-workbench-seek:focus,
+.video-workbench-seek:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
 .video-workbench-seek::-moz-range-track {
   height: 4px;
   border-radius: 999px;
