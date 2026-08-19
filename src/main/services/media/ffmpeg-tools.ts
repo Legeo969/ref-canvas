@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegStatic from "ffmpeg-static";
@@ -41,32 +41,57 @@ export async function extractVideoFrame(
   signal?: AbortSignal,
 ): Promise<ExtractedFrame> {
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await execFileAsync(
-    executable,
-    [
-      "-v",
-      "error",
-      "-ss",
-      String(Math.max(0, timeMs) / 1000),
-      "-accurate_seek",
-      "-i",
-      filename,
-      "-frames:v",
-      "1",
-      "-vf",
-      `scale='min(${size.width},iw)':'min(${size.height},ih)':force_original_aspect_ratio=decrease`,
-      "-f",
-      "image2",
-      "-y",
-      outputPath,
-    ],
-    {
-      maxBuffer: 16 * 1024 * 1024,
-      timeout: 60_000,
-      windowsHide: true,
-      signal,
-    },
-  );
+  // 失败时清理半截输出：否则下次点击会命中缓存里的损坏 PNG，直接显示
+  // “无法提取该帧”而不再重新生成。
+  try {
+    await execFileAsync(
+      executable,
+      [
+        "-v",
+        "error",
+        "-ss",
+        String(Math.max(0, timeMs) / 1000),
+        "-accurate_seek",
+        "-i",
+        filename,
+        "-frames:v",
+        "1",
+        "-vf",
+        `scale='min(${size.width},iw)':'min(${size.height},ih)':force_original_aspect_ratio=decrease`,
+        "-f",
+        "image2",
+        "-y",
+        outputPath,
+      ],
+      {
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 60_000,
+        windowsHide: true,
+        signal,
+      },
+    );
+  } catch (error) {
+    await rm(outputPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+  // 校验产物确为 PNG；失败时删除半截文件，避免缓存命中损坏帧。
+  try {
+    const info = await stat(outputPath);
+    if (info.size < 8) throw new Error("EXTRACTED_FRAME_TOO_SMALL");
+    const handle = await open(outputPath, "r");
+    try {
+      const magic = Buffer.alloc(8);
+      await handle.read(magic, 0, 8, 0);
+      if (!magic.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+        throw new Error("EXTRACTED_FRAME_NOT_PNG");
+      }
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
+  } catch (error) {
+    await rm(outputPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
   return { outputPath, width: size.width, height: size.height };
 }
 
