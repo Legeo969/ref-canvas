@@ -36,7 +36,7 @@ export function usePreviewSessionMode(
 
   // 切换资产只重置聚焦。全屏是窗口级系统状态，由用户操作显式退出；
   // 这里绝不能调用 setPresentationMode(false) —— 同窗口内还挂着
-  // QuickPreview 等其它会话实例，它们随 hover 频繁变化的 assetKey 会把
+  // 其它预览会话实例（如序列/目录信息浮层）随 assetKey 变化时，不能把
   // 主窗口刚进入的全屏立刻退掉（「全屏闪一下」）。
   useEffect(() => {
     setFocused(false);

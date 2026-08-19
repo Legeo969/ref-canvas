@@ -234,13 +234,13 @@ describe("shared preview session", () => {
       await Promise.resolve();
     });
     // 资产切换只重置聚焦；全屏是窗口级状态，不随资产变化退出（否则
-    // QuickPreview 等其它实例的 assetKey 变化会把刚进入的全屏闪掉）。
+    // 其它预览会话实例的 assetKey 变化会把刚进入的全屏闪掉）。
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-focused")).toBe("false");
     expect(host.querySelector(".preview-session-shell")?.getAttribute("data-preview-fullscreen")).toBe("true");
   });
 
   it("keeps window fullscreen when another session's asset changes", async () => {
-    // 主窗口全屏中，QuickPreview 等其它实例的 assetKey 随 hover 变化，
+    // 主窗口全屏中，其它预览会话实例的 assetKey 随 hover 变化，
     // 不得把窗口全屏退掉（「全屏闪一下」回归）。
     installFullscreenMock();
     const hostA = await render(<SessionHarness assetKey="a" onClose={() => undefined} />);
