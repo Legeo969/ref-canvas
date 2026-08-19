@@ -381,11 +381,12 @@ export function VideoPreview({
   togglePlaybackRef.current = togglePlayback;
 
   // ←/→ 逐帧：短按 = 精确单帧；长按 = 加速扫览（计时器驱动，忽略
-  // 浏览器按键自动重复）。按键按焦点归属路由：事件目标在本预览根内
-  // （点击画面后），或位于预览面板（点击工具栏后方向键仍归
-  // 预览）才响应；目录网格等全局方向键处理在目标进入预览区域后让位。
-  // 空格只在预览根内生效（工具栏按钮保留原生 Space 激活语义）；滑杆
-  // 等自带方向键处理的控件除外。扫览中窗口失焦（Alt-Tab 等）立即停止。
+  // 浏览器按键自动重复）。↑/↓ 音量加减（0.1 步进，0–1）。
+  // 按键按焦点归属路由：事件目标在本预览根内（点击画面后），或位于
+  // 预览面板（点击工具栏后方向键仍归预览）才响应；目录网格等全局方向键
+  // 处理在目标进入预览区域后让位。空格只在预览根内生效（工具栏按钮保留
+  // 原生 Space 激活语义）；滑杆等自带方向键处理的控件除外。扫览中窗口
+  // 失焦（Alt-Tab 等）立即停止。
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
@@ -398,6 +399,8 @@ export function VideoPreview({
       if (
         event.key !== "ArrowLeft" &&
         event.key !== "ArrowRight" &&
+        event.key !== "ArrowUp" &&
+        event.key !== "ArrowDown" &&
         event.key !== " "
       ) {
         return;
@@ -418,6 +421,19 @@ export function VideoPreview({
       event.preventDefault();
       if (event.key === " ") {
         if (!event.repeat && insideRoot) togglePlaybackRef.current();
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        if (event.repeat) return;
+        setVolume((current) => {
+          const next = Math.min(1, Math.max(0, current + (event.key === "ArrowUp" ? 0.1 : -0.1)));
+          if (videoRef.current) videoRef.current.volume = next;
+          if (next > 0) {
+            videoRef.current!.muted = false;
+            setMuted(false);
+          }
+          return next;
+        });
         return;
       }
       if (event.repeat) return;

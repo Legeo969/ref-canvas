@@ -569,7 +569,7 @@ export function SequencePreviewDialog({
         target.tagName === "TEXTAREA" ||
         target.isContentEditable
       );
-      if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === " ")) {
+      if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === " ")) {
         // 按键按焦点归属路由：事件目标须在本预览根内（点击画面后），
         // 或位于预览面板（点击工具栏后方向键仍归预览）；滑杆等
         // 自带方向键处理的控件除外。目录网格等全局处理在目标进入预览
@@ -591,6 +591,11 @@ export function SequencePreviewDialog({
         event.preventDefault();
         if (event.key === " ") {
           if (!event.repeat && insideRoot) setPlaying((value) => !value);
+          return;
+        }
+        // ↑/↓ 序列没有音量概念，统一保留为无操作（与 GIF 一致），
+        // 避免方向键被目录网格抢走。
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
           return;
         }
         // ←/→ 逐帧：播放中先暂停再步进；长按加速（按住越久每键跳帧

@@ -13,6 +13,8 @@ import { translate } from "../app/i18n";
 import { PreviewColorBar } from "./PreviewColorBar";
 import { usePreviewTransportRegistration } from "./PreviewTransport";
 
+const GIF_KEYBOARD_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "]);
+
 interface GifFrame {
   image: VideoFrame;
   durationMs: number;
@@ -183,6 +185,44 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     setFrameIndex(next);
   };
 
+  // 统一方向键：←/→ 逐帧；↑/↓ 无操作（GIF 无音量）；Space 播放/暂停。
+  // 焦点路由与视频/序列一致：点击预览根后接管，交互控件除外。
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const typing = target instanceof HTMLElement && (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      );
+      if (typing || !GIF_KEYBOARD_KEYS.has(event.key)) return;
+      const root = rootRef.current;
+      if (!root || !(target instanceof Node)) return;
+      const insideRoot = root.contains(target);
+      const inPreviewPanel =
+        target instanceof Element &&
+        target.closest(".preview-panel") != null;
+      if (!insideRoot && !inPreviewPanel) return;
+      if (
+        target instanceof Element &&
+        target.closest("button, input, textarea, select, a, [role='slider']")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (event.key === " ") {
+        if (!event.repeat && insideRoot) setPlaying((value) => !value);
+        return;
+      }
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") return;
+      if (event.repeat) return;
+      step(event.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [gif]);
+
   const exportFrame = async () => {
     const canvas = canvasRef.current;
     if (!canvas || exporting) return;
@@ -233,7 +273,21 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
   const count = gif?.frames.length ?? 0;
 
   return (
-    <div className="gif-preview">
+    <div
+      ref={rootRef}
+      className="gif-preview"
+      tabIndex={-1}
+      onPointerDown={(event) => {
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest("button, input, textarea, select, a, [tabindex]")
+        ) {
+          return;
+        }
+        rootRef.current?.focus({ preventScroll: true });
+      }}
+    >
       <canvas ref={canvasRef} className="gif-preview-canvas" />
       {!managed && count > 1 && (
         <div className="gif-controls">
