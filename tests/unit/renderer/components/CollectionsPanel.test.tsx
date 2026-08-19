@@ -150,7 +150,6 @@ describe("CollectionsPanel", () => {
       );
     });
     expect(host.textContent).toContain("还没有集合");
-    expect(host.textContent).toContain("不复制或移动源文件");
 
     await act(async () => {
       host.querySelector('[aria-label="新建集合"]')?.dispatchEvent(
@@ -235,7 +234,6 @@ describe("CollectionsPanel", () => {
 
     expect(host.textContent).toContain("灵感");
     expect(host.textContent).toContain("子集");
-    expect(host.textContent).toContain("归集到一起");
     expect(host.querySelector('[aria-label="添加素材到 灵感"]')).toBeTruthy();
 
     await act(async () => {
@@ -546,9 +544,9 @@ describe("CollectionsPanel", () => {
       );
     });
 
-    // 「默认」tab（图标 + 标题）与集合树可见。
+    // 「集合」tab（图标 + 标题）与集合树可见。
     const tab = host.querySelector(".collections-tab");
-    expect(tab?.textContent).toContain("默认");
+    expect(tab?.textContent).toContain("集合");
     expect(tab?.querySelector("svg")).toBeTruthy();
     expect(host.textContent).toContain("灵感");
 
@@ -556,7 +554,7 @@ describe("CollectionsPanel", () => {
     const collapse = host.querySelector<HTMLButtonElement>('[aria-label="折叠"]');
     await act(async () => collapse?.click());
     expect(host.textContent).not.toContain("灵感");
-    expect(host.textContent).toContain("默认");
+    expect(host.textContent).toContain("集合");
   });
 
   it("reorders a collection through the row menu", async () => {

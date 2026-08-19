@@ -929,9 +929,6 @@ export type MessageKey =
   | "collections.deleteConfirm"
 
   | "collections.deleteNamed"
-
-  | "collections.description"
-
   | "collections.dropActive"
 
   | "collections.empty"
@@ -979,6 +976,8 @@ export type MessageKey =
   | "collections.newChild"
 
   | "collections.openInNewTab"
+
+  | "collections.paneTitle"
 
   | "collections.pickFiles"
 

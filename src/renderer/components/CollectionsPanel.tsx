@@ -993,7 +993,7 @@ export function CollectionsPanel({
       <header className="sidebar-pane-header collections-pane-header">
         <div className="collections-tab active">
           <Layers size={14} />
-          <span>{translate("collections.default")}</span>
+          <span>{translate("collections.paneTitle")}</span>
         </div>
         <div className="sidebar-pane-actions">
           <VisibilityToggle />
@@ -1026,7 +1026,6 @@ export function CollectionsPanel({
       </header>
       {!collapsed && (
         <div className="sidebar-pane-content">
-          <p className="collections-section-hint">{translate("collections.description")}</p>
           {menuOpen && (
             <>
               <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
@@ -1046,7 +1045,6 @@ export function CollectionsPanel({
           {roots.length === 0 ? (
             <div className="collections-empty">
               <p>{translate("collections.empty")}</p>
-              <span>{translate("collections.description")}</span>
               <button type="button" onClick={() => void createCollection()}>
                 <FolderPlus size={14} />
                 {translate("collections.create")}

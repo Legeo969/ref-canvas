@@ -90,8 +90,8 @@ describe("Sidebar workspaces", () => {
     expect(footer).toBeTruthy();
     expect(footer?.querySelector(".sidebar-search input")).toBeFalsy();
     expect(footer?.querySelector(".sidebar-recycle-button")).toBeTruthy();
-    // 集合面板「默认」tab + 空态；参考板区保留。
-    expect(host.textContent).toContain("默认");
+    // 集合面板 tab + 空态；参考板区保留。
+    expect(host.textContent).toContain("集合");
     expect(host.textContent).toContain("还没有集合");
     expect(host.textContent).toContain("参考板");
 

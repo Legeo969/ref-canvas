@@ -3,7 +3,6 @@ import type { MessageKey } from "../i18n";
 export const catalog = {
   en: {
     "collections.empty": "No collections yet.",
-    "collections.description": "Organize references to files on disk without copying the source files.",
     "collections.create": "New Collection",
     "collections.addFiles": "Add Files…",
     "collections.createFromFiles": "New Collection from Files…",
@@ -15,6 +14,7 @@ export const catalog = {
     "collections.resolving": "Resolving…",
     "collections.exporting": "Exporting…",
     "collections.exported": "Export Complete",
+    "collections.paneTitle": "Collections",
     "collections.openInNewTab": "Open in New Tab",
     "collections.deleteConfirm": "Delete collection? This cannot be undone.",
     "collections.recursiveDelete": "Delete the collection and all its children and items? Source files on disk are never removed.",
@@ -62,7 +62,6 @@ export const catalog = {
   },
   zhCN: {
     "collections.empty": "还没有集合。",
-    "collections.description": "把不同文件夹的素材归集到一起，不复制或移动源文件。",
     "collections.create": "新建集合",
     "collections.addFiles": "添加文件…",
     "collections.createFromFiles": "选文件并新建集合…",
@@ -74,6 +73,7 @@ export const catalog = {
     "collections.resolving": "正在检查…",
     "collections.exporting": "导出中…",
     "collections.exported": "导出完成",
+    "collections.paneTitle": "集合",
     "collections.openInNewTab": "在新标签查看",
     "collections.deleteConfirm": "删除集合？此操作不可撤销。",
     "collections.recursiveDelete": "删除集合及其全部子集合与条目？磁盘上的源文件不会被删除。",
