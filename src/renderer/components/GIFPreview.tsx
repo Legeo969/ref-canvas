@@ -266,11 +266,36 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     stopScrub: undefined,
   });
 
-  if (error) {
-    return <span className="preview-message">{translate("gif.decodeFailed")}</span>;
+  // ImageDecoder 不可用或解码失败时，回退到浏览器原生 <img>：GIF 仍能
+  // 正常播放动画（只是没有帧步进/导出等高级控制）。
+  if (error || !gif) {
+    return (
+      <div
+        ref={rootRef}
+        className="gif-preview gif-preview-fallback"
+        tabIndex={-1}
+        onPointerDown={(event) => {
+          const target = event.target;
+          if (
+            target instanceof Element &&
+            target.closest("button, input, textarea, select, a, [tabindex]")
+          ) {
+            return;
+          }
+          rootRef.current?.focus({ preventScroll: true });
+        }}
+      >
+        <img
+          src={asset.previewUrl}
+          alt={asset.title}
+          draggable={false}
+          className="gif-preview-fallback-img"
+        />
+      </div>
+    );
   }
 
-  const count = gif?.frames.length ?? 0;
+  const count = gif.frames.length;
 
   return (
     <div
