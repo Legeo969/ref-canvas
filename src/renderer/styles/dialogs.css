@@ -2666,6 +2666,11 @@
   height: calc(100% - 46px);
 }
 
+/* 白板双击 GIF/APNG 预览：让 GIF 预览占满弹窗内容区。 */
+.model-board-dialog .gif-preview {
+  height: calc(100% - 46px);
+}
+
 @media (max-width: 1280px) {
   .asset-filter-row {
     grid-template-columns: minmax(0, 1fr) 40px;

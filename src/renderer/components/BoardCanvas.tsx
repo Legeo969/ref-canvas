@@ -1292,6 +1292,8 @@ export function BoardCanvas({
         if (
           asset.kind === "video" ||
           asset.kind === "audio" ||
+          asset.extension === "gif" ||
+          asset.extension === "apng" ||
           heavyImage
         ) {
           setPreviewAsset(asset);
