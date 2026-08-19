@@ -2222,6 +2222,11 @@ export function DirectoryAssetPanel() {
         navigatePreview(1);
         return;
       }
+      // 目录媒体信息窗口统一：↑/↓ 无操作（不落到背后网格导航）。
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        return;
+      }
     }
 
     if (contextMenu && event.key !== "Escape") return;
