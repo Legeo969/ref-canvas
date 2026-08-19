@@ -85,6 +85,7 @@ const manifest = {
 };
 const serialized = `${JSON.stringify(manifest, null, 2)}\n`;
 fs.writeFileSync(path.join(releaseDirectory, "manifest.json"), serialized);
+fs.mkdirSync(path.join(root, "docs", "releases"), { recursive: true });
 fs.writeFileSync(
   path.join(root, "docs", "releases", `${version}-manifest.json`),
   serialized,

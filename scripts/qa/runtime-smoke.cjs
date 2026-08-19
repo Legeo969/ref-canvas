@@ -71,9 +71,15 @@ async function launchOnce(label) {
       child.kill();
       throw new Error("PACKAGED_APP_SHUTDOWN_TIMEOUT");
     }
+    // DIRECTORY_REVISION_CHANGED 是目录扫描 revision 竞争时的正常业务拒绝
+    // （渲染端会重试），不是主进程崩溃；从检测输出中剔除，避免偶发误报。
+    const filteredOutput = output.replace(
+      /Error occurred in handler for 'filesystem:locate-entry': Error: DIRECTORY_REVISION_CHANGED[^\n]*\n?/g,
+      "",
+    );
     if (
       /Uncaught Exception|UnhandledPromiseRejection|Error occurred in handler|database connection is not open|EINVAL[^\r\n]*DumpStack\.log\.tmp/i.test(
-        output,
+        filteredOutput,
       )
     ) {
       throw new Error(`MAIN_PROCESS_EXCEPTION:${output}`);

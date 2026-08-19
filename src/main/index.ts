@@ -1646,10 +1646,16 @@ void app.whenReady().then(async () => {
   // 崩溃检测：正常退出会在 shutdownServices 写 clean-shutdown 标记；启动时
   // 标记缺失说明上次异常退出。白板数据是即时持久化的（500ms debounce 已落
   // 库），故只提示、不恢复未保存数据。检测后立即清除标记（本次启动即重写）。
+  // 首次启动（hasLaunchedBefore 缺失）不视为崩溃——全新 profile 没有
+  // cleanShutdown 标记是正常现象，不应显示横幅。
+  const hasLaunchedBefore = database.getSetting<boolean>("hasLaunchedBefore", false);
   startupHealth = {
     ...startupHealth,
-    previousCrash: database.getSetting<boolean>("cleanShutdown", false) === false,
+    previousCrash:
+      hasLaunchedBefore &&
+      database.getSetting<boolean>("cleanShutdown", false) === false,
   };
+  database.setSetting("hasLaunchedBefore", true);
   database.setSetting("cleanShutdown", false);
   thumbnailCacheDirectory = path.join(userData, "cache", "thumbnails");
   const previewIndexPath = path.join(userData, "cache", "preview-index.sqlite");
