@@ -266,41 +266,17 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     stopScrub: undefined,
   });
 
-  // ImageDecoder 不可用或解码失败时，回退到浏览器原生 <img>：GIF 仍能
-  // 正常播放动画（只是没有帧步进/导出等高级控制）。
-  if (error || !gif) {
-    return (
-      <div
-        ref={rootRef}
-        className="gif-preview gif-preview-fallback"
-        tabIndex={-1}
-        onPointerDown={(event) => {
-          const target = event.target;
-          if (
-            target instanceof Element &&
-            target.closest("button, input, textarea, select, a, [tabindex]")
-          ) {
-            return;
-          }
-          rootRef.current?.focus({ preventScroll: true });
-        }}
-      >
-        <img
-          src={asset.previewUrl}
-          alt={asset.title}
-          draggable={false}
-          className="gif-preview-fallback-img"
-        />
-      </div>
-    );
-  }
-
-  const count = gif.frames.length;
+  // 混合方案：
+  // - 播放中始终用浏览器原生 <img>，保证 GIF 动画一定动（不依赖 ImageDecoder）。
+  // - 暂停时用 canvas 显示精确帧，保留帧步进/导出能力。
+  // - ImageDecoder 不可用或解码失败时，也回退到原生 <img> 动画。
+  const count = gif?.frames.length ?? 0;
+  const showNative = error || !gif || playing;
 
   return (
     <div
       ref={rootRef}
-      className="gif-preview"
+      className={`gif-preview${showNative ? " gif-preview-native-mode" : ""}`}
       tabIndex={-1}
       onPointerDown={(event) => {
         const target = event.target;
@@ -313,7 +289,16 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
         rootRef.current?.focus({ preventScroll: true });
       }}
     >
-      <canvas ref={canvasRef} className="gif-preview-canvas" />
+      {showNative ? (
+        <img
+          src={asset.previewUrl}
+          alt={asset.title}
+          draggable={false}
+          className="gif-preview-native-img"
+        />
+      ) : (
+        <canvas ref={canvasRef} className="gif-preview-canvas" />
+      )}
       {!managed && count > 1 && (
         <div className="gif-controls">
           <button

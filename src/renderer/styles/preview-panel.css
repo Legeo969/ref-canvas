@@ -174,13 +174,13 @@
   min-height: 0;
 }
 
-/* GIF 原生 <img> 兜底：ImageDecoder 不可用时仍能播放动画。 */
-.gif-preview-fallback {
+/* GIF 原生 <img> 模式：播放中始终用浏览器原生动画，保证 GIF 一定动。 */
+.gif-preview-native-mode {
   display: grid;
   place-items: center;
 }
 
-.gif-preview-fallback-img {
+.gif-preview-native-img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
