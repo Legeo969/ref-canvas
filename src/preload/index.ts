@@ -277,6 +277,8 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("media:validateOcioConfig", path),
     frame: (path, options) =>
       ipcRenderer.invoke("media:frame", path, options),
+    gifFrames: (path, options) =>
+      ipcRenderer.invoke("media:gifFrames", path, options),
     palette: (path, options) =>
       ipcRenderer.invoke("media:palette", path, options),
     downscale: (request) => ipcRenderer.invoke("media:downscale", request),

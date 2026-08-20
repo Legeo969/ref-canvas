@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { translate } from "../app/i18n";
+import { usePlaybackClockPosition } from "./playback-clock";
 
 type RangeHandle = "start" | "end";
 
@@ -25,6 +26,11 @@ interface PreviewSliderProps {
   /** Called when the user drags or clicks to seek. */
   onChange(value: number): void;
   range?: { start: number; end: number; onChange(start: number, end: number): void };
+  /**
+   * 播放进度条专用：跟随 60fps 播放时钟渲染（仅重渲染本滑块，不带动整块
+   * 面板），让进度条在播放时丝滑。拖动时仍以用户指针 + seek 为准。
+   */
+  smoothPlayback?: boolean;
 }
 
 /**
@@ -32,9 +38,11 @@ interface PreviewSliderProps {
  * Track #3A3D45, fill theme accent, white circle handle 12px.
  * Spec §3 upper-row slider.
  */
-export function PreviewSlider({ value, fillColor, onChange, range }: PreviewSliderProps) {
+export function PreviewSlider({ value, fillColor, onChange, range, smoothPlayback = false }: PreviewSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerId: number; handle: RangeHandle } | null>(null);
+  // 播放中的显示位置：有 60fps 时钟时跟时钟，否则回落 props value。
+  const displayValue = usePlaybackClockPosition(smoothPlayback, value);
 
   const commit = useCallback(
     (clientX: number, lockedHandle?: RangeHandle) => {
@@ -93,6 +101,9 @@ export function PreviewSlider({ value, fillColor, onChange, range }: PreviewSlid
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // 播放时间轴（smoothPlayback）方向键让给媒体预览做「逐帧」：
+      // 统一 ←/→ 语义（方案 A），避免滑块自己 ±1% 微调与逐帧双重触发。
+      if (smoothPlayback && event.key.startsWith("Arrow")) return;
       let next: number | null = null;
       if (event.key === "Home") next = 0;
       else if (event.key === "End") next = 1;
@@ -102,14 +113,15 @@ export function PreviewSlider({ value, fillColor, onChange, range }: PreviewSlid
       event.preventDefault();
       onChange(Math.max(0, Math.min(1, next)));
     },
-    [onChange, value],
+    [onChange, smoothPlayback, value],
   );
 
-  const pct = `${Math.max(0, Math.min(100, value * 100))}%`;
+  const pct = `${Math.max(0, Math.min(100, displayValue * 100))}%`;
 
   return (
     <div
       className="preview-slider"
+      data-media-timeline={smoothPlayback ? "" : undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -117,7 +129,7 @@ export function PreviewSlider({ value, fillColor, onChange, range }: PreviewSlid
       onKeyDown={onKeyDown}
       role="slider"
       aria-label={translate("preview.timeline")}
-      aria-valuenow={Math.round(value * 100)}
+      aria-valuenow={Math.round(displayValue * 100)}
       aria-valuemin={0}
       aria-valuemax={100}
       tabIndex={0}

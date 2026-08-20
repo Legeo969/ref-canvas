@@ -428,7 +428,18 @@ export class BoardCanvasController {
   }
 
   async loadCanvasJSON(canvas: FabricCanvas, json: Record<string, unknown>): Promise<void> {
-    await canvas.loadFromJSON(json);
+    // 竞态守卫：打开白板会触发 async loadFromJSON（内部含 clear()），而
+    // StrictMode 双挂 / 切走白板会把实例 dispose。若在此时才 resolve，对已
+    // 销毁画布执行 clear → clearContext(ctx) 且 ctx 为 undefined → 崩
+    // （Cannot read properties of undefined, reading 'clearRect'）。
+    if (this.disposed || this.canvas !== canvas) return;
+    try {
+      await canvas.loadFromJSON(json);
+    } catch (error) {
+      // 加载期间画布被销毁/更换：竞态结果作废，不上抛（否则 unhandledrejection）。
+      if (this.disposed || this.canvas !== canvas) return;
+      throw error;
+    }
   }
 
   dispose(): void {

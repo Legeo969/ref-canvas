@@ -95,7 +95,7 @@ describe("PreviewToolbar variants", () => {
     }
   });
 
-  it("supports keyboard seeking with an accessible timeline name", async () => {
+  it("supports keyboard seeking with an accessible timeline name (arrows delegated to media)", async () => {
     const seek = vi.fn();
     const host = document.createElement("div");
     document.body.append(host);
@@ -106,10 +106,12 @@ describe("PreviewToolbar variants", () => {
     ));
     const slider = host.querySelector<HTMLElement>('[role="slider"]')!;
     expect(slider.getAttribute("aria-label")).toBe("预览时间线");
+    // 方案 A：时间轴滑块的 ←/→ 让位给媒体预览做「逐帧」，自身不再 ±1% 微调；
+    // Home/End 仍在滑块上（跳到头/尾）。
     await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
     await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
     await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-    expect(seek.mock.calls).toEqual([[0.51], [0], [1]]);
+    expect(seek.mock.calls).toEqual([[0], [1]]);
   });
 
   it("routes LUT, color palette, multichannel and notes actions by capability", async () => {

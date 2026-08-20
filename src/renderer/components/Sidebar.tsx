@@ -1,4 +1,4 @@
-import { PanelsTopLeft, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, PanelsTopLeft, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
@@ -88,6 +88,8 @@ export function Sidebar() {
   const [layout, setLayout] = useState<SidebarLayoutPreference>(
     SIDEBAR_LAYOUT_DEFAULTS,
   );
+  /** 白板（参考板）区折叠态：与其他面板一致，可展开/折叠。 */
+  const [boardsCollapsed, setBoardsCollapsed] = useState(false);
   // onDragEnd / 键盘调整是同步连续流：state 异步更新，ref 镜像保证
   // 结束时读到的是最新高度。
   const layoutRef = useRef(layout);
@@ -297,34 +299,50 @@ export function Sidebar() {
           onDragEnd={endDrag}
         />
         <div
-          className="sidebar-section sidebar-board-section"
-          style={{ height: layout.boardHeight }}
+          className={`sidebar-section sidebar-board-section${boardsCollapsed ? " collapsed" : ""}`}
+          style={boardsCollapsed ? undefined : { height: layout.boardHeight }}
         >
           <div className="section-label row-label">
             <span>{translate("sidebar.boards")}</span>
-            <button
-              className="mini-icon-button"
-              aria-label={translate("boards.new")}
-              onClick={() =>
-                void dialog.requestForm({
-                  title: translate("boards.new"),
-                  confirmLabel: translate("boards.createConfirm"),
-                  fields: [
-                    {
-                      name: "title",
-                      label: translate("boards.nameLabel"),
-                      required: true,
-                      maxLength: 120,
-                    },
-                  ],
-                  onSubmit: ({ title }) => store.createBoard(title),
-                })
-              }
-            >
-              <Plus size={14} />
-            </button>
+            <div className="sidebar-pane-actions">
+              <button
+                className="mini-icon-button"
+                aria-label={translate("boards.new")}
+                onClick={() =>
+                  void dialog.requestForm({
+                    title: translate("boards.new"),
+                    confirmLabel: translate("boards.createConfirm"),
+                    fields: [
+                      {
+                        name: "title",
+                        label: translate("boards.nameLabel"),
+                        required: true,
+                        maxLength: 120,
+                      },
+                    ],
+                    onSubmit: ({ title }) => store.createBoard(title),
+                  })
+                }
+              >
+                <Plus size={14} />
+              </button>
+              <button
+                type="button"
+                className="mini-icon-button pane-collapse"
+                aria-expanded={!boardsCollapsed}
+                aria-label={
+                  boardsCollapsed ? translate("directory.expand") : translate("directory.collapse")
+                }
+                title={
+                  boardsCollapsed ? translate("directory.expand") : translate("directory.collapse")
+                }
+                onClick={() => setBoardsCollapsed((value) => !value)}
+              >
+                {boardsCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+              </button>
+            </div>
           </div>
-          {store.boards.map((board) => (
+          {!boardsCollapsed && store.boards.map((board) => (
             <button
               className={`nav-row ${
                 store.workspaceMode === "board" &&

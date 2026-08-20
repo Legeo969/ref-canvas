@@ -7,6 +7,7 @@ import {
   PREVIEW_ATTEMPT_TIMEOUT_MS,
   PREVIEW_RETRY_DELAYS_MS,
   previewUrlWithRetry,
+  resetReadyPreviewCache,
   useRetryingPreviewUrl,
 } from "../../../../src/renderer/components/useRetryingPreviewUrl";
 
@@ -16,6 +17,7 @@ describe("useRetryingPreviewUrl", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];
 
   afterEach(async () => {
+    resetReadyPreviewCache();
     await act(async () => {
       for (const root of roots.splice(0)) root.unmount();
     });
@@ -110,5 +112,28 @@ describe("useRetryingPreviewUrl", () => {
     await act(async () => vi.advanceTimersByTimeAsync(PREVIEW_ATTEMPT_TIMEOUT_MS * 2));
     expect(host.firstElementChild?.getAttribute("data-status")).toBe("ready");
     expect(host.firstElementChild?.getAttribute("data-url")).toBe("refbrowse://thumbnail/token");
+  });
+
+  it("remounts a previously-loaded source straight to ready (no loading flash)", () => {
+    // 「切窗口回来/虚拟网格重挂」场景：同一 URL 本会话已 ready，重挂后直接
+    // ready 起步，不再闪 loading 占位图（卡片重挂是虚拟化的正常行为）。
+    const first = render("refbrowse://thumbnail/token");
+    expect(first.host.firstElementChild?.getAttribute("data-status")).toBe("loading");
+    act(() => first.host.querySelector<HTMLButtonElement>("button:nth-of-type(1)")?.click());
+    expect(first.host.firstElementChild?.getAttribute("data-status")).toBe("ready");
+
+    act(() => first.root.unmount());
+    roots.splice(roots.indexOf(first.root), 1);
+    document.body.replaceChildren();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    function Harness2({ value }: { value: string | null }) {
+      const preview = useRetryingPreviewUrl(value);
+      return <div data-status={preview.status}>{value ?? ""}</div>;
+    }
+    act(() => root.render(<Harness2 value="refbrowse://thumbnail/token" />));
+    expect(host.firstElementChild?.getAttribute("data-status")).toBe("ready");
   });
 });

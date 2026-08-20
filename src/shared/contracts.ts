@@ -1123,6 +1123,19 @@ export interface MediaFrameResult {
   jobId?: string;
 }
 
+/**
+ * media.gifFrames 整包拆帧结果：Chromium 的 GIF 解码器对大型 GIF 只报
+ * 第一帧，无法在渲染端播放动画；改为主进程用 ffmpeg 拆出全部 PNG 帧，
+ * 渲染端以 refbrowse:// URL 逐帧加载成位图播放。
+ */
+export interface MediaGifFramesResult {
+  /** 拆出的帧数（如 165）。 */
+  count: number;
+  /** 每一帧的可加载 URL（refbrowse://preview/<token>），顺序即播放顺序。 */
+  urls: string[];
+  jobId?: string;
+}
+
 /** media.waveform 波形结果（阶段 4：音频）。 */
 export interface MediaWaveformResult {
   /** 归一化 0..1 峰值包络（等时间间隔）。 */
@@ -1741,6 +1754,12 @@ export interface RefCanvasApi {
       path: string,
       options?: { timeMs?: number; width?: number; height?: number },
     ): Promise<MediaFrameResult>;
+    /** 主进程用 ffmpeg 把 GIF/APNG 整包拆帧，渲染端逐帧位图播放
+        （绕开 Chromium GIF 解码器对大型 GIF 只解首帧的问题）。 */
+    gifFrames(
+      path: string,
+      options?: { jobId?: string },
+    ): Promise<MediaGifFramesResult>;
     /** 从本地图片或视频时间点提取主色，不依赖 renderer 画布权限。 */
     palette(
       path: string,

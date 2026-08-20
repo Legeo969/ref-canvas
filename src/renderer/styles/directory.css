@@ -601,10 +601,84 @@
 
 .dir-path-bar {
   display: flex;
-  min-height: 40px;
+  min-height: 42px;
   align-items: center;
   gap: 8px;
-  padding: 0 12px 8px;
+  padding: 0 10px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.dir-path-nav {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.dir-path-nav .icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: #cccccc;
+}
+
+.dir-path-nav .icon-button:disabled {
+  color: #555555;
+}
+
+.dir-path-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #333333;
+  border-radius: 3px;
+  background: #141414;
+  color: #e0e0e0;
+  font-size: 13px;
+  outline: none;
+}
+
+.dir-path-input:focus {
+  border-color: #0078d4;
+}
+
+.dir-path-edit {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #777777;
+  cursor: pointer;
+}
+
+.dir-path-edit:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #cccccc;
+}
+
+.directory-search-inline {
+  width: 220px;
+  min-width: 0;
+  flex: none;
+  margin: 0;
+  min-height: 28px;
+  background: #141414;
+  border: 1px solid #333333;
+  border-radius: 3px;
+  box-shadow: none;
+  padding: 0 8px;
+}
+
+.directory-search-inline input {
+  font-size: 12px;
 }
 
 .dir-path-bar .secondary-button {

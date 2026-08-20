@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 
@@ -67,6 +67,25 @@ function contentType(filename: string): string {
   }
 }
 
+/**
+ * 图片必须整包缓冲返回：refasset/refbrowse 均以 `stream: true` 特权注册，
+ * Chromium 的图像解码器遇到 streaming body 时对大型 GIF 可能只拿到首帧
+ * （</img> 停在第一帧、ImageDecoder 只报 1 帧）。缓冲后 Content-Length
+ * 精确、body 完整，解码器可看到全部 165 帧。视频/音频仍走流式（range 拖动）。
+ */
+const IMAGE_CONTENT_TYPES = new Set([
+  "image/gif",
+  "image/png",
+  "image/webp",
+  "image/jpeg",
+  "image/avif",
+  "image/svg+xml",
+  "image/bmp",
+  "image/tiff",
+]);
+/** 超过此体积不再整包缓冲（防内存峰值），退回流式。 */
+const MAX_BUFFERED_IMAGE_BYTES = 64 * 1024 * 1024;
+
 export async function fileProtocolResponse(
   filename: string,
   request: Pick<Request, "method" | "headers">,
@@ -101,6 +120,16 @@ export async function fileProtocolResponse(
   }
   if (method === "HEAD" || info.size === 0) {
     return new Response(null, {
+      status: range.status === "valid" ? 206 : 200,
+      headers,
+    });
+  }
+  const isImage = IMAGE_CONTENT_TYPES.has(contentType(filename));
+  if (isImage && info.size <= MAX_BUFFERED_IMAGE_BYTES) {
+    // 图片已在体积上限内整包读入内存，按 range 切出目标片段的拷贝。
+    const buffer = await readFile(filename);
+    const slice = buffer.subarray(start, end + 1);
+    return new Response(new Uint8Array(slice.buffer, slice.byteOffset, slice.byteLength), {
       status: range.status === "valid" ? 206 : 200,
       headers,
     });

@@ -1,5 +1,5 @@
 import { Box, Shapes } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import type { PaletteColor } from "../../shared/color-palette";
 import { browserImageExtensions } from "../../shared/asset-kind";
@@ -51,7 +51,7 @@ function SystemThumbnail({ asset }: { asset: AssetRecord }) {
   );
 }
 
-export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps, onPaletteChange, managed = false, controlsTarget, multichannelOpen = false, multichannelAnchor, sharedColorControls = false, eyedropActive, onEyedropActiveChange, onColorSample }: AssetPreviewProps) {
+export const AssetPreview = memo(function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeChange, playbackFps, onPaletteChange, managed = false, controlsTarget, multichannelOpen = false, multichannelAnchor, sharedColorControls = false, eyedropActive, onEyedropActiveChange, onColorSample }: AssetPreviewProps) {
   const runtimeApi = (window as unknown as {
     refCanvas?: { media?: { probe?: unknown } };
   }).refCanvas;
@@ -226,4 +226,4 @@ export function AssetPreview({ asset, lightweight = false, onOpenTool, onTimeCha
       return <Icon size={34} />;
     }
   }
-}
+});

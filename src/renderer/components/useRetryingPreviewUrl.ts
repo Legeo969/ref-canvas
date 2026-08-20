@@ -21,6 +21,19 @@ export function previewUrlWithRetry(source: string, nonce: number): string {
 }
 
 /**
+ * 会话级「已成功加载」URL 集合。虚拟网格/列表会反复挂载/卸载卡片（滚动、
+ * 导航、切窗口回来都会触发），每次重挂都会重新走 loading→ready，导致已经
+ * 显示过的缩略图又闪一下占位图。记录已加载 URL，重挂时直接以 ready 起步，
+ * 图片本身靠 HTTP/磁盘缓存瞬间出图，不再闪「加载」。
+ */
+const readyPreviewUrls = new Set<string>();
+
+/** 仅测试用：清空会话级「已加载」缓存，避免用例间相互污染。 */
+export function resetReadyPreviewCache(): void {
+  readyPreviewUrls.clear();
+}
+
+/**
  * Browser media requests are allowed to fail while an expensive cache proxy is
  * still being generated. Retry the same cache identity with a renderer-only
  * nonce so a completed proxy is picked up without reselecting the asset.
@@ -40,7 +53,7 @@ export function useRetryingPreviewUrl(
   const [attempt, setAttempt] = useState(0);
   const [nonce, setNonce] = useState(0);
   const [status, setStatus] = useState<PreviewLoadStatus>(
-    source ? "loading" : "idle",
+    source && readyPreviewUrls.has(source) ? "ready" : (source ? "loading" : "idle"),
   );
 
   const clearRetry = useCallback(() => {
@@ -62,7 +75,11 @@ export function useRetryingPreviewUrl(
     clearStall();
     setAttempt(0);
     setNonce(0);
-    setStatus(source ? "loading" : "idle");
+    setStatus(
+      source && readyPreviewUrls.has(source)
+        ? "ready"
+        : (source ? "loading" : "idle"),
+    );
     return () => {
       clearRetry();
       clearStall();
@@ -72,8 +89,9 @@ export function useRetryingPreviewUrl(
   const markReady = useCallback(() => {
     clearRetry();
     clearStall();
+    if (source) readyPreviewUrls.add(source);
     setStatus("ready");
-  }, [clearRetry, clearStall]);
+  }, [clearRetry, clearStall, source]);
 
   const markError = useCallback(() => {
     clearRetry();

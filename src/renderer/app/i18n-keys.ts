@@ -1273,6 +1273,10 @@ export type MessageKey =
 
   | "directory.newTab"
 
+  | "directory.pathInput"
+
+  | "directory.editPath"
+
   | "directory.noActionableAssets"
 
   | "directory.noBackgroundTasks"

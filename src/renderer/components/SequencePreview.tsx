@@ -560,6 +560,11 @@ export function SequencePreviewDialog({
   const scrubHoldRef = useRef<{ direction: 1 | -1; startedAt: number } | null>(null);
   /** 序列预览根：可聚焦，方向键按焦点归属路由（点击预览后接管 ←/→）。 */
   const shellRef = useRef<HTMLElement | null>(null);
+  // 打开序列预览时自动聚焦：←/→ 逐帧（长按加速）、空格播放/暂停立即可用，
+  // 无需先点画面；点击目录网格后焦点交还网格。
+  useEffect(() => {
+    shellRef.current?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -571,26 +576,34 @@ export function SequencePreviewDialog({
       );
       if (!typing && (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown" || event.key === " ")) {
         // 按键按焦点归属路由：事件目标须在本预览根内（点击画面后），
-        // 或位于预览面板（点击工具栏后方向键仍归预览）；滑杆等
-        // 自带方向键处理的控件除外。目录网格等全局处理在目标进入预览
-        // 区域后让位。空格 = 播放/暂停（只在预览根内生效，按钮保留
-        // 原生 Space 激活语义）。
+        // 或位于预览面板/工具栏/白板弹窗（点进度条后空格仍归预览）；
+        // 滑杆自带 ←/→ 微调（±1%），空格交给预览播放/暂停。目录网格等
+        // 全局处理在目标进入预览区域后让位。按钮保留原生 Space 激活语义。
         const root = shellRef.current;
         if (!root || !(target instanceof Node)) return;
         const insideRoot = root.contains(target);
-        const inPreviewPanel =
+        const inPreviewChrome =
           target instanceof Element &&
-          target.closest(".preview-panel") != null;
-        if (!insideRoot && !inPreviewPanel) return;
+          target.closest(".preview-panel, .preview-toolbar, .model-board-dialog") != null;
+        if (!insideRoot && !inPreviewChrome) return;
+        // 方案 A：统一 ←/→ 为「逐帧」。时间轴滑块（data-media-timeline）方向键
+        // 归媒体（逐帧）、空格播放/暂停；其他滑块（如音量）保持自身语义。
+        const isTimelineSlider =
+          target instanceof Element && target.closest("[data-media-timeline]") != null;
+        const isOtherSlider =
+          target instanceof Element &&
+          target.closest("[role='slider']") != null &&
+          !isTimelineSlider;
         if (
           target instanceof Element &&
-          target.closest("button, input, textarea, select, a, [role='slider']")
+          target.closest("button, input, textarea, select, a")
         ) {
           return;
         }
+        if (isOtherSlider) return;
         event.preventDefault();
         if (event.key === " ") {
-          if (!event.repeat && insideRoot) setPlaying((value) => !value);
+          if (!event.repeat && (insideRoot || isTimelineSlider)) setPlaying((value) => !value);
           return;
         }
         // ↑/↓ 序列没有音量概念，统一保留为无操作（与 GIF 一致），

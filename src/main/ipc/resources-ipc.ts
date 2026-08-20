@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { rm, stat } from "node:fs/promises";
+import { readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { z } from "zod";
 import path from "node:path";
@@ -20,10 +20,15 @@ import {
 import type { ThumbnailWorkerClient } from "../platform/thumbnail-worker-client";
 import type { ScriptsService } from "../services/scripts-service";
 import type { PreviewTokenRegistry } from "../platform/refbrowse";
-import { extractVideoFrame, applyLut3dToPng } from "../services/media/ffmpeg-tools";
+import {
+  extractGifFramesToDirectory,
+  extractVideoFrame,
+  applyLut3dToPng,
+} from "../services/media/ffmpeg-tools";
 import { validateOcioConfigWithOpenImageIo } from "../services/media/openimageio-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
+import { readMediaMetadata } from "../services/media-metadata";
 import { exportSequenceToMp4, exportVideoToMp4 } from "../services/media/mp4-export";
 import {
   exportSequenceToGif,
@@ -114,6 +119,26 @@ export function registerResourcesIpc(
     if (info?.isFile()) index.recordSuccess(key, filename, info.size);
   };
 
+  // 每个 GIF identity 目录含一套完整拆帧（165 张 PNG）；只保留最近使用过的
+  // 若干目录，避免「路径+大小+mtime」键位无限累积撑爆磁盘。
+  async function pruneGifFramesDirectories(root: string): Promise<void> {
+    const MAX_KEEP = 8;
+    const names = await readdir(root).catch(() => []);
+    if (names.length <= MAX_KEEP) return;
+    const withTime = await Promise.all(
+      names.map(async (name) => {
+        const dirPath = path.join(root, name);
+        const info = await stat(dirPath).catch(() => null);
+        return { dirPath, mtimeMs: info?.mtimeMs ?? 0, isDir: Boolean(info?.isDirectory()) };
+      }),
+    );
+    const dirs = withTime.filter((item) => item.isDir);
+    dirs.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    for (const { dirPath } of dirs.slice(MAX_KEEP)) {
+      await rm(dirPath, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
   // --- mounts（计划 §7.2 / §13.4）---
 
   ipc.handle("mounts:list", () => database().listMountRoots());
@@ -175,15 +200,42 @@ export function registerResourcesIpc(
   ipc.handle("media:probe", async (filename) => {
     const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
-    const { result } = await invokeProbe(
-      dependencies.getProviderRegistry(),
-      {
-        path: resolved,
-        kind: assetKindForExtension(extension),
-        extension,
-        size: 0,
-      },
-    );
+    let result: {
+      width: number | null;
+      height: number | null;
+      duration: number | null;
+      extra: Record<string, unknown>;
+    } | null = null;
+    try {
+      const invoked = await invokeProbe(
+        dependencies.getProviderRegistry(),
+        {
+          path: resolved,
+          kind: assetKindForExtension(extension),
+          extension,
+          size: 0,
+        },
+      );
+      result = invoked.result;
+    } catch {
+      // image provider 对 GIF 可能抛错；继续走 ffprobe 兜底。
+    }
+    // GIF/APNG 的时长必须用 ffprobe 补，否则进度条/时间码没有总时长。
+    if (extension === "gif" || extension === "apng") {
+      try {
+        const metadata = await readMediaMetadata(resolved);
+        return {
+          width: result?.width ?? null,
+          height: result?.height ?? null,
+          duration: metadata.duration ?? result?.duration ?? null,
+          extra: result?.extra ?? {},
+        };
+      } catch {
+        if (result) return result;
+        throw new Error("GIF_PROBE_FAILED");
+      }
+    }
+    if (!result) throw new Error("PROBE_FAILED");
     return result;
   });
   // 校验自定义 OCIO 配置：解析色彩空间并跑一次最小转换（LUT 引用缺失的
@@ -337,9 +389,14 @@ export function registerResourcesIpc(
     return runMediaJob(parsed.jobId, async (signal, jobId) => {
       const cacheDirectory = dependencies.getThumbnailCacheDirectory();
       if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      const sourceStat = await stat(resolved).catch(() => null);
+      if (!sourceStat || !sourceStat.isFile()) {
+        throw new Error("FRAME_SOURCE_UNAVAILABLE");
+      }
+      // 键含 大小+修改时间：源文件一变，缓存即失效（否则换文件后抽到旧帧）。
       const signature = createHash("sha256")
         .update(
-          `${path.normalize(resolved)}:${Math.round(parsed.timeMs)}:${parsed.width ?? 960}:${parsed.height ?? 540}`,
+          `${path.normalize(resolved)}:${sourceStat.size}:${sourceStat.mtimeMs}:${Math.round(parsed.timeMs)}:${parsed.width ?? 960}:${parsed.height ?? 540}`,
         )
         .digest("hex")
         .slice(0, 20);
@@ -363,6 +420,78 @@ export function registerResourcesIpc(
         timeMs: parsed.timeMs,
         jobId,
       };
+    });
+  });
+  ipc.handle("media:gifFrames", async (filename, options) => {
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
+    const parsed = z
+      .object({
+        jobId: z.string().min(1).max(128).optional(),
+      })
+      .parse(options ?? {});
+    return runMediaJob(parsed.jobId, async (signal, jobId) => {
+      const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+      if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      const info = await stat(resolved).catch(() => null);
+      if (!info || !info.isFile()) throw new Error("GIF_SOURCE_UNAVAILABLE");
+      const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
+      if (extension !== "gif" && extension !== "apng") {
+        throw new Error("GIF_FRAMES_UNSUPPORTED_MEDIA");
+      }
+      const identity = createHash("sha256")
+        .update("gif-frames\0")
+        .update(path.normalize(resolved))
+        .update("\0")
+        .update(String(info.size))
+        .update("\0")
+        .update(String(info.mtimeMs))
+        .digest("hex")
+        .slice(0, 24);
+      const outputDir = path.join(cacheDirectory, "gif-frames", identity);
+      const manifestFile = path.join(outputDir, "manifest.json");
+      // 命中缓存（大小/mtime 未变）直接复用，避免每次打开都重拆 165 帧。
+      let files: string[] = [];
+      const manifest = await readFile(manifestFile, "utf8")
+        .then((text) => JSON.parse(text) as { count?: number; size?: number; mtimeMs?: number })
+        .catch(() => null);
+      if (
+        manifest &&
+        manifest.count &&
+        manifest.size === info.size &&
+        manifest.mtimeMs === info.mtimeMs
+      ) {
+        const candidates = Array.from({ length: manifest.count }, (_, i) =>
+          path.join(outputDir, `frame_${String(i + 1).padStart(4, "0")}.png`),
+        );
+        const firstExists = await stat(candidates[0]).then(() => true, () => false);
+        if (firstExists) {
+          const allExist = await Promise.all(
+            candidates.map((file) => stat(file).then(() => true, () => false)),
+          );
+          if (allExist.every(Boolean)) files = candidates;
+        }
+      }
+      if (files.length === 0) {
+        await rm(outputDir, { recursive: true, force: true });
+        files = await extractGifFramesToDirectory(resolved, outputDir, undefined, signal);
+        await writeFile(
+          manifestFile,
+          JSON.stringify({ count: files.length, size: info.size, mtimeMs: info.mtimeMs }),
+          "utf8",
+        );
+      }
+      // 每个 GIF 状态 ≈ 165 张 PNG，按「路径+大小+mtime」建目录会无限累积；
+      // 只保留最近访问的若干个 identity，防磁盘膨胀。
+      await pruneGifFramesDirectories(path.join(cacheDirectory, "gif-frames"));
+      const urls = files.map((file) => {
+        void recordCacheFile(
+          dependencies.getPreviewCacheIndex(),
+          `gif-frame:${identity}:${path.basename(file)}`,
+          file,
+        );
+        return `refbrowse://preview/${dependencies.previewTokens.tokenFor(file)}`;
+      });
+      return { count: files.length, urls, jobId };
     });
   });
   ipc.handle("media:palette", async (filename, options) => {

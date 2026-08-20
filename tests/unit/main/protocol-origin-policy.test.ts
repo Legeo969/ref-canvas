@@ -80,4 +80,12 @@ describe("protocol origin policy", () => {
   it("varies protocol responses on both provenance headers", () => {
     expect(protocolResponseHeaders({ allowed: true }).Vary).toBe("Origin, Referer");
   });
+
+  it("marks protocol responses as session-cacheable so thumbnails do not refetch on window re-show", () => {
+    // 无缓存头时 Chromium 不缓存自定义协议响应，窗口切回/卡片重挂会重新
+    // 回主进程拉缩略图 → 闪「加载」。会话级短 max-age 让重显命中 HTTP 缓存。
+    expect(protocolResponseHeaders({ allowed: true })["Cache-Control"]).toBe(
+      "private, max-age=300",
+    );
+  });
 });

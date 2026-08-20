@@ -336,6 +336,14 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     setTool(target);
   };
 
+  const handleOpenTool = useCallback((next: WorkbenchCommand, time: number) => {
+    setTimeSeconds(time);
+    if (next !== "color") setTool(next);
+  }, []);
+  const handleColorSample = useCallback((color: string) => {
+    setSampledColorSwatches((colors) => [color, ...colors.filter((candidate) => candidate !== color)]);
+  }, []);
+
   const fpsLabel = playbackFps !== null
     ? `${playbackFps} fps`
     : frameRate
@@ -505,10 +513,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       asset={asset}
                       onTimeChange={setTimeSeconds}
                       playbackFps={playbackFps}
-                      onOpenTool={(next, time) => {
-                        setTimeSeconds(time);
-                        if (next !== "color") setTool(next);
-                      }}
+                      onOpenTool={handleOpenTool}
                       onPaletteChange={setColorSwatches}
                       managed
                       controlsTarget={controlsTarget}
@@ -517,7 +522,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       sharedColorControls
                       eyedropActive={eyedropActive}
                       onEyedropActiveChange={setEyedropActive}
-                      onColorSample={(color) => setSampledColorSwatches((colors) => [color, ...colors.filter((candidate) => candidate !== color)])}
+                      onColorSample={handleColorSample}
                     />
                   )}
                 </PreviewSurface>

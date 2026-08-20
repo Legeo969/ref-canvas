@@ -176,8 +176,8 @@
 
 /* GIF 原生 <img> 模式：播放中始终用浏览器原生动画，保证 GIF 一定动。 */
 .gif-preview-native-mode {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
 }
 
 .gif-preview-native-img {
@@ -186,7 +186,12 @@
   object-fit: contain;
 }
 
+.preview-panel .gif-preview-stage {
+  min-height: 0;
+}
+
 .preview-panel .gif-preview-canvas,
+.preview-panel .gif-preview-native-img,
 .preview-panel .video-preview video,
 .preview-panel .sequence-preview-stage img {
   width: 100%;

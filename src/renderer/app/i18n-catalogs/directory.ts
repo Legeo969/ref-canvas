@@ -3,7 +3,9 @@ import type { MessageKey } from "../i18n";
 export const catalog = {
   en: {
     "directory.searchPlaceholder": "Search filenames or #tags (including subfolders)",
-    "directory.searchPlaceholderShort": "Find or paste a path…",
+    "directory.searchPlaceholderShort": "Search filenames…",
+    "directory.pathInput": "Path",
+    "directory.editPath": "Edit path",
     "directory.newTab": "Open in New Tab",
     "directory.empty": "The folder is empty",
     "directory.searchEmpty": "No matching files",
@@ -191,7 +193,9 @@ export const catalog = {
   },
   zhCN: {
     "directory.searchPlaceholder": "搜索文件名或 #标签（含子目录）",
-    "directory.searchPlaceholderShort": "查找 / 粘贴路径…",
+    "directory.searchPlaceholderShort": "输入文件名进行搜索…",
+    "directory.pathInput": "路径",
+    "directory.editPath": "编辑路径",
     "directory.newTab": "在新标签打开",
     "directory.empty": "目录为空",
     "directory.searchEmpty": "没有匹配的文件",

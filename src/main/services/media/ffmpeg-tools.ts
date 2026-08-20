@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, open, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegStatic from "ffmpeg-static";
@@ -74,16 +74,25 @@ export async function extractVideoFrame(
     await rm(outputPath, { force: true }).catch(() => undefined);
     throw error;
   }
-  // 校验产物确为 PNG；失败时删除半截文件，避免缓存命中损坏帧。
+  // 校验产物是有效图片（PNG 或 WebP）；失败时删除半截文件，避免缓存命中
+  // 损坏帧。ffmpeg 的 image2 会按输出扩展名选编码器：.png 目标=PNG，
+  // .webp 目标=WebP（视频缩略图缓存走 .webp）。只认 PNG 会让 WebP 目标
+  // 必抛 EXTRACTED_FRAME_NOT_PNG，导致视频 poster 生成永远失败。
   try {
     const info = await stat(outputPath);
-    if (info.size < 8) throw new Error("EXTRACTED_FRAME_TOO_SMALL");
+    if (info.size < 12) throw new Error("EXTRACTED_FRAME_TOO_SMALL");
     const handle = await open(outputPath, "r");
     try {
-      const magic = Buffer.alloc(8);
-      await handle.read(magic, 0, 8, 0);
-      if (!magic.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
-        throw new Error("EXTRACTED_FRAME_NOT_PNG");
+      const head = Buffer.alloc(12);
+      await handle.read(head, 0, 12, 0);
+      const isPng = head
+        .subarray(0, 8)
+        .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+      const isWebp =
+        head.subarray(0, 4).toString("latin1") === "RIFF" &&
+        head.subarray(8, 12).toString("latin1") === "WEBP";
+      if (!isPng && !isWebp) {
+        throw new Error("EXTRACTED_FRAME_NOT_IMAGE");
       }
     } finally {
       await handle.close().catch(() => undefined);
@@ -113,6 +122,62 @@ export async function extractVideoPoster(
   return extractVideoFrame(filename, timeMs, outputPath, { width: 480, height: 320 }, executable, signal);
 }
 
+
+/**
+ * 把 GIF/APNG 拆成逐帧 PNG 序列写入 outputDir（frame_0001.png …）。
+ *
+ * 背景：上一版尝试用 Chromium 的 ImageDecoder 在渲染端解 GIF，但该构建对
+ * 大型 GIF 只报 1 帧（哪怕完整 14MB body 已送达），导致动画卡死首帧。这里
+ * 绕开 Chromium 的 GIF 解码器，直接用 ffmpeg 拆帧（ffprobe 已确认文件是
+ * 165 帧 / 24fps），渲染端把拆出的 PNG 当位图播放，暂停/拖动/续播都精确。
+ */
+export async function extractGifFramesToDirectory(
+  filename: string,
+  outputDir: string,
+  executable = packagedFfmpegPath(),
+  signal?: AbortSignal,
+): Promise<string[]> {
+  await mkdir(outputDir, { recursive: true });
+  await execFileAsync(
+    executable,
+    [
+      "-v",
+      "error",
+      "-i",
+      filename,
+      "-vsync",
+      "0",
+      "-f",
+      "image2",
+      path.join(outputDir, "frame_%04d.png"),
+    ],
+    {
+      maxBuffer: 32 * 1024 * 1024,
+      timeout: 120_000,
+      windowsHide: true,
+      signal,
+    },
+  );
+  const names = (await readdir(outputDir))
+    .filter((name) => /^frame_\d{4}\.png$/.test(name))
+    .sort();
+  const files = names.map((name) => path.join(outputDir, name));
+  if (files.length === 0) {
+    throw new Error("GIF_FRAME_EXTRACTION_EMPTY");
+  }
+  // 校验首帧确为 PNG，避免把损坏的半截输出当帧用。
+  const handle = await open(files[0], "r");
+  try {
+    const magic = Buffer.alloc(8);
+    await handle.read(magic, 0, 8, 0);
+    if (!magic.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+      throw new Error("GIF_FRAME_NOT_PNG");
+    }
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
+  return files;
+}
 
 /**
  * 阶段 5 §10.3：对 PNG 应用 Camera LUT（ffmpeg lut3d filter）。

@@ -144,10 +144,17 @@ import {
   boardProxySizeForPixels,
   boardProxyUrl,
   loadBoardImageWithFallback,
+  loadThumbnailWithRetry,
   type BoardProxySize,
 } from "../app/board-proxy";
 import { ModelPreview, type ModelView } from "./ModelPreview";
 import { AssetPreview } from "./AssetPreview";
+import { PreviewToolbar } from "./PreviewToolbar";
+import {
+  PreviewTransportProvider,
+  usePreviewTransport,
+} from "./PreviewTransport";
+import { formatPreviewTimecode } from "./preview-panel-model";
 import { useDialog } from "./DialogProvider";
 import { CropDialog, type CropRect } from "./CropDialog";
 import {
@@ -226,6 +233,32 @@ interface BoardCropTargetSnapshot {
 let boardClipboard: Record<string, unknown>[] = [];
 
 const defaultBoardAppearance = DEFAULT_BOARD_APPEARANCE;
+
+const noopOpenTool = () => {};
+
+function BoardGifPreviewDialog({ asset }: { asset: AssetRecord }) {
+  const transport = usePreviewTransport();
+  return (
+    <div className="model-board-dialog gif-preview-dialog">
+      <AssetPreview asset={asset} onOpenTool={noopOpenTool} />
+      <PreviewToolbar
+        variant="gif"
+        seekPosition={transport.snapshot?.position ?? 0}
+        onSeekChange={(position) => transport.actions?.seek(position)}
+        timecode={formatPreviewTimecode(
+          (transport.snapshot?.position ?? 0) * (transport.snapshot?.durationSeconds ?? 0),
+          transport.snapshot?.kind === "gif" ? transport.snapshot.fps : null,
+        )}
+        loopActive={transport.snapshot?.looping ?? false}
+        onLoopToggle={() => transport.actions?.setLooping(!(transport.snapshot?.looping ?? false))}
+        playing={transport.snapshot?.playing ?? false}
+        onPlayingToggle={() => transport.actions?.togglePlaying()}
+        onStepFrames={(delta) => transport.actions?.stepFrames(delta)}
+        showLowerRow={false}
+      />
+    </div>
+  );
+}
 
 export function BoardCanvas({
   board,
@@ -520,6 +553,19 @@ export function BoardCanvas({
     });
   }, [assets]);
 
+  // 白板预览弹窗：Esc 关闭（与常规弹窗/预览窗口习惯一致）。
+  useEffect(() => {
+    if (!previewAsset && !modelAsset) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPreviewAsset(null);
+      setModelAsset(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewAsset, modelAsset]);
+
   useEffect(() => {
     if (readyBoardId !== board.id) return;
     const ids = new Set(
@@ -584,21 +630,29 @@ export function BoardCanvas({
         if (cancelled || object instanceof FabricImage || !(object instanceof Group)) continue;
         const card = object as CanvasObjectWithData & Group;
         const asset = boardAssets.find((item) => item.id === card.data?.assetId);
-        if (
-          !asset ||
-          asset.kind !== "image" ||
-          asset.linkState !== "online" ||
-          !browserImageExtensions.has(asset.extension.toLowerCase())
-        ) continue;
+        if (!asset || asset.linkState !== "online" || asset.kind === "generic") continue;
+        const isImage = asset.kind === "image" &&
+          browserImageExtensions.has(asset.extension.toLowerCase());
+        let initialProxySize: BoardProxySize | undefined;
         try {
-          const initialProxySize = boardProxySizeForPixels(
-            Math.max(object.getScaledWidth(), object.getScaledHeight()) * window.devicePixelRatio,
-          );
-          const loaded = await loadBoardImageWithFallback(
-            boardProxyUrl(asset.thumbnailUrl, initialProxySize),
-            asset.previewUrl,
-            (url) => FabricImage.fromURL(url),
-          );
+          let loaded: { image: FabricImage; source: "proxy" | "original" };
+          if (isImage) {
+            initialProxySize = boardProxySizeForPixels(
+              Math.max(object.getScaledWidth(), object.getScaledHeight()) * window.devicePixelRatio,
+            );
+            loaded = await loadBoardImageWithFallback(
+              boardProxyUrl(asset.thumbnailUrl, initialProxySize),
+              asset.previewUrl,
+              (url) => FabricImage.fromURL(url),
+            );
+          } else {
+            // 非图片卡片（视频/PDF/模型/字体/DCC 等）：缩略图生成后升级为
+            // 真实图；生成较慢时带 nonce 重试，仍失败则保留参考卡片。
+            loaded = {
+              image: await loadThumbnailWithRetry(asset.thumbnailUrl, (url) => FabricImage.fromURL(url)),
+              source: "original" as const,
+            };
+          }
           if (cancelled || !canvas.getObjects().includes(object)) continue;
           const image = loaded.image as CanvasObjectWithData & FabricImage;
           const width = Math.max(1, image.width);
@@ -858,6 +912,10 @@ export function BoardCanvas({
     runtime.appearance = nextAppearance;
     setAppearance(nextAppearance);
     installBoardActiveSelection();
+    // 打开白板瞬间宿主可能仍是 0×0（窗口刚建、布局未就绪）。0 尺寸画布会让
+    // Fabric 初始化拿不到 2d context，首次 renderAll 时内部 clearContext 直接
+    // 崩（Cannot read properties of undefined (reading 'clearRect')）。
+    // 先给一个非零初值，随后 ResizeObserver 会校正到真实尺寸。
     const canvas = controller.createCanvas(canvasElementRef.current, {
       backgroundColor: "transparent",
       preserveObjectStacking: true,
@@ -865,6 +923,8 @@ export function BoardCanvas({
       selectionBorderColor: "#3ab28f",
       selectionLineWidth: 1,
       fireMiddleClick: true,
+      width: Math.max(1, hostRef.current.clientWidth || 1),
+      height: Math.max(1, hostRef.current.clientHeight || 1),
     });
     let renderFrame: number | null = null;
     let zoomFrame: number | null = null;
@@ -4095,7 +4155,12 @@ export function BoardCanvas({
               );
         } else {
           // 非图片类型：直接用 thumbnailUrl（provider 已生成真实缩略图）。
-          loaded = { image: await loadImage(asset.thumbnailUrl), source: "original" as const };
+          // 缩略图可能仍在生成（首次 404）：带 previewRetry nonce 重试，
+          // 避免「只有格式卡片、内容永远不显示」。
+          loaded = {
+            image: await loadThumbnailWithRetry(asset.thumbnailUrl, loadImage),
+            source: "original" as const,
+          };
         }
         const image = loaded.image;
         const width = image.width || 1;
@@ -5292,21 +5357,39 @@ export function BoardCanvas({
       }}
     >
       {previewAsset && (
-        <div className="model-board-overlay">
-          <div className="model-board-dialog">
-            <header>
-              <strong>{previewAsset.title}</strong>
-              <button
-                className="icon-button"
-                onClick={() => setPreviewAsset(null)}
-                aria-label={translate("board.closePreview")}
-              >
-                ×
-              </button>
-            </header>
-            <AssetPreview asset={previewAsset} />
+        previewAsset.extension === "gif" || previewAsset.extension === "apng" ? (
+          <div
+            className="model-board-overlay"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) setPreviewAsset(null);
+            }}
+          >
+            <PreviewTransportProvider>
+              <BoardGifPreviewDialog asset={previewAsset} />
+            </PreviewTransportProvider>
           </div>
-        </div>
+        ) : (
+          <div
+            className="model-board-overlay"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) setPreviewAsset(null);
+            }}
+          >
+            <div className="model-board-dialog">
+              <header>
+                <strong>{previewAsset.title}</strong>
+                <button
+                  className="icon-button"
+                  onClick={() => setPreviewAsset(null)}
+                  aria-label={translate("board.closePreview")}
+                >
+                  ×
+                </button>
+              </header>
+              <AssetPreview asset={previewAsset} />
+            </div>
+          </div>
+        )
       )}
       {modelAsset && (
         <div className="model-board-overlay">

@@ -29,14 +29,14 @@ function formatTimecode(seconds: number): string {
 }
 
 /**
- * 长按 ←/→ 加速扫览（jog/shuttle）：按住期间每 50ms 走一拍，档位按
- * 拍数递增（每 400ms 一档，1→2→4→…→64 帧/拍）。播放器原生 seek
+ * 长按 ←/→ 加速扫览（jog/shuttle）：按住期间每 40ms 走一拍，档位按
+ * 拍数递增（每 220ms 一档，1→2→4→…→64 帧/拍）。播放器原生 seek
  * 赶不上时 Chromium 自动合并（只应用最后一次 currentTime），高端档
  * 表现为跳帧式快速扫览。松键后用一次 ffmpeg 精确抓帧把显示定格在
  * 最终帧。第 0 拍固定 1 帧，保证短按仍是「精确单帧」。
  */
-const SCRUB_TICK_MS = 50;
-const SCRUB_TIER_MS = 400;
+const SCRUB_TICK_MS = 40;
+const SCRUB_TIER_MS = 220;
 const SCRUB_TICK_FRAMES = [1, 2, 4, 8, 16, 32, 64] as const;
 
 export function VideoPreview({
@@ -65,6 +65,11 @@ export function VideoPreview({
   const frameImageRef = useRef<HTMLImageElement>(null);
   /** 预览根：可聚焦，方向键按焦点归属路由（点击预览后接管 ←/→）。 */
   const rootRef = useRef<HTMLDivElement>(null);
+  // 打开视频预览时自动聚焦：←/→ 逐帧、↑/↓ 音量、空格播放/暂停立即可用，
+  // 无需先点画面；点击目录网格后焦点交还网格。
+  useEffect(() => {
+    rootRef.current?.focus({ preventScroll: true });
+  }, []);
   const assetPathRef = useRef(asset.path);
   assetPathRef.current = asset.path;
   /** 精确抓帧的世代号：每次新抓帧递增，旧抓帧的异步结果据此作废。 */
@@ -408,19 +413,30 @@ export function VideoPreview({
       const root = rootRef.current;
       if (!root || !(target instanceof Node)) return;
       const insideRoot = root.contains(target);
-      const inPreviewPanel =
+      // 焦点在预览面板 / 工具栏 / 白板弹窗里都算「预览接管」，
+      // 这样点进度条/工具栏后空格与方向键仍然有效。
+      const inPreviewChrome =
         target instanceof Element &&
-        target.closest(".preview-panel") != null;
-      if (!insideRoot && !inPreviewPanel) return;
+        target.closest(".preview-panel, .preview-toolbar, .model-board-dialog") != null;
+      if (!insideRoot && !inPreviewChrome) return;
+      // 方案 A：统一 ←/→ 为「逐帧」。时间轴滑块（data-media-timeline）方向键
+      // 归媒体（逐帧）、空格播放/暂停；其他滑块（如音量）保持自身语义。
+      const isTimelineSlider =
+        target instanceof Element && target.closest("[data-media-timeline]") != null;
+      const isOtherSlider =
+        target instanceof Element &&
+        target.closest("[role='slider']") != null &&
+        !isTimelineSlider;
       if (
         target instanceof Element &&
-        target.closest("button, input, textarea, select, a, [role='slider']")
+        target.closest("button, input, textarea, select, a")
       ) {
         return;
       }
+      if (isOtherSlider) return;
       event.preventDefault();
       if (event.key === " ") {
-        if (!event.repeat && insideRoot) togglePlaybackRef.current();
+        if (!event.repeat && (insideRoot || isTimelineSlider)) togglePlaybackRef.current();
         return;
       }
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {

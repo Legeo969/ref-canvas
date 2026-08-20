@@ -615,6 +615,23 @@ export class LibraryService {
           // Keep specialized formats indexable when Chromium cannot decode them.
         }
       }
+      // GIF/APNG 是图片分类但属于动画：补一个真实时长，供预览进度条/时间码使用。
+      if (extension === ".gif" || extension === ".apng") {
+        if (unchanged && existing.duration != null) {
+          duration = existing.duration;
+        } else {
+          try {
+            const metadata = await readMediaMetadata(
+              filename,
+              undefined,
+              options.signal,
+            );
+            duration = metadata.duration;
+          } catch {
+            // 保留 null；预览端仍会尝试 ffprobe/字节解析兜底。
+          }
+        }
+      }
     } else if (kind === "video" || kind === "audio") {
       const reusable =
         !options.forceMediaMetadata &&

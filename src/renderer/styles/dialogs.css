@@ -2667,8 +2667,41 @@
 }
 
 /* 白板双击 GIF/APNG 预览：让 GIF 预览占满弹窗内容区。 */
-.model-board-dialog .gif-preview {
+.model-board-dialog .preview-managed-media-surface {
   height: calc(100% - 46px);
+}
+
+.model-board-dialog .gif-preview {
+  height: 100%;
+}
+
+/* 白板 GIF/APNG 预览弹窗：按设计稿去掉标题栏与取色条，只保留画面 + 底部控制条。
+   结构与右侧预览窗口对齐：使用 PreviewToolbar + PreviewTransport 驱动进度条。 */
+.model-board-dialog.gif-preview-dialog {
+  display: flex;
+  flex-direction: column;
+}
+
+.model-board-dialog.gif-preview-dialog header {
+  display: none;
+}
+
+.model-board-dialog.gif-preview-dialog .preview-managed-media-surface {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+
+.model-board-dialog.gif-preview-dialog .gif-preview {
+  height: 100%;
+}
+
+.model-board-dialog.gif-preview-dialog .preview-color-bar {
+  display: none;
+}
+
+.model-board-dialog.gif-preview-dialog .preview-toolbar {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 1280px) {
@@ -2977,27 +3010,51 @@
 .gif-preview {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
   width: 100%;
   height: 100%;
+  min-height: 0;
+  background: #101313;
 }
 
-.gif-preview-canvas {
+.gif-preview-stage {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+}
+
+.gif-preview-stage > img,
+.gif-preview-stage > canvas {
+  grid-area: 1 / 1;
+}
+
+.gif-preview-stage > img {
+  z-index: 0;
+}
+
+.gif-preview-stage > canvas {
+  z-index: 1;
+}
+
+.gif-preview-canvas,
+.gif-preview-native-img {
   max-width: 100%;
-  max-height: calc(100% - 56px);
+  max-height: 100%;
   object-fit: contain;
   image-rendering: auto;
 }
 
 .gif-controls {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  justify-content: center;
+  gap: 5px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #202425;
 }
 
 .gif-controls button {
@@ -3006,8 +3063,8 @@
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 7px;
-  background: transparent;
+  border-radius: 8px;
+  background: #2a3032;
   color: #c8d1cc;
   cursor: pointer;
   transition-property: background-color, color, scale;
@@ -3015,22 +3072,27 @@
   transition-timing-function: ease-out;
 }
 
-.gif-controls button:hover {
-  background: rgba(255, 255, 255, 0.09);
+.gif-controls button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
   color: #edf2ef;
 }
 
-.gif-controls button:active {
+.gif-controls button:active:not(:disabled) {
   scale: 0.96;
 }
 
+.gif-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .gif-controls button.active {
-  background: rgba(58, 178, 143, 0.15);
+  background: rgba(58, 178, 143, 0.18);
   color: #86d8bf;
 }
 
 .gif-rate {
-  min-width: 36px;
+  min-width: 38px;
   text-align: center;
   font-size: 11px;
   color: #9aa39e;
@@ -3042,6 +3104,11 @@
   height: 4px;
   accent-color: #3ab28f;
   cursor: pointer;
+}
+
+.gif-timeline:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .gif-frame-count {

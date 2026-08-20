@@ -549,6 +549,9 @@ body.panel-resizing {
 .sidebar-pane.collapsed {
   flex: 0 0 auto !important;
   height: auto !important;
+  /* min-height 必须一并清掉：collections 有 100px 下限，不清会留一个
+     又高又空的折叠残壳（「折叠不彻底」）。 */
+  min-height: 0 !important;
 }
 
 .sidebar-pane.collapsed .sidebar-pane-content {
@@ -675,6 +678,12 @@ body.sidebar-resizing {
   flex: 0 0 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* 参考板区折叠：只剩 40px 标题行（白板列表隐藏）。 */
+.sidebar-board-section.collapsed {
+  height: auto !important;
+  overflow: hidden;
 }
 
 .section-label {

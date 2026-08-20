@@ -38,18 +38,37 @@ export interface PreviewTransportActions {
   exportGif?(): void;
 }
 
-interface PreviewTransportValue {
+interface PreviewTransportState {
   snapshot: PreviewTransportSnapshot | null;
   actions: PreviewTransportActions | null;
+}
+
+interface PreviewTransportRegistry {
   register(id: symbol, snapshot: PreviewTransportSnapshot, actions: PreviewTransportActions): void;
   unregister(id: symbol): void;
 }
 
-const PreviewTransportContext = createContext<PreviewTransportValue | null>(null);
+export function previewTransportSnapshotKey(snapshot: PreviewTransportSnapshot): string {
+  return [
+    snapshot.kind,
+    snapshot.playing,
+    String(snapshot.position),
+    String(snapshot.durationSeconds),
+    snapshot.frameIndex,
+    snapshot.frameCount,
+    String(snapshot.fps),
+    String(snapshot.playbackRate),
+    snapshot.looping,
+    snapshot.muted,
+    String(snapshot.volume),
+  ].join("|");
+}
 
-const emptyTransport: PreviewTransportValue = {
-  snapshot: null,
-  actions: null,
+const PreviewTransportStateContext = createContext<PreviewTransportState | null>(null);
+const PreviewTransportRegistryContext = createContext<PreviewTransportRegistry | null>(null);
+
+const emptyState: PreviewTransportState = { snapshot: null, actions: null };
+const emptyRegistry: PreviewTransportRegistry = {
   register: () => undefined,
   unregister: () => undefined,
 };
@@ -60,40 +79,54 @@ export function PreviewTransportProvider({ children }: { children: ReactNode }) 
     snapshot: PreviewTransportSnapshot;
     actions: PreviewTransportActions;
   } | null>(null);
+  // 幂等注册：相同 id + 相同快照不重复 push，避免拖动/播放时高频 re-render
+  // 把面板/滑块拖进「Maximum update depth exceeded」的循环。
+  const lastRegistrationRef = useRef<{ id: symbol; key: string } | null>(null);
 
   const register = useCallback((
     id: symbol,
     snapshot: PreviewTransportSnapshot,
     actions: PreviewTransportActions,
-  ) => setRegistration({ id, snapshot, actions }), []);
+  ) => {
+    const key = previewTransportSnapshotKey(snapshot);
+    const last = lastRegistrationRef.current;
+    if (last && last.id === id && last.key === key) return;
+    lastRegistrationRef.current = { id, key };
+    setRegistration({ id, snapshot, actions });
+  }, []);
   const unregister = useCallback((id: symbol) => {
     setRegistration((current) => current?.id === id ? null : current);
+    if (lastRegistrationRef.current?.id === id) {
+      lastRegistrationRef.current = null;
+    }
   }, []);
-  const value = useMemo<PreviewTransportValue>(() => ({
+
+  const registry = useMemo<PreviewTransportRegistry>(() => ({ register, unregister }), [register, unregister]);
+  const state = useMemo<PreviewTransportState>(() => ({
     snapshot: registration?.snapshot ?? null,
     actions: registration?.actions ?? null,
-    register,
-    unregister,
-  }), [register, registration, unregister]);
+  }), [registration]);
 
   return (
-    <PreviewTransportContext.Provider value={value}>
-      {children}
-    </PreviewTransportContext.Provider>
+    <PreviewTransportRegistryContext.Provider value={registry}>
+      <PreviewTransportStateContext.Provider value={state}>
+        {children}
+      </PreviewTransportStateContext.Provider>
+    </PreviewTransportRegistryContext.Provider>
   );
 }
 
-export function usePreviewTransport(): PreviewTransportValue {
-  return useContext(PreviewTransportContext) ?? emptyTransport;
+export function usePreviewTransport(): PreviewTransportState {
+  return useContext(PreviewTransportStateContext) ?? emptyState;
 }
 
 export function usePreviewTransportRegistration(
   snapshot: PreviewTransportSnapshot,
   actions: PreviewTransportActions,
 ) {
-  const context = useContext(PreviewTransportContext);
-  const register = context?.register;
-  const unregister = context?.unregister;
+  const registry = useContext(PreviewTransportRegistryContext) ?? emptyRegistry;
+  const register = registry.register;
+  const unregister = registry.unregister;
   const idRef = useRef<symbol | null>(null);
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -113,24 +146,18 @@ export function usePreviewTransportRegistration(
       exportGif: () => actionsRef.current.exportGif?.(),
     };
   }
-  const snapshotKey = [
-    snapshot.kind,
-    snapshot.playing,
-    snapshot.position,
-    snapshot.durationSeconds,
-    snapshot.frameIndex,
-    snapshot.frameCount,
-    snapshot.fps,
-    snapshot.playbackRate,
-    snapshot.looping,
-    snapshot.muted,
-    snapshot.volume,
-  ].join("|");
+  const snapshotKey = previewTransportSnapshotKey(snapshot);
+  // 快照变化只 push，不 unregister（避免把 provider 闪成 null 再重建，
+  // 拖动时产生双倍 re-render 与滑块回跳）；卸载/换 id 才 unregister。
   useEffect(() => {
-    if (!register || !unregister) return;
+    if (!register) return;
     const id = idRef.current!;
     register(id, snapshot, stableActionsRef.current!);
-    return () => unregister(id);
   // Track the snapshot fields rather than requiring caller object stability.
-  }, [register, snapshotKey, unregister]);
+  }, [register, snapshotKey]);
+  useEffect(() => {
+    if (!unregister) return;
+    const id = idRef.current!;
+    return () => unregister(id);
+  }, [unregister]);
 }

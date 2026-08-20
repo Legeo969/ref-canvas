@@ -59,6 +59,10 @@ export async function cleanupOrphanThumbnails(
       entries.map(async (entry) => {
         const full = path.join(current, entry.name);
         if (entry.isDirectory()) {
+          // gif-frames 是托管缓存（自身 manifest + LRU 修剪，坐标为
+          // frame_0001.png 易被下面的「legacy png」规则误删，删了每次启动
+          // 都要重拆 165 帧）。这里明确跳过。
+          if (entry.name === "gif-frames") return;
           await visit(full);
           return;
         }

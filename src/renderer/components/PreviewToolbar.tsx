@@ -281,6 +281,7 @@ export function PreviewToolbar({
               onChange={onSeekChange ?? (() => {})}
               range={seekRange}
               fillColor={progressColor ?? previewToolbarProgressColor(variant)}
+              smoothPlayback
             />}
           {capabilities.trim && <button className={`preview-tool-btn${trimActive ? " active" : ""}`} title={translate("preview.trim")} aria-label={translate("preview.trim")} aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
           {capabilities.volume && (

@@ -16,7 +16,6 @@ import {
   List,
   PanelsTopLeft,
   RefreshCw,
-  Search,
   Scissors,
   Settings,
   Settings2,
@@ -127,6 +126,15 @@ export function directoryGroupColor(filename: string): string {
   return `hsl(${Math.abs(hash) % 360} 58% 58%)`;
 }
 
+/**
+ * 会话级目录缩略图 token 缓存。主进程 refbrowse 按路径复用 token（同一路径
+ * 稳定，直到 LRU 淘汰/窗口关闭）。面板重挂或 priority（visible/overscan）
+ * 翻转时，如果渲染端每次都重取 token 并重建
+ * `refbrowse://thumbnail/<token>?priority=...`，URL 查询串一变即缓存未命中，
+ * 缩略图就会「切窗口回来/滚动」反复重载。这里把 token 复用起来，让 URL 稳定。
+ */
+const directoryThumbnailTokenCache = new Map<string, string>();
+
 interface DirectoryCardProps {
   entry: DirectoryEntry;
   tags?: string[];
@@ -173,15 +181,31 @@ export const DirectoryCard = memo(function DirectoryCard({
   const hoverVideoRef = useRef<HTMLVideoElement | null>(null);
   /** 失败后已自动换过 token（防坏文件无限换 token 重试）。 */
   const tokenRefreshedRef = useRef(false);
+  /** 本卡当前绑定的缩略图 token（无则 null；跨重挂从模块级缓存恢复）。 */
+  const tokenRef = useRef<string | null>(
+    directoryThumbnailTokenCache.get(entry.path) ?? null,
+  );
   const requestToken = useCallback(
-    (priorityValue: "visible" | "overscan") => {
+    (priorityValue: "visible" | "overscan", fresh?: boolean) => {
       if (entry.isDirectory) return;
+      if (!fresh) {
+        const cached = directoryThumbnailTokenCache.get(entry.path);
+        if (cached) {
+          tokenRef.current = cached;
+          setThumbnailUrl(
+            `refbrowse://thumbnail/${cached}?priority=${priorityValue}`,
+          );
+          return;
+        }
+      }
       const request = window.refCanvas.filesystem.previewToken?.(entry.path);
       if (!request) return;
       let cancelled = false;
       void request
         .then((token) => {
           if (!cancelled) {
+            tokenRef.current = token;
+            directoryThumbnailTokenCache.set(entry.path, token);
             setThumbnailUrl(
               `refbrowse://thumbnail/${token}?priority=${priorityValue}`,
             );
@@ -194,11 +218,20 @@ export const DirectoryCard = memo(function DirectoryCard({
     },
     [entry.path, entry.isDirectory],
   );
+  // 取 token 一次并固定 URL：priority（visible/overscan 翻转、滚动、窗口
+  // 切换）不再清空/重建 URL —— 复用同一 token，命中 HTTP 缓存，缩略图不重载。
   useEffect(() => {
-    setThumbnailUrl(null);
     tokenRefreshedRef.current = false;
+    if (tokenRef.current) {
+      // 已有 token：用当前 priority 建 URL（首次），后续翻转保持既有 URL
+      // 不变（查询串稳定 ⇒ `<img>` 不再触发缓存未命中重载）。
+      const url = `refbrowse://thumbnail/${tokenRef.current}?priority=${priority}`;
+      setThumbnailUrl((current) => current ?? url);
+      return;
+    }
+    setThumbnailUrl(null);
     return requestToken(priority);
-  }, [priority, requestToken]);
+  }, [entry.path, entry.isDirectory, priority, requestToken]);
 
   const preview = useRetryingPreviewUrl(
     directoryThumbnailSource(thumbnailUrl, thumbnailOverride),
@@ -207,11 +240,12 @@ export const DirectoryCard = memo(function DirectoryCard({
     { dccSlowAsset: /\.(blend|abc)$/i.test(entry.extension) },
   );
   // 大目录滚动时 token 注册表会淘汰旧 token：失败卡片自动换新 token
-  // （新 token 重新注册即可恢复），避免「Token expired」404 卡死在占位图。
+  // （fresh=true 跳过会话缓存，让主进程重新签发），避免「Token expired」404
+  // 卡死在占位图。
   useEffect(() => {
     if (preview.status !== "failed" || tokenRefreshedRef.current) return;
     tokenRefreshedRef.current = true;
-    requestToken(priority);
+    requestToken(priority, true);
   }, [preview.status, priority, requestToken]);
   const canPreview = !entry.isDirectory && preview.url && preview.status !== "failed";
   const isVideo = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(entry.extension);
@@ -231,9 +265,9 @@ export const DirectoryCard = memo(function DirectoryCard({
       }}
       onClick={(event) => {
         if (preview.status === "failed") {
-          // 手动重试：换新 token（若旧 token 已被淘汰）再重试。
+          // 手动重试：fresh 换新 token（若旧 token 已被淘汰）再重试。
           tokenRefreshedRef.current = false;
-          requestToken(priority);
+          requestToken(priority, true);
           preview.retry();
         }
         if (entry.isDirectory && folderClickMode === "single") onEnter(entry);
@@ -534,6 +568,8 @@ export function DirectoryAssetPanel() {
     );
   };
   const [query, setQuery] = useState("");
+  const [pathEditing, setPathEditing] = useState(false);
+  const [pathDraft, setPathDraft] = useState("");
   const [formatFilter, setFormatFilter] = useState<DirectoryFormatFilter>("all");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [searchId, setSearchId] = useState<string | null>(null);
@@ -1069,6 +1105,26 @@ export function DirectoryAssetPanel() {
     setSearchSnapshot(null);
     setQuery("");
     directorySelection.clear();
+  };
+
+  const startPathEdit = () => {
+    setPathDraft(store.directoryPath ?? "");
+    setPathEditing(true);
+  };
+
+  const commitPathEdit = () => {
+    setPathEditing(false);
+    const value = pathDraft.trim();
+    if (!value) return;
+    if (store.directoryPath === value) return;
+    // 复用查找输入里的“粘贴绝对路径即导航”逻辑：目录直接打开，
+    // 文件打开所在目录并选中。
+    locatePathInput(value);
+  };
+
+  const cancelPathEdit = () => {
+    setPathEditing(false);
+    setPathDraft(store.directoryPath ?? "");
   };
 
   const toggleFavoritesOnly = () => {
@@ -2606,22 +2662,6 @@ export function DirectoryAssetPanel() {
         <div className="dir-header-actions">
           <button
             className="icon-button"
-            aria-label={translate("directory.back")}
-            disabled={!canGoBack}
-            onClick={() => void store.goBackDirectory()}
-          >
-            <ArrowLeft size={17} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label={translate("directory.forward")}
-            disabled={!canGoForward}
-            onClick={() => void store.goForwardDirectory()}
-          >
-            <ArrowRight size={17} />
-          </button>
-          <button
-            className="icon-button"
             aria-label={translate("directory.refresh")}
             onClick={() => void store.reloadDirectory()}
           >
@@ -2679,35 +2719,6 @@ export function DirectoryAssetPanel() {
         </div>
       </header>
 
-      <div
-        className="search-field directory-search"
-        title={translate("directory.includeSubdirectories")}
-      >
-        <Search size={14} />
-        <input
-          value={query}
-          onChange={(event) =>
-            onQueryChange(
-              event.target.value,
-              (event.nativeEvent as InputEvent).inputType,
-            )
-          }
-          onKeyDown={(event) => {
-            if (event.key === "Enter") locatePathInput(query);
-          }}
-          placeholder={translate("directory.searchPlaceholderShort")}
-          aria-label={translate("directory.searchCurrent")}
-        />
-        {searching && (
-          <button
-            className="search-cancel"
-            aria-label={translate("directory.cancelSearch")}
-            onClick={cancelSearch}
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
       {searchSnapshot && !searching && (
         <p className="directory-search-status">
           {translate("directory.searchComplete").replace("{count}", String(searchSnapshot.totalFiles ?? searchSnapshot.entries.length))}
@@ -2796,20 +2807,75 @@ export function DirectoryAssetPanel() {
       })()}
 
       <div className="dir-path-bar">
-        <div className="dir-crumbs">
-          {crumbs.map((crumb, index) => (
-            <span className="dir-crumb" key={crumb.path}>
-              {index > 0 && <span className="dir-crumb-sep">›</span>}
-              <button
-                className={index === crumbs.length - 1 ? "current" : ""}
-                title={crumb.path}
-                onClick={() => void store.openDirectory(crumb.path)}
-              >
-                {crumb.label}
-              </button>
-            </span>
-          ))}
+        <div className="dir-path-nav">
+          <button
+            className="icon-button"
+            aria-label={translate("directory.back")}
+            disabled={!canGoBack}
+            onClick={() => void store.goBackDirectory()}
+          >
+            <ArrowLeft size={16} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={translate("directory.forward")}
+            disabled={!canGoForward}
+            onClick={() => void store.goForwardDirectory()}
+          >
+            <ArrowRight size={16} />
+          </button>
         </div>
+        {pathEditing ? (
+          <input
+            className="dir-path-input"
+            value={pathDraft}
+            onChange={(event) => {
+              const value = event.target.value;
+              setPathDraft(value);
+              onQueryChange(value, (event.nativeEvent as InputEvent).inputType);
+            }}
+            onFocus={(event) => event.target.select()}
+            onBlur={commitPathEdit}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitPathEdit();
+              } else if (event.key === "Escape") {
+                cancelPathEdit();
+              }
+            }}
+            aria-label={translate("directory.pathInput")}
+            autoFocus
+          />
+        ) : (
+          <div
+            className="dir-crumbs"
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
+              startPathEdit();
+            }}
+            onDoubleClick={startPathEdit}
+          >
+            {crumbs.map((crumb, index) => (
+              <span className="dir-crumb" key={crumb.path}>
+                {index > 0 && <span className="dir-crumb-sep">›</span>}
+                <button
+                  className={index === crumbs.length - 1 ? "current" : ""}
+                  title={crumb.path}
+                  onClick={() => {
+                    if (index === crumbs.length - 1) {
+                      startPathEdit();
+                    } else {
+                      void store.openDirectory(crumb.path);
+                    }
+                  }}
+                >
+                  {crumb.label}
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="dir-path-bar-right">
           <label
             className="directory-zoom"

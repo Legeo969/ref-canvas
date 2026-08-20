@@ -132,5 +132,11 @@ export function protocolResponseHeaders(
     ...(decision.corsOrigin ? { "Access-Control-Allow-Origin": decision.corsOrigin } : {}),
     "Cross-Origin-Resource-Policy": "cross-origin",
     Vary: "Origin, Referer",
+    // 自定义协议响应默认不进 Chromium HTTP 缓存；不带缓存头时，窗口切走/切回
+    // 或卡片重挂，每个 <img> 都要重新回主进程拉一次，缩略图闪「加载」。
+    // 图片路径均为整包缓冲返回（可缓存），加会话级短 max-age 让重显直接
+    // 命中 HTTP 缓存；文件内容变化时由 thumbnail 缓存键 / ?revision= 等
+    // 参数改 URL 来绕过（不会长时间服务旧图）。
+    "Cache-Control": "private, max-age=300",
   };
 }

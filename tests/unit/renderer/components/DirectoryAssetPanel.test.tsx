@@ -926,12 +926,14 @@ describe("DirectoryAssetPanel", () => {
     );
     expect(host.querySelector(".directory-rating-badge")?.textContent).toBe("4");
 
-    const search = host.querySelector<HTMLInputElement>(
-      '[aria-label="搜索当前目录"]',
-    );
-    search?.focus();
     await act(async () => {
-      search?.dispatchEvent(
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const pathInput = host.querySelector<HTMLInputElement>(".dir-path-input");
+    pathInput?.focus();
+    await act(async () => {
+      pathInput?.dispatchEvent(
         new window.KeyboardEvent("keydown", { key: "5", bubbles: true }),
       );
     });
@@ -1978,9 +1980,11 @@ describe("DirectoryAssetPanel", () => {
         </DialogProvider>,
       );
     });
-    const input = document.querySelector<HTMLInputElement>(
-      'input[aria-label="搜索当前目录"]',
-    )!;
+    await act(async () => {
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
@@ -2075,9 +2079,11 @@ describe("DirectoryAssetPanel", () => {
     await act(async () => {
       root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
     });
-    const input = document.querySelector<HTMLInputElement>(
-      'input[aria-label="搜索当前目录"]',
-    )!;
+    await act(async () => {
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
@@ -2152,9 +2158,11 @@ describe("DirectoryAssetPanel", () => {
     await act(async () => {
       root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
     });
-    const input = document.querySelector<HTMLInputElement>(
-      'input[aria-label="搜索当前目录"]',
-    )!;
+    await act(async () => {
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
@@ -2213,9 +2221,11 @@ describe("DirectoryAssetPanel", () => {
     await act(async () => {
       root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
     });
-    const input = document.querySelector<HTMLInputElement>(
-      'input[aria-label="搜索当前目录"]',
-    )!;
+    await act(async () => {
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
     // 组件挂载即会加载当前目录：先清掉这次调用，后续断言只看输入触发。
     listDirectory.mockClear();
     // 普通关键词：走关键词搜索，不做路径探测。
@@ -2307,9 +2317,11 @@ describe("DirectoryAssetPanel", () => {
     await act(async () => {
       root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
     });
-    const input = document.querySelector<HTMLInputElement>(
-      'input[aria-label="搜索当前目录"]',
-    )!;
+    await act(async () => {
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
@@ -2880,7 +2892,7 @@ describe("DirectoryAssetPanel", () => {
     );
   });
 
-  it("renders a compact search box with the subfolder hint moved to a tooltip", async () => {
+  it("removes the standalone search box and uses a single-click editable path bar", async () => {
     Object.assign(window, {
       refCanvas: {
         filesystem: {
@@ -2903,13 +2915,19 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
 
-    const field = host.querySelector<HTMLElement>(".directory-search");
-    expect(field).toBeTruthy();
-    // 子目录提示从 kbd 移到 title/tooltip，kbd 不再渲染。
-    expect(field?.querySelector("kbd")).toBeNull();
-    expect(field?.getAttribute("title")).toContain("含子目录");
-    const input = host.querySelector<HTMLInputElement>('input[aria-label="搜索当前目录"]');
+    // 搜索框已移除；路径栏默认是面包屑模式。
+    expect(host.querySelector(".directory-search")).toBeNull();
+    expect(host.querySelector(".dir-path-input")).toBeNull();
+
+    // 单击面包屑空白区域进入路径编辑（Windows 资源管理器式）。
+    const crumbs = host.querySelector<HTMLElement>(".dir-crumbs");
+    expect(crumbs).toBeTruthy();
+    await act(async () => {
+      crumbs?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    const input = host.querySelector<HTMLInputElement>(".dir-path-input");
     expect(input).toBeTruthy();
-    expect(input?.getAttribute("placeholder")).toBe("查找 / 粘贴路径…");
+    expect(input?.getAttribute("aria-label")).toBe("路径");
   });
 });

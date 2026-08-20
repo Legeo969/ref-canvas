@@ -36,6 +36,13 @@ describe("GIFPreview decode lifecycle", () => {
       ok: true,
       arrayBuffer: vi.fn(async () => new ArrayBuffer(8)),
     })));
+    // GIFPreview 现在把每帧 VideoFrame 转成 ImageBitmap 再绘制；jsdom 没有
+    // createImageBitmap，这里提供最小实现让解码生命周期可测。
+    vi.stubGlobal("createImageBitmap", vi.fn(async (frame: MockVideoFrame) => ({
+      close: vi.fn(),
+      width: frame.displayWidth,
+      height: frame.displayHeight,
+    })));
     Object.assign(window, {
       refCanvas: {
         system: { saveRegionCapture: vi.fn(), writeClipboard: vi.fn() },
