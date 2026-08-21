@@ -133,8 +133,10 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       window.dispatchEvent(new Event("refcanvas:open-ai-workbench"));
       const embeddedAi = await waitForSelector(".directory-details-panel .ai-panel.embedded");
       const detachedAi = document.querySelector(".ai-panel-backdrop:not(.embedded)");
+      // 标题栏专业预览设置按钮已由 427b655 移除；入口改为目录面板头部的
+      // directory.previewSettings 按钮（打开预览设置页），断言跟随新入口。
       const professionalSettingsVisible = Boolean(
-        document.querySelector('[aria-label="打开专业预览设置"]'),
+        document.querySelector('[aria-label="专业预览设置"]'),
       );
       const activeWorkspaceMode =
         document.querySelector(".workspace-mode-switch button.active")
@@ -1109,7 +1111,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   if (result.appVersion !== expectedVersion) {
     throw new Error(`APP_VERSION_MISMATCH:${result.appVersion}`);
   }
-  if (result.databaseSchemaVersion !== 19) {
+  if (result.databaseSchemaVersion !== 20) {
     throw new Error(`SCHEMA_VERSION_MISMATCH:${result.databaseSchemaVersion}`);
   }
   if (result.activeWorkspaceMode !== "磁盘") {

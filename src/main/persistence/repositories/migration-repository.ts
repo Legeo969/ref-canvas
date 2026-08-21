@@ -8,7 +8,7 @@ import {
   restoreCollectionsV17,
 } from "./collection-restore-migrations";
 
-export const DATABASE_SCHEMA_VERSION = 19;
+export const DATABASE_SCHEMA_VERSION = 20;
 
 /**
  * Ordered migration model.
@@ -257,6 +257,21 @@ export const MIGRATIONS: readonly MigrationStep[] = [
       if (!columns.has("revision")) {
         db.exec("ALTER TABLE boards ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
       }
+    },
+  },
+  {
+    version: 20,
+    id: "v20-collection-items-order-index",
+    description:
+      "Extends collection_items_collection with created_at so collection listing ORDER BY sort_order, created_at, id is index-covering (100k collection refs under 250ms P95 capacity gate).",
+    apply(db) {
+      // SQLite 不能 ALTER INDEX，重建同名索引以覆盖 created_at 排序列；
+      // 旧窄索引先删，避免同时维护两个几乎相同的索引。
+      db.exec(`
+        DROP INDEX IF EXISTS collection_items_collection;
+        CREATE INDEX IF NOT EXISTS collection_items_collection
+          ON collection_items(collection_id, sort_order, created_at, id);
+      `);
     },
   },
 ];
