@@ -1004,7 +1004,59 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       }
       if (!boardPngIsImage) await new Promise((resolve) => setTimeout(resolve, 200));
     }
-    if (!boardPngIsImage) throw new Error("BOARD_PNG_FORMAT_CARD:" + JSON.stringify((await window.refCanvas.boards.list()).map((item) => ({ id: item.id, title: item.title }))));
+    if (!boardPngIsImage) {
+      const boards = await window.refCanvas.boards.list();
+      const diagnostics = [];
+      for (const candidate of boards) {
+        const loaded = await window.refCanvas.boards.load(candidate.id).catch(() => null);
+        const objects = loaded?.document?.canvas?.objects ?? [];
+        diagnostics.push({
+          id: candidate.id,
+          title: candidate.title,
+          objectCount: objects.length,
+          objects: objects.slice(0, 20).map((item) => ({
+            type: String(item?.type ?? ""),
+            name: String(item?.data?.name ?? ""),
+            assetId: String(item?.data?.assetId ?? ""),
+          })),
+        });
+      }
+      // 协议/素材探针：重新 materialize 拿 asset，看 refasset 原图与 board
+      // proxy 在普通 <img> 下能否解码。帮助区分「协议 404 / Fabric 加载 /
+      // 对象根本没落板」三类原因。
+      try {
+        const materialized = await window.refCanvas.filesystem.materialize(${JSON.stringify(path.join(browseRoot, "runtime-board.png"))});
+        const asset = materialized?.asset;
+        if (asset) {
+          const testImage = (url) => new Promise((resolve) => {
+            const img = new Image();
+            const timer = window.setTimeout(() => resolve("timeout"), 4000);
+            img.onload = () => { window.clearTimeout(timer); resolve("ok"); };
+            img.onerror = () => { window.clearTimeout(timer); resolve("error"); };
+            img.src = url;
+          });
+          const separator = asset.thumbnailUrl.includes("?") ? "&" : "?";
+          diagnostics.push({
+            probe: {
+              id: asset.id,
+              title: asset.title,
+              kind: asset.kind,
+              extension: asset.extension,
+              linkState: asset.linkState,
+              previewUrl: asset.previewUrl,
+              thumbnailUrl: asset.thumbnailUrl,
+              previewLoad: await testImage(asset.previewUrl),
+              proxyLoad: await testImage(asset.thumbnailUrl + separator + "variant=board&size=512"),
+            },
+          });
+        } else {
+          diagnostics.push({ probe: { materialized: false } });
+        }
+      } catch (error) {
+        diagnostics.push({ probe: { materialized: false, error: String(error) } });
+      }
+      throw new Error("BOARD_PNG_FORMAT_CARD:" + JSON.stringify(diagnostics));
+    }
     if (board) await window.refCanvas.boards.openWindow(board.id);
     return { boardWorkspaceVisible: Boolean(boardWorkspace?.querySelector(".board-panel")), boardId: board?.id ?? null, boardPngIsImage };
   })()`);

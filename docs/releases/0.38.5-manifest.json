@@ -3,17 +3,17 @@
   "version": "0.38.5",
   "platform": "win32-x64",
   "signed": false,
-  "createdAt": "2026-08-19T14:24:57.056Z",
+  "createdAt": "2026-08-21T09:48:06.152Z",
   "files": [
     {
       "filename": "RefCanvas-Setup-unsigned.exe",
-      "bytes": 226092032,
-      "sha256": "29123fd63e7ca3dd93f0906fb3c61d6cec97a26c76f34afc9aa171e42a9c88ae"
+      "bytes": 226120704,
+      "sha256": "4eabb9d9dc7a06baa7a0ebb1ba5e24ffcf540d103895a8b691af0b3f860ccb6f"
     },
     {
       "filename": "RefCanvas-win32-x64-0.38.5.zip",
-      "bytes": 233406278,
-      "sha256": "b06bfa90ebdc9416908609d123936e035c1ef1c3e360aefc779f7cde1f1e6685"
+      "bytes": 233439282,
+      "sha256": "4f4483ead1e7f59e5d68a4c72f3795c331a33fc6e2412885d7995487fe9696fb"
     }
   ]
 }

@@ -232,7 +232,7 @@ async function main() {
   }
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
-  const migrated = await launchOnce("schema-12-to-19");
+  const migrated = await launchOnce("schema-12-to-20");
   const verification = new Sqlite(path.join(profile, "refcanvas.db"), {
     readonly: true,
   });
@@ -241,7 +241,7 @@ async function main() {
   const boardColumns = verification.pragma("table_info(boards)").map((row) => row.name);
   verification.close();
   if (
-    schemaVersion !== 19 ||
+    schemaVersion !== 20 ||
     !assetColumns.includes("metadata_status") ||
     !boardColumns.includes("revision")
   ) {
