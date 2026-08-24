@@ -961,9 +961,7 @@ export function BoardCanvas({
         boardProxySize: desired,
       };
       void image
-        .setSrc(boardProxyUrl(asset.thumbnailUrl, desired), {
-          crossOrigin: "anonymous",
-        })
+        .setSrc(boardProxyUrl(asset.thumbnailUrl, desired))
         .then(() => {
           image.set({
             scaleX: (signX * displayWidth) / Math.max(1, image.width),
