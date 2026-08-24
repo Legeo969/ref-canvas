@@ -955,7 +955,53 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         viewport: document.querySelector(".directory-details-panel .preview-viewport")?.innerHTML.slice(0, 500) ?? null,
       }));
     }
-    return { filename, width: canvas.width, height: canvas.height };
+    // 包内 ffmpeg 拆帧链路：GIFPreview 在 ImageDecoder 只给 1 帧时会走
+    // media.gifFrames（主进程 ffmpeg 拆帧）。这里直接断言至少 2 帧，
+    // 定位「release 里 GIF 不动」是 ffmpeg 路径问题还是渲染端播放问题。
+    let gifFrames = null;
+    try {
+      gifFrames = await window.refCanvas.media?.gifFrames?.(${JSON.stringify(path.join(browseRoot, "runtime-still.gif"))});
+    } catch (error) {
+      gifFrames = { error: String(error) };
+    }
+    if (!gifFrames || gifFrames.count <= 1) {
+      throw new Error("GIF_FRAMES_NOT_EXTRACTED:" + JSON.stringify(gifFrames));
+    }
+    // 动画断言：canvas 播放正常时，短时间内帧画面应发生变化（runtime GIF
+    // 4fps，每帧 250ms）。这是「打包 GIF 不动」的回归门（曾因帧 URL 用
+    // crossOrigin 加载失败导致静止）。
+    const samples = [];
+    for (let index = 0; index < 8; index += 1) {
+      samples.push(document.querySelector(".gif-preview-canvas")?.toDataURL() ?? null);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    const distinctFrames = new Set(samples.filter(Boolean)).size;
+    const rafProbe = await new Promise((resolve) => {
+      let fired = false;
+      requestAnimationFrame(() => { fired = true; resolve(true); });
+      setTimeout(() => resolve(fired), 200);
+    });
+    const animated = distinctFrames > 1;
+    if (!animated) {
+      throw new Error("GIF_NOT_ANIMATED:" + JSON.stringify({
+        distinctFrames,
+        gifFrames: gifFrames.count,
+        imageDecoder: typeof ImageDecoder !== "undefined",
+        canvasStillPresent: Boolean(document.querySelector(".gif-preview-canvas")),
+        nativeImgPresent: Boolean(document.querySelector(".gif-preview-native-img")),
+        rafFires: rafProbe,
+        visibility: document.visibilityState,
+      }));
+    }
+    return {
+      filename,
+      width: canvas.width,
+      height: canvas.height,
+      gifFrames: gifFrames.count,
+      imageDecoder: typeof ImageDecoder !== "undefined",
+      animated,
+      distinctFrames,
+    };
   })()`);
   previewSmoke.gif = gifResult;
   toolScreenshots.push(await captureScreenshot(client, screenshotRoot, `${runLabel}-gif-preview`));

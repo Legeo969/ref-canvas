@@ -36,6 +36,27 @@
 - 渲染端：`ImageDecoder` 出 ≤1 帧时转调 `media:gifFrames` → 分块并发 `loadImage` + `createImageBitmap` → 每帧 uniform 100ms（配合 ffprobe 权威总时长驱动播放）→ canvas 位图播放。
 - 播放/暂停定格/从暂停处续播/拖动/逐帧全部基于**真实 165 帧位图**。
 
+## 补充：2026-08-21 release 产物 GIF 不动的第二轮根因
+
+> 现象：`pnpm release:windows` 出的包 GIF 停在首帧；`media.gifFrames` 拆帧正常（4 帧），ImageDecoder 可用，但渲染端最终只有 1 帧、canvas 静止。
+
+### 决定性证据（冒烟埋点）
+- `apiCount: 4`（ffmpeg 拆帧成功）、`framesLoad: "bitmaps-null"`（帧图转 ImageBitmap 失败）、`frames: 1`、`source: "none"`。
+- 同 URL 探针：`<img crossOrigin="anonymous">` → `error`；不带 crossOrigin → `ok` 且 `createImageBitmap` → `ok`。
+- 说明自定义协议对 `<img crossOrigin>` 的 CORS 行为在打包 file:// 页面与 dev server 不同。
+
+### 根因
+`loadGifFrameImage` 用 `<img crossOrigin="anonymous">` 加载 `refbrowse://preview/<token>` 帧 URL；打包后页面源是 `file://`（不透明 origin），这类 CORS 图片请求在 Chromium 里 Referer/Origin 处理导致协议响应没有可用 ACAO，帧图一律 onerror → ffmpeg 帧全部丢弃 → 只剩 ImageDecoder 的 1 帧。
+
+### 修复
+- `loadGifFrameImage` 改为 **`fetch(url) → blob → createImageBitmap(blob)`**：fetch 路径在自定义协议上已验证可用，且 blob 源不污染 canvas。
+- GIF 解码优先 ffmpeg 帧（符合上文「关键路径用 ffmpeg」教训），ImageDecoder 仅作 ffmpeg 不可用时的兜底；播放循环不再要求 `ImageDecoderCtor`。
+- runtime smoke 新增两条回归门：`GIF_FRAMES_NOT_EXTRACTED`（ffmpeg 至少 2 帧）、`GIF_NOT_ANIMATED`（canvas 1s 采样至少 2 种画面）。
+
+### 新增经验
+- 自定义协议的 CORS 表现不能只测 `<img>` 或只测 `fetch`；打包 file:// 页面必须两类都实测。
+- **帧/位图这类要喂给 `createImageBitmap` 的本地资源，优先 `fetch+blob`**，比 `<img crossOrigin>` 少踩一层 CORS/Referer 差异。
+
 ## 经验教训
 
 1. **拿到日志再动手**：渲染端/主进程都要打路径决策日志（能用 Console 一眼看出走到哪条路：解码成功？走了回退？帧数多少？）。盲改三次不如一次完整日志。

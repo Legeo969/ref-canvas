@@ -35,15 +35,17 @@ async function renderImageToDataUrl(image: HTMLImageElement): Promise<string> {
   return canvas.toDataURL("image/png");
 }
 
-/** 加载单个 URL 为已就绪的 <img>（失败返回 null）。 */
-function loadGifFrameImage(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image.naturalWidth > 0 ? image : null);
-    image.onerror = () => resolve(null);
-    image.src = url;
-  });
+/** 加载单个帧 URL 为 ImageBitmap：用 fetch+blob，避免 `<img crossOrigin>`
+ *  在打包 file:// 页面访问 refbrowse 自定义协议时因 CORS/Referer 缺失失败。 */
+async function loadGifFrameBitmap(url: string): Promise<ImageBitmap | null> {
+  try {
+    const response = await fetch(url, { referrer: window.location.href });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await createImageBitmap(blob);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -55,14 +57,7 @@ async function loadGifFramesBitmaps(urls: string[]): Promise<ImageBitmap[] | nul
   const CHUNK = 16;
   for (let offset = 0; offset < urls.length; offset += CHUNK) {
     const chunkUrls = urls.slice(offset, offset + CHUNK);
-    const images = await Promise.all(chunkUrls.map(loadGifFrameImage));
-    const chunk = await Promise.all(
-      images.map((image) =>
-        image
-          ? createImageBitmap(image).catch(() => null)
-          : Promise.resolve(null),
-      ),
-    );
+    const chunk = await Promise.all(chunkUrls.map(loadGifFrameBitmap));
     for (const bitmap of chunk) {
       if (!bitmap) {
         for (const loaded of bitmaps) loaded.close();
@@ -222,73 +217,71 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     setStaticSrc(null);
     setCanvasBroken(false);
     canvasErrorRef.current = 0;
-    if (!ImageDecoderCtor) {
-      return;
-    }
     void (async () => {
       let decoder: ImageDecoderLike | null = null;
       let committed = false;
       const frames: GifFrame[] = [];
       try {
-        const response = await fetch(asset.previewUrl, {
-          referrer: window.location.href,
-        });
-        if (!response.ok) throw new Error(`GIF_FETCH_${response.status}`);
-        const data = await response.arrayBuffer();
-        decoder = new ImageDecoderCtor!({ data, type: "image/gif" });
-        await decoder.tracks.ready;
-        const count = decoder.tracks.selected?.frameCount ?? 1;
-        for (let index = 0; index < count; index += 1) {
-          // VideoFrame → ImageBitmap：canvas.drawImage 对 ImageBitmap 稳定支持，
-          // 避免直接绘制 VideoFrame 在部分 Chromium 版本静默失败（画面不播）。
-          const { image, duration } = await decoder.decode({ frameIndex: index });
-          const bitmap = await createImageBitmap(image);
-          image.close();
-          if (cancelled) {
-            bitmap.close();
-            return;
-          }
-          // ImageDecoder 的 duration 按毫秒处理；为 0/缺省时按常见 100ms 兜底。
-          frames.push({
-            bitmap,
-            durationMs: duration != null && duration > 0 ? duration : 100,
-          });
-        }
-        // Chromium 的 ImageDecoder 对大型 GIF 只报 1 帧（完整 body 也如此）。
-        // 改为主进程 ffmpeg 整包拆帧，把全部 PNG 当位图播放（准确且绕开解码器）。
-        if (frames.length <= 1) {
-          const api = window.refCanvas?.media?.gifFrames;
-          if (api) {
-            try {
-              const extracted = await api(asset.path);
-              if (extracted && extracted.count > 1 && extracted.urls.length > 1) {
-                const bitmaps = await loadGifFramesBitmaps(extracted.urls);
-                if (bitmaps && bitmaps.length > 1) {
-                  for (const frame of frames) frame.bitmap.close();
-                  frames.length = 0;
-                  for (const bitmap of bitmaps) {
-                    if (cancelled) {
-                      bitmap.close();
-                      return;
-                    }
-                    // 统一按时长比例驱动播放（总时长仍用 ffprobe 权威值）。
-                    frames.push({ bitmap, durationMs: 100 });
+        // 1) 优先主进程 ffmpeg 整包拆帧：绕开 Chromium GIF 解码器的
+        //    「只报 1 帧 / 各帧内容相同」问题，帧来自独立 PNG，播放可靠。
+        const api = window.refCanvas?.media?.gifFrames;
+        if (api) {
+          try {
+            const extracted = await api(asset.path);
+            if (extracted && extracted.count > 1 && extracted.urls.length > 1) {
+              const bitmaps = await loadGifFramesBitmaps(extracted.urls);
+              if (bitmaps && bitmaps.length > 1) {
+                for (const bitmap of bitmaps) {
+                  if (cancelled) {
+                    bitmap.close();
+                    return;
                   }
-                } else {
-                  for (const bitmap of bitmaps ?? []) bitmap.close();
+                  frames.push({ bitmap, durationMs: 100 });
                 }
+              } else {
+                for (const bitmap of bitmaps ?? []) bitmap.close();
               }
-            } catch {
-              // 拆帧失败时退回 ImageDecoder 结果（<=1 帧，画面静止但不崩溃）。
             }
+          } catch {
+            // ffmpeg 拆帧失败：继续尝试 ImageDecoder / 原生 <img>。
+          }
+        }
+        // 2) ffmpeg 没产出多帧时，回退 ImageDecoder（个别环境没有 ffmpeg 或
+        //    GIF/APNG 不支持拆帧时仍能逐帧预览）。
+        if (frames.length <= 1 && ImageDecoderCtor) {
+          try {
+            const response = await fetch(asset.previewUrl, {
+              referrer: window.location.href,
+            });
+            if (!response.ok) throw new Error(`GIF_FETCH_${response.status}`);
+            const data = await response.arrayBuffer();
+            decoder = new ImageDecoderCtor!({ data, type: "image/gif" });
+            await decoder.tracks.ready;
+            const count = decoder.tracks.selected?.frameCount ?? 1;
+            for (let index = 0; index < count; index += 1) {
+              // VideoFrame → ImageBitmap：canvas.drawImage 对 ImageBitmap 稳定支持，
+              // 避免直接绘制 VideoFrame 在部分 Chromium 版本静默失败（画面不播）。
+              const { image, duration } = await decoder.decode({ frameIndex: index });
+              const bitmap = await createImageBitmap(image);
+              image.close();
+              if (cancelled) {
+                bitmap.close();
+                return;
+              }
+              // ImageDecoder 的 duration 按毫秒处理；为 0/缺省时按常见 100ms 兜底。
+              frames.push({
+                bitmap,
+                durationMs: duration != null && duration > 0 ? duration : 100,
+              });
+            }
+          } catch {
+            // 回退失败：保持 frames 为空/单帧，走原生 <img>。
           }
         }
         const decoded = { frames };
         gifRef.current = decoded;
         setGif(decoded);
         committed = true;
-      } catch {
-        // 解码失败时保持 gif=null，回退到原生 <img> 播放。
       } finally {
         decoder?.close();
         // 取消或失败时，未挂载到 gifRef 的帧必须在资源切换前释放，避免泄漏。
@@ -304,7 +297,7 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
       for (const frame of gifRef.current?.frames ?? []) frame.bitmap.close();
       gifRef.current = null;
     };
-  }, [asset.id, asset.previewUrl]);
+  }, [asset.id, asset.path, asset.previewUrl]);
 
   useEffect(() => {
     playingRef.current = playing;
@@ -351,7 +344,7 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
   // 与进度/时间码共用同一 playhead；暂停即在 canvas 上定格当前帧，
   // 恢复从该帧继续播放——补上原生 <img> 做不到的「从暂停处续播」。
   useEffect(() => {
-    if (!gif || !playing || !ImageDecoderCtor || canvasBroken) return;
+    if (!gif || !playing || canvasBroken) return;
     const totalMs = durationMs;
     let lastProgressUpdate = 0;
     let lastFrameStateUpdate = 0;
