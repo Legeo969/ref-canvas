@@ -28,6 +28,7 @@
     "test:runtime": "node scripts/qa/runtime-smoke.cjs",
     "test:package": "node scripts/qa/package-smoke.cjs",
     "licenses": "node scripts/qa/licenses.cjs",
+    "package:extension": "node scripts/build/package-extension.cjs",
     "test:watch": "vitest"
   },
   "author": "RefCanvas",
