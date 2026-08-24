@@ -2391,7 +2391,20 @@ export function BoardCanvas({
 
     loadingRef.current = true;
     setReadyBoardId(null);
-    void controller.loadCanvasJSON(canvas, document.canvas).then(() => {
+    // Race loadCanvasJSON against a hard timeout: if loadFromJSON hangs
+    // (e.g., a stale image src whose <img> never fires onload/onerror),
+    // the board would never become ready and pending assets would stall.
+    const loadTimeout = window.setTimeout(() => loadController.abort(), 10_000);
+    const loadController = new AbortController();
+    void Promise.race([
+      controller.loadCanvasJSON(canvas, document.canvas),
+      new Promise<never>((_, reject) => {
+        loadController.signal.addEventListener("abort", () =>
+          reject(new Error("BOARD_LOAD_TIMEOUT")),
+        );
+      }),
+    ]).then(() => {
+      window.clearTimeout(loadTimeout);
       for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
         applyBoardControls(object);
         if (ensureObjectIdentity(object)) migratedIdentity = true;
@@ -2416,6 +2429,17 @@ export function BoardCanvas({
         controller.setSaved(false);
         saveImmediately(makeDocument(canvas));
       }
+    }).catch(() => {
+      window.clearTimeout(loadTimeout);
+      // loadFromJSON failed or timed out (e.g., stale image src from a
+      // previous session that can't enliven). Clear the canvas and mark
+      // ready so pending assets can still be added — the board is usable
+      // even if old objects couldn't be restored.
+      if (disposed) return;
+      canvas.clear();
+      canvas.requestRenderAll();
+      loadingRef.current = false;
+      setReadyBoardId(board.id);
     });
 
     return () => {
