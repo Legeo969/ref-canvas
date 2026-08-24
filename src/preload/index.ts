@@ -515,6 +515,14 @@ const api: RefCanvasApi = {
       ipcRenderer.on("browser:open-directory-tab", listener);
       return () => ipcRenderer.off("browser:open-directory-tab", listener);
     },
+    onBrowserCapture: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        data: { path: string; sourceUrl: string },
+      ) => callback(data);
+      ipcRenderer.on("browser:capture", listener);
+      return () => ipcRenderer.off("browser:capture", listener);
+    },
     captureClipboard: () =>
       ipcRenderer.invoke("system:capture-clipboard"),
     prepareRegionCapture: () =>

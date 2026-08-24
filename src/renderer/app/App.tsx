@@ -220,6 +220,14 @@ function WorkspaceApp() {
     };
   }, [prepareRegionCapture]);
 
+  // Browser extension capture: main process writes the image to a temp file,
+  // then notifies the renderer to import it into the active board.
+  useEffect(() => {
+    return window.refCanvas.system.onBrowserCapture((data) => {
+      void store.addDirectoryEntriesToBoard([data.path]);
+    });
+  }, [store]);
+
   useEffect(() => {
     // 只同步 App 自己的演示模式状态，绝不强制退出窗口全屏：预览全屏
     // （PreviewSessionModeButtons）发生在 directory 工作区，若在这里

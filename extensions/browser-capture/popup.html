@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RefCanvas Capture</title>
+  <style>
+    :root {
+      --bg: #1a1e1f;
+      --fg: #eef3f0;
+      --muted: #939c98;
+      --accent: #3ab28f;
+      --border: rgba(255, 255, 255, 0.10);
+      --err: #c95c4b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      width: 280px;
+      padding: 16px;
+      font-size: 13px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .header svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .header span { font-weight: 600; font-size: 14px; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .dot.disconnected { background: var(--err); }
+    .dot.checking { background: var(--muted); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .status-text { font-size: 12px; color: var(--muted); }
+    .info { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .info code { color: var(--accent); font-family: monospace; }
+    .retry {
+      margin-top: 10px;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--fg);
+      font-size: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.15s;
+    }
+    .retry:hover { background: rgba(255, 255, 255, 0.06); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="9" y1="21" x2="9" y2="9" />
+    </svg>
+    <span>RefCanvas Capture</span>
+  </div>
+  <div class="status" id="status">
+    <div class="dot checking" id="dot"></div>
+    <div class="status-text" id="statusText">Checking connection…</div>
+  </div>
+  <div class="info" id="info">
+    Right-click any image on a webpage and select <strong>Add to RefCanvas</strong> to send it to your active reference board.
+  </div>
+  <button class="retry" id="retry">Re-check connection</button>
+  <script src="popup.js"></script>
+</body>
+</html>

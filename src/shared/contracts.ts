@@ -2108,6 +2108,8 @@ export interface RefCanvasApi {
     onWindowModeReset(callback: () => void): () => void;
     /** FND-002：第二实例打开目录 → 主窗口在新标签打开。 */
     onOpenDirectoryTab(callback: (path: string) => void): () => void;
+    /** 浏览器扩展发送的图片落入临时文件后通知渲染端导入到活动板。 */
+    onBrowserCapture(callback: (data: { path: string; sourceUrl: string }) => void): () => void;
     captureClipboard(): Promise<AssetRecord | null>;
     prepareRegionCapture(): Promise<CaptureSource | null>;
     /** 独立覆盖窗口启动后一次性消费抓屏快照（?capture=1 模式）。 */

@@ -75,6 +75,7 @@ import { FontProvider } from "./providers/font-provider";
 import { DocumentProvider } from "./providers/document-provider";
 import { DccProvider } from "./providers/dcc-provider";
 import { registerProtocols } from "./platform/protocols";
+import { createCaptureServer } from "./platform/browser-capture-server";
 import {
   registerWindowsProjectFormat,
   registerWindowsSendTo,
@@ -1824,6 +1825,25 @@ void app.whenReady().then(async () => {
     await importCommandLineEntries(commandLineFiles);
   }
   createWindow();
+
+  // Browser extension capture server (127.0.0.1:17530).
+  // Lets the Chrome/Edge extension send images from web pages into RefCanvas.
+  createCaptureServer(
+    {
+      getCaptureDirectory: () => path.join(app.getPath("userData"), "browser-captures"),
+      getBoardsSummary: () =>
+        database.listBoards().map((board) => ({ id: board.id, title: board.title })),
+      onCapture: (filePath, sourceUrl) => {
+        mainWindow?.webContents.send("browser:capture", { path: filePath, sourceUrl });
+      },
+    },
+    17530,
+  ).on("error", (error) => {
+    // Port already in use (another RefCanvas instance?) — non-fatal.
+    if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
+    console.warn("[browser-capture] port 17530 in use, skipping");
+  });
+
   void Promise.all([
     registerWindowsSendTo(),
     registerWindowsProjectFormat(),
