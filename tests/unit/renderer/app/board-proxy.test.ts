@@ -30,4 +30,19 @@ describe("board image proxies", () => {
     expect(calls).toEqual(["proxy", "original"]);
     expect(result).toEqual({ image: { url: "original" }, source: "original" });
   });
+
+  it("falls back to the original when the board proxy times out", async () => {
+    const calls: string[] = [];
+    const result = await loadBoardImageWithFallback("proxy", "original", async (url) => {
+      calls.push(url);
+      if (url === "proxy") {
+        // Never resolves — simulates a hung image load (cold worker / queue stall).
+        await new Promise(() => {});
+        return { url } as never;
+      }
+      return { url };
+    }, 50);
+    expect(calls).toEqual(["proxy", "original"]);
+    expect(result).toEqual({ image: { url: "original" }, source: "original" });
+  });
 });

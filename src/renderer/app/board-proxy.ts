@@ -51,14 +51,30 @@ export function boardProxyUrl(
   return `${thumbnailUrl}${separator}variant=board&size=${size}&priority=visible`;
 }
 
-/** Prefer the cached board proxy, but never replace a decodable source with a format card. */
+/** Races a promise against a timeout; rejects with IMAGE_LOAD_TIMEOUT if it
+ *  doesn't settle within `ms`. Timer is cleared on settle (no leak). */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("IMAGE_LOAD_TIMEOUT")), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
+/** Prefer the cached board proxy, but never replace a decodable source with a format card.
+ *  If the proxy doesn't settle within `proxyTimeoutMs` (e.g. thumbnail worker
+ *  is cold-starting or queued behind heavy work), fall back to the original
+ *  image URL which serves the raw file directly. */
 export async function loadBoardImageWithFallback<T>(
   proxyUrl: string,
   sourceUrl: string,
   load: (url: string) => Promise<T>,
+  proxyTimeoutMs = 8_000,
 ): Promise<{ image: T; source: "proxy" | "original" }> {
   try {
-    return { image: await load(proxyUrl), source: "proxy" };
+    return { image: await withTimeout(load(proxyUrl), proxyTimeoutMs), source: "proxy" };
   } catch {
     return { image: await load(sourceUrl), source: "original" };
   }

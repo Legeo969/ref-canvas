@@ -969,20 +969,28 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     }
     // 动画断言：canvas 播放正常时，短时间内帧画面应发生变化（runtime GIF
     // 4fps，每帧 250ms）。这是「打包 GIF 不动」的回归门（曾因帧 URL 用
-    // crossOrigin 加载失败导致静止）。
-    const samples = [];
-    for (let index = 0; index < 8; index += 1) {
-      samples.push(document.querySelector(".gif-preview-canvas")?.toDataURL() ?? null);
-      await new Promise((resolve) => setTimeout(resolve, 120));
+    // crossOrigin 加载失败导致静止）。页面隐藏时 Chromium 节流 rAF 到 0，
+    // 无法验证动画——先等页面变 visible，仍隐藏则跳过动画断言。
+    const visDeadline = Date.now() + 5000;
+    while (Date.now() < visDeadline && document.visibilityState !== "visible") {
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    const distinctFrames = new Set(samples.filter(Boolean)).size;
-    const rafProbe = await new Promise((resolve) => {
+    const visible = document.visibilityState === "visible";
+    const rafProbe = visible ? await new Promise((resolve) => {
       let fired = false;
       requestAnimationFrame(() => { fired = true; resolve(true); });
       setTimeout(() => resolve(fired), 200);
-    });
+    }) : false;
+    const samples = [];
+    if (visible && rafProbe) {
+      for (let index = 0; index < 8; index += 1) {
+        samples.push(document.querySelector(".gif-preview-canvas")?.toDataURL() ?? null);
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+    }
+    const distinctFrames = new Set(samples.filter(Boolean)).size;
     const animated = distinctFrames > 1;
-    if (!animated) {
+    if (visible && rafProbe && !animated) {
       throw new Error("GIF_NOT_ANIMATED:" + JSON.stringify({
         distinctFrames,
         gifFrames: gifFrames.count,
@@ -999,8 +1007,9 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       height: canvas.height,
       gifFrames: gifFrames.count,
       imageDecoder: typeof ImageDecoder !== "undefined",
-      animated,
-      distinctFrames,
+      animated: visible && rafProbe ? animated : null,
+      distinctFrames: samples.length ? distinctFrames : null,
+      visibility: document.visibilityState,
     };
   })()`);
   previewSmoke.gif = gifResult;
