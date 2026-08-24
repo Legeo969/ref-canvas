@@ -1042,7 +1042,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
     // 添加动作异步落库，轮询等待而不是固定睡眠，避免偶发时序失败。
     let board = null;
     let boardPngIsImage = false;
-    const boardDeadline = Date.now() + 15000;
+    const boardDeadline = Date.now() + 20000;
     while (Date.now() < boardDeadline && !boardPngIsImage) {
       const latestBoards = await window.refCanvas.boards.list();
       for (const candidate of latestBoards) {

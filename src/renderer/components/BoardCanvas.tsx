@@ -4146,7 +4146,12 @@ export function BoardCanvas({
               Math.min(asset.height ?? 230, 230),
             ) * window.devicePixelRatio,
           );
-          loaded = asset.extension === "gif"
+          // 小图不需要 proxy（proxy 是给大图降内存的）：原图本身就 ≤ proxy
+          // 尺寸时直接加载，跳过缩略图生成（sharp worker 冷启动可达数秒）。
+          const needsProxy =
+            (asset.width ?? 0) > initialProxySize ||
+            (asset.height ?? 0) > initialProxySize;
+          loaded = asset.extension === "gif" || !needsProxy
             ? { image: await loadImage(asset.previewUrl), source: "original" as const }
             : await loadBoardImageWithFallback(
                 boardProxyUrl(asset.thumbnailUrl, initialProxySize),

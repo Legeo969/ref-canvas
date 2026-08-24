@@ -71,7 +71,7 @@ export async function loadBoardImageWithFallback<T>(
   proxyUrl: string,
   sourceUrl: string,
   load: (url: string) => Promise<T>,
-  proxyTimeoutMs = 8_000,
+  proxyTimeoutMs = 4_000,
 ): Promise<{ image: T; source: "proxy" | "original" }> {
   try {
     return { image: await withTimeout(load(proxyUrl), proxyTimeoutMs), source: "proxy" };
