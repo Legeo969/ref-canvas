@@ -24,6 +24,7 @@ import {
   Layers,
   Link2,
   MoreHorizontal,
+  PanelsTopLeft,
   Pencil,
   Plus,
   RefreshCw,
@@ -610,6 +611,20 @@ export function CollectionDetailsPanel() {
     x: number;
     y: number;
   } | null>(null);
+  // 浏览器捕获落盘根：用于判断条目是否为可安全删除的捕获文件。
+  const [capturesRoot, setCapturesRoot] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void window.refCanvas.libraries
+      .capturesDirectory()
+      .then((root) => {
+        if (!cancelled) setCapturesRoot(root);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!collection) {
     return (
@@ -636,6 +651,34 @@ export function CollectionDetailsPanel() {
     if (!ids.length) return;
     await window.refCanvas.collections.removeItems(collection.id, ids);
     await store.refreshCollections();
+  };
+
+  const normalizeForPrefix = (value: string) =>
+    value.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase("en-US");
+  /** 仅捕获目录内的文件允许“删除文件”——集合可引用任意磁盘文件，不能扩大化。 */
+  const isBrowserCapturePath = (value: string): boolean =>
+    capturesRoot !== null &&
+    normalizeForPrefix(value).startsWith(
+      `${normalizeForPrefix(capturesRoot)}/`,
+    );
+
+  const addItemToBoard = (item: ReferenceCollectionItem) => {
+    if (item.state !== "resolved") return;
+    void store.addDirectoryEntriesToBoard([item.lastResolvedPath]);
+  };
+
+  /** 删除捕获文件：进系统回收站（可恢复），并同步移除集合引用。 */
+  const deleteCaptureFile = async (item: ReferenceCollectionItem) => {
+    const confirmed = await dialog.requestConfirm({
+      title: translate("collections.deleteCaptureFile"),
+      description: translate("collections.deleteCaptureFileDesc"),
+      confirmLabel: translate("collections.deleteCaptureFile"),
+      danger: true,
+    });
+    if (!confirmed) return;
+    await store.trashEntries([item.lastResolvedPath]);
+    await window.refCanvas.collections.removeItems(collection.id, [item.id]);
+    await Promise.all([store.refreshCollections(), store.reloadAssets()]);
   };
 
   const relinkItem = async (item: ReferenceCollectionItem) => {
@@ -833,6 +876,18 @@ export function CollectionDetailsPanel() {
               <Copy size={16} />
               {translate("preview.copyPath")}
             </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                const target = itemMenu.item;
+                setItemMenu(null);
+                addItemToBoard(target);
+              }}
+              disabled={itemMenu.item.state !== "resolved"}
+            >
+              <PanelsTopLeft size={16} />
+              {translate("directory.addToBoard")}
+            </button>
             <span className="context-menu-divider" />
             <button
               role="menuitem"
@@ -845,6 +900,19 @@ export function CollectionDetailsPanel() {
               <Trash2 size={16} />
               {translate("collections.removeItem")}
             </button>
+            {isBrowserCapturePath(itemMenu.item.lastResolvedPath) && (
+              <button
+                role="menuitem"
+                onClick={() => {
+                  const target = itemMenu.item;
+                  setItemMenu(null);
+                  void deleteCaptureFile(target);
+                }}
+              >
+                <Trash2 size={16} />
+                {translate("collections.deleteCaptureFile")}
+              </button>
+            )}
           </div>
           <div className="context-menu-dismiss" onClick={() => setItemMenu(null)} />
         </>

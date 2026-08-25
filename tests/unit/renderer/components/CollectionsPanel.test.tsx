@@ -85,6 +85,10 @@ function baseRefCanvas(overrides: Record<string, unknown> = {}) {
       library: {
         pathsForFiles: (files: File[]) => files.map((file) => file.name),
       },
+      libraries: {
+        capturesDirectory: vi.fn(async () => "C:\\Users\\t\\AppData\\browser-captures"),
+        adoptCaptures: vi.fn(async () => ({ adopted: [], failed: [] })),
+      },
       system: {
         writeClipboard: vi.fn(async () => undefined),
         pickFile: vi.fn(async () => ["D:\\new\\file.png"]),

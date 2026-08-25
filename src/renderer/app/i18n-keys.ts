@@ -1010,6 +1010,8 @@ export type MessageKey =
   | "collections.state.resolved"
 
   | "collections.webCaptures"
+  | "collections.deleteCaptureFile"
+  | "collections.deleteCaptureFileDesc"
   | "collections.adopt"
   | "collections.adoptNone"
   | "collections.adoptPickTitle"
