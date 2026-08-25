@@ -85,6 +85,59 @@ describe("BoardPersistenceController", () => {
       objects: [{ id: "local-edit" }],
     });
   });
+
+  // 回归：隐藏/被遮挡窗口的 rAF 被节流为 0，schedule 若只依赖 rAF，
+  // 编辑永远无法落盘（打包冒烟 BOARD_PNG_FORMAT_CARD 的成因）。
+  it("still captures and saves via the macrotask fallback when rAF never fires", async () => {
+    const save = vi.fn(async () => undefined);
+    const onSnapshot = vi.fn();
+    const history = new BoardHistoryController();
+    history.reset(JSON.stringify({ objects: [] }));
+    const controller = new BoardPersistenceController(history, {
+      blocked: () => false,
+      capture: () => ({ objects: [{ id: "hidden-window" }] }),
+      save,
+      setSaved: vi.fn(),
+      onSnapshot,
+    });
+
+    // 模拟遮挡窗口：rAF 回调注册了但永远不会被触发。
+    vi.stubGlobal("requestAnimationFrame", () => 999999);
+
+    controller.schedule();
+    await vi.advanceTimersByTimeAsync(32);
+    expect(onSnapshot).toHaveBeenCalled();
+    expect(controller.historyEntry(-1)).toBeTruthy();
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(save).toHaveBeenCalledExactlyOnceWith({
+      objects: [{ id: "hidden-window" }],
+    });
+    controller.dispose();
+  });
+
+  it("runs the schedule callback exactly once when rAF wins the race", async () => {
+    const save = vi.fn(async () => undefined);
+    // captureSnapshot 每次捕获都会以 false 调用 setSaved，用它做捕获计数。
+    const setSaved = vi.fn();
+    const controller = new BoardPersistenceController(new BoardHistoryController(), {
+      blocked: () => false,
+      capture: () => ({ objects: [{ id: "one" }] }),
+      save,
+      setSaved,
+      onSnapshot: vi.fn(),
+    });
+
+    controller.schedule();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(setSaved).toHaveBeenCalledTimes(1);
+    // 兜底定时器随后到期不得重复捕获/保存。
+    await vi.advanceTimersByTimeAsync(32);
+    expect(setSaved).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(save).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
 });
 
 describe("BoardImportController", () => {

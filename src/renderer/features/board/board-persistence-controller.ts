@@ -15,6 +15,8 @@ export interface BoardPersistenceOperations {
 /** Owns history coalescing and debounced persistence independently of React. */
 export class BoardPersistenceController {
   private animationFrame: number | null = null;
+  /** 宏任务兜底句柄：隐藏窗口 rAF 停摆时仍能捕获快照（见 schedule 注释）。 */
+  private scheduleFallback: number | null = null;
   private saveTimer: number | null = null;
   private pendingSnapshot: Record<string, unknown> | null = null;
   private saveChain: Promise<void> = Promise.resolve();
@@ -27,8 +29,24 @@ export class BoardPersistenceController {
 
   schedule(): void {
     if (this.operations.blocked() || this.animationFrame !== null) return;
-    this.animationFrame = window.requestAnimationFrame(() => {
-      this.animationFrame = null;
+    // 隐藏/被遮挡的窗口里 Chromium 把 requestAnimationFrame 节流到 0
+    // （Electron backgroundThrottling）：只靠 rAF 捕获快照，用户切走窗口
+    // 后的编辑会永远落不了盘（打包冒烟 BOARD_PNG_FORMAT_CARD 的成因——
+    // 对象已上画布，但快照从未被捕获，磁盘文档始终为空）。
+    // 用宏任务兜底与 rAF 竞速：谁先触发谁执行并取消另一路；正常前台时
+    // rAF 先到，批处理语义与原来完全一致。
+    let fired = false;
+    const run = () => {
+      if (fired) return;
+      fired = true;
+      if (this.animationFrame !== null) {
+        window.cancelAnimationFrame(this.animationFrame);
+        this.animationFrame = null;
+      }
+      if (this.scheduleFallback !== null) {
+        window.clearTimeout(this.scheduleFallback);
+        this.scheduleFallback = null;
+      }
       if (this.operations.blocked()) return;
       this.captureSnapshot();
       if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
@@ -37,7 +55,9 @@ export class BoardPersistenceController {
         this.queuePendingSave();
       }, 500);
       this.operations.onSnapshot();
-    });
+    };
+    this.animationFrame = window.requestAnimationFrame(run);
+    this.scheduleFallback = window.setTimeout(run, 32);
   }
 
   historyEntry(offset: -1 | 1) {
@@ -54,9 +74,15 @@ export class BoardPersistenceController {
       window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    if (this.animationFrame !== null) {
-      window.cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = null;
+    if (this.animationFrame !== null || this.scheduleFallback !== null) {
+      if (this.animationFrame !== null) {
+        window.cancelAnimationFrame(this.animationFrame);
+        this.animationFrame = null;
+      }
+      if (this.scheduleFallback !== null) {
+        window.clearTimeout(this.scheduleFallback);
+        this.scheduleFallback = null;
+      }
       if (!this.operations.blocked()) this.captureSnapshot();
     }
     this.queuePendingSave();
@@ -66,8 +92,10 @@ export class BoardPersistenceController {
 
   dispose(): void {
     if (this.animationFrame !== null) window.cancelAnimationFrame(this.animationFrame);
+    if (this.scheduleFallback !== null) window.clearTimeout(this.scheduleFallback);
     if (this.saveTimer !== null) window.clearTimeout(this.saveTimer);
     this.animationFrame = null;
+    this.scheduleFallback = null;
     this.saveTimer = null;
     this.pendingSnapshot = null;
   }
