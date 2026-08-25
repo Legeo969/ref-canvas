@@ -159,6 +159,8 @@ interface AppState
   toggleFocusMode(): void;
   /** 引用集合（FND-003 §6.3）：打开集合视图；null 关闭。 */
   activeCollectionId: string | null;
+  /** 浏览器扩展捕获自动归档的目标集合 id（失效时按名重建）。 */
+  webCaptureCollectionId: string | null;
   collections: ReferenceCollection[];
   collectionTree: Record<string, ReferenceCollection[]>;
   collectionItems: Record<string, ReferenceCollectionItem[]>;
@@ -167,6 +169,13 @@ interface AppState
   closeCollection(): void;
   /** 重新拉取集合树与展开/活动集合条目（FND-003）。 */
   refreshCollections(): Promise<void>;
+  /**
+   * 浏览器扩展捕获归档：把捕获文件加入（必要时创建）「网页捕获」集合，
+   * 给捕获一个可发现、可导出的家。失败只告警，不影响捕获主流程。
+   */
+  addBrowserCaptureToCollection(filePath: string): Promise<void>;
+  /** 认领捕获：复制进用户目录并重链资产/集合引用，失败弹窗报告。 */
+  adoptCaptures(paths: string[], targetDirectory: string): Promise<void>;
   /** 切换到本地目录浏览（不产生素材数据库记录）。 */
   openDirectory(path: string): Promise<void>;
   /** 在新标签打开目录（不修改来源标签历史；FND-002 §5.2）。 */
@@ -1116,6 +1125,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleFocusMode: () => set((state) => ({ focusMode: !state.focusMode })),
 
   activeCollectionId: null,
+  webCaptureCollectionId: null,
   collections: [],
   collectionTree: {},
   collectionItems: {},
@@ -1168,6 +1178,42 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   selectDirectoryEntry: (selectedDirectoryEntry) =>
     set({ selectedDirectoryEntry }),
+
+  addBrowserCaptureToCollection: async (filePath) => {
+    try {
+      const title = translate("collections.webCaptures");
+      const collections = await window.refCanvas.collections.list();
+      // 优先用上次记住的 id（用户改过集合名也不重复建）；id 失效再按名找。
+      const rememberedId = get().webCaptureCollectionId;
+      const existing =
+        (rememberedId
+          ? collections.find((collection) => collection.id === rememberedId)
+          : undefined) ??
+        collections.find((collection) => collection.name === title);
+      const target =
+        existing ??
+        (await window.refCanvas.collections.create({ name: title }));
+      set({ webCaptureCollectionId: target.id });
+      await window.refCanvas.collections.addPaths(target.id, [filePath]);
+    } catch (error) {
+      console.warn("CAPTURE_COLLECTION_ARCHIVE_FAILED", error);
+    }
+  },
+
+  adoptCaptures: async (paths, targetDirectory) => {
+    const report = await window.refCanvas.libraries.adoptCaptures(
+      paths,
+      targetDirectory,
+    );
+    await Promise.all([get().refreshCollections(), get().reloadAssets()]);
+    if (report.failed.length) {
+      window.alert(
+        translate("collections.adoptFailedCount")
+          .replace("{count}", String(report.failed.length))
+          .replace("{reason}", report.failed[0].reason),
+      );
+    }
+  },
 
   clearRemovedMount: (mountPath) => {
     const state = get();

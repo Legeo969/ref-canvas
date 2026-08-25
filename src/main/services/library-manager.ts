@@ -5,6 +5,7 @@ const LEGACY_DB_RELATIVE = "refcanvas.db";
 const MANAGED_STORE_RELATIVE = "files";
 const TRASH_RELATIVE = path.join("trash", "files");
 const BACKUPS_RELATIVE = "backups";
+const BROWSER_CAPTURES_RELATIVE = "browser-captures";
 
 export interface LibraryEntry {
   id: string;
@@ -17,6 +18,11 @@ export interface LibraryEntry {
 
 export function managedStorePath(root: string): string {
   return path.join(root, MANAGED_STORE_RELATIVE);
+}
+
+/** 浏览器扩展捕获落盘目录（<userData>/browser-captures）。 */
+export function browserCapturesPath(root: string): string {
+  return path.join(root, BROWSER_CAPTURES_RELATIVE);
 }
 
 export function databasePathFor(entry: LibraryEntry): string {

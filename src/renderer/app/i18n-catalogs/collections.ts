@@ -59,6 +59,11 @@ export const catalog = {
     "collections.dropActive": "Drop to add to the current collection",
     "collections.skippedDirectories": "{count} folders were not added (collections accept files only)",
     "collections.default": "Default",
+    "collections.webCaptures": "Web Captures",
+    "collections.adopt": "Adopt Captures to Folder…",
+    "collections.adoptNone": "This collection has no web captures to adopt.",
+    "collections.adoptPickTitle": "Choose a folder to keep adopted captures",
+    "collections.adoptFailedCount": "{count} captures failed to adopt: {reason}",
   },
   zhCN: {
     "collections.empty": "还没有集合。",
@@ -118,5 +123,10 @@ export const catalog = {
     "collections.dropActive": "释放以添加到当前集合",
     "collections.skippedDirectories": "{count} 个文件夹未加入（集合仅支持文件素材）",
     "collections.default": "默认",
+    "collections.webCaptures": "网页捕获",
+    "collections.adopt": "认领捕获到目录…",
+    "collections.adoptNone": "这个集合里还没有可认领的网页捕获。",
+    "collections.adoptPickTitle": "选择保存已认领捕获的文件夹",
+    "collections.adoptFailedCount": "{count} 个捕获认领失败：{reason}",
   },
 } satisfies Record<string, Partial<Record<MessageKey, string>>>;

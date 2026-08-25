@@ -225,6 +225,9 @@ function WorkspaceApp() {
   useEffect(() => {
     return window.refCanvas.system.onBrowserCapture((data) => {
       void store.addDirectoryEntriesToBoard([data.path]);
+      // 同时归档进「网页捕获」集合：捕获有可发现、可导出的家，不再只是
+      // 散落在库里的一条 linked 记录。归档失败不影响上板主流程。
+      void store.addBrowserCaptureToCollection(data.path);
     });
   }, [store]);
 

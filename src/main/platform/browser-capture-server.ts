@@ -59,6 +59,17 @@ function sanitizeFilename(name: string): string {
   return cleaned || "capture.png";
 }
 
+/**
+ * 追加唯一后缀：网页图片大量重名（image.png / index.jpg），若按原始名
+ * 落盘，后捕获会覆盖先捕获的文件——而资产是 linked 引用（materialize
+ * 不复制源文件），旧资产会悄悄显示新图内容。每次捕获独立成文件。
+ */
+function uniquifyFilename(name: string): string {
+  const parsed = path.parse(name);
+  const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return `${parsed.name}-${suffix}${parsed.ext}`;
+}
+
 export function createCaptureServer(
   deps: CaptureServerDeps,
   port = 17530,
@@ -105,7 +116,7 @@ export function createCaptureServer(
 
         const captureDir = deps.getCaptureDirectory();
         await mkdir(captureDir, { recursive: true });
-        const filename = sanitizeFilename(data.filename);
+        const filename = uniquifyFilename(sanitizeFilename(data.filename));
         const filePath = path.join(captureDir, filename);
         await writeFile(filePath, Buffer.from(data.image, "base64"));
         deps.onCapture(filePath, data.sourceUrl ?? "");

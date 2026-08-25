@@ -48,4 +48,43 @@ export function registerLibraryManagementIpc(
     );
     return dependencies.getLibrary().migrateManagedToDisk(target);
   });
+
+  // 浏览器捕获目录（渲染端过滤可认领条目用，只读）。
+  ipc.handle("libraries:captures-directory", () =>
+    dependencies.getLibrary().browserCapturesDirectory(),
+  );
+
+  // 认领捕获：复制进用户目录 → 校验 → 重链资产与集合引用 → 删原件。
+  ipc.handleWithEvent(
+    "libraries:adopt-captures",
+    async (event, input: { paths: unknown; targetDirectory: unknown }) => {
+      const window = dependencies.windowForSender(event);
+      const payload = z
+        .object({
+          paths: z.array(pathSchema).min(1).max(1_000),
+          targetDirectory: pathSchema,
+        })
+        .parse(input);
+      const canonical = await dependencies.writeAccess.authorize(
+        window, "copy", [
+          ...payload.paths.map((filePath) => ({
+            path: assertAbsoluteLocalPath(filePath),
+            mode: "existing" as const,
+          })),
+          { path: assertAbsoluteLocalPath(payload.targetDirectory), mode: "destination" },
+        ],
+      );
+      const finalPaths = await dependencies.writeAccess.authorize(window, "copy", canonical.map(
+        (filename, index) => ({
+          path: filename,
+          mode: index < payload.paths.length ? ("existing" as const) : ("destination" as const),
+        }),
+      ));
+      const sourceCount = payload.paths.length;
+      return dependencies.getLibrary().adoptBrowserCaptures(
+        finalPaths.slice(0, sourceCount),
+        finalPaths[sourceCount],
+      );
+    },
+  );
 }

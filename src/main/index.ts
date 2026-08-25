@@ -39,6 +39,7 @@ import {
 import {
   LibraryManager,
   backupDirectoryFor,
+  browserCapturesPath,
   databasePathFor,
   trashPathFor,
   type LibraryEntry,
@@ -76,6 +77,7 @@ import { DocumentProvider } from "./providers/document-provider";
 import { DccProvider } from "./providers/dcc-provider";
 import { registerProtocols } from "./platform/protocols";
 import { createCaptureServer } from "./platform/browser-capture-server";
+import { pruneOrphanedCaptures } from "./services/browser-capture-maintenance";
 import {
   registerWindowsProjectFormat,
   registerWindowsSendTo,
@@ -1830,7 +1832,7 @@ void app.whenReady().then(async () => {
   // Lets the Chrome/Edge extension send images from web pages into RefCanvas.
   createCaptureServer(
     {
-      getCaptureDirectory: () => path.join(app.getPath("userData"), "browser-captures"),
+      getCaptureDirectory: () => browserCapturesPath(app.getPath("userData")),
       getBoardsSummary: () =>
         database.listBoards().map((board) => ({ id: board.id, title: board.title })),
       onCapture: (filePath, sourceUrl) => {
@@ -1842,6 +1844,14 @@ void app.whenReady().then(async () => {
     // Port already in use (another RefCanvas instance?) — non-fatal.
     if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
     console.warn("[browser-capture] port 17530 in use, skipping");
+  });
+
+  // 启动时清理 browser-captures 孤儿文件（无资产引用且超过宽限期）。
+  void pruneOrphanedCaptures({
+    directory: browserCapturesPath(app.getPath("userData")),
+    hasAssetAtPath: (absolutePath) => Boolean(database.getAssetByPath(absolutePath)),
+  }).catch((error) => {
+    console.warn("[browser-capture] orphan prune failed:", error);
   });
 
   void Promise.all([

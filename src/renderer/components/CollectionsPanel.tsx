@@ -249,6 +249,37 @@ function CollectionNode({
     }
   };
 
+  /** 认领捕获：把本集合里落在 browser-captures 的条目复制进用户目录。 */
+  const adoptCaptures = async () => {
+    setMenuOpen(false);
+    try {
+      const captureRoot = await window.refCanvas.libraries.capturesDirectory();
+      // 主进程路径是 Windows/POSIX 原生分隔符；归一化后做前缀匹配。
+      const normalize = (value: string) =>
+        value.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase("en-US");
+      const rootPrefix = `${normalize(captureRoot)}/`;
+      const items = await window.refCanvas.collections.listItems(collection.id);
+      const adoptable = items
+        .map((item) => item.lastResolvedPath)
+        .filter((filePath) => normalize(filePath).startsWith(rootPrefix));
+      if (!adoptable.length) {
+        void dialog.requestConfirm({
+          title: translate("collections.adopt"),
+          description: translate("collections.adoptNone"),
+          confirmLabel: translate("collections.acknowledge"),
+        });
+        return;
+      }
+      const target = await window.refCanvas.system.pickDirectory({
+        title: translate("collections.adoptPickTitle"),
+      });
+      if (!target) return;
+      await store.adoptCaptures(adoptable, target);
+    } catch {
+      // 目录查询失败等异常保持静默，与面板其它后台刷新一致。
+    }
+  };
+
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setDraggingOver(false);
@@ -398,6 +429,10 @@ function CollectionNode({
             <button role="menuitem" onClick={() => { setMenuOpen(false); void onExport(collection.id); }}>
               <ArrowDownToLine size={15} />
               {translate("collections.export")}
+            </button>
+            <button role="menuitem" onClick={() => void adoptCaptures()}>
+              <FolderOpen size={15} />
+              {translate("collections.adopt")}
             </button>
             <button role="menuitem" onClick={() => { setMenuOpen(false); void store.openCollectionInNewTab(collection.id, collection.name); }}>
               <SquareArrowOutUpRight size={15} />

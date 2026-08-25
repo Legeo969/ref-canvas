@@ -43,7 +43,7 @@ import {
   ImportCoordinator,
   type ImportJob,
 } from "./import-coordinator";
-import { managedStorePath } from "./library-manager";
+import { managedStorePath, browserCapturesPath } from "./library-manager";
 import { MetadataEnricher } from "./metadata-enricher";
 import { WatchReconcileService } from "./watch-reconcile-service";
 import { specializedKindForExtension } from "../../shared/asset-kind";
@@ -1812,6 +1812,110 @@ export class LibraryService {
       await rm(this.managedStore, { recursive: true, force: true });
     }
     return { migrated, failed };
+  }
+
+  /**
+   * 认领浏览器捕获（路线一）：把 browser-captures 里的捕获复制进用户选择
+   * 的目录，校验后把 linked 资产重链到新路径，引用旧路径的集合条目一并
+   * 重定向，最后删除原件（已持验证副本，且白板对象按 assetId 引用不受
+   * 影响）。所有权转移由用户显式完成，存储模型保持"恒为 linked"。
+   * 只接受捕获目录内的文件；目标重名自动加序号，不覆盖。
+   */
+  async adoptBrowserCaptures(
+    paths: string[],
+    targetDirectory: string,
+  ): Promise<{
+    adopted: Array<{ assetId: string; from: string; to: string }>;
+    failed: Array<{ path: string; reason: string }>;
+  }> {
+    const targetRoot = path.resolve(targetDirectory);
+    const captureRoot = browserCapturesPath(this.libraryRoot);
+    const targetInfo = await stat(targetRoot).catch(() => null);
+    if (!targetInfo?.isDirectory()) throw new Error("ADOPT_TARGET_NOT_DIRECTORY");
+    const adopted: Array<{ assetId: string; from: string; to: string }> = [];
+    const failed: Array<{ path: string; reason: string }> = [];
+    const usedTargets = new Set<string>();
+    for (const inputPath of paths) {
+      const sourcePath = path.resolve(inputPath);
+      try {
+        // 只允许认领捕获目录内的文件：这是捕获认领的语义边界，也防止把
+        // 任意库资产误当成可移动的临时文件。
+        if (
+          sourcePath !== captureRoot &&
+          !sourcePath.startsWith(`${captureRoot}${path.sep}`)
+        ) {
+          throw new Error("NOT_A_BROWSER_CAPTURE");
+        }
+        const [sourceInfo, existing] = await Promise.all([
+          stat(sourcePath).catch(() => null),
+          Promise.resolve(this.database.getAssetByPath(sourcePath)),
+        ]);
+        if (!sourceInfo?.isFile()) throw new Error("CAPTURE_FILE_MISSING");
+        if (!existing) throw new Error("CAPTURE_NOT_IMPORTED");
+
+        let targetPath = path.join(targetRoot, path.basename(sourcePath));
+        let suffix = 2;
+        while (
+          usedTargets.has(path.normalize(targetPath).toLocaleLowerCase("en-US")) ||
+          (await stat(targetPath).catch(() => null))
+        ) {
+          const parsed = path.parse(sourcePath);
+          targetPath = path.join(targetRoot, `${parsed.name} ${suffix}${parsed.ext}`);
+          suffix += 1;
+        }
+        usedTargets.add(path.normalize(targetPath).toLocaleLowerCase("en-US"));
+
+        await copyFile(sourcePath, targetPath);
+        const copiedInfo = await stat(targetPath);
+        if (copiedInfo.size !== sourceInfo.size) {
+          throw new Error("ADOPT_SIZE_MISMATCH");
+        }
+        // 有验证摘要时以 SHA-256 复核副本；缺失则借此建立摘要。
+        const copiedHash =
+          existing.contentHash != null ? await fullFileHash(targetPath) : null;
+        if (existing.contentHash != null && copiedHash !== existing.contentHash) {
+          throw new Error("ADOPT_HASH_MISMATCH");
+        }
+
+        const next = await this.readAsset(targetPath, existing);
+        const updated = this.database.relinkAsset(existing.id, {
+          ...next,
+          contentHash: existing.contentHash ?? copiedHash,
+          storageMode: "linked",
+          libraryRelativePath: null,
+          originalSourcePath: null,
+        });
+        this.updateIdentity(updated);
+
+        // 引用旧路径的集合条目重定向为路径引用（挂载元数据由下次解析重建）。
+        for (const item of this.database.collections().listItemsReferencingPath(sourcePath)) {
+          this.database.collections().updateItem(item.id, {
+            identityId: null,
+            mountId: null,
+            relativePath: null,
+            lastResolvedPath: targetPath,
+            pathKey: path
+              .normalize(targetPath)
+              .toLocaleLowerCase("en-US"),
+            state: "resolved",
+          });
+        }
+
+        await unlink(sourcePath);
+        adopted.push({ assetId: existing.id, from: sourcePath, to: targetPath });
+      } catch (error) {
+        failed.push({
+          path: sourcePath,
+          reason: error instanceof Error ? error.message : "ADOPT_FAILED",
+        });
+      }
+    }
+    return { adopted, failed };
+  }
+
+  /** 浏览器扩展捕获落盘目录（供渲染端过滤可认领条目）。 */
+  browserCapturesDirectory(): string {
+    return browserCapturesPath(this.libraryRoot);
   }
 
   /** 返回 managed store 下实际普通文件的绝对路径（过滤子目录）。 */

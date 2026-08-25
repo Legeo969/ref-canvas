@@ -211,6 +211,23 @@ export class CollectionsRepository {
     return row.c;
   }
 
+  /**
+   * 跨集合查找引用某磁盘路径的全部条目（认领捕获后重定向引用用）。
+   * 匹配 last_resolved_path 精确值或规范化 path_key。
+   */
+  listItemsReferencingPath(filename: string): ReferenceCollectionItem[] {
+    const resolved = path.resolve(filename);
+    const pathKey = normalizePathKey(resolved);
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM collection_items
+          WHERE last_resolved_path = ? OR path_key = ?
+          ORDER BY collection_id, sort_order, created_at, id`,
+      )
+      .all(resolved, pathKey) as CollectionItemRow[];
+    return rows.map((row) => this.mapItem(row));
+  }
+
   getItem(itemId: string): ReferenceCollectionItem | null {
     const row = this.db
       .prepare("SELECT * FROM collection_items WHERE id = ?")
