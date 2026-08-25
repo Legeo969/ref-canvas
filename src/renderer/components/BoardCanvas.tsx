@@ -391,6 +391,7 @@ export function BoardCanvas({
   } | null>(null);
   const [toolbarMoreOpen, setToolbarMoreOpen] = useState(false);
   const toolbarMoreButtonRef = useRef<HTMLButtonElement>(null);
+  const toolbarMorePanelRef = useRef<HTMLElement | null>(null);
   const [toolbarMorePosition, setToolbarMorePosition] = useState({
     x: 14,
     y: 66,
@@ -518,6 +519,30 @@ export function BoardCanvas({
       window.cancelAnimationFrame(frame);
       observer.disconnect();
       removeResize();
+    };
+  }, [toolbarMoreOpen]);
+
+  // 「更多工具」面板：点击面板与触发按钮以外的任意区域、或按 Esc 时关闭。
+  // 用捕获阶段监听，Fabric 画布的指针处理不会拦截它。
+  useEffect(() => {
+    if (!toolbarMoreOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target instanceof Node) {
+        if (toolbarMorePanelRef.current?.contains(target)) return;
+        if (toolbarMoreButtonRef.current?.contains(target)) return;
+      }
+      setToolbarMoreOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setToolbarMoreOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [toolbarMoreOpen]);
 
@@ -5582,6 +5607,7 @@ export function BoardCanvas({
         />
         {toolbarMoreOpen && (
           <aside
+            ref={toolbarMorePanelRef}
             className="board-toolbar-more"
             role="dialog"
             aria-label={translate("board.moreTools")}
