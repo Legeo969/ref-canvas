@@ -56,6 +56,12 @@ async function launchOnce(label) {
       `--user-data-dir=${profile}`,
       `--remote-debugging-port=${port}`,
       "--no-sandbox",
+      // 烟测期间窗口可能被遮挡/最小化，Chromium 会把 rAF 节流到 0、后台
+      // 定时器钳到 ≥1s：曾导致白板编辑的 rAF 门控持久化永远不触发
+      // （BOARD_PNG_FORMAT_CARD）。QA 运行一律按前台窗口对待。
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
     ],
     { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
   );
@@ -73,8 +79,14 @@ async function launchOnce(label) {
     }
     // DIRECTORY_REVISION_CHANGED 是目录扫描 revision 竞争时的正常业务拒绝
     // （渲染端会重试），不是主进程崩溃；从检测输出中剔除，避免偶发误报。
+    // INVALID_IPC_SENDER 是旧文档定时器在页面 reload 卸载窗口内触发时，
+    // 从已销毁的 frame 发 IPC 产生的安全拒绝（渲染端 .catch(() => undefined)
+    // 已吞掉），不是主进程崩溃；同样剔除，避免偶发误报。
     const filteredOutput = output.replace(
       /Error occurred in handler for 'filesystem:locate-entry': Error: DIRECTORY_REVISION_CHANGED[^\n]*\n?/g,
+      "",
+    ).replace(
+      /Error occurred in handler for 'filesystem:preview-token[s]?': Error: INVALID_IPC_SENDER[^\n]*\n?/g,
       "",
     );
     if (
