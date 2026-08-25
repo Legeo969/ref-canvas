@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   parseInspectorNumber,
   type InspectorMetrics,
@@ -26,12 +26,15 @@ export function BoardInspector({
   metrics,
   onCommit,
   onClose,
+  style,
 }: {
   selectionCount: number;
   name: string | null;
   metrics: InspectorMetrics | null;
   onCommit(key: keyof InspectorMetrics, value: number): void;
   onClose(): void;
+  /** 双开避让：父级用内联样式把检查器压到图层面板下方。 */
+  style?: CSSProperties;
 }) {
   const [drafts, setDrafts] = useState<Partial<Record<keyof InspectorMetrics, string>>>({});
   useEffect(() => setDrafts({}), [metrics]);
@@ -48,7 +51,11 @@ export function BoardInspector({
   };
 
   return (
-    <aside className="board-inspector" aria-label={translate("board.inspectorLabel")}>
+    <aside
+      className="board-inspector"
+      style={style}
+      aria-label={translate("board.inspectorLabel")}
+    >
       <header>
         <strong>{translate("board.inspectorTitle")}</strong>
         <button className="mini-icon-button" aria-label={translate("board.inspectorClose")} onClick={onClose}>

@@ -234,6 +234,9 @@ let boardClipboard: Record<string, unknown>[] = [];
 
 const defaultBoardAppearance = DEFAULT_BOARD_APPEARANCE;
 
+/** 图层/检查器卡片的统一顶部起点（与 dialogs.css 中两卡片定位一致）。 */
+const BOARD_CARD_TOP = 64;
+
 const noopOpenTool = () => {};
 
 function BoardGifPreviewDialog({ asset }: { asset: AssetRecord }) {
@@ -565,6 +568,22 @@ export function BoardCanvas({
   const [drawingPanelOpen, setDrawingPanelOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const layersPanelRef = useRef<HTMLElement | null>(null);
+  const [layersPanelHeight, setLayersPanelHeight] = useState<number | null>(null);
+
+  // 双开避让：图层面板打开期间持续测量其高度，检查器据此下移。
+  useEffect(() => {
+    const panel = layersPanelRef.current;
+    if (!layersOpen || !panel) {
+      setLayersPanelHeight(null);
+      return;
+    }
+    const update = () => setLayersPanelHeight(panel.offsetHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [layersOpen]);
   const [modelAsset, setModelAsset] = useState<AssetRecord | null>(null);
   const [modelView, setModelView] = useState<ModelView | null>(null);
   // 阶段 6 §11：双击进入完整 preview（视频/音频/高位深图片）。
@@ -5925,6 +5944,7 @@ export function BoardCanvas({
         )}
         {layersOpen && (
           <BoardLayerPanel
+            rootRef={layersPanelRef}
             rows={boardStructure.layers}
             onCommand={(command, id) => { controller.command(command, id); }}
             onReparent={(id, parentId) => {
@@ -5962,6 +5982,15 @@ export function BoardCanvas({
             metrics={boardSnapshot.inspector?.metrics ?? null}
             onCommit={(key, value) => { controller.updateInspector(key, value); }}
             onClose={() => setInspectorOpen(false)}
+            style={
+              layersOpen && layersPanelHeight
+                ? {
+                    // 双开避让：压到图层面板下方，并按剩余空间收口。
+                    top: BOARD_CARD_TOP + layersPanelHeight + 10,
+                    maxHeight: `calc(100% - ${BOARD_CARD_TOP + layersPanelHeight + 26}px)`,
+                  }
+                : undefined
+            }
           />
         )}
         {focusedObjectId && focusedIndex >= 0 && (

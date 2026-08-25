@@ -12,7 +12,7 @@ import {
   Search,
   Unlink,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
 import type {
   BoardControllerCommand,
@@ -32,6 +32,7 @@ export function BoardLayerPanel({
   onReorder,
   onRename,
   onComment,
+  rootRef,
 }: {
   rows: readonly Readonly<BoardLayerRowSnapshot>[];
   onCommand(command: BoardControllerCommand, id: string): void;
@@ -39,6 +40,8 @@ export function BoardLayerPanel({
   onReorder(id: string, targetId: string, before: boolean): void;
   onRename(row: Readonly<BoardLayerRowSnapshot>): void;
   onComment(id: string): void;
+  /** 供父级测量面板高度（检查器双开时下移避让）。 */
+  rootRef?: Ref<HTMLElement>;
 }) {
   const [query, setQuery] = useState("");
   const [scrollTop, setScrollTop] = useState(0);
@@ -91,7 +94,7 @@ export function BoardLayerPanel({
   }, [menuId]);
 
   return (
-    <aside className="layers-panel">
+    <aside className="layers-panel" ref={rootRef}>
       <header><strong>{translate("board.layersTitle")}</strong><span>{translate("board.layerDragHint")}</span></header>
       <label className="layer-search">
         <Search size={13} />
