@@ -83,7 +83,10 @@ function DirectoryNode({
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<DirectoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const active = store.directoryPath === entry.path;
+  // 查看集合时不把之前浏览的磁盘目录继续显示为选中态。
+  const active =
+    store.activeCollectionId === null &&
+    store.directoryPath === entry.path;
   const refreshToken = `${globalRefreshVersion}:${
     directoryRefreshVersions[normalizeRefreshPath(entry.path)] ?? 0
   }`;
@@ -180,7 +183,9 @@ function RootNode({
   directoryRefreshVersions: Record<string, number>;
 }) {
   const store = useAppStore();
-  const active = store.directoryPath === entry.path;
+  const active =
+    store.activeCollectionId === null &&
+    store.directoryPath === entry.path;
   return (
     <div className="dir-root-node">
       <div className={`dir-root-row ${active ? "active" : ""}`}>
@@ -262,7 +267,10 @@ export function QuickAccessPane({
               {store.quickAccess.map((entry) => (
                 <div
                   className={`quick-access-row ${
-                    store.directoryPath === entry.path ? "active" : ""
+                    store.activeCollectionId === null &&
+                    store.directoryPath === entry.path
+                      ? "active"
+                      : ""
                   }`}
                   key={entry.id}
                 >
