@@ -315,6 +315,7 @@ describe("resources IPC mount events", () => {
       getThumbnailCacheDirectory: () => "D:\\cache",
       getScriptsService: () => ({ list: () => [], unregister: vi.fn(), inspect: vi.fn(), register, run }),
       writeAccess: { authorize },
+      windowForSender: () => ({ id: 1 }),
       previewTokens: {},
       notifyMountsChanged: vi.fn(),
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
