@@ -1009,6 +1009,12 @@ export type MessageKey =
 
   | "collections.state.resolved"
 
+  | "collections.webCaptures"
+  | "collections.adopt"
+  | "collections.adoptNone"
+  | "collections.adoptPickTitle"
+  | "collections.adoptFailedCount"
+
   | "crop.apply"
 
   | "crop.cancel"
@@ -2392,6 +2398,8 @@ export type MessageKey =
   | "settings.preview.registerScriptDescription"
 
   | "settings.preview.registerScriptEllipsis"
+
+  | "settings.preview.scriptConfirmDescription"
 
   | "settings.preview.remove"
 

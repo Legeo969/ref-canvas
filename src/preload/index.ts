@@ -170,6 +170,9 @@ const api: RefCanvasApi = {
     managedPreflight: () => ipcRenderer.invoke("libraries:managed-preflight"),
     managedMigrate: (targetDirectory) =>
       ipcRenderer.invoke("libraries:managed-migrate", targetDirectory),
+    capturesDirectory: () => ipcRenderer.invoke("libraries:captures-directory"),
+    adoptCaptures: (paths, targetDirectory) =>
+      ipcRenderer.invoke("libraries:adopt-captures", { paths, targetDirectory }),
   },
   mounts: {
     list: () => ipcRenderer.invoke("mounts:list"),
@@ -311,6 +314,7 @@ const api: RefCanvasApi = {
   },
   scripts: {
     list: () => ipcRenderer.invoke("scripts:list"),
+    inspect: (request) => ipcRenderer.invoke("scripts:inspect", request),
     register: (request) => ipcRenderer.invoke("scripts:register", request),
     unregister: (id) => ipcRenderer.invoke("scripts:unregister", id),
     run: (request) => ipcRenderer.invoke("scripts:run", request),

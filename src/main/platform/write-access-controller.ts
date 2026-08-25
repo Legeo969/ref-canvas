@@ -13,6 +13,7 @@ export type WriteOperation =
   | "move"
   | "create-folder"
   | "archive"
+  | "execute"
   | "export";
 
 export interface WritePathRequest {

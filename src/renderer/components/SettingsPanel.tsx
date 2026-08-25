@@ -74,6 +74,11 @@ export function SettingsPanel({
   const [uninstallError, setUninstallError] = useState("");
   const [colorStatus, setColorStatus] = useState<ColorStatus | null>(null);
   const [scripts, setScripts] = useState<RegisteredScript[]>([]);
+  /** MP4 预设名输入的本地缓冲（id → 草稿），失焦才写回偏好。 */
+  const [editingPresetLabel, setEditingPresetLabel] = useState<{
+    id: string;
+    value: string;
+  } | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [mediaMetadata, setMediaMetadata] = useState<MediaMetadataSnapshot>({
     state: "idle",
@@ -806,12 +811,33 @@ export function SettingsPanel({
                         />
                         <input
                           type="text"
-                          value={preset.label}
+                          value={editingPresetLabel?.id === preset.id ? editingPresetLabel.value : preset.label}
                           aria-label={translate("settings.preview.presetName").replace("{label}", preset.label)}
                           onChange={(event) => {
+                            // 本地缓冲：允许输入过程中的瞬态空值，失焦时才
+                            // 校验并落盘。此前 `value || preset.label` 会在
+                            // 清空时立刻回弹旧名——最后一个字永远删不掉。
+                            setEditingPresetLabel({
+                              id: preset.id,
+                              value: event.target.value,
+                            });
+                          }}
+                          onBlur={() => {
+                            if (editingPresetLabel?.id !== preset.id) return;
+                            const trimmed = editingPresetLabel.value.trim();
+                            const finalLabel =
+                              trimmed ||
+                              translate("settings.preview.mp4PresetDefault")
+                                .replace("{index}", String(index + 1));
                             const next = [...previewSettings.mp4Presets];
-                            next[index] = { ...preset, label: event.target.value || preset.label };
+                            next[index] = { ...preset, label: finalLabel };
                             updateMp4Presets(next);
+                            setEditingPresetLabel(null);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.currentTarget.blur();
+                            }
                           }}
                         />
                         <SelectMenu
@@ -1036,6 +1062,26 @@ export function SettingsPanel({
                     });
                     if (!values) return;
                     try {
+                      // B 方案同意链：注册前展示路径/sha256/将执行的命令行。
+                      const inspect = await window.refCanvas.scripts.inspect({
+                        path: values.path,
+                      });
+                      const confirmed = await dialog.requestConfirm({
+                        title: translate("settings.preview.registerScript"),
+                        description: translate(
+                          "settings.preview.scriptConfirmDescription",
+                        )
+                          .replace("{path}", values.path)
+                          .replace("{command}", inspect.commandPreview)
+                          .replace("{hash}", inspect.sha256.slice(0, 16))
+                          .replace(
+                            "{kind}",
+                            inspect.kind.toUpperCase(),
+                          ),
+                        confirmLabel: translate("settings.preview.register"),
+                        danger: true,
+                      });
+                      if (!confirmed) return;
                       await window.refCanvas.scripts.register({
                         path: values.path,
                         timeoutMs: (Number(values.timeout) || 60) * 1000,

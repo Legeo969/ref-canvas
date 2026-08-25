@@ -985,21 +985,51 @@ export function registerResourcesIpc(
     });
   });
 
-  // Arbitrary child processes cannot be constrained by drive grants. Keep the
-  // IPC surface for compatibility, but fail closed until a brokered sandbox is
-  // available.
-  const scriptExecutionDisabled = (): never => {
-    throw new Error("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
-  };
-
+  // Arbitrary child processes cannot be constrained by drive grants. The
+  // script trust chain (B 方案) mitigates this explicitly instead:
+  // 注册前 inspect+confirm（路径/sha256/命令行），运行前重校验 sha256，
+  // cwd 经盘符授权提示，超时杀进程树。见 ScriptsService。
   ipc.handle("scripts:list", () => dependencies.getScriptsService().list());
-  ipc.handle("scripts:register", scriptExecutionDisabled);
+
+  ipc.handle("scripts:inspect", (request) => {
+    const parsed = z
+      .object({ path: z.string().min(1).max(4096) })
+      .parse(request);
+    return dependencies.getScriptsService().inspect(parsed.path);
+  });
+
+  ipc.handle("scripts:register", async (request) => {
+    const parsed = z
+      .object({
+        path: z.string().min(1).max(4096),
+        name: z.string().trim().min(1).max(120).optional(),
+        timeoutMs: z.number().int().min(1_000).max(3_600_000).optional(),
+      })
+      .parse(request);
+    return dependencies.getScriptsService().register(
+      parsed.path,
+      parsed.name,
+      parsed.timeoutMs ?? 60_000,
+    );
+  });
 
   ipc.handle("scripts:unregister", (id) => {
     dependencies.getScriptsService().unregister(z.string().min(1).max(64).parse(id));
   });
 
-  ipc.handle("scripts:run", scriptExecutionDisabled);
+  ipc.handleWithEvent("scripts:run", async (event, request) => {
+    const parsed = z
+      .object({ id: z.string().min(1).max(64), cwd: pathSchema })
+      .parse(request);
+    // 运行目录所在盘必须经过既有盘符授权提示；脚本本身仍以用户完整权限
+    // 运行（设置页文案已明示），这是 B 方案下明示的信任边界。
+    const [cwd] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "execute",
+      [{ path: assertAbsoluteLocalPath(pathSchema.parse(parsed.cwd)), mode: "existing" }],
+    );
+    return dependencies.getScriptsService().run(parsed.id, cwd);
+  });
 
   // --- color:get-status（阶段 5 §10.3 色彩管理）---
 

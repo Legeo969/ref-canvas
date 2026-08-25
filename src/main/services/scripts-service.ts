@@ -30,6 +30,31 @@ export interface ScriptRunResult {
   durationMs: number;
 }
 
+export interface ScriptInspectResult {
+  kind: "py" | "ps1" | "other";
+  sizeBytes: number;
+  sha256: string;
+  /** 将执行的命令行预览（确认对话框展示用）。 */
+  commandPreview: string;
+}
+
+function kindForScriptPath(resolved: string): RegisteredScript["kind"] {
+  const extension = path.extname(resolved).toLowerCase();
+  return extension === ".py" ? "py" : extension === ".ps1" ? "ps1" : "other";
+}
+
+function commandPreviewFor(
+  kind: RegisteredScript["kind"],
+  commands: { pythonCommand: string; powershellCommand: string },
+  resolvedPath: string,
+): string {
+  if (kind === "py") return `${commands.pythonCommand} "${resolvedPath}"`;
+  if (kind === "ps1") {
+    return `${commands.powershellCommand} -NoProfile -File "${resolvedPath}"`;
+  }
+  return `"${resolvedPath}"`;
+}
+
 export interface ScriptsServiceOptions {
   /** 覆盖 python 可执行名（测试注入）。 */
   pythonCommand?: string;
@@ -85,6 +110,46 @@ export class ScriptsService {
     name: string | undefined,
     timeoutMs: number,
   ): Promise<RegisteredScript> {
+    const { resolved, content } = await this.resolveScriptFile(scriptPath);
+    const hash = createHash("sha256").update(content).digest("hex");
+    const kind = kindForScriptPath(resolved);
+    const entry: RegisteredScript = {
+      id: randomUUID(),
+      name: name?.trim() || path.basename(resolved),
+      path: resolved,
+      hash,
+      kind,
+      timeoutMs,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...this.list().filter((item) => item.path !== resolved), entry];
+    this.database.setSetting(SCRIPTS_KEY, next);
+    return entry;
+  }
+
+  /**
+   * 注册前预检（B 方案同意链）：返回 sha256/类型/将执行的命令行，供 UI
+   * 在落库前向用户展示。只读，不产生任何持久化。
+   */
+  async inspect(scriptPath: string): Promise<ScriptInspectResult> {
+    const { resolved, info, content } = await this.resolveScriptFile(scriptPath);
+    return {
+      kind: kindForScriptPath(resolved),
+      sizeBytes: Number(info.size),
+      sha256: createHash("sha256").update(content).digest("hex"),
+      commandPreview: commandPreviewFor(kindForScriptPath(resolved), {
+        pythonCommand: this.pythonCommand,
+        powershellCommand: this.powershellCommand,
+      }, resolved),
+    };
+  }
+
+  /** 与 register 相同的路径边界校验 + 文件读取（inspect/register 共用）。 */
+  private async resolveScriptFile(scriptPath: string): Promise<{
+    resolved: string;
+    info: Awaited<ReturnType<typeof stat>>;
+    content: Buffer;
+  }> {
     // 注册路径来自用户文件选择器。做边界校验：有界普通字符串、不含 NUL，
     // 解析后其父目录必须真实存在、文件必须是普通文件，且文件名只含
     // 安全字符（无路径分隔符/控制字符）。信任锚点是注册时记录的 sha256，
@@ -106,22 +171,7 @@ export class ScriptsService {
     const info = await stat(resolved);
     if (!info.isFile()) throw new Error("SCRIPT_NOT_FOUND");
     const content = await readFile(resolved);
-    const hash = createHash("sha256").update(content).digest("hex");
-    const extension = path.extname(resolved).toLowerCase();
-    const kind: RegisteredScript["kind"] =
-      extension === ".py" ? "py" : extension === ".ps1" ? "ps1" : "other";
-    const entry: RegisteredScript = {
-      id: randomUUID(),
-      name: name?.trim() || path.basename(resolved),
-      path: resolved,
-      hash,
-      kind,
-      timeoutMs,
-      createdAt: new Date().toISOString(),
-    };
-    const next = [...this.list().filter((item) => item.path !== resolved), entry];
-    this.database.setSetting(SCRIPTS_KEY, next);
-    return entry;
+    return { resolved, info, content };
   }
 
   unregister(id: string): void {

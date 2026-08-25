@@ -1681,6 +1681,16 @@ export interface RefCanvasApi {
       migrated: number;
       failed: Array<{ path: string; reason: string }>;
     }>;
+    /** 浏览器扩展捕获落盘目录（<userData>/browser-captures）。 */
+    capturesDirectory(): Promise<string>;
+    /**
+     * 认领捕获：复制进目标目录 → size/SHA-256 校验 → 重链资产与集合
+     * 引用 → 删除 browser-captures 原件。
+     */
+    adoptCaptures(paths: string[], targetDirectory: string): Promise<{
+      adopted: Array<{ assetId: string; from: string; to: string }>;
+      failed: Array<{ path: string; reason: string }>;
+    }>;
   };
   mounts: {
     list(): Promise<MountRoot[]>;
@@ -1868,6 +1878,13 @@ export interface RefCanvasApi {
   };
   scripts: {
     list(): Promise<RegisteredScript[]>;
+    /** 注册前预检：返回 sha256/类型/将执行的命令行（同意对话框数据）。 */
+    inspect(request: { path: string }): Promise<{
+      kind: RegisteredScript["kind"];
+      sizeBytes: number;
+      sha256: string;
+      commandPreview: string;
+    }>;
     register(request: {
       path: string;
       name?: string;
