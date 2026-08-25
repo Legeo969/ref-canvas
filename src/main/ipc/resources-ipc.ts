@@ -598,6 +598,119 @@ export function registerResourcesIpc(
       if (removeSample) await rm(samplePath, { force: true }).catch(() => undefined);
     }
   });
+  /**
+   * 取色采样源解析（color:sample-image）：EXR/HDR 复用显示层已解码变体
+   * （缺失则解码一次 320 并持久缓存），video/bmp 走 ffmpeg 抽首帧，
+   * 其余直接用源文件。与 media:palette 的策略一致但独立实现，避免为
+   * 单像素采样重构调色板路径。
+   */
+  const resolveColorSampleSource = async (
+    resolved: string,
+  ): Promise<{ samplePath: string; removeSample: boolean }> => {
+    const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
+    const kind = assetKindForExtension(extension);
+    let samplePath = resolved;
+    let removeSample = false;
+    if ((extension === "exr" || extension === "hdr") && !resolved.startsWith("sharp:")) {
+      const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+      if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      const info = await stat(resolved).catch(() => null);
+      if (!info) throw new Error("SAMPLE_SOURCE_UNAVAILABLE");
+      const identity = { realPath: resolved, size: info.size, mtimeMs: info.mtimeMs };
+      const displayVariants = [
+        "thumbnail-1920x1920-webp",
+        "thumbnail-960x960-webp",
+        "thumbnail-480x480-webp",
+      ] as const;
+      let sourceWebp: string | null = null;
+      for (const variant of displayVariants) {
+        const candidate = path.join(
+          cacheDirectory,
+          "directory",
+          `${previewCacheKey({ ...identity, variant })}.webp`,
+        );
+        if (await stat(candidate).then(() => true, () => false)) {
+          sourceWebp = candidate;
+          break;
+        }
+      }
+      if (!sourceWebp) {
+        const sampleFile = path.join(
+          cacheDirectory,
+          `sample-${previewCacheKey({ ...identity, variant: "sample-320-webp" })}.webp`,
+        );
+        await invokeThumbnail(dependencies.getProviderRegistry(), {
+          path: resolved,
+          kind,
+          extension,
+          width: 320,
+          height: 320,
+          outputPath: sampleFile,
+        });
+        await recordCacheFile(
+          dependencies.getPreviewCacheIndex(),
+          `sample:${path.basename(sampleFile)}`,
+          sampleFile,
+        );
+        sourceWebp = sampleFile;
+      }
+      samplePath = sourceWebp;
+    } else if (kind === "video" || extension === "bmp") {
+      const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+      if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      const signature = createHash("sha256")
+        .update(`${path.normalize(resolved)}:${randomUUID()}:sample`)
+        .digest("hex")
+        .slice(0, 20);
+      samplePath = path.join(cacheDirectory, `sample-${signature}.png`);
+      removeSample = true;
+      // BMP 本构建 sharp 不支持解码，勿改回 sharp 直解。
+      await extractVideoFrame(resolved, 0, samplePath, { width: 320, height: 320 });
+    } else if (!["image", "video"].includes(kind)) {
+      throw new Error("SAMPLE_UNSUPPORTED_MEDIA");
+    }
+    return { samplePath, removeSample };
+  };
+
+  // 白板取色：按归一化坐标在主进程直接采样源文件像素。渲染端画布可能因
+  // refasset:// 图片以普通 <img> 跨源加载而被标记为 tainted（getImageData
+  // 抛 SecurityError），因此取色不读画布，由 sharp 在主进程解码。
+  ipc.handle("color:sample-image", async (input) => {
+    const parsed = z
+      .object({
+        assetId: z.string().uuid(),
+        u: z.number().min(0).max(1),
+        v: z.number().min(0).max(1),
+      })
+      .parse(input);
+    const asset = database().getAssetSource(parsed.assetId);
+    if (!asset?.sourcePath) throw new Error("SAMPLE_SOURCE_UNAVAILABLE");
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(asset.sourcePath));
+    const { samplePath, removeSample } = await resolveColorSampleSource(resolved);
+    try {
+      const metadata = await sharp(samplePath, { animated: false, failOn: "none" }).metadata();
+      const width = metadata.width ?? 0;
+      const height = metadata.height ?? 0;
+      if (width <= 0 || height <= 0) throw new Error("SAMPLE_DECODE_FAILED");
+      const left = Math.min(width - 1, Math.max(0, Math.floor(parsed.u * width)));
+      const top = Math.min(height - 1, Math.max(0, Math.floor(parsed.v * height)));
+      const { data } = await sharp(samplePath, { failOn: "none" })
+        .extract({ left, top, width: 1, height: 1 })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      const [red, green, blue, alpha] = data as unknown as number[];
+      return {
+        hex: `#${[red, green, blue]
+          .map((value) => value.toString(16).padStart(2, "0"))
+          .join("")
+          .toUpperCase()}`,
+        alpha,
+      };
+    } finally {
+      if (removeSample) await rm(samplePath, { force: true }).catch(() => undefined);
+    }
+  });
   ipc.handle("media:preview", (filename) => {
     const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const token = dependencies.previewTokens.tokenFor(resolved);

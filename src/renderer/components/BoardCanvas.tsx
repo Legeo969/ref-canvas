@@ -3390,76 +3390,84 @@ export function BoardCanvas({
     event.preventDefault();
     event.stopPropagation();
     const canvas = canvasRef.current;
-    const element = canvasElementRef.current;
-    if (!canvas || !element) return;
+    if (!canvas) return;
     setColorSampling(false);
     clearDropNotice();
-    const bounds = element.getBoundingClientRect();
-    const pixelX = Math.max(
-      0,
-      Math.min(
-        element.width - 1,
-        Math.floor(
-          ((event.clientX - bounds.left) / Math.max(bounds.width, 1)) *
-            element.width,
-        ),
-      ),
-    );
-    const pixelY = Math.max(
-      0,
-      Math.min(
-        element.height - 1,
-        Math.floor(
-          ((event.clientY - bounds.top) / Math.max(bounds.height, 1)) *
-            element.height,
-        ),
-      ),
-    );
-    try {
-      const context = element.getContext("2d", { willReadFrequently: true });
-      if (!context) throw new Error("CANVAS_CONTEXT_UNAVAILABLE");
-      const [red, green, blue, alpha] = context.getImageData(
-        pixelX,
-        pixelY,
-        1,
-        1,
-      ).data;
-      const fallback = runtime.appearance.backgroundColor.match(
-        /^#([0-9a-f]{6})$/i,
-      )?.[1];
-      const hex =
-        alpha === 0 && fallback
-          ? `#${fallback.toUpperCase()}`
-          : `#${[red, green, blue]
-              .map((value) => value.toString(16).padStart(2, "0"))
-              .join("")
-              .toUpperCase()}`;
-      const point = canvas.getScenePoint(event.nativeEvent);
-      await navigator.clipboard.writeText(hex).catch(() => undefined);
-      await dialog.requestForm({
-        title: translate("board.samplingResultTitle"),
-        description: translate("board.samplingResultDescription"),
-        confirmLabel: translate("preview.close"),
-        fields: [
-          { name: "color", label: translate("board.samplingColorLabel"), initialValue: hex, maxLength: 7 },
-          {
-            name: "x",
-            label: translate("board.samplingXLabel"),
-            initialValue: point.x.toFixed(1),
-            maxLength: 16,
-          },
-          {
-            name: "y",
-            label: translate("board.samplingYLabel"),
-            initialValue: point.y.toFixed(1),
-            maxLength: 16,
-          },
-        ],
-        onSubmit: () => undefined,
-      });
-    } catch {
-      showDropNotice(translate("board.samplingReadFailed"));
+    const scenePoint = canvas.getScenePoint(event.nativeEvent);
+    // 自上而下找第一个命中的资产对象；uv 用对象局部坐标归一化。
+    // 不再从画布 getImageData 读取——refasset:// 图片以普通 <img> 跨源
+    // 加载会把画布标记为 tainted，读回必然抛 SecurityError；改由主进程
+    // sharp 直接解码源文件采样（color:sample-image）。
+    const objects = canvas.getObjects() as CanvasObjectWithData[];
+    let hit: { assetId: string; u: number; v: number } | null = null;
+    for (let index = objects.length - 1; index >= 0; index -= 1) {
+      const object = objects[index];
+      const assetId =
+        typeof object.data?.assetId === "string" ? object.data.assetId : null;
+      if (!assetId || object.visible === false || (object.opacity ?? 1) < 0.05) {
+        continue;
+      }
+      const width = object.width ?? 0;
+      const height = object.height ?? 0;
+      if (width <= 0 || height <= 0) continue;
+      const local = util.transformPoint(
+        scenePoint,
+        util.invertTransform(object.calcTransformMatrix()),
+      );
+      if (local.x < 0 || local.y < 0 || local.x > width || local.y > height) {
+        continue;
+      }
+      hit = {
+        assetId,
+        u: Math.min(1, Math.max(0, local.x / width)),
+        v: Math.min(1, Math.max(0, local.y / height)),
+      };
+      break;
     }
+    let sampledHex: string | null = null;
+    if (hit) {
+      try {
+        sampledHex = (
+          await window.refCanvas.color.sampleImage({
+            assetId: hit.assetId,
+            u: hit.u,
+            v: hit.v,
+          })
+        ).hex;
+      } catch {
+        showDropNotice(translate("board.samplingReadFailed"));
+        return;
+      }
+    }
+    const fallback = runtime.appearance.backgroundColor.match(
+      /^#([0-9a-f]{6})$/i,
+    )?.[1];
+    const hex =
+      sampledHex ??
+      (fallback ? `#${fallback.toUpperCase()}` : "#000000");
+    const point = scenePoint;
+    await navigator.clipboard.writeText(hex).catch(() => undefined);
+    await dialog.requestForm({
+      title: translate("board.samplingResultTitle"),
+      description: translate("board.samplingResultDescription"),
+      confirmLabel: translate("preview.close"),
+      fields: [
+        { name: "color", label: translate("board.samplingColorLabel"), initialValue: hex, maxLength: 7 },
+        {
+          name: "x",
+          label: translate("board.samplingXLabel"),
+          initialValue: point.x.toFixed(1),
+          maxLength: 16,
+        },
+        {
+          name: "y",
+          label: translate("board.samplingYLabel"),
+          initialValue: point.y.toFixed(1),
+          maxLength: 16,
+        },
+      ],
+      onSubmit: () => undefined,
+    });
   };
 
   /** 采样模式切换：nearest（像素）↔ bilinear（平滑）。 */

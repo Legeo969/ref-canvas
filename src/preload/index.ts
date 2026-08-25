@@ -311,6 +311,8 @@ const api: RefCanvasApi = {
   },
   color: {
     getStatus: () => ipcRenderer.invoke("color:get-status"),
+    sampleImage: (request: { assetId: string; u: number; v: number }) =>
+      ipcRenderer.invoke("color:sample-image", request),
   },
   scripts: {
     list: () => ipcRenderer.invoke("scripts:list"),

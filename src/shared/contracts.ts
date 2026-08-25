@@ -1875,6 +1875,15 @@ export interface RefCanvasApi {
   color: {
     /** 色彩管理状态（$OCIO 检测 + LUT）。 */
     getStatus(): Promise<ColorStatus>;
+    /**
+     * 白板取色：按资产 id 与归一化坐标在主进程采样源文件像素。
+     * u/v ∈ [0,1]（对象包围盒内相对位置），返回 RGB 十六进制与 alpha。
+     */
+    sampleImage(request: {
+      assetId: string;
+      u: number;
+      v: number;
+    }): Promise<{ hex: string; alpha: number }>;
   };
   scripts: {
     list(): Promise<RegisteredScript[]>;

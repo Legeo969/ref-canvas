@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerResourcesIpc } from "../../../src/main/ipc/resources-ipc";
@@ -137,6 +138,46 @@ describe("resources IPC mount events", () => {
       expect.objectContaining({ hex: expect.stringMatching(/^#[0-9a-f]{6}$/) }),
     ]));
     expect((palette as Array<unknown>).length).toBe(2);
+  });
+
+  // 白板取色：主进程按 uv 直接采样源文件像素（画布 tainted 时唯一可行路径）。
+  it("samples a source-file pixel by normalized coordinates", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-sample-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "solid.png");
+    await sharp({
+      create: { width: 10, height: 10, channels: 3, background: { r: 18, g: 52, b: 86 } },
+    }).png().toFile(filename);
+
+    const assetId = randomUUID();
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, handler),
+      handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
+        handlers.set(channel, (...args) => handler({}, ...args)),
+    } as unknown as SecureIpcRegistrar;
+    registerResourcesIpc(ipc, {
+      getDatabase: () => ({ getAssetSource: (id: string) => ({
+        id, sourcePath: filename,
+      }) }),
+      getLibrary: () => ({}), getMountService: () => ({}),
+      getProviderRegistry: () => ({}), getThumbnailWorker: () => null,
+      getThumbnailCacheDirectory: () => directory, getPreviewCacheIndex: () => null, getScriptsService: () => ({}),
+      previewTokens: {}, notifyMountsChanged: vi.fn(),
+      getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
+      writeAccess: { authorize: vi.fn() },
+    } as unknown as Parameters<typeof registerResourcesIpc>[1]);
+
+    const sample = await handlers.get("color:sample-image")?.({
+      assetId, u: 0.9, v: 0.9,
+    });
+    expect(sample).toEqual({ hex: "#123456", alpha: 255 });
+
+    // 非法 uuid 被拒绝。
+    await expect(
+      handlers.get("color:sample-image")?.({ assetId: "nope", u: 0, v: 0 }),
+    ).rejects.toThrow();
   });
 
   it("extracts a BMP palette through a temporary PNG conversion", async () => {
