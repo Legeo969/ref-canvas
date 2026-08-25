@@ -321,8 +321,13 @@ describe("resources IPC mount events", () => {
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
     // 注册输入必须有界：空路径与过小超时被 zod 拒绝且不触达服务。
-    expect(() => handlers.get("scripts:register")?.({ path: "", timeoutMs: 60_000 })).toThrow();
-    expect(() => handlers.get("scripts:register")?.({ path: "D:\\x.py", timeoutMs: 1 })).toThrow();
+    // 处理器是 async，校验失败表现为 Promise 拒绝（与 Electron ipc.handle 一致）。
+    await expect(
+      handlers.get("scripts:register")?.({ path: "", timeoutMs: 60_000 }),
+    ).rejects.toThrow();
+    await expect(
+      handlers.get("scripts:register")?.({ path: "D:\\x.py", timeoutMs: 1 }),
+    ).rejects.toThrow();
     expect(register).not.toHaveBeenCalled();
 
     await handlers.get("scripts:register")?.({ path: "D:\\tools\\hello.py", timeoutMs: 60_000 });
