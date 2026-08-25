@@ -188,6 +188,8 @@ export const catalog = {
     // ---- board.* inspector ----
     "board.inspectorLabel": "Object inspector",
     "board.inspectorTitle": "Inspector",
+    "board.inspectorSourceSize": "Source: {width} × {height} px",
+    "board.inspectorSourceHint": "Original file resolution; the editable width/height above is the on-board display size.",
     "board.inspectorClose": "Close inspector",
     "board.inspectorEmpty": "No object selected",
     "board.inspectorMultiSelection": "{count} objects selected; the inspector supports single selection only",
@@ -523,6 +525,8 @@ export const catalog = {
     // ---- board.* 检查器 ----
     "board.inspectorLabel": "对象检查器",
     "board.inspectorTitle": "检查器",
+    "board.inspectorSourceSize": "源图：{width} × {height} px",
+    "board.inspectorSourceHint": "源文件分辨率；上方可编辑的宽高为画布显示尺寸。",
     "board.inspectorClose": "关闭检查器",
     "board.inspectorEmpty": "未选择对象",
     "board.inspectorMultiSelection": "已选 {count} 个对象，检查器仅支持单选",

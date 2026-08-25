@@ -3473,6 +3473,15 @@
   font-size: 11px;
 }
 
+.board-inspector-source {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8a938f;
+  font-size: 11px;
+  text-align: right;
+}
+
 .board-inspector-name {
   margin: 0;
   padding: 10px 12px 2px;

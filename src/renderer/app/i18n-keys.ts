@@ -621,6 +621,8 @@ export type MessageKey =
   | "board.inspectorRotation"
 
   | "board.inspectorTitle"
+  | "board.inspectorSourceSize"
+  | "board.inspectorSourceHint"
 
   | "board.inspectorWidth"
 

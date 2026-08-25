@@ -5982,6 +5982,14 @@ export function BoardCanvas({
             metrics={boardSnapshot.inspector?.metrics ?? null}
             onCommit={(key, value) => { controller.updateInspector(key, value); }}
             onClose={() => setInspectorOpen(false)}
+            sourceSize={(() => {
+              const assetId = boardSnapshot.inspector?.assetId;
+              if (!assetId) return null;
+              const asset = boardAssets.find((item) => item.id === assetId);
+              return asset && (asset.width ?? 0) > 0 && (asset.height ?? 0) > 0
+                ? { width: asset.width as number, height: asset.height as number }
+                : null;
+            })()}
             style={
               layersOpen && layersPanelHeight
                 ? {

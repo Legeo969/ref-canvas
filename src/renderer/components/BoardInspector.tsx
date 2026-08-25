@@ -27,6 +27,7 @@ export function BoardInspector({
   onCommit,
   onClose,
   style,
+  sourceSize = null,
 }: {
   selectionCount: number;
   name: string | null;
@@ -35,6 +36,8 @@ export function BoardInspector({
   onClose(): void;
   /** 双开避让：父级用内联样式把检查器压到图层面板下方。 */
   style?: CSSProperties;
+  /** 位图/视频资产的源文件像素（只读展示；形状/文本无此概念）。 */
+  sourceSize?: { width: number; height: number } | null;
 }) {
   const [drafts, setDrafts] = useState<Partial<Record<keyof InspectorMetrics, string>>>({});
   useEffect(() => setDrafts({}), [metrics]);
@@ -92,6 +95,16 @@ export function BoardInspector({
               );
             })}
           </div>
+          {sourceSize && sourceSize.width > 0 && sourceSize.height > 0 && (
+            <p
+              className="board-inspector-source"
+              title={translate("board.inspectorSourceHint")}
+            >
+              {translate("board.inspectorSourceSize")
+                .replace("{width}", String(Math.round(sourceSize.width)))
+                .replace("{height}", String(Math.round(sourceSize.height)))}
+            </p>
+          )}
         </>
       ) : null}
     </aside>

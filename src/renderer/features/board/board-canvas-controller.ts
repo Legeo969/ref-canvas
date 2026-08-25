@@ -54,7 +54,7 @@ export interface BoardCanvasSnapshot {
   capabilities: Readonly<BoardSelectionCapabilities>;
   zoom: number;
   saved: boolean;
-  inspector: Readonly<{ name: string; metrics: InspectorMetrics }> | null;
+  inspector: Readonly<{ name: string; metrics: InspectorMetrics; assetId: string | null }> | null;
 }
 
 export interface BoardStructureSnapshot {
@@ -552,7 +552,7 @@ export class BoardCanvasController {
       capabilities,
       zoom: Math.round(canvas.getZoom() * 100),
       saved: this.snapshot.saved,
-      inspector: selected.length === 1 && active ? { name: active.data?.name ?? active.data?.type ?? translate("board.objectDefaultName"), metrics: inspectorMetrics(active) } : null,
+      inspector: selected.length === 1 && active ? { name: active.data?.name ?? active.data?.type ?? translate("board.objectDefaultName"), metrics: inspectorMetrics(active), assetId: typeof active.data?.assetId === "string" ? active.data.assetId : null } : null,
     });
   }
 
@@ -568,7 +568,7 @@ export class BoardCanvasController {
       activeComment: this.snapshot.capabilities.activeHasComment ? active?.data?.comment ?? null : null,
       zoom: Math.round(canvas.getZoom() * 100),
       inspector: this.snapshot.selectionCount === 1 && active
-        ? { name: active.data?.name ?? active.data?.type ?? translate("board.objectDefaultName"), metrics: inspectorMetrics(active) }
+        ? { name: active.data?.name ?? active.data?.type ?? translate("board.objectDefaultName"), metrics: inspectorMetrics(active), assetId: typeof active.data?.assetId === "string" ? active.data.assetId : null }
         : null,
     });
   }
