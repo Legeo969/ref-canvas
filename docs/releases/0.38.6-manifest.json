@@ -1,0 +1,19 @@
+{
+  "product": "RefCanvas",
+  "version": "0.38.6",
+  "platform": "win32-x64",
+  "signed": false,
+  "createdAt": "2026-08-25T14:00:41.287Z",
+  "files": [
+    {
+      "filename": "RefCanvas-Setup-unsigned.exe",
+      "bytes": 226137600,
+      "sha256": "d562591ce5e9372d40fdda99882747dfafedf95d0d6abb0b687247edacfdda94"
+    },
+    {
+      "filename": "RefCanvas-win32-x64-0.38.6.zip",
+      "bytes": 233457260,
+      "sha256": "9807f3f661bfae935d9f913ceab933bb4dfbfad22768ff162db9869186b71ab3"
+    }
+  ]
+}
