@@ -288,7 +288,7 @@ describe("resources IPC mount events", () => {
     ]));
   });
 
-  it("fails closed for renderer-triggered arbitrary script registration and execution", async () => {
+  it("validates script registration bounds and runs only after drive authorization", async () => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     const ipc = {
       handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
@@ -296,8 +296,16 @@ describe("resources IPC mount events", () => {
       handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
         handlers.set(channel, (...args) => handler({}, ...args)),
     } as unknown as SecureIpcRegistrar;
-    const register = vi.fn();
-    const run = vi.fn();
+    const register = vi.fn(async () => ({ id: "s1" }));
+    const run = vi.fn(async () => ({
+      exitCode: 0,
+      output: "",
+      timedOut: false,
+      failureReason: null,
+      durationMs: 1,
+    }));
+    const authorize = vi.fn(async (_window: unknown, _operation: string, requests: Array<{ path: string }>) =>
+      requests.map((request) => request.path));
     registerResourcesIpc(ipc, {
       getDatabase: () => ({}),
       getLibrary: () => ({}),
@@ -305,22 +313,25 @@ describe("resources IPC mount events", () => {
       getProviderRegistry: () => ({}),
       getThumbnailWorker: () => null,
       getThumbnailCacheDirectory: () => "D:\\cache",
-      getScriptsService: () => ({ list: () => [], unregister: vi.fn(), register, run }),
+      getScriptsService: () => ({ list: () => [], unregister: vi.fn(), inspect: vi.fn(), register, run }),
+      writeAccess: { authorize },
       previewTokens: {},
       notifyMountsChanged: vi.fn(),
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1]);
 
-    expect(() => handlers.get("scripts:register")?.({
-      path: "D:\\attack.ps1",
-      timeoutMs: 60_000,
-    })).toThrow("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
-    expect(() => handlers.get("scripts:run")?.({
-      id: "attacker",
-      cwd: "D:\\",
-    })).toThrow("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
+    // 注册输入必须有界：空路径与过小超时被 zod 拒绝且不触达服务。
+    expect(() => handlers.get("scripts:register")?.({ path: "", timeoutMs: 60_000 })).toThrow();
+    expect(() => handlers.get("scripts:register")?.({ path: "D:\\x.py", timeoutMs: 1 })).toThrow();
     expect(register).not.toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled();
+
+    await handlers.get("scripts:register")?.({ path: "D:\\tools\\hello.py", timeoutMs: 60_000 });
+    expect(register).toHaveBeenCalledWith("D:\\tools\\hello.py", undefined, 60_000);
+
+    // 运行前 cwd 必须先过盘符授权，再转发给服务。
+    await handlers.get("scripts:run")?.({ id: "s1", cwd: "D:\\work" });
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith("s1", "D:\\work");
   });
 
   it("finishes the full backup-downscale authorization set before any media mutation", async () => {

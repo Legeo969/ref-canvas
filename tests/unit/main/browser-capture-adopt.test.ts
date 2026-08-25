@@ -149,11 +149,14 @@ describe("adoptBrowserCaptures (路线一：捕获认领)", () => {
 
   it("rejects a non-directory target", async () => {
     const root = await createTempDir("refcanvas-adopt-");
+    // 目标是真实存在的【文件】而非目录 → 必须直接抛错。
+    const targetFile = path.join(root, "not-a-directory.png");
+    await writeFile(targetFile, PNG_BYTES);
     const { database, service } = await createLibraryService(root);
     try {
       await expect(
-        service.adoptBrowserCaptures([path.join(root, "x.png")], root),
-      ).rejects.toThrow();
+        service.adoptBrowserCaptures([path.join(root, "capture.png")], targetFile),
+      ).rejects.toThrow("ADOPT_TARGET_NOT_DIRECTORY");
     } finally {
       await service.close();
       database.close();

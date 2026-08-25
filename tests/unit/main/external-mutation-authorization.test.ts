@@ -48,17 +48,25 @@ describe("external mutation authorization inventory", () => {
     expect(shortcut).toContain("canonicalDirectory");
   });
 
-  it("keeps arbitrary script IPC fail-closed and avoids PowerShell policy bypass", async () => {
+  it("keeps script IPC grant-gated with bounded registration and no PowerShell policy bypass", async () => {
     const ipcText = await source("src/main/ipc/resources-ipc.ts");
     const scripts = ipcText.slice(
-      ipcText.indexOf("const scriptExecutionDisabled"),
+      ipcText.indexOf('ipc.handle("scripts:list"'),
       ipcText.indexOf("// --- color:get-status"),
     );
-    expect(scripts).toContain('handle("scripts:register", scriptExecutionDisabled)');
-    expect(scripts).toContain('handle("scripts:run", scriptExecutionDisabled)');
-    expect(scripts).toContain("SCRIPT_EXECUTION_DISABLED_UNSANDBOXED");
+    // B 方案信任链：运行前必须经过盘符授权；注册输入必须有界。
+    expect(scripts).toContain('handleWithEvent("scripts:run"');
+    expect(scripts).toContain("writeAccess.authorize");
+    expect(scripts).toContain('"execute"');
+    expect(scripts).toContain(".max(4096)");
+    expect(scripts).toContain(".max(3_600_000)");
 
     const serviceText = await source("src/main/services/scripts-service.ts");
+    // 信任锚点：内容被篡改后拒绝运行。
+    expect(serviceText).toContain("SCRIPT_HASH_CHANGED");
+    // PowerShell 以 -NoProfile -File 调用且不经 shell，杜绝策略旁路。
+    expect(serviceText).toContain('"-NoProfile", "-File"');
+    expect(serviceText).toContain("shell: false");
     expect(serviceText).not.toContain('"ExecutionPolicy", "Bypass"');
   });
 });
