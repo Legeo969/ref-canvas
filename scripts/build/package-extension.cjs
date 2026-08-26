@@ -44,12 +44,22 @@ for (const file of includedFiles) {
 // Remove old zip if exists.
 fs.rmSync(zipPath, { force: true });
 
-// Create zip via PowerShell.
-execFileSync("powershell", [
-  "-NoProfile",
-  "-Command",
-  `Compress-Archive -Path '${staging}\\*' -DestinationPath '${zipPath}' -Force`,
-], { stdio: "inherit" });
+// Create zip. Compress-Archive (Windows PowerShell 5.1) writes entry names with
+// backslashes ("icons\icon-16.png"), which violates the ZIP spec (forward slash
+// only) — spec-strict extractors (Chrome included) then fail "Load unpacked"
+// with "Could not load icon". bsdtar (ships with Windows 10 1803+) writes
+// spec-compliant entries; call it by absolute path so Git Bash's GNU tar
+// (which cannot write zip) never shadows it.
+const systemRoot = process.env.SystemRoot || "C:\\Windows";
+const tarExe = path.join(systemRoot, "System32", "tar.exe");
+if (!fs.existsSync(tarExe)) {
+  throw new Error(`bsdtar not found at ${tarExe}; cannot package extension`);
+}
+execFileSync(
+  tarExe,
+  ["-a", "-c", "-f", zipPath, "-C", staging, ...includedFiles],
+  { stdio: "inherit" },
+);
 
 // Cleanup staging.
 fs.rmSync(staging, { recursive: true, force: true });
