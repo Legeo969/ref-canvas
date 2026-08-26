@@ -3,6 +3,7 @@ import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { CaptureMeta } from "../../../src/main/platform/browser-capture-server";
 import { createCaptureServer } from "../../../src/main/platform/browser-capture-server";
 import { pruneOrphanedCaptures } from "../../../src/main/services/browser-capture-maintenance";
 
@@ -27,7 +28,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ status: num
 describe("browser-capture-server", () => {
   let server: http.Server;
   let baseUrl: string;
-  let capturedFiles: Array<{ path: string; sourceUrl: string }>;
+  let capturedFiles: Array<{ path: string } & CaptureMeta>;
 
   beforeEach(async () => {
     capturedFiles = [];
@@ -37,7 +38,7 @@ describe("browser-capture-server", () => {
       {
         getCaptureDirectory: () => path.join(tmpdir(), "refcanvas-capture-test"),
         getBoardsSummary: () => [{ id: "board-1", title: "测试板" }],
-        onCapture: (path, sourceUrl) => capturedFiles.push({ path, sourceUrl }),
+        onCapture: (path, meta) => capturedFiles.push({ path, ...meta }),
       },
       port,
     );
@@ -112,6 +113,60 @@ describe("browser-capture-server", () => {
     });
     expect(status).toBe(400);
     expect(json).toEqual({ error: "Missing image or filename" });
+  });
+
+  // 选板投放：boardId 必须真实存在，无效直接 400——静默落到别的板会让
+  // 用户以为投成功了；扩展据此提示"默认板已被删除"。
+  it("rejects captures targeting an unknown board with 400", async () => {
+    const { status, json } = await fetchJson(`${baseUrl}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: BASE64_PNG,
+        filename: "gone.png",
+        boardId: "board-deleted",
+      }),
+    });
+    expect(status).toBe(400);
+    expect(json).toEqual({ error: "目标板不存在或已被删除" });
+    expect(capturedFiles).toHaveLength(0);
+  });
+
+  it("passes board/page-title/alt metadata through to onCapture", async () => {
+    const { status } = await fetchJson(`${baseUrl}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: BASE64_PNG,
+        filename: "meta.png",
+        sourceUrl: "https://example.com/gallery",
+        boardId: "board-1",
+        pageTitle: "设计灵感集",
+        alt: "一张参考图",
+      }),
+    });
+    expect(status).toBe(200);
+    expect(capturedFiles).toHaveLength(1);
+    const { path: filePath, ...meta } = capturedFiles[0];
+    expect(filePath).toContain("meta");
+    expect(meta).toEqual({
+      sourceUrl: "https://example.com/gallery",
+      boardId: "board-1",
+      pageTitle: "设计灵感集",
+      alt: "一张参考图",
+    });
+  });
+
+  it("omits optional metadata when the request carries none", async () => {
+    await fetchJson(`${baseUrl}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: BASE64_PNG, filename: "bare.png" }),
+    });
+    expect(capturedFiles[0]).toMatchObject({ sourceUrl: "" });
+    expect(capturedFiles[0].boardId).toBeUndefined();
+    expect(capturedFiles[0].pageTitle).toBeUndefined();
+    expect(capturedFiles[0].alt).toBeUndefined();
   });
 
   it("returns CORS headers on all responses", async () => {

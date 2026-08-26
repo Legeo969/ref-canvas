@@ -153,7 +153,8 @@ interface AppState
   renameBoard(id: string, title: string): Promise<void>;
   deleteBoard(id: string): Promise<void>;
   switchBoard(id: string): Promise<void>;
-  addDirectoryEntriesToBoard(paths: string[]): Promise<void>;
+  /** 返回本次新增的资产记录（浏览器捕获据其回写来源元数据）。 */
+  addDirectoryEntriesToBoard(paths: string[]): Promise<AssetRecord[]>;
   consumePendingBoardAssets(ids: string[]): void;
   showDirectoryWorkspace(): void;
   toggleFocusMode(): void;
@@ -1073,7 +1074,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addDirectoryEntriesToBoard: async (paths) => {
     const uniquePaths = [...new Set(paths)];
-    if (!uniquePaths.length) return;
+    if (!uniquePaths.length) return [];
     // Windows 下刚落盘的捕获文件可能被杀毒/索引服务短暂加锁（EBUSY），
     // 首次指纹读取会失败：短退避重试，最多 3 次。
     const materializeWithRetry = async (entryPath: string) => {
@@ -1116,6 +1117,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         workspaceMode: "board",
       };
     });
+    return addedAssets;
   },
 
   consumePendingBoardAssets: (ids) => {

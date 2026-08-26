@@ -13,6 +13,16 @@ import path from "node:path";
  * Listens on 127.0.0.1 only (never exposed to the network).
  */
 
+export interface CaptureMeta {
+  sourceUrl: string;
+  /** 目标板 id：扩展选板投放时携带；缺省 = 应用当前活动板。 */
+  boardId?: string;
+  /** 来源页面标题：渲染端落为资产标题/自定义字段（网页图文件名基本不可读）。 */
+  pageTitle?: string;
+  /** 图片 alt/aria-label，拾取器模式下尽量携带。 */
+  alt?: string;
+}
+
 export interface CaptureServerDeps {
   /** Returns the userData or temp directory for writing captured files. */
   getCaptureDirectory: () => string;
@@ -20,7 +30,7 @@ export interface CaptureServerDeps {
   getBoardsSummary: () => Array<{ id: string; title: string }>;
   /** Called after a captured image has been written to disk; the renderer
    *  imports it into the active board. */
-  onCapture: (filePath: string, sourceUrl: string) => void;
+  onCapture: (filePath: string, meta: CaptureMeta) => void;
 }
 
 export interface CaptureRequestBody {
@@ -28,6 +38,9 @@ export interface CaptureRequestBody {
   contentType?: string;
   filename: string;
   sourceUrl?: string;
+  boardId?: string;
+  pageTitle?: string;
+  alt?: string;
 }
 
 const CORS_HEADERS: Record<string, string> = {
@@ -117,13 +130,30 @@ export function createCaptureServer(
           res.end(JSON.stringify({ error: "Missing image or filename" }));
           return;
         }
+        // 选板投放：板 id 必须真实存在。扩展据此提示"默认板已被删除"，
+        // 静默落到别的板会让用户以为投成功了。
+        if (data.boardId !== undefined) {
+          const known = deps
+            .getBoardsSummary()
+            .some((board) => board.id === data.boardId);
+          if (!known) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "目标板不存在或已被删除" }));
+            return;
+          }
+        }
 
         const captureDir = deps.getCaptureDirectory();
         await mkdir(captureDir, { recursive: true });
         const filename = uniquifyFilename(sanitizeFilename(data.filename));
         const filePath = path.join(captureDir, filename);
         await writeFile(filePath, Buffer.from(data.image, "base64"));
-        deps.onCapture(filePath, data.sourceUrl ?? "");
+        deps.onCapture(filePath, {
+          sourceUrl: data.sourceUrl ?? "",
+          boardId: data.boardId,
+          pageTitle: data.pageTitle,
+          alt: data.alt,
+        });
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));

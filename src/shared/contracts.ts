@@ -948,6 +948,19 @@ export interface CaptureSource {
   height: number;
 }
 
+/** 浏览器扩展捕获的投递载荷（主进程确认制投递 → 渲染端导入+回执）。 */
+export interface BrowserCapturePayload {
+  path: string;
+  sourceUrl: string;
+  /** 确认制回执 id（见 ackBrowserCapture）。 */
+  captureId?: string;
+  /** 选板投放：渲染端先切到该板再导入；缺省 = 当前活动板。 */
+  boardId?: string;
+  /** 来源页面信息：回写为资产标题与自定义字段（可溯源）。 */
+  pageTitle?: string;
+  alt?: string;
+}
+
 export interface BoardSummary {
   id: string;
   title: string;
@@ -1553,6 +1566,8 @@ export interface RefCanvasApi {
         favorite?: boolean;
         rating?: number;
         colorLabel?: AssetColorLabel;
+        /** 本地自定义键值（浏览器捕获来源信息等），整体合并写入。 */
+        customFields?: Record<string, string>;
       },
     ): Promise<AssetRecord>;
     listAnnotations(assetId: string): Promise<AssetAnnotation[]>;
@@ -2136,7 +2151,7 @@ export interface RefCanvasApi {
     onOpenDirectoryTab(callback: (path: string) => void): () => void;
     /** 浏览器扩展发送的图片落入临时文件后通知渲染端导入到活动板。 */
     onBrowserCapture(
-      callback: (data: { path: string; sourceUrl: string; captureId?: string }) => void,
+      callback: (data: BrowserCapturePayload) => void,
     ): () => void;
     /**
      * 捕获导入完成回执：主进程投递采用确认制，未在超时内回执的捕获会

@@ -86,6 +86,11 @@ export function registerLibraryIpc(
         favorite: z.boolean().optional(),
         rating: z.number().int().min(0).max(5).optional(),
         colorLabel: z.enum(assetColorLabels).optional(),
+        // 浏览器捕获回写来源信息（sourceUrl/pageTitle/alt）等本地自定义
+        // 键值：整体替换写入，缺省 = 保持不变。
+        customFields: z
+          .record(z.string().trim().min(1).max(64), z.string().max(2_000))
+          .optional(),
       })
       .parse(patch);
     return database().updateAsset(idSchema.parse(id), parsedPatch);

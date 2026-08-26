@@ -1894,8 +1894,14 @@ void app.whenReady().then(async () => {
       getCaptureDirectory: () => browserCapturesPath(app.getPath("userData")),
       getBoardsSummary: () =>
         database.listBoards().map((board) => ({ id: board.id, title: board.title })),
-      onCapture: (filePath, sourceUrl) => {
-        captureDelivery.deliver({ path: filePath, sourceUrl });
+      onCapture: (filePath, meta) => {
+        captureDelivery.deliver({
+          path: filePath,
+          sourceUrl: meta.sourceUrl,
+          boardId: meta.boardId,
+          pageTitle: meta.pageTitle,
+          alt: meta.alt,
+        });
       },
     },
     17530,

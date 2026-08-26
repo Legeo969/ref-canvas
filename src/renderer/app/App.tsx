@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { BoardSettings, BoardSummary } from "../../shared/contracts";
+import type {
+  BoardSettings,
+  BoardSummary,
+  BrowserCapturePayload,
+} from "../../shared/contracts";
 import {
   BOARD_PANEL_IDS,
   DIRECTORY_PANEL_IDS,
@@ -225,9 +229,52 @@ function WorkspaceApp() {
   // 确认制投递：导入成功后回 ackBrowserCapture；失败不回执——主进程超时后
   // 会入队暂存（托盘提示），窗口就绪时自动重投，不再静默丢图。
   const importBrowserCapture = useCallback(
-    (data: { path: string; sourceUrl: string; captureId?: string }) => {
+    (data: BrowserCapturePayload) => {
       void (async () => {
-        await store.addDirectoryEntriesToBoard([data.path]);
+        // 选板投放：先切到目标板再导入。板已被删除时 switchBoard 内部
+        // 静默保持当前板——比丢弃捕获更合理，来源信息仍会回写。
+        if (data.boardId) {
+          await store.switchBoard(data.boardId);
+        }
+        const addedAssets = await store.addDirectoryEntriesToBoard([data.path]);
+        // 回写来源元数据：网页图文件名基本是乱码，页面标题作标题、
+        // URL/alt 进自定义字段，右图可溯源。失败不影响上板与回执。
+        try {
+          const asset =
+            addedAssets[0] ??
+            (await window.refCanvas.library.getByPath(data.path));
+          if (asset) {
+            const customFields: Record<string, string> = {
+              ...asset.customFields,
+            };
+            let hasMeta = false;
+            if (data.sourceUrl) {
+              customFields.sourceUrl = data.sourceUrl;
+              hasMeta = true;
+            }
+            if (data.pageTitle) {
+              customFields.pageTitle = data.pageTitle;
+              hasMeta = true;
+            }
+            if (data.alt) {
+              customFields.alt = data.alt;
+              hasMeta = true;
+            }
+            const pageTitle = data.pageTitle?.trim().slice(0, 256);
+            if (pageTitle || hasMeta) {
+              await window.refCanvas.library.update(asset.id, {
+                title: pageTitle || undefined,
+                customFields: hasMeta ? customFields : undefined,
+              });
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "BROWSER_CAPTURE_META_WRITEBACK_FAILED",
+            data.path,
+            error,
+          );
+        }
         // 同时归档进「网页捕获」集合：捕获有可发现、可导出的家，不再只是
         // 散落在库里的一条 linked 记录。归档失败不影响上板主流程与回执。
         void store.addBrowserCaptureToCollection(data.path);

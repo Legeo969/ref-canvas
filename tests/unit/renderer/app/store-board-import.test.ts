@@ -93,12 +93,14 @@ describe("directory files to reference board", () => {
       refCanvas: { filesystem: { materialize } } as unknown as RefCanvasApi,
     });
 
-    await useAppStore
+    const added = await useAppStore
       .getState()
       .addDirectoryEntriesToBoard([first.path, second.path, first.path]);
 
     const state = useAppStore.getState();
     expect(materialize).toHaveBeenCalledTimes(2);
+    // 返回新增资产：浏览器捕获据其回写来源元数据（App.importBrowserCapture）。
+    expect(added.map((item) => item.id)).toEqual([first.id, second.id]);
     expect(state.assets.map((item) => item.id)).toEqual([first.id, second.id]);
     expect(state.pendingBoardAssetIds).toEqual([first.id, second.id]);
     expect(state.workspaceMode).toBe("board");

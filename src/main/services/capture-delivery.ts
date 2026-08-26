@@ -25,6 +25,11 @@ export interface CaptureDeliveryTarget {
 export interface CapturedPayload {
   path: string;
   sourceUrl: string;
+  /** 选板投放：渲染端先切到该板再导入；缺省 = 当前活动板。 */
+  boardId?: string;
+  /** 来源页面信息：渲染端回写为资产标题与自定义字段（可溯源）。 */
+  pageTitle?: string;
+  alt?: string;
 }
 
 export interface CaptureDeliveryOptions {

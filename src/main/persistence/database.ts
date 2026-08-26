@@ -642,19 +642,22 @@ export class RefCanvasDatabase {
       favorite?: boolean;
       rating?: number;
       colorLabel?: AssetRecord["colorLabel"];
+      /** 整体替换写入的自定义键值；缺省保持不变（浏览器捕获来源回写）。 */
+      customFields?: Record<string, string>;
     },
   ): AssetRecord {
     const current = this.getAsset(id);
     if (!current) throw new Error("ASSET_NOT_FOUND");
     this.db.prepare(`
       UPDATE assets SET title = ?, notes = ?, favorite = ?, rating = ?,
-        color_label = ?, updated_at = ? WHERE id = ?
+        color_label = ?, custom_fields = ?, updated_at = ? WHERE id = ?
     `).run(
       patch.title ?? current.title,
       patch.notes ?? current.notes,
       patch.favorite === undefined ? Number(current.favorite) : Number(patch.favorite),
       patch.rating ?? current.rating,
       patch.colorLabel ?? current.colorLabel,
+      JSON.stringify(patch.customFields ?? current.customFields ?? {}),
       new Date().toISOString(),
       id,
     );

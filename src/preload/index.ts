@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
-import type { RefCanvasApi } from "../shared/contracts";
+import type { BrowserCapturePayload, RefCanvasApi } from "../shared/contracts";
 
 ipcRenderer.on("boards:flush-request", () => {
   const event = new Event("refcanvas:board-flush-request", { cancelable: true });
@@ -524,7 +524,7 @@ const api: RefCanvasApi = {
     onBrowserCapture: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        data: { path: string; sourceUrl: string; captureId?: string },
+        data: BrowserCapturePayload,
       ) => callback(data);
       ipcRenderer.on("browser:capture", listener);
       return () => ipcRenderer.off("browser:capture", listener);
