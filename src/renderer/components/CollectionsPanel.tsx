@@ -21,6 +21,7 @@ import {
   Eye,
   FolderOpen,
   FolderPlus,
+  Globe,
   Layers,
   Link2,
   MoreHorizontal,
@@ -345,7 +346,6 @@ function CollectionNode({
       <button
         className="mini-icon-button collection-node-add"
         aria-label={translate("collections.addFilesNamed").replace("{name}", collection.name)}
-        title={translate("collections.addFiles")}
         disabled={pending}
         onClick={(event) => {
           event.stopPropagation();
@@ -395,7 +395,6 @@ function CollectionNode({
           <button
             className="mini-icon-button"
             aria-label={translate("collections.menu")}
-            title={translate("collections.menu")}
             onClick={() => setMenuOpen((value) => !value)}
           >
             <MoreHorizontal size={14} />
@@ -481,6 +480,9 @@ function CollectionItemCard({
   const store = useAppStore();
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [sourceInfo, setSourceInfo] = useState<{ url: string; label: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     setThumbnailUrl(null);
@@ -491,6 +493,33 @@ function CollectionItemCard({
     void request
       .then((token) => {
         if (!cancelled) setThumbnailUrl(`refbrowse://thumbnail/${token}?priority=visible`);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [item.lastResolvedPath]);
+
+  useEffect(() => {
+    setSourceInfo(null);
+    let cancelled = false;
+    // 集合条目只带路径：反查资产拿浏览器捕获回写的来源元数据，
+    // 非捕获文件（无 sourceUrl）静默保持空。
+    void window.refCanvas.library
+      .getByPath(item.lastResolvedPath)
+      .then((asset) => {
+        if (cancelled || !asset) return;
+        const url = asset.customFields?.sourceUrl;
+        if (!url) return;
+        const pageTitle = asset.customFields?.pageTitle?.trim();
+        const hostname = (() => {
+          try {
+            return new URL(url).hostname;
+          } catch {
+            return "";
+          }
+        })();
+        setSourceInfo({ url, label: pageTitle || hostname || url });
       })
       .catch(() => undefined);
     return () => {
@@ -554,10 +583,29 @@ function CollectionItemCard({
       <span className="asset-title" title={item.lastResolvedPath}>
         {displayName}
       </span>
+      {sourceInfo && (
+        <span className="asset-source" title={sourceInfo.url}>
+          <Globe size={11} />
+          <span className="asset-source-text">{sourceInfo.label}</span>
+        </span>
+      )}
       <span className="collection-item-actions">
+        {sourceInfo && (
+          <button
+            className="mini-icon-button"
+            aria-label={`${translate("collections.openSource")} ${displayName}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void window.refCanvas.system
+                .openUrl(sourceInfo.url)
+                .catch(() => undefined);
+            }}
+          >
+            <Globe size={13} />
+          </button>
+        )}
         <button
           className="mini-icon-button"
-          title={translate("collections.relink")}
           aria-label={`${translate("collections.resolve")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
@@ -568,7 +616,6 @@ function CollectionItemCard({
         </button>
         <button
           className="mini-icon-button"
-          title={translate("preview.copyPath")}
           aria-label={`${translate("preview.copyPath")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();
@@ -579,7 +626,6 @@ function CollectionItemCard({
         </button>
         <button
           className="mini-icon-button danger-hover"
-          title={translate("collections.removeItem")}
           aria-label={`${translate("collections.removeItem")} ${displayName}`}
           onClick={(event) => {
             event.stopPropagation();

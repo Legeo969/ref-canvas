@@ -472,6 +472,7 @@ const api: RefCanvasApi = {
   system: {
     openExternal: (path) =>
       ipcRenderer.invoke("system:open-external", path),
+    openUrl: (url) => ipcRenderer.invoke("system:open-url", url),
     openRecycleBin: () => ipcRenderer.invoke("system:open-recycle-bin"),
     openFilesWithDefaultApp: (paths) =>
       ipcRenderer.invoke("system:open-files-with-default-app", paths),

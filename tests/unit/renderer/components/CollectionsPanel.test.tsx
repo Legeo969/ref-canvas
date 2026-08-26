@@ -84,6 +84,8 @@ function baseRefCanvas(overrides: Record<string, unknown> = {}) {
       },
       library: {
         pathsForFiles: (files: File[]) => files.map((file) => file.name),
+        // CollectionItemCard 反查来源元数据；测试库没有资产记录。
+        getByPath: vi.fn(async () => null),
       },
       libraries: {
         capturesDirectory: vi.fn(async () => "C:\\Users\\t\\AppData\\browser-captures"),

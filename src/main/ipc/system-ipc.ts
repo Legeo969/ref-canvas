@@ -203,6 +203,15 @@ export function registerSystemIpc(
     const error = await shell.openPath(local);
     if (error) throw new Error(`OPEN_PATH_FAILED: ${error}`);
   });
+  ipc.handle("system:open-url", async (url) => {
+    const parsed = z.string().url().max(32_768).parse(url);
+    // 仅放行 http(s)：openExternal 会把任意 scheme 交给系统处理，
+    // file:/smb:/自定义协议等于开放任意程序的攻击面，必须收窄。
+    if (!/^https?:$/.test(new URL(parsed).protocol)) {
+      throw new Error("UNSUPPORTED_URL_SCHEME");
+    }
+    await shell.openExternal(parsed);
+  });
   ipc.handle("system:open-recycle-bin", async () => {
     if (process.platform !== "win32") {
       throw new Error("RECYCLE_BIN_UNAVAILABLE");

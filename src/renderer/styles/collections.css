@@ -421,6 +421,30 @@
   color: #c6cfca;
 }
 
+/* 浏览器捕获的来源行：页面标题或来源域名，悬停显示完整 URL。 */
+.collection-item-card .asset-source {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 8px;
+  margin-top: -6px;
+  overflow: hidden;
+  font-size: 10px;
+  color: #7f8a85;
+}
+
+.collection-item-card .asset-source svg {
+  flex-shrink: 0;
+}
+
+.collection-item-card .asset-source-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .collection-state-badge {
   position: absolute;
   right: 6px;

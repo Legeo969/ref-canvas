@@ -2098,6 +2098,8 @@ export interface RefCanvasApi {
     setPlaybackState(assetId: string, state: Partial<PlaybackState>): Promise<PlaybackState>;  };
   system: {
     openExternal(path: string): Promise<void>;
+    /** 用系统默认浏览器打开网页；仅接受 http/https（捕获来源溯源用）。 */
+    openUrl(url: string): Promise<void>;
     /** 打开系统回收站；Windows 使用 Shell URI。 */
     openRecycleBin(): Promise<void>;
     /** Opens each file with the OS default app (batch). */
