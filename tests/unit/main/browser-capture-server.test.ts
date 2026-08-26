@@ -120,6 +120,25 @@ describe("browser-capture-server", () => {
     expect(res.headers.get("access-control-allow-methods")).toContain("GET");
   });
 
+  // 回归：Chrome 的 Local Network Access（PNA 后继）要求"更公开上下文 → 回环
+  // 地址"的预检响应携带 Allow-Private-Network，否则扩展 POST /capture 的
+  // 预检被浏览器直接拒绝——表现为弹窗"已连接"、同机 curl 一切正常，但
+  // 捕获图片永远到不了服务器。
+  it("answers the LNA preflight with Access-Control-Allow-Private-Network", async () => {
+    const res = await fetch(`${baseUrl}/capture`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "chrome-extension://refcanvas-test",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+        "Access-Control-Request-Private-Network": "true",
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-private-network")).toBe("true");
+  });
+
   it("returns 404 for unknown routes", async () => {
     const res = await fetch(`${baseUrl}/unknown`);
     expect(res.status).toBe(404);

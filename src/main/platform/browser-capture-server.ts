@@ -34,6 +34,10 @@ const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  // Chrome 的 Local Network Access（PNA 后继）：公共/扩展上下文请求回环
+  // 地址时预检要求本响应头，否则预检直接失败——表现为扩展"突然连不上"，
+  // 而同机 curl 一切正常（curl 不走预检）。对旧版浏览器无副作用。
+  "Access-Control-Allow-Private-Network": "true",
 };
 
 function readBody(req: http.IncomingMessage, limitBytes = 64 * 1024 * 1024): Promise<string> {
