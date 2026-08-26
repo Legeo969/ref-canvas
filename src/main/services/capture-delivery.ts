@@ -73,7 +73,7 @@ export class CaptureDeliveryService {
     this.pendingAcks.set(captureId, () => clearTimeout(timer));
   }
 
-  /** 渲染端导入完成后的回执（ipcMain.on("browser:capture-ack") 转发到这里）。 */
+  /** 渲染端导入完成后的回执（主进程把 browser:capture-ack 事件转发到这里）。 */
   handleAck(captureId: string): void {
     const settle = this.pendingAcks.get(captureId);
     if (!settle) return;
