@@ -15,31 +15,47 @@ const outDir = path.join(root, "out");
 const zipName = `refcanvas-browser-capture-${version}.zip`;
 const zipPath = path.join(outDir, zipName);
 
-// Files to include in the zip (everything except dev tooling).
-const includedFiles = [
+// Top-level entries to include (everything except dev tooling like
+// generate-icons.cjs). Files are collected recursively, so adding new
+// extension files never requires touching this script.
+const includedEntries = [
   "manifest.json",
-  "background.js",
-  "popup.html",
-  "popup.js",
   "README.md",
-  "icons/icon-16.png",
-  "icons/icon-48.png",
-  "icons/icon-128.png",
+  "background",
+  "content",
+  "popup",
+  "options",
+  "icons",
 ];
+
+function collectFiles(basePath, prefix = "") {
+  const files = [];
+  for (const entry of fs.readdirSync(basePath, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      files.push(...collectFiles(path.join(basePath, entry.name), relative));
+    } else if (entry.isFile()) {
+      files.push(relative);
+    }
+  }
+  return files;
+}
 
 fs.mkdirSync(outDir, { recursive: true });
 
-// Use PowerShell Compress-Archive on Windows (always available, no extra deps).
+// Stage included files into a clean tree so the zip mirrors the extension
+// layout exactly.
 const staging = path.join(outDir, "_ext-staging");
 fs.rmSync(staging, { recursive: true, force: true });
-fs.mkdirSync(path.join(staging, "icons"), { recursive: true });
-
-for (const file of includedFiles) {
-  const src = path.join(extDir, file);
-  const dst = path.join(staging, file);
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.copyFileSync(src, dst);
+for (const entry of includedEntries) {
+  const source = path.join(extDir, entry);
+  if (!fs.existsSync(source)) {
+    throw new Error(`Extension entry missing: ${entry}`);
+  }
+  const destination = path.join(staging, entry);
+  fs.cpSync(source, destination, { recursive: true });
 }
+const includedFiles = collectFiles(staging);
 
 // Remove old zip if exists.
 fs.rmSync(zipPath, { force: true });
@@ -48,8 +64,8 @@ fs.rmSync(zipPath, { force: true });
 // backslashes ("icons\icon-16.png"), which violates the ZIP spec (forward slash
 // only) — spec-strict extractors (Chrome included) then fail "Load unpacked"
 // with "Could not load icon". bsdtar (ships with Windows 10 1803+) writes
-// spec-compliant entries; call it by absolute path so Git Bash's GNU tar
-// (which cannot write zip) never shadows it.
+// spec-compliant entries; call it by absolute path so Git Bash's GNU tar,
+// which cannot write zip, never shadows it.
 const systemRoot = process.env.SystemRoot || "C:\\Windows";
 const tarExe = path.join(systemRoot, "System32", "tar.exe");
 if (!fs.existsSync(tarExe)) {
