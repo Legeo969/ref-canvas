@@ -51,6 +51,7 @@ import type {
 import { useAppStore } from "../app/store";
 import { translate, type MessageKey } from "../app/i18n";
 import { useDialog } from "./DialogProvider";
+import { PaneCollapseButton } from "./PaneCollapseButton";
 import { VisibilityToggle } from "./VisibilityToggle";
 
 /** 状态标签直接映射 i18n key（值随语言切换）。 */
@@ -1104,27 +1105,16 @@ export function CollectionsPanel({
             type="button"
             className="mini-icon-button"
             aria-label={translate("collections.create")}
-            title={translate("collections.create")}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((value) => !value)}
           >
             <Plus size={14} />
           </button>
-          <button
-            type="button"
-            className="mini-icon-button pane-collapse"
-            aria-expanded={!collapsed}
-            aria-label={
-              collapsed ? translate("directory.expand") : translate("directory.collapse")
-            }
-            title={
-              collapsed ? translate("directory.expand") : translate("directory.collapse")
-            }
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-          </button>
+          <PaneCollapseButton
+            collapsed={collapsed}
+            onToggle={() => setCollapsed((value) => !value)}
+          />
         </div>
       </header>
       {!collapsed && (

@@ -47,9 +47,6 @@ export function VisibilityToggle() {
       aria-label={
         showing ? translate("sidebar.hideHiddenFiles") : translate("sidebar.showHiddenFiles")
       }
-      title={
-        showing ? translate("sidebar.hideHiddenFiles") : translate("sidebar.showHiddenFiles")
-      }
       disabled={pending}
       onClick={() => void toggle()}
     >

@@ -1,7 +1,6 @@
 import {
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   HardDrive,
   RefreshCw,
   Star,
@@ -14,6 +13,7 @@ import type {
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
 import { FolderGlyph } from "./FolderGlyph";
+import { PaneCollapseButton } from "./PaneCollapseButton";
 import { VisibilityToggle } from "./VisibilityToggle";
 
 function normalizePath(value: string): string {
@@ -58,7 +58,6 @@ function FavoriteButton({ path, name }: { path: string; name: string }) {
           : translate("directory.favoriteNamed").replace("{name}", name)
       }
       aria-pressed={Boolean(entry)}
-      title={entry ? translate("directory.unfavorite") : translate("directory.favoriteDir")}
       disabled={pending}
       onClick={() => void toggle()}
     >
@@ -244,20 +243,10 @@ export function QuickAccessPane({
         </span>
         <div className="sidebar-pane-actions">
           <VisibilityToggle />
-          <button
-            type="button"
-            className="mini-icon-button pane-collapse"
-            aria-expanded={!collapsed}
-            aria-label={
-              collapsed ? translate("directory.expand") : translate("directory.collapse")
-            }
-            title={
-              collapsed ? translate("directory.expand") : translate("directory.collapse")
-            }
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-          </button>
+          <PaneCollapseButton
+            collapsed={collapsed}
+            onToggle={() => setCollapsed((value) => !value)}
+          />
         </div>
       </header>
       {!collapsed && (
@@ -359,20 +348,10 @@ export function DirectoryTreePane({
         <span className="sidebar-pane-title">{translate("sidebar.directory")}</span>
         <div className="sidebar-pane-actions">
           <VisibilityToggle />
-          <button
-            type="button"
-            className="mini-icon-button pane-collapse"
-            aria-expanded={!collapsed}
-            aria-label={
-              collapsed ? translate("directory.expand") : translate("directory.collapse")
-            }
-            title={
-              collapsed ? translate("directory.expand") : translate("directory.collapse")
-            }
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-          </button>
+          <PaneCollapseButton
+            collapsed={collapsed}
+            onToggle={() => setCollapsed((value) => !value)}
+          />
         </div>
       </header>
       {!collapsed && (

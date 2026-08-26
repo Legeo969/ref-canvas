@@ -979,6 +979,8 @@ export type MessageKey =
 
   | "collections.openInNewTab"
 
+  | "collections.openSource"
+
   | "collections.paneTitle"
 
   | "collections.pickFiles"
@@ -1002,6 +1004,8 @@ export type MessageKey =
   | "collections.scopeItems"
 
   | "collections.skippedDirectories"
+
+  | "collections.sourceLabel"
 
   | "collections.state.ambiguous"
 
@@ -2497,9 +2501,13 @@ export type MessageKey =
 
   | "sidebar.collections"
 
+  | "sidebar.collapse"
+
   | "sidebar.directory"
 
   | "sidebar.drives"
+
+  | "sidebar.expand"
 
   | "sidebar.hideHiddenFiles"
 

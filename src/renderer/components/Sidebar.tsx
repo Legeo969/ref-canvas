@@ -1,8 +1,9 @@
-import { ChevronDown, ChevronUp, PanelsTopLeft, Plus, Trash2 } from "lucide-react";
+import { PanelsTopLeft, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
+import { PaneCollapseButton } from "./PaneCollapseButton";
 import { DirectoryTreePane, QuickAccessPane } from "./DirectoryBrowser";
 import { CollectionsPanel } from "./CollectionsPanel";
 import {
@@ -326,20 +327,10 @@ export function Sidebar() {
               >
                 <Plus size={14} />
               </button>
-              <button
-                type="button"
-                className="mini-icon-button pane-collapse"
-                aria-expanded={!boardsCollapsed}
-                aria-label={
-                  boardsCollapsed ? translate("directory.expand") : translate("directory.collapse")
-                }
-                title={
-                  boardsCollapsed ? translate("directory.expand") : translate("directory.collapse")
-                }
-                onClick={() => setBoardsCollapsed((value) => !value)}
-              >
-                {boardsCollapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-              </button>
+              <PaneCollapseButton
+                collapsed={boardsCollapsed}
+                onToggle={() => setBoardsCollapsed((value) => !value)}
+              />
             </div>
           </div>
           {!boardsCollapsed && store.boards.map((board) => (
