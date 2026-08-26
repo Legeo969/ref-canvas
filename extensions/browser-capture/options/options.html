@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>RefCanvas 捕获设置</title>
+  <style>
+    :root {
+      --bg: #1a1e1f;
+      --fg: #eef3f0;
+      --muted: #939c98;
+      --accent: #3ab28f;
+      --border: rgba(255, 255, 255, 0.10);
+      --err: #c95c4b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      width: 480px;
+      padding: 24px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    h1 { font-size: 16px; margin-bottom: 16px; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    select, input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-size: 13px;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    select option { background: #23282a; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .actions { display: flex; gap: 8px; align-items: center; margin-top: 20px; }
+    button {
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--fg);
+      font-size: 13px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.06); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #10201b; font-weight: 600; }
+    .status { font-size: 12px; margin-left: 8px; }
+    .status.ok { color: var(--accent); }
+    .status.err { color: #e7a89d; }
+    .tips {
+      margin-top: 24px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .tips code { color: var(--accent); font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>RefCanvas 网页捕获设置</h1>
+
+  <div class="field">
+    <label for="boardSelect">默认板（右键"添加到 RefCanvas"与拾取器的投放目标）</label>
+    <select id="boardSelect" disabled>
+      <option value="follow">跟随应用当前板</option>
+    </select>
+    <div class="hint">指定固定板后，捕获会自动切到该板再导入，不影响你在应用里正在看的板。</div>
+  </div>
+
+  <div class="field">
+    <label for="portInput">服务端口</label>
+    <input id="portInput" type="number" min="1024" max="65535" />
+    <div class="hint">与应用内捕获服务端口一致（默认 <code>17530</code>）。改端口后需重载扩展并确认应用侧监听同一端口。</div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="saveButton">保存</button>
+    <button id="testButton">测试连接</button>
+    <span class="status" id="statusText"></span>
+  </div>
+
+  <div class="tips">
+    <p>· 捕获失败时先看弹窗里"最近捕获"的错误原文；多数问题是 RefCanvas 未运行或端口被占用。</p>
+    <p>· 新版 Chrome 会限制网页对本地回环地址的访问（Local Network Access）。若出现权限提示请选择允许；本扩展与 RefCanvas 通信仅限 <code>127.0.0.1</code>，数据不出本机。</p>
+    <p>· 快捷键 <code>Alt+Shift+R</code> 可随时在当前页面启动拾取器（可在 chrome://extensions/shortcuts 修改）。</p>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

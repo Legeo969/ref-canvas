@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RefCanvas 捕获</title>
+  <style>
+    :root {
+      --bg: #1a1e1f;
+      --fg: #eef3f0;
+      --muted: #939c98;
+      --accent: #3ab28f;
+      --border: rgba(255, 255, 255, 0.10);
+      --err: #c95c4b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      width: 300px;
+      padding: 14px;
+      font-size: 13px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .header svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot.connected { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .dot.disconnected { background: var(--err); }
+    .dot.checking { background: var(--muted); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .status-text { font-size: 12px; color: var(--muted); flex: 1; }
+    label.field {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    select, input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-size: 12px;
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 10px;
+    }
+    select option { background: #23282a; }
+    .actions { display: flex; gap: 8px; margin-bottom: 10px; }
+    button {
+      flex: 1;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--fg);
+      font-size: 12px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: rgba(255, 255, 255, 0.06); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #10201b; font-weight: 600; }
+    button.primary:hover { background: #45c4a0; }
+    .err {
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(201, 92, 75, 0.12);
+      border: 1px solid rgba(201, 92, 75, 0.35);
+      color: #e7a89d;
+      font-size: 11px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .history-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+      margin: 4px 0 6px;
+    }
+    .history-title button {
+      flex: none;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 0 2px;
+      cursor: pointer;
+    }
+    .history-title button:hover { color: var(--fg); background: none; }
+    #history { max-height: 180px; overflow-y: auto; }
+    .entry {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      margin-bottom: 4px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .entry .mark { flex-shrink: 0; }
+    .entry.ok .mark { color: var(--accent); }
+    .entry.error .mark { color: var(--err); }
+    .entry .meta { flex: 1; min-width: 0; }
+    .entry .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry .sub { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .entry.error .sub { color: #e7a89d; }
+    .entry button {
+      flex: none;
+      padding: 3px 8px;
+      font-size: 10px;
+    }
+    .empty { color: var(--muted); font-size: 11px; text-align: center; padding: 10px 0; }
+    .footer { margin-top: 8px; text-align: right; }
+    .footer a { color: var(--muted); font-size: 11px; cursor: pointer; text-decoration: none; }
+    .footer a:hover { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="9" y1="21" x2="9" y2="9" />
+    </svg>
+    <span>RefCanvas 捕获</span>
+  </div>
+
+  <div class="row">
+    <div class="dot checking" id="dot"></div>
+    <div class="status-text" id="statusText">正在连接…</div>
+  </div>
+
+  <label class="field" for="boardSelect">默认板（右键"添加到 RefCanvas"的去处）</label>
+  <select id="boardSelect" disabled>
+    <option value="follow">跟随应用当前板</option>
+  </select>
+
+  <div class="actions">
+    <button class="primary" id="pickButton">在当前页拾取图片</button>
+    <button id="optionsButton">设置</button>
+  </div>
+
+  <div class="err" id="errBox" hidden></div>
+
+  <div class="history-title">
+    <span>最近捕获</span>
+    <button id="clearHistory" hidden>清空</button>
+  </div>
+  <div id="history">
+    <div class="empty">暂无记录</div>
+  </div>
+
+  <div class="footer"><a id="refreshLink">重新检查连接</a></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

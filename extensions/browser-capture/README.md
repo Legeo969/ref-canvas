@@ -1,86 +1,108 @@
-# RefCanvas Browser Capture
+# RefCanvas 网页捕获
 
-Chrome/Edge extension (Manifest V3) that lets you right-click any image on the web and send it directly to a RefCanvas reference board.
+Chrome/Edge 扩展（Manifest V3），把网页上的图片一键送进 RefCanvas 参考板。
 
-## Features
+## 功能
 
-- **Right-click → Add to RefCanvas**: context menu on any `<img>` sends the image to your active board.
-- **Capture page screenshot**: context menu on any page sends a full-page visible screenshot.
-- **Connection status popup**: shows whether RefCanvas is running and which board is active.
+- **右键 → 添加到 RefCanvas**：任意 `<img>` 图片直接进默认板
+- **右键 → 发送到指定板 ▸**：列出应用内全部参考板，按板投放（自动切板导入）
+- **右键 → 截取页面到 RefCanvas**：当前可见区域截屏上板
+- **拾取器**：点扩展图标或按 `Alt+Shift+R` 进入拾取模式，悬浮高亮页面上的
+  任意可捕获元素（`img` 含 srcset 最大分辨率、`video` 当前帧、`canvas`、
+  CSS 背景图），多选批量上板
+- **来源元数据**：捕获自动记录来源页面 URL、页面标题、图片 alt——页面标题
+  成为资产标题，URL/alt 存进资产自定义字段，右图可溯源
+- **弹窗面板**：连接状态、默认板选择、最近捕获记录（失败可重试）
+- **设置页**：默认板（跟随应用当前板 / 指定固定板）、服务端口
 
-## How it works
-
-```
-Browser extension                RefCanvas (Electron)
-┌───────────────┐               ┌──────────────────┐
-│  Right-click  │   POST         │  HTTP server     │
-│  image on     │  base64 ──→   │  127.0.0.1:17530 │
-│  any webpage  │               │  /capture         │
-└───────────────┘               └───────┬──────────┘
-                                        │ writes temp file
-                                        │ sends IPC to renderer
-                                        ▼
-                                ┌──────────────────┐
-                                │  addDirectory-   │
-                                │  EntriesToBoard  │
-                                │  → active board  │
-                                └──────────────────┘
-```
-
-The extension talks to RefCanvas via a local HTTP endpoint (`127.0.0.1:17530`) that the app starts automatically. No external network calls are made.
-
-## Installation (development)
-
-1. **Build RefCanvas** with the capture server (already integrated in the main process).
-2. **Load the extension** in Chrome/Edge:
-   - Navigate to `chrome://extensions` (or `edge://extensions`)
-   - Enable **Developer mode** (top-right toggle)
-   - Click **Load unpacked**
-   - Select the `extensions/browser-capture/` directory
-3. **Pin the extension** to your toolbar for quick access.
-4. **Right-click any image** on a webpage → **Add to RefCanvas**.
-
-## Extension structure
+## 工作原理
 
 ```
-extensions/browser-capture/
-  manifest.json       — MV3 manifest
-  background.js        — service worker (context menu, fetch, POST to RefCanvas)
-  popup.html           — connection status UI
-  popup.js             — popup logic (check /status endpoint)
-  icons/               — 16/48/128px icons
-  generate-icons.cjs   — regenerates icons from SVG (run with `node generate-icons.cjs`)
+浏览器扩展                         RefCanvas (Electron)
+┌─────────────────┐               ┌────────────────────┐
+│ 右键 / 拾取器    │  POST base64  │  本地 HTTP 服务      │
+│ 提取图片+元数据  │ ──────────→   │  127.0.0.1:17530    │
+└─────────────────┘               │  /capture           │
+                                  └─────────┬──────────┘
+                                            │ 落盘 browser-captures/
+                                            │ 确认制投递（无窗口时入队暂存）
+                                            ▼
+                                  ┌────────────────────┐
+                                  │ 渲染端：切到目标板   │
+                                  │ → 上板 → 回写来源   │
+                                  │ 元数据 → 归档集合   │
+                                  └────────────────────┘
 ```
 
-## Configuration
+通信仅限本机回环地址（`127.0.0.1`），不发起任何外部网络请求。
 
-The extension connects to `http://127.0.0.1:17530` by default. If you need a different port, update `REFCANVAS_BASE` in `background.js` and the `port` argument in `src/main/index.ts`.
+## 安装（开发）
 
-## Troubleshooting
+1. 启动 RefCanvas（捕获服务随应用自动启动）
+2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）→ 开启右上角**开发者模式** → **加载已解压的扩展程序** → 选择本目录（`extensions/browser-capture/`）
+3. 固定到工具栏即可使用
 
-Captures show an `ERR` badge or never land on the board:
+分发 zip：`pnpm package:extension`（输出到 `out/`）。
 
-1. **Open the popup** — it shows the exact text of the last failure (stage + message + time), no DevTools needed.
-2. **RefCanvas must be running** (it can sit in the system tray with its window closed). The popup should say *Connected*.
-3. **Chrome may block access to local apps** — newer Chrome versions gate requests to loopback addresses behind a *Local Network Access* permission and require the server to answer CORS preflights with `Access-Control-Allow-Private-Network: true`. This is why a same-machine `curl http://127.0.0.1:17530/status` can succeed while every capture fails: curl skips the browser's preflight, and it is exactly that preflight which gets rejected. If Chrome shows a local-network prompt for RefCanvas, choose **Allow**.
-4. **Port occupied** — if another program holds port 17530, RefCanvas shows a tray notification and capture stays unavailable until it is freed (a reboot clears crashed leftovers).
-5. Some images are hotlink-protected or session-bound and genuinely cannot be extracted; use **Capture page to RefCanvas** as a fallback.
-6. Captures made while the board window was closed are queued by the app (a tray balloon says so) and imported automatically next time RefCanvas opens.
+## 目录结构
 
-## Permissions explained
+```
+manifest.json         — MV3 清单（module service worker / 快捷键 / 设置页）
+background/main.js    — 服务线程入口：菜单、消息路由、任务编排
+background/api.js     — HTTP 客户端与错误记录
+background/capture.js — 图片提取（直连 fetch → 页面注入兜底）与发送
+background/boards.js  — 右键菜单与板子菜单管理
+background/history.js — 最近捕获历史
+background/settings.js— 设置存取（chrome.storage.sync）
+content/picker.js     — 拾取器覆盖层（注入式）
+popup/                — 弹窗面板
+options/              — 设置页
+icons/                — 16/48/128 图标
+generate-icons.cjs    — 由 SVG 重新生成图标（node generate-icons.cjs）
+```
 
-| Permission | Why |
+## 设置说明
+
+| 设置 | 说明 |
 |---|---|
-| `contextMenus` | Register "Add to RefCanvas" right-click item |
-| `activeTab` | Access the current tab when the user invokes the extension |
-| `scripting` | Inject a content script to fetch cross-origin images |
-| `storage` | Save extension settings (future use) |
-| `host_permissions: localhost:17530` | Talk to the RefCanvas local server only |
+| 默认板 | `跟随应用当前板`（默认）：捕获进应用当前打开的板；指定固定板：捕获自动切到该板导入，接收 400（板已删）后自动重置为跟随 |
+| 服务端口 | 与应用侧捕获服务端口一致，默认 `17530`；改后需在扩展侧同步修改 |
 
-The service worker tries a direct CORS fetch first (fast path for same-origin / CORS-enabled images) and falls back to injecting a content script that fetches the image from the page's own context, so no `<all_urls>` host permission is needed.
+## 快捷键
 
-## Privacy
+| 快捷键 | 功能 |
+|---|---|
+| `Alt+Shift+R` | 在当前页面启动/退出拾取器（可在 `chrome://extensions/shortcuts` 修改） |
+| `Esc`（拾取中） | 退出拾取模式 |
 
-- All communication is local (`127.0.0.1` only).
-- No data leaves the machine.
-- The extension does not track, store, or forward browsing data.
+## 权限说明
+
+| 权限 | 用途 |
+|---|---|
+| `contextMenus` | 注册右键菜单项 |
+| `activeTab` | 用户触发（菜单/图标/快捷键）时访问当前标签页 |
+| `scripting` | 注入拾取器与跨域图片提取脚本 |
+| `storage` | 设置与最近捕获历史 |
+| `host_permissions: localhost:17530` | 仅与本机 RefCanvas 服务通信 |
+
+## 排障
+
+捕获显示 `!` 徽标或板上看不到图：
+
+1. **先开弹窗**——"最近捕获"里每条失败记录都带错误原文，无需 DevTools
+2. **确认 RefCanvas 在运行**（可最小化到托盘），弹窗应显示"已连接"
+3. **Chrome 可能拦截对本地应用的访问**：新版 Chrome 对回环地址请求有
+   Local Network Access 限制并要求服务器应答预检头。这也是为什么同机
+   `curl http://127.0.0.1:17530/status` 正常而捕获失败——curl 不走浏览器
+   预检。出现权限提示请选择**允许**
+4. **端口被占**：其他程序占用 17530 时 RefCanvas 会弹托盘通知，捕获不可用
+   直到释放端口（重启电脑可清掉崩溃残留）
+5. **重试失败**：历史重试按原始 URL 重新拉图，防盗链/带会话的图源可能拉不到，
+   这类图请直接在页面右键捕获或用拾取器
+6. **窗口关着也能捕获**：捕获在应用无窗口时自动入队暂存（托盘气泡提示），
+   下次打开 RefCanvas 自动上板
+
+## 隐私
+
+- 全部通信仅限本机（`127.0.0.1`）
+- 不上传、不追踪、不存储浏览数据；历史记录只存本地

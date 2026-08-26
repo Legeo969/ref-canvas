@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "RefCanvas Browser Capture",
-  "version": "0.1.0",
-  "description": "Right-click any image on the web and send it to a RefCanvas reference board.",
+  "name": "RefCanvas 网页捕获",
+  "version": "0.2.0",
+  "description": "右键网页图片或拾取页面元素，发送到 RefCanvas 参考板。",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -11,13 +11,26 @@
   "permissions": ["contextMenus", "activeTab", "scripting", "storage"],
   "host_permissions": ["http://localhost:17530/*", "http://127.0.0.1:17530/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background/main.js",
+    "type": "module"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": false
+  },
+  "commands": {
+    "run-picker": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "在当前页面拾取图片并发送到 RefCanvas"
     }
   }
 }

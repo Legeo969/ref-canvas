@@ -1,0 +1,118 @@
+/* RefCanvas 拾取器覆盖层。所有类名 rc-picker-* 前缀避免与页面样式冲突；
+ * z-index 取 32 位上限压过一切页面元素。 */
+.rc-picker-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.rc-picker-highlight {
+  position: fixed;
+  border: 2px solid #3ab28f;
+  background: rgba(58, 178, 143, 0.12);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 0 10px rgba(58, 178, 143, 0.45);
+  border-radius: 3px;
+  display: none;
+}
+
+.rc-picker-highlight.is-selected {
+  border-color: #e0a13c;
+  background: rgba(224, 161, 60, 0.10);
+}
+
+.rc-picker-tag {
+  position: fixed;
+  transform: translateY(-100%);
+  background: #3ab28f;
+  color: #10201b;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  display: none;
+}
+
+.rc-picker-chip {
+  position: fixed;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e0a13c;
+  color: #241a08;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.rc-picker-toolbar {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(20, 24, 25, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #eef3f0;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.rc-picker-toolbar .rc-count {
+  min-width: 72px;
+  color: #939c98;
+}
+
+.rc-picker-toolbar button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #eef3f0;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rc-picker-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rc-picker-toolbar button.rc-primary {
+  background: #3ab28f;
+  border-color: #3ab28f;
+  color: #10201b;
+  font-weight: 600;
+}
+
+.rc-picker-toolbar button.rc-primary:disabled {
+  background: rgba(58, 178, 143, 0.35);
+  border-color: transparent;
+  cursor: default;
+}
+
+.rc-picker-banner {
+  position: fixed;
+  left: 50%;
+  top: 22px;
+  transform: translateX(-50%);
+  background: rgba(20, 24, 25, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #eef3f0;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  pointer-events: auto;
+  display: none;
+}
+
+.rc-picker-banner.rc-error { border-color: rgba(201, 92, 75, 0.6); color: #e7a89d; }
