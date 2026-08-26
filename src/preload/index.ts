@@ -524,11 +524,13 @@ const api: RefCanvasApi = {
     onBrowserCapture: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
-        data: { path: string; sourceUrl: string },
+        data: { path: string; sourceUrl: string; captureId?: string },
       ) => callback(data);
       ipcRenderer.on("browser:capture", listener);
       return () => ipcRenderer.off("browser:capture", listener);
     },
+    ackBrowserCapture: (captureId: string) =>
+      ipcRenderer.send("browser:capture-ack", captureId),
     captureClipboard: () =>
       ipcRenderer.invoke("system:capture-clipboard"),
     prepareRegionCapture: () =>

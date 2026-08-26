@@ -1074,10 +1074,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   addDirectoryEntriesToBoard: async (paths) => {
     const uniquePaths = [...new Set(paths)];
     if (!uniquePaths.length) return;
+    // Windows 下刚落盘的捕获文件可能被杀毒/索引服务短暂加锁（EBUSY），
+    // 首次指纹读取会失败：短退避重试，最多 3 次。
+    const materializeWithRetry = async (entryPath: string) => {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return await window.refCanvas.filesystem.materialize(entryPath);
+        } catch (error) {
+          const code = (error as { message?: string })?.message ?? "";
+          const transient = /EBUSY|EPERM/.test(code);
+          if (attempt >= 2 || !transient) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+        }
+      }
+    };
     const materialized = await Promise.all(
-      uniquePaths.map((entryPath) =>
-        window.refCanvas.filesystem.materialize(entryPath),
-      ),
+      uniquePaths.map((entryPath) => materializeWithRetry(entryPath)),
     );
     if (!get().activeBoard) {
       const titles = new Set(get().boards.map((board) => board.title));

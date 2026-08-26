@@ -2135,7 +2135,14 @@ export interface RefCanvasApi {
     /** FND-002：第二实例打开目录 → 主窗口在新标签打开。 */
     onOpenDirectoryTab(callback: (path: string) => void): () => void;
     /** 浏览器扩展发送的图片落入临时文件后通知渲染端导入到活动板。 */
-    onBrowserCapture(callback: (data: { path: string; sourceUrl: string }) => void): () => void;
+    onBrowserCapture(
+      callback: (data: { path: string; sourceUrl: string; captureId?: string }) => void,
+    ): () => void;
+    /**
+     * 捕获导入完成回执：主进程投递采用确认制，未在超时内回执的捕获会
+     * 入队暂存并在窗口就绪后重投（防止后台驻留/子窗口场景静默丢失）。
+     */
+    ackBrowserCapture(captureId: string): void;
     captureClipboard(): Promise<AssetRecord | null>;
     prepareRegionCapture(): Promise<CaptureSource | null>;
     /** 独立覆盖窗口启动后一次性消费抓屏快照（?capture=1 模式）。 */

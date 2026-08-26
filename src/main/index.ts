@@ -78,6 +78,8 @@ import { DccProvider } from "./providers/dcc-provider";
 import { registerProtocols } from "./platform/protocols";
 import { createCaptureServer } from "./platform/browser-capture-server";
 import { pruneOrphanedCaptures } from "./services/browser-capture-maintenance";
+import { CaptureDeliveryService, type CaptureDeliveryTarget } from "./services/capture-delivery";
+import { registerSecureListener } from "./platform/secure-ipc";
 import {
   registerWindowsProjectFormat,
   registerWindowsSendTo,
@@ -657,6 +659,7 @@ function rebuildTrayMenu(): void {
           } else {
             createWindow();
           }
+          captureDelivery.flushQueue();
         },
       },
       { type: "separator" },
@@ -690,6 +693,8 @@ function createTray(): void {
     } else {
       createWindow();
     }
+    // 驻留恢复不重载渲染端（无 did-finish-load），这里显式重投暂存捕获。
+    captureDelivery.flushQueue();
   });
   rebuildTrayMenu();
 }
@@ -698,6 +703,55 @@ function destroyTray(): void {
   tray?.destroy();
   tray = null;
 }
+
+/**
+ * 托盘气泡通知（Windows）。用于主窗口看不见的失败/暂存事件：
+ * 捕获端口被占、网页捕获入队暂存等。无托盘平台或创建失败时静默降级。
+ */
+function showTrayNotification(title: string, content: string): void {
+  try {
+    if (process.platform === "darwin") return;
+    createTray();
+    if (!tray) return;
+    if (typeof tray.displayBalloon === "function") {
+      tray.displayBalloon({ iconType: "info", title, content });
+    } else {
+      console.info(`[notify] ${title}: ${content}`);
+    }
+  } catch (error) {
+    console.warn("[notify] tray balloon failed:", error);
+  }
+}
+
+// 浏览器扩展捕获的确认制投递（详见 services/capture-delivery.ts）：
+// 无存活窗口或渲染端超时未回执时入队暂存，托盘气泡提示，窗口就绪后重投。
+const captureDelivery = new CaptureDeliveryService({
+  // 只投主窗口：BoardWindow（白板子窗口）是精简渲染端，没有捕获导入
+  // 管线，投给它只会白等超时。主窗口不在时入队暂存并托盘提示。
+  getTargets: () => {
+    const targets: CaptureDeliveryTarget[] = [];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const window = mainWindow;
+      targets.push({
+        id: window.id,
+        isDestroyed: () => window.isDestroyed(),
+        isFocused: () => window.isFocused(),
+        send: (channel, ...args) => window.webContents.send(channel, ...args),
+      });
+    }
+    return targets;
+  },
+  notifyStored: (count) =>
+    showTrayNotification(
+      "RefCanvas",
+      count === 1
+        ? "网页捕获已暂存：打开 RefCanvas 后自动上板"
+        : `${count} 个网页捕获已暂存：打开 RefCanvas 后自动上板`,
+    ),
+});
+registerSecureListener(validateSender, "browser:capture-ack", (_event, captureId: unknown) => {
+  if (typeof captureId === "string") captureDelivery.handleAck(captureId);
+});
 
 /** 启动期数据库迁移失败的恢复信息（FND-001：失败时不进入主工作区）。 */
 let migrationRecovery: MigrationRecoveryInfo = {
@@ -1399,6 +1453,10 @@ function createWindow(): void {
 
   hardenWindowNavigation(mainWindow.webContents);
   bindFullscreenTitleBarOverlay(mainWindow);
+  // 渲染端就绪即重投暂存的网页捕获（后台驻留恢复/冷启动均覆盖）。
+  mainWindow.webContents.on("did-finish-load", () => {
+    captureDelivery.flushQueue();
+  });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
   mainWindow.on("enter-full-screen", () => {
     setFullscreenTitleBarOverlay(mainWindow, true);
@@ -1830,20 +1888,26 @@ void app.whenReady().then(async () => {
 
   // Browser extension capture server (127.0.0.1:17530).
   // Lets the Chrome/Edge extension send images from web pages into RefCanvas.
+  // 投递走模块级 captureDelivery（确认制 + 暂存重投），不再 fire-and-forget。
   createCaptureServer(
     {
       getCaptureDirectory: () => browserCapturesPath(app.getPath("userData")),
       getBoardsSummary: () =>
         database.listBoards().map((board) => ({ id: board.id, title: board.title })),
       onCapture: (filePath, sourceUrl) => {
-        mainWindow?.webContents.send("browser:capture", { path: filePath, sourceUrl });
+        captureDelivery.deliver({ path: filePath, sourceUrl });
       },
     },
     17530,
   ).on("error", (error) => {
-    // Port already in use (another RefCanvas instance?) — non-fatal.
+    // 端口被占（崩溃残留进程或其他程序）：捕获服务没起来，扩展侧只会显示
+    // 未连接/发送失败，必须让用户看见原因，不能只留一条 console。
     if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
     console.warn("[browser-capture] port 17530 in use, skipping");
+    showTrayNotification(
+      "RefCanvas",
+      "扩展捕获端口 17530 被其他程序占用，浏览器捕获暂不可用（可重启电脑后重试）。",
+    );
   });
 
   // 启动时清理 browser-captures 孤儿文件（无资产引用且超过宽限期）。
@@ -1874,8 +1938,10 @@ app.on("second-instance", (_event, argv) => {
     mainWindow.focus();
   } else {
     createWindow();
-    void library?.resumeWatching();
   }
+  // 二次启动常伴随用户主动回到应用：把暂存捕获立刻重投。
+  captureDelivery.flushQueue();
+  void library?.resumeWatching();
   const files = argv.slice(1).filter((value) => !value.startsWith("-"));
   if (files.length && library) {
     // 第二实例打开目录 → 在新标签打开；文件 → 定位其父目录（FND-002）。

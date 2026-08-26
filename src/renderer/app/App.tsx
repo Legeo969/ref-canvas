@@ -222,14 +222,28 @@ function WorkspaceApp() {
 
   // Browser extension capture: main process writes the image to a temp file,
   // then notifies the renderer to import it into the active board.
+  // 确认制投递：导入成功后回 ackBrowserCapture；失败不回执——主进程超时后
+  // 会入队暂存（托盘提示），窗口就绪时自动重投，不再静默丢图。
+  const importBrowserCapture = useCallback(
+    (data: { path: string; sourceUrl: string; captureId?: string }) => {
+      void (async () => {
+        await store.addDirectoryEntriesToBoard([data.path]);
+        // 同时归档进「网页捕获」集合：捕获有可发现、可导出的家，不再只是
+        // 散落在库里的一条 linked 记录。归档失败不影响上板主流程与回执。
+        void store.addBrowserCaptureToCollection(data.path);
+        if (data.captureId) {
+          window.refCanvas.system.ackBrowserCapture(data.captureId);
+        }
+      })().catch((error) => {
+        console.warn("BROWSER_CAPTURE_IMPORT_FAILED", data.path, error);
+      });
+    },
+    [store],
+  );
+
   useEffect(() => {
-    return window.refCanvas.system.onBrowserCapture((data) => {
-      void store.addDirectoryEntriesToBoard([data.path]);
-      // 同时归档进「网页捕获」集合：捕获有可发现、可导出的家，不再只是
-      // 散落在库里的一条 linked 记录。归档失败不影响上板主流程。
-      void store.addBrowserCaptureToCollection(data.path);
-    });
-  }, [store]);
+    return window.refCanvas.system.onBrowserCapture(importBrowserCapture);
+  }, [importBrowserCapture]);
 
   useEffect(() => {
     // 只同步 App 自己的演示模式状态，绝不强制退出窗口全屏：预览全屏
