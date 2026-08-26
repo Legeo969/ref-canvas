@@ -288,7 +288,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   const colorSampleTarget = await evaluate(client, `(async () => {
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     document.querySelector('.directory-details-panel .preview-context-tray-header [aria-label="关闭工具"]')?.click();
-    const paletteButton = document.querySelector('.directory-details-panel [aria-label="色彩栏"]');
+    const paletteButton = document.querySelector('.directory-details-panel [aria-label="吸取颜色并显示色彩栏"]');
     if (!paletteButton) throw new Error("COLOR_BAR_BUTTON_MISSING");
     if (paletteButton.getAttribute("aria-pressed") !== "true") paletteButton.click();
     let sampleButton = null;
@@ -410,7 +410,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         stageClasses: stage.className,
       }));
     }
-    const paletteButton = document.querySelector('.directory-details-panel [aria-label="色彩栏"]');
+    const paletteButton = document.querySelector('.directory-details-panel [aria-label="吸取颜色并显示色彩栏"]');
     if (paletteButton && paletteButton.getAttribute("aria-pressed") !== "true") paletteButton.click();
     // EXR 调色板需要等解码完成，工具栏按钮才会渲染——轮询等待。
     let sampleButton = null;
