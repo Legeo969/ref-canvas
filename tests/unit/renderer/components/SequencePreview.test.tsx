@@ -482,7 +482,7 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      host.querySelector<HTMLButtonElement>('button[aria-label="选择 GIF 帧范围"]')?.click();
+      host.querySelector<HTMLButtonElement>('button[aria-label="在进度条上选择 GIF 帧范围"]')?.click();
     });
     expect(document.body.querySelector('[aria-label="GIF 导出设置"]')).toBeTruthy();
     await act(async () => {
@@ -518,7 +518,7 @@ describe("SequencePreviewDialog", () => {
       await Promise.resolve(); await Promise.resolve();
     });
     expect(controlsTarget.querySelector('button[aria-label="导出 MP4"]')).toBeTruthy();
-    expect(controlsTarget.querySelector('button[aria-label="选择 GIF 帧范围"]')).toBeTruthy();
+    expect(controlsTarget.querySelector('button[aria-label="在进度条上选择 GIF 帧范围"]')).toBeTruthy();
     expect(host.querySelector(".sequence-export-row")).toBeNull();
     expect(controlsTarget.querySelector('button[aria-label="导出预设"]')).toBeNull();
     await act(async () => controlsTarget.querySelector<HTMLButtonElement>('button[aria-label="导出 MP4"]')?.click());

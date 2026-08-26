@@ -20,7 +20,7 @@ describe("PreviewColorBar", () => {
     const host = document.createElement("div"); document.body.append(host);
     const root = createRoot(host); roots.push(root);
     await act(async () => root.render(<PreviewColorBar assetPath="D:\\refs\\a.png" />));
-    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色"]')?.click(); await Promise.resolve(); });
+    await act(async () => { host.querySelector<HTMLButtonElement>('[aria-label="提取当前画面色彩"]')?.click(); await Promise.resolve(); });
     expect(host.querySelector('[aria-label="当前画面色彩栏"]')).toBeTruthy();
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="收起图片颜色"]')?.click());
     expect(host.querySelector('[aria-label="当前画面色彩栏"]')).toBeNull();

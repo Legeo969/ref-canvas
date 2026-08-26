@@ -47,7 +47,6 @@ export function DirectoryQuickPreview({
         <button
           className="icon-button preview-close"
           aria-label={translate("preview.close")}
-          title={translate("preview.close")}
           onClick={onClose}
         >
           <X size={17} />

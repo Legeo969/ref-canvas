@@ -119,7 +119,6 @@ function TaskRow({
           <button
             className="mini-icon-button"
             aria-label={translate("tasks.cancelTask").replace("{id}", task.id)}
-            title={translate("tasks.cancel")}
             onClick={() => onCancel(task.id)}
           >
             <X size={13} />
@@ -129,7 +128,6 @@ function TaskRow({
           <button
             className="mini-icon-button"
             aria-label={translate("tasks.retryTask").replace("{id}", task.id)}
-            title={translate("tasks.retry")}
             onClick={() => onRetry(task.id)}
           >
             <RotateCcw size={13} />

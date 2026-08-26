@@ -691,16 +691,15 @@ export function VideoPreview({
           {onOpenTool && (
             <button
               className="video-fps-button"
-              aria-label={translate("video.fpsPreset")}
-              title={translate("video.fpsPresetTitle")}
+              aria-label={translate("video.fpsPresetTitle")}
               onClick={() => onOpenTool("fps", timecode)}
             >
               {playbackFps == null ? `${translate("preview.auto")} ` : ""}
               {(effectiveFrameRate ?? 0).toFixed(effectiveFrameRate && effectiveFrameRate % 1 ? 2 : 0)} FPS
             </button>
           )}
-          {onOpenTool && <button className={looping ? "active" : ""} aria-label={translate("preview.loop")} title={translate("preview.loop")} onClick={() => setLooping((value) => !value)}><Repeat2 size={15} /></button>}
-          {onOpenTool && <button aria-label={muted ? translate("preview.mute") : translate("video.mute")} title={muted ? translate("preview.mute") : translate("video.mute")} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>}
+          {onOpenTool && <button className={looping ? "active" : ""} aria-label={translate("preview.loop")} onClick={() => setLooping((value) => !value)}><Repeat2 size={15} /></button>}
+          {onOpenTool && <button aria-label={muted ? translate("preview.mute") : translate("video.mute")} onClick={() => setMuted((value) => !value)}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>}
           <button
             type="button"
             className="video-gif-button"

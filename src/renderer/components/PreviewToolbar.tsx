@@ -265,16 +265,15 @@ export function PreviewToolbar({
         <div className="preview-toolbar-row">
           {capabilities.timeline && <button
               className={`preview-tool-btn circle${loopActive ? " active" : ""}`}
-              title={translate("preview.loop")}
               aria-label={translate("preview.loop")}
               onClick={onLoopToggle}
               disabled={!onLoopToggle}
             ><Repeat size={13} /></button>}
-          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.previousFrame")} aria-label={translate("preview.previousFrame")} onClick={() => handleStepClick(-1)} disabled={!onStepFrames} onPointerDown={(event) => onStepPointerDown(event, -1)} onPointerUp={() => stopScrubHold()} onPointerLeave={() => stopScrubHold(false, true)} onPointerCancel={() => stopScrubHold(false, true)} onBlur={() => stopScrubHold(false, true)}><SkipBack size={13} /></button>}
-          {capabilities.timeline && <button className="preview-tool-btn" title={playing ? translate("preview.pause") : translate("preview.play")} aria-label={playing ? translate("preview.pause") : translate("preview.play")} onClick={onPlayingToggle} disabled={!onPlayingToggle}>
+          {capabilities.timeline && <button className="preview-tool-btn" aria-label={translate("preview.previousFrame")} onClick={() => handleStepClick(-1)} disabled={!onStepFrames} onPointerDown={(event) => onStepPointerDown(event, -1)} onPointerUp={() => stopScrubHold()} onPointerLeave={() => stopScrubHold(false, true)} onPointerCancel={() => stopScrubHold(false, true)} onBlur={() => stopScrubHold(false, true)}><SkipBack size={13} /></button>}
+          {capabilities.timeline && <button className="preview-tool-btn" aria-label={playing ? translate("preview.pause") : translate("preview.play")} onClick={onPlayingToggle} disabled={!onPlayingToggle}>
             {playing ? <Pause size={13} /> : <Play size={13} />}
           </button>}
-          {capabilities.timeline && <button className="preview-tool-btn" title={translate("preview.nextFrame")} aria-label={translate("preview.nextFrame")} onClick={() => handleStepClick(1)} disabled={!onStepFrames} onPointerDown={(event) => onStepPointerDown(event, 1)} onPointerUp={() => stopScrubHold()} onPointerLeave={() => stopScrubHold(false, true)} onPointerCancel={() => stopScrubHold(false, true)} onBlur={() => stopScrubHold(false, true)}><SkipForward size={13} /></button>}
+          {capabilities.timeline && <button className="preview-tool-btn" aria-label={translate("preview.nextFrame")} onClick={() => handleStepClick(1)} disabled={!onStepFrames} onPointerDown={(event) => onStepPointerDown(event, 1)} onPointerUp={() => stopScrubHold()} onPointerLeave={() => stopScrubHold(false, true)} onPointerCancel={() => stopScrubHold(false, true)} onBlur={() => stopScrubHold(false, true)}><SkipForward size={13} /></button>}
           {hasTimeline && <span className="preview-timecode">{timecode}</span>}
           {hasTimeline && <PreviewSlider
               value={seekPosition}
@@ -283,12 +282,11 @@ export function PreviewToolbar({
               fillColor={progressColor ?? previewToolbarProgressColor(variant)}
               smoothPlayback
             />}
-          {capabilities.trim && <button className={`preview-tool-btn${trimActive ? " active" : ""}`} title={translate("preview.trim")} aria-label={translate("preview.trim")} aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
+          {capabilities.trim && <button className={`preview-tool-btn${trimActive ? " active" : ""}`} aria-label={translate("preview.trim")} aria-pressed={trimActive} onClick={onTrim} disabled={!onTrim}><Scissors size={13} /></button>}
           {capabilities.volume && (
             <div className="preview-volume-control">
               <button
                 className="preview-tool-btn circle"
-                title={muted ? translate("preview.mute") : translate("preview.volume")}
                 aria-label={translate("preview.volume")}
                 aria-pressed={muted}
                 onClick={onMutedToggle}
@@ -309,7 +307,7 @@ export function PreviewToolbar({
         <div className="preview-color-context-toolbar" role="toolbar" aria-label={translate("preview.colorToolbarLabel")}>
           <div className="preview-color-context-start">
             {onSampleColor && (
-              <button type="button" className="preview-tool-btn" aria-label={translate("preview.sampleColor")} title={translate("preview.sampleColor")} onClick={onSampleColor}>
+              <button type="button" className="preview-tool-btn" aria-label={translate("preview.sampleColor")} onClick={onSampleColor}>
                 <Plus size={13} />
               </button>
             )}
@@ -321,7 +319,6 @@ export function PreviewToolbar({
                     key={`${color}:${i}`}
                     className="preview-color-swatch sampled"
                     style={{ background: color }}
-                    title={translate("preview.copyColor").replace("{color}", color)}
                     aria-label={translate("preview.copyColor").replace("{color}", color)}
                     onClick={() => void navigator.clipboard.writeText(color)}
                   />
@@ -329,7 +326,7 @@ export function PreviewToolbar({
               </span>
             )}
             {sampledColorSwatches.length > 0 && onClearSampledColors && (
-              <button type="button" className="preview-tool-btn" aria-label={translate("preview.clearSampled")} title={translate("preview.clearSampled")} onClick={onClearSampledColors}>
+              <button type="button" className="preview-tool-btn" aria-label={translate("preview.clearSampled")} onClick={onClearSampledColors}>
                 <Trash2 size={13} />
               </button>
             )}
@@ -348,7 +345,6 @@ export function PreviewToolbar({
               type="button"
               className="preview-tool-btn preview-palette-collapse"
               aria-label={paletteExpanded ? translate("preview.paletteCollapse") : translate("preview.paletteExpand")}
-              title={paletteExpanded ? translate("preview.paletteCollapse") : translate("preview.paletteExpand")}
               onClick={() => setPaletteExpanded((expanded) => !expanded)}
             >
               {paletteExpanded ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
@@ -358,7 +354,7 @@ export function PreviewToolbar({
             <span className={`preview-color-swatches fixed-colors${paletteLoading ? " loading" : ""}`} aria-label={translate("preview.fixedPaletteLabel")}>
               {(paletteLoading ? Array.from({ length: 5 }, () => "") : colorSwatches.slice(0, 5)).map((color, i) => (
                 color ? (
-                  <button type="button" key={`${color}:${i}`} className="preview-color-swatch fixed" style={{ background: color }} title={translate("preview.copyColor").replace("{color}", color)} aria-label={translate("preview.copyColor").replace("{color}", color)} onClick={() => void navigator.clipboard.writeText(color)} />
+                  <button type="button" key={`${color}:${i}`} className="preview-color-swatch fixed" style={{ background: color }} aria-label={translate("preview.copyColor").replace("{color}", color)} onClick={() => void navigator.clipboard.writeText(color)} />
                 ) : <span key={i} className="preview-color-swatch fixed skeleton" aria-hidden="true" />
               ))}
             </span>
@@ -368,13 +364,12 @@ export function PreviewToolbar({
       {showLowerRow && (
         <div className="preview-toolbar-row secondary">
           <div className="preview-toolbar-scroll">
-          {onFit && <button type="button" className="preview-tool-label preview-fit-button" title={translate("preview.fit")} aria-label={translate("preview.fit")} onClick={onFit}>{translate("imageReview.fitShort")}</button>}
+          {onFit && <button type="button" className="preview-tool-label preview-fit-button" aria-label={translate("preview.fit")} onClick={onFit}>{translate("imageReview.fitShort")}</button>}
           <div className="preview-toolbar-renderer-controls" ref={rendererControlsRef} />
           {onAutoToggle && <button
             className={`preview-tool-label${autoActive ? " active" : ""}`}
             onClick={onAutoToggle}
             aria-label={translate("preview.auto")}
-            title={translate("preview.auto")}
           >
             {translate("preview.auto")}
           </button>}
@@ -384,12 +379,10 @@ export function PreviewToolbar({
             type="button"
             aria-label={rateAriaLabel}
             aria-pressed={rateActive}
-            title={rateAriaLabel}
             onClick={onRateToggle}
           >{rateLabel}</button>}
           {onGridToggle && <button
             className={`preview-tool-btn${gridActive ? " active" : ""}`}
-            title={translate("preview.grid")}
             aria-label={translate("preview.grid")}
             onClick={onGridToggle}
           >
@@ -399,7 +392,6 @@ export function PreviewToolbar({
             ref={multichannelButtonRef}
             data-preview-multichannel
             className={`preview-tool-label${multichannelActive ? " active" : ""}`}
-            title={translate("preview.multichannel")}
             aria-label={translate("preview.multichannel")}
             aria-pressed={multichannelActive}
             onClick={onMultichannelToggle}
@@ -411,18 +403,17 @@ export function PreviewToolbar({
             onClick={onLutToggle}
             aria-label={translate("preview.lut")}
             aria-pressed={lutActive}
-            title={translate("preview.lut")}
             disabled={!onLutToggle}
           >
             {translate("preview.lut")}
           </button>
-          <button className={`preview-tool-btn${paletteVisible ? " active" : ""}`} title={translate("preview.paletteToggleTitle")} aria-label={translate("preview.palette")} aria-pressed={paletteVisible} onClick={onPaletteToggle} disabled={!onPaletteToggle}>
+          <button className={`preview-tool-btn${paletteVisible ? " active" : ""}`} aria-label={translate("preview.paletteToggleTitle")} aria-pressed={paletteVisible} onClick={onPaletteToggle} disabled={!onPaletteToggle}>
             <Palette size={13} />
           </button>
-          <button className={`preview-tool-btn${notesActive ? " active" : ""}`} title={translate("preview.notes")} aria-label={translate("preview.notes")} aria-pressed={notesActive} onClick={onNotesToggle} disabled={!onNotesToggle}>
+          <button className={`preview-tool-btn${notesActive ? " active" : ""}`} aria-label={translate("preview.notes")} aria-pressed={notesActive} onClick={onNotesToggle} disabled={!onNotesToggle}>
             <NotebookPen size={13} />
           </button>
-          {capabilities.gifExport && onGifExport && <button className={`preview-tool-btn${gifActive ? " active" : ""}`} title={translate("preview.exportGif")} aria-label={translate("preview.exportGif")} aria-pressed={gifActive} onClick={onGifExport}>
+          {capabilities.gifExport && onGifExport && <button className={`preview-tool-btn${gifActive ? " active" : ""}`} aria-label={translate("preview.exportGif")} aria-pressed={gifActive} onClick={onGifExport}>
             <Film size={13} />
           </button>}
           <span className="preview-toolbar-spacer" />

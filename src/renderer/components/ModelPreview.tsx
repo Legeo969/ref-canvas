@@ -364,14 +364,14 @@ export function ModelPreview({
     <span>{translate("model.cameraCount").replace("{count}", String(presets.length))}</span>
     {presets.map((preset) => <button key={preset.id} type="button" className={cameraSelection === preset.id ? "active" : ""} aria-pressed={cameraSelection === preset.id} onClick={() => setPresetRef.current(preset.id)}>{preset.label}</button>)}
   </div><div className="model-preview-toolbar" role="group" aria-label={translate("model.displayMode")}>
-    <button type="button" className={displayMode === "wireframe" ? "active" : ""} aria-label={translate("model.wireframe")} aria-pressed={displayMode === "wireframe"} title={translate("model.showWireframe")} onClick={() => setDisplayMode("wireframe")}><ScanLine size={16} /></button>
-    <button type="button" className={displayMode === "solid" ? "active" : ""} aria-label={translate("model.solid")} aria-pressed={displayMode === "solid"} title={translate("model.solidMaterial")} onClick={() => setDisplayMode("solid")}><Box size={16} /></button>
-    <button type="button" className={displayMode === "uv" ? "active" : ""} aria-label={translate("model.uvCheck")} aria-pressed={displayMode === "uv"} title={translate("model.showUvChecker")} disabled={!uvReady} onClick={() => setDisplayMode("uv")}><Grid3X3 size={16} /></button>
+    <button type="button" className={displayMode === "wireframe" ? "active" : ""} aria-label={translate("model.wireframe")} aria-pressed={displayMode === "wireframe"} onClick={() => setDisplayMode("wireframe")}><ScanLine size={16} /></button>
+    <button type="button" className={displayMode === "solid" ? "active" : ""} aria-label={translate("model.solid")} aria-pressed={displayMode === "solid"} onClick={() => setDisplayMode("solid")}><Box size={16} /></button>
+    <button type="button" className={displayMode === "uv" ? "active" : ""} aria-label={translate("model.uvCheck")} aria-pressed={displayMode === "uv"} disabled={!uvReady} onClick={() => setDisplayMode("uv")}><Grid3X3 size={16} /></button>
     <span className="model-toolbar-separator" />
-    <button type="button" aria-label={translate("model.resetView")} title={translate("model.defaultView")} onClick={() => setPresetRef.current("default")}><Rotate3D size={16} /></button>
+    <button type="button" aria-label={translate("model.resetView")} onClick={() => setPresetRef.current("default")}><Rotate3D size={16} /></button>
   </div><div className="model-preview-actions" role="group" aria-label={translate("model.viewActions")}>
-    <button type="button" aria-label={translate("model.saveView")} title={translate("model.saveCurrentView")} onClick={() => void saveRenderedImage("export")}><Camera size={16} /></button>
-    {allowCustomThumbnail && <button type="button" aria-label={translate("model.setThumbnail")} title={translate("model.setAssetThumbnail")} onClick={() => void saveRenderedImage("thumbnail")}><ImageDown size={16} /></button>}
+    <button type="button" aria-label={translate("model.saveView")} onClick={() => void saveRenderedImage("export")}><Camera size={16} /></button>
+    {allowCustomThumbnail && <button type="button" aria-label={translate("model.setThumbnail")} onClick={() => void saveRenderedImage("thumbnail")}><ImageDown size={16} /></button>}
   </div></div>;
 
   return (

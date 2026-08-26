@@ -657,10 +657,10 @@ export function SequencePreviewDialog({
 
   const embeddedExportControls = embedded && controlsTarget ? createPortal(
     <div className="sequence-inline-export-controls">
-      <button ref={mp4ButtonRef} type="button" className={`preview-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label={translate("sequence.exportMp4")} aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")} title={translate("sequence.exportMp4Title")}>
+      <button ref={mp4ButtonRef} type="button" className={`preview-tool-label${optionsDrawer === "mp4" ? " active" : ""}`} aria-label={translate("sequence.exportMp4")} aria-expanded={optionsDrawer === "mp4"} disabled={exportState === "running" || availableMp4Presets.length === 0} onClick={() => toggleExportPopover("mp4")}>
         <Download size={13} /> {exportState === "running" ? translate("sequence.exporting") : "MP4"}
       </button>
-      <button ref={gifButtonRef} type="button" className={`preview-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label={translate("sequence.selectGifRange")} aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")} title={translate("sequence.selectGifRangeTitle")}>
+      <button ref={gifButtonRef} type="button" className={`preview-tool-label${resolvedGifRangeActive ? " active" : ""}`} aria-label={translate("sequence.selectGifRangeTitle")} aria-expanded={onGifExportToggle ? resolvedGifRangeActive : optionsDrawer === "gif"} aria-pressed={resolvedGifRangeActive} disabled={gifState === "running" || frames.length === 0} onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")}>
         <Film size={13} /> {gifState === "running" ? translate("sequence.exporting") : "GIF"}
       </button>
       {exportPopover}
@@ -764,7 +764,6 @@ export function SequencePreviewDialog({
               type="button"
               className="sequence-reveal-button"
               aria-label={translate("sequence.revealGif")}
-              title={translate("preview.reveal")}
               onClick={() => void window.refCanvas.filesystem.reveal(gifResult.outputPath)}
             >
               <FolderOpen size={14} />
@@ -880,7 +879,6 @@ export function SequencePreviewDialog({
               aria-expanded={optionsDrawer === "mp4"}
               disabled={exportState === "running" || availableMp4Presets.length === 0}
               onClick={() => toggleExportPopover("mp4")}
-              title={translate("sequence.exportMp4Title")}
             >
               <Download size={14} />
               {exportState === "running" ? translate("sequence.exporting") : translate("sequence.exportMp4")}
@@ -888,12 +886,11 @@ export function SequencePreviewDialog({
             <button
               ref={gifButtonRef}
               className={`secondary-button sequence-export-button sequence-gif-button${resolvedGifRangeActive ? " active" : ""}`}
-              aria-label={translate("sequence.selectGifRange")}
+              aria-label={translate("sequence.selectGifRangeTitle")}
               aria-expanded={optionsDrawer === "gif"}
               aria-pressed={resolvedGifRangeActive}
               disabled={gifState === "running" || frames.length === 0}
               onClick={() => onGifExportToggle ? onGifExportToggle() : toggleExportPopover("gif")}
-              title={translate("sequence.selectGifRangeTitle")}
             >
               <Film size={14} />
               {gifState === "running" ? translate("sequence.exporting") : translate("sequence.exportGif")}

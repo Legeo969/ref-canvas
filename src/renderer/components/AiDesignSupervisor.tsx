@@ -410,7 +410,6 @@ export function AiDesignSupervisorPanel({
               <button
                 className="mini-icon-button"
                 aria-label={translate("ai.pickInput")}
-                title={translate("ai.pickInput")}
                 onClick={() => void pickInput()}
               >
                 <FolderOpen size={14} />
@@ -650,7 +649,6 @@ export function AiDesignSupervisorPanel({
                     <button
                       className="mini-icon-button ai-job-cancel"
                       aria-label={translate("tasks.cancelTask").replace("{id}", job.id)}
-                      title={translate("tasks.cancel")}
                       onClick={() => void window.refCanvas.ai.cancel(job.id)}
                     >
                       <Trash2 size={13} />

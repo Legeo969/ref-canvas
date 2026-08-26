@@ -80,7 +80,6 @@ export function BrowserTabBar() {
           <button
             className="browser-tab-close"
             aria-label={translate("browser.closeTabNamed").replace("{title}", tab.title)}
-            title={translate("browser.tab.close")}
             onClick={(event) => {
               event.stopPropagation();
               void store.closeBrowserTab(tab.id);
@@ -93,7 +92,6 @@ export function BrowserTabBar() {
       <button
         className="browser-tab-new"
         aria-label={translate("browser.tab.new")}
-        title={translate("directory.newTab")}
         onClick={() => void openNewTab()}
       >
         <Plus size={13} />

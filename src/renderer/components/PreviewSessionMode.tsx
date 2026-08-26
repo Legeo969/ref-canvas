@@ -135,7 +135,6 @@ export function PreviewSessionModeButtons({
           type="button"
           className={focused ? "active" : ""}
           aria-label={focused ? translate("preview.exitFocus") : translate("preview.focus")}
-          title={focused ? translate("preview.exitFocus") : translate("preview.focus")}
           aria-pressed={focused}
           onClick={onToggleFocus}
         >
@@ -146,7 +145,6 @@ export function PreviewSessionModeButtons({
         type="button"
         className={fullscreen ? "active" : ""}
         aria-label={fullscreen ? translate("preview.exitFullscreen") : translate("preview.fullscreen")}
-        title={fullscreen ? translate("preview.exitFullscreen") : translate("preview.fullscreen")}
         aria-pressed={fullscreen}
         onClick={onToggleFullscreen}
       >

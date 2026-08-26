@@ -1663,7 +1663,7 @@ describe("DirectoryAssetPanel", () => {
       document.querySelector<HTMLButtonElement>(".directory-card")?.click();
     });
     const addButton = document.querySelector<HTMLButtonElement>(
-      '.batch-toolbar button[title="加入参考板"]',
+      '.batch-toolbar button[aria-label="加入参考板"]',
     );
     expect(addButton).toBeTruthy();
 
@@ -2341,7 +2341,7 @@ describe("DirectoryAssetPanel", () => {
     );
 
     await act(async () => {
-      document.querySelector<HTMLButtonElement>('button[title="只看收藏"]')?.click();
+      document.querySelector<HTMLButtonElement>('button[aria-label="只看收藏"]')?.click();
       await Promise.resolve();
     });
     expect(startSearch).toHaveBeenCalledTimes(2);
@@ -2404,7 +2404,7 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      document.querySelector<HTMLButtonElement>('button[title="只看收藏"]')?.click();
+      document.querySelector<HTMLButtonElement>('button[aria-label="只看收藏"]')?.click();
       await Promise.resolve();
     });
     const panel = document.querySelector<HTMLElement>(".asset-panel")!;

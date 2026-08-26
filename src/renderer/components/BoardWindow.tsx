@@ -181,7 +181,6 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
         <button
           className="icon-button"
           aria-label={translate("titlebar.exportPng")}
-          title={translate("titlebar.exportPng")}
           onClick={() => window.dispatchEvent(new Event("refcanvas:export-png"))}
         >
           <ImageDown size={15} />
@@ -189,7 +188,6 @@ export function BoardWindow({ boardId }: BoardWindowProps) {
         <button
           className="icon-button"
           aria-label={translate("board.closeWindow")}
-          title={translate("board.closeWindow")}
           onClick={() => void window.refCanvas.boards.closeWindow()}
         >
           <X size={15} />

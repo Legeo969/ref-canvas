@@ -27,7 +27,6 @@ export function PreviewColorBar({
   compact = false,
   live = false,
   headless = false,
-  label = translate("preview.extractColors"),
   onSelect,
   onPaletteChange,
 }: {
@@ -39,7 +38,6 @@ export function PreviewColorBar({
   compact?: boolean;
   live?: boolean;
   headless?: boolean;
-  label?: string;
   onSelect?: (color: PaletteColor) => void;
   onPaletteChange?: (palette: PaletteColor[]) => void;
 }) {
@@ -133,8 +131,7 @@ export function PreviewColorBar({
       {!live && <button
         type="button"
         className="mini-icon-button preview-color-refresh"
-        aria-label={translate("preview.sampleColor")}
-        title={label}
+        aria-label={translate("preview.extractColors")}
         disabled={loading}
         onClick={() => void refresh()}
       >
@@ -144,14 +141,12 @@ export function PreviewColorBar({
         type="button"
         className="mini-icon-button"
         aria-label={translate("preview.clearColors")}
-        title={translate("preview.clearColors")}
         onClick={() => { setPalette([]); onPaletteChange?.([]); }}
       ><Trash2 size={14} /></button>}
       {palette.length > 0 && !live && <button
         type="button"
         className="mini-icon-button"
         aria-label={expanded ? translate("preview.collapseColors") : translate("preview.expandColors")}
-        title={expanded ? translate("preview.collapseColors") : translate("preview.expandColors")}
         onClick={() => setExpanded((value) => !value)}
       >{expanded ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}</button>}
       {palette.length > 0 && expanded && (
@@ -161,7 +156,6 @@ export function PreviewColorBar({
               type="button"
               key={color.hex}
               className="preview-color-swatch"
-              title={`${color.hex} · RGB ${color.rgb.join(", ")} · ${onSelect ? translate("preview.clickToView") : translate("preview.clickToCopy")}`}
               aria-label={`${onSelect ? translate("preview.viewColor").replace("{color}", color.hex) : translate("preview.copyColor").replace("{color}", color.hex)}`}
               onClick={() => onSelect ? onSelect(color) : void copy(color)}
             >

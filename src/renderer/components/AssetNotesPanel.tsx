@@ -55,8 +55,8 @@ export function AssetNotesPanel({ assetId, position = null, onSeekTime, onSeekFr
     <section className="asset-notes-panel" aria-label={translate("notes.panel")}>
       <div className="asset-notes-compose">
         <input aria-label={translate("notes.draft")} value={draft} maxLength={2000} placeholder={translate("notes.addAssetNote")} onChange={(event) => setDraft(event.target.value)} />
-        <button type="button" aria-label={translate("notes.addAssetNote")} title={translate("notes.addAssetNote")} onClick={() => void save(false)}><Plus size={14} /></button>
-        {position && <button type="button" aria-label={position.kind === "frame" ? translate("notes.addAtFrame") : translate("notes.addAtTime")} title={translate("notes.addLinked")} onClick={() => void save(true)}>
+        <button type="button" aria-label={translate("notes.addAssetNote")} onClick={() => void save(false)}><Plus size={14} /></button>
+        {position && <button type="button" aria-label={position.kind === "frame" ? translate("notes.addAtFrame") : translate("notes.addAtTime")} onClick={() => void save(true)}>
           {position.kind === "frame" ? <Film size={14} /> : <Clock3 size={14} />}
         </button>}
       </div>

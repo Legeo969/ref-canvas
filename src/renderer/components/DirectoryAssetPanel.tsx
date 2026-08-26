@@ -2705,7 +2705,6 @@ export function DirectoryAssetPanel() {
           <button
             className="icon-button"
             aria-label={translate("directory.previewSettings")}
-            title={translate("directory.previewSettings")}
             onClick={() =>
               window.dispatchEvent(
                 new CustomEvent("refcanvas:open-settings", {
@@ -2901,7 +2900,6 @@ export function DirectoryAssetPanel() {
             className="icon-button"
             data-testid="directory-view-options-toggle"
             aria-label={translate("directory.viewOptions")}
-            title={translate("directory.viewOptions")}
             aria-haspopup="dialog"
             aria-expanded={viewOptionsOpen}
             onClick={() => setViewOptionsOpen((open) => !open)}
@@ -3023,7 +3021,6 @@ export function DirectoryAssetPanel() {
           className={`dir-favorites-filter${favoritesOnly ? " active" : ""}`}
           aria-pressed={favoritesOnly}
           aria-label={translate("directory.favoritesOnly")}
-          title={translate("directory.favoritesOnly")}
           onClick={toggleFavoritesOnly}
         >
           <Star size={15} />
@@ -3095,7 +3092,6 @@ export function DirectoryAssetPanel() {
             data-testid="directory-view-grid"
             aria-label={translate("directory.gridView")}
             aria-pressed={viewMode === "grid"}
-            title={translate("directory.gridView")}
             onClick={() => setViewMode("grid")}
           >
             <LayoutGrid size={15} />
@@ -3106,7 +3102,6 @@ export function DirectoryAssetPanel() {
             data-testid="directory-view-list"
             aria-label={translate("directory.listView")}
             aria-pressed={viewMode === "list"}
-            title={translate("directory.listView")}
             onClick={() => setViewMode("list")}
           >
             <List size={15} />
@@ -3117,7 +3112,6 @@ export function DirectoryAssetPanel() {
           className="dir-filter-settings"
           data-testid="directory-filter-settings"
           aria-label={translate("directory.previewSettings")}
-          title={translate("directory.previewSettings")}
           onClick={() =>
             window.dispatchEvent(
               new CustomEvent("refcanvas:open-settings", {

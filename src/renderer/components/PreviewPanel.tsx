@@ -444,10 +444,10 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         </button>
         <span className="preview-toolbar-spacer" />
         <div className="workbench-file-actions">
-          <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} title={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
             <SquareArrowOutUpRight size={15} />
           </button>
-          <button className="workbench-external-action" type="button" aria-label={translate("preview.revealInExplorer")} title={translate("preview.revealInExplorer")} onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.revealInExplorer")} onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
             <FolderOpen size={15} />
           </button>
         </div>
@@ -532,7 +532,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                       <section className={`preview-context-tray preview-context-tray-${tool}`} aria-label={translate("preview.trayLabel")}>
                         <header className="preview-context-tray-header">
                           <strong>{tool === "gif" ? translate("preview.exportGif") : tool === "frames" ? translate("preview.exportFrames") : tool === "notes" ? translate("preview.notes") : translate("preview.lut")}</strong>
-                          <button type="button" aria-label={translate("preview.closeTool")} title={translate("preview.closeTool")} onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
+                          <button type="button" aria-label={translate("preview.closeTool")} onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
                         </header>
                         {tool === "gif" && isVideo && (
                           <GifExportStudio
@@ -686,13 +686,13 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     multichannelButtonRef={setMultichannelAnchor}
                     rendererControlsRef={setControlsTarget}
                     trailingActions={(
-                      <>{reflectionCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label={translate("preview.reflectionBall")} title={translate("preview.reflectionBall")} aria-pressed={hdrViewMode === "reflection"} onClick={() => {
+                      <>{reflectionCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label={translate("preview.reflectionBall")} aria-pressed={hdrViewMode === "reflection"} onClick={() => {
                           const next = hdrViewMode === "reflection" ? "flat" : "reflection";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);
                           window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", { detail: { path: currentPath, mode: next } }));
                         }}><span className="preview-reflection-ball-glyph" aria-hidden="true" /></button>}
-                      {panoramaCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label={translate("preview.panoramaMode")} title={translate("preview.panoramaMode")} aria-pressed={hdrViewMode === "panorama"} onClick={() => {
+                      {panoramaCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "panorama" ? " active" : ""}`} aria-label={translate("preview.panoramaMode")} aria-pressed={hdrViewMode === "panorama"} onClick={() => {
                           const next = hdrViewMode === "panorama" ? "flat" : "panorama";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);

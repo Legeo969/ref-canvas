@@ -735,7 +735,7 @@ export function HdrPreview({
       <ControlsMount target={controlsTarget}>
         <div className="hdr-preview-controls">
         <div className="hdr-exposure-control">
-          <button ref={exposureButtonRef} type="button" className={`mini-icon-button${exposureOpen ? " active" : ""}`} aria-label={translate("hdr.adjustExposure")} aria-expanded={exposureOpen} title={translate("hdr.adjustExposure")} onClick={() => { const next = !exposureOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setExposureOpen(next); }}><SunMedium size={15} /></button>
+          <button ref={exposureButtonRef} type="button" className={`mini-icon-button${exposureOpen ? " active" : ""}`} aria-label={translate("hdr.adjustExposure")} aria-expanded={exposureOpen} onClick={() => { const next = !exposureOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setExposureOpen(next); }}><SunMedium size={15} /></button>
         </div>
         <div className="hdr-ocio-control">
           <button ref={ocioButtonRef} type="button" className={`preview-tool-label${ocioOpen ? " active" : ""}`} aria-label={translate("hdr.ocioColorManagement")} aria-expanded={ocioOpen} onClick={() => { const next = !ocioOpen; window.dispatchEvent(new Event("refcanvas:close-preview-popovers")); setOcioOpen(next); }}>OCIO</button>
@@ -756,8 +756,7 @@ export function HdrPreview({
           <button
             type="button"
             className="mini-icon-button"
-            title={exportedPath}
-            aria-label={translate("hdr.revealExported")}
+            aria-label={`${translate("hdr.revealExported")} · ${exportedPath}`}
             draggable
             onDragStart={(event) => {
               event.preventDefault();
@@ -782,7 +781,7 @@ export function HdrPreview({
             <SunMedium size={14} aria-hidden="true" />
             <input aria-label={translate("hdr.exposureValue")} type="range" min="-5" max="5" step="0.1" value={exposureEv} onInput={(event) => setExposureEv(Number(event.currentTarget.value))} onChange={(event) => setExposureEv(Number(event.currentTarget.value))} />
             <output>{`${exposureEv >= 0 ? "+" : ""}${exposureEv.toFixed(1)} EV`}</output>
-            <button type="button" aria-label={translate("hdr.resetExposure")} title={translate("hdr.resetExposure")} onClick={() => setExposureEv(0)}><RotateCcw size={13} /></button>
+            <button type="button" aria-label={translate("hdr.resetExposure")} onClick={() => setExposureEv(0)}><RotateCcw size={13} /></button>
           </div>
         </div>,
         document.body,

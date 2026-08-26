@@ -496,7 +496,6 @@ export function SettingsPanel({
                             <button
                               type="button"
                               aria-label={translate("settings.preview.removeExtension").replace("{extension}", extension)}
-                              title={translate("settings.preview.remove")}
                               onClick={() => removeFormatExtension(group.id, extension)}
                             >
                               <X size={12} />
@@ -531,7 +530,6 @@ export function SettingsPanel({
                           <button
                             type="button"
                             aria-label={translate("settings.preview.removeWhitelistExtension").replace("{extension}", extension)}
-                            title={translate("settings.preview.remove")}
                             onClick={() => removeWhitelistExtension(extension)}
                           >
                             <X size={12} />
@@ -885,7 +883,6 @@ export function SettingsPanel({
                           type="button"
                           className={preset.id === previewSettings.defaultMp4PresetId ? "active" : ""}
                           aria-label={translate("settings.preview.setDefaultPreset").replace("{label}", preset.label)}
-                          title={translate("settings.preview.setAsDefault")}
                           disabled={!preset.enabled}
                           onClick={() =>
                             void setAppPreference({
@@ -945,7 +942,6 @@ export function SettingsPanel({
                       type="button"
                       className="icon-button"
                       aria-label={translate("settings.preview.locateOcioConfig")}
-                      title={translate("settings.preview.locate")}
                       disabled={!appPreferences?.previewSettings.ocioConfigPath}
                       onClick={() => {
                         const value = appPreferences?.previewSettings.ocioConfigPath;
@@ -975,7 +971,6 @@ export function SettingsPanel({
                       type="button"
                       className="icon-button"
                       aria-label={translate("settings.preview.locateLut")}
-                      title={translate("settings.preview.locate")}
                       disabled={!appPreferences?.previewSettings.activeLut}
                       onClick={() => {
                         const value = appPreferences?.previewSettings.activeLut;

@@ -338,7 +338,7 @@ describe("PreviewPanel smoke", () => {
 
     expect(host.querySelectorAll(".preview-color-swatches")).toHaveLength(0);
     expect(host.querySelectorAll(".preview-color-swatches")).toHaveLength(0);
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]')?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色并显示色彩栏"]')?.click());
     expect(host.querySelector(".image-review-img")?.classList.contains("eyedrop")).toBe(false);
     expect(host.querySelectorAll(".preview-color-swatches")).toHaveLength(1);
     expect(host.querySelectorAll(".preview-color-swatch.fixed")).toHaveLength(2);
@@ -462,7 +462,7 @@ describe("PreviewPanel smoke", () => {
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]')?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色并显示色彩栏"]')?.click());
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色"]')?.click());
 
     expect(host.querySelector(".hdr-preview.is-sampling")).toBeTruthy();
@@ -593,7 +593,7 @@ describe("PreviewPanel smoke", () => {
       root.render(<PreviewPanel entry={sequenceEntry} />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
-    const paletteButton = host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]');
+    const paletteButton = host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色并显示色彩栏"]');
     const multichannelButton = host.querySelector<HTMLButtonElement>('[aria-label="提取多通道"]');
     expect(paletteButton?.disabled).toBe(false);
     expect(multichannelButton?.disabled).toBe(false);

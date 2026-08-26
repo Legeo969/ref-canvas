@@ -157,10 +157,10 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
               onToggleFullscreen={() => void previewSession.toggleFullscreen()}
             />
           )}
-          <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} title={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
             <SquareArrowOutUpRight size={15} />
           </button>
-          <button className="workbench-external-action" type="button" aria-label={translate("preview.revealInExplorer")} title={translate("preview.revealInExplorer")} onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
+          <button className="workbench-external-action" type="button" aria-label={translate("preview.revealInExplorer")} onClick={() => void window.refCanvas.filesystem.reveal(entry.path)}>
             <FolderOpen size={15} />
           </button>
         </div>
@@ -202,7 +202,7 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
                 {isVideo && <button className={tool === "frames" ? "active" : ""} onClick={() => selectTool("frames")}><Images size={14} />{translate("directory.sequenceFrames")}</button>}
                 {isVideo && <button className={tool === "fps" ? "active" : ""} onClick={() => selectTool("fps")}><Gauge size={14} />FPS</button>}
               </div>
-              <button className="workbench-drawer-close" aria-label={translate("preview.closeTool")} title={translate("preview.closeTool")} onClick={() => setTool("preview")}><X size={15} /></button>
+              <button className="workbench-drawer-close" aria-label={translate("preview.closeTool")} onClick={() => setTool("preview")}><X size={15} /></button>
             </div>
             {tool === "gif" && isVideo && (
               <GifExportStudio

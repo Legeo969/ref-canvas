@@ -1,0 +1,13 @@
+{
+  "components/ActionsPanel.tsx": 5,
+  "components/AiDesignSupervisor.tsx": 1,
+  "components/BoardCanvas.tsx": 1,
+  "components/directory/DirectoryBatchToolbar.tsx": 8,
+  "components/DirectoryAssetPanel.tsx": 7,
+  "components/HdrPreview.tsx": 3,
+  "components/MediaNotesOverlay.tsx": 1,
+  "components/PreviewColorTools.tsx": 1,
+  "components/settings/AboutSettings.tsx": 1,
+  "components/Sidebar.tsx": 1,
+  "components/VideoPreview.tsx": 2
+}

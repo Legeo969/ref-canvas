@@ -164,14 +164,12 @@ export function ImagePreviewViewport({
         {!controlsTarget && <button
           type="button"
           className={`preview-tool-label image-preview-fit-button${fit ? " active" : ""}`}
-          title={translate("imageReview.fit")}
           aria-label={translate("imageReview.fit")}
           onClick={fitView}
         >Fit</button>}
         <button
           type="button"
           className="mini-icon-button"
-          title={translate("imageReview.rotate")}
           aria-label={translate("imageReview.rotate")}
           onClick={() => setRotation((value) => (value + 90) % 360)}
         >
@@ -180,7 +178,6 @@ export function ImagePreviewViewport({
         <button
           type="button"
           className={`mini-icon-button${showChecker ? " active" : ""}`}
-          title={translate("imageReview.checker")}
           aria-label={translate("imageReview.checker")}
           aria-pressed={showChecker}
           onClick={() => setShowChecker((value) => !value)}

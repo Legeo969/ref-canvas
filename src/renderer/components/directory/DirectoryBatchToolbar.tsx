@@ -43,10 +43,10 @@ export function DirectoryBatchToolbar({
   return (
     <div className="batch-toolbar">
       <span>{translate("directory.itemsSelected").replace("{count}", String(selectedCount))}</span>
-      <button onClick={onAddToBoard} title={translate("directory.addToBoard")} aria-label={translate("directory.addToBoard")}><PanelsTopLeft size={14} /></button>
+      <button onClick={onAddToBoard} aria-label={translate("directory.addToBoard")}><PanelsTopLeft size={14} /></button>
       <button onClick={onCopyPaths} title={allMatchingSelected ? translate("directory.exportUtf8PathList") : translate("directory.copySelectedPaths")}><Copy size={14} /></button>
       {selectedVideoCount > 0 && (
-        <button onClick={onOpenVideoGif} title={translate("directory.gifFromVideos").replace("{count}", String(selectedVideoCount))} aria-label={translate("directory.openMultiVideoGifWorkbench")}><Film size={14} /></button>
+        <button onClick={onOpenVideoGif} aria-label={translate("directory.gifFromVideos").replace("{count}", String(selectedVideoCount))}><Film size={14} /></button>
       )}
       <button onClick={onCopyTo} title={translate("directory.copyTo")}><Copy size={14} /></button>
       <button onClick={onMoveTo} title={translate("directory.moveTo")}><FolderOpen size={14} /></button>

@@ -145,7 +145,6 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
             {!sharedColorControls && <button
               type="button"
               className={`mini-icon-button ${eyedropActive ? "active" : ""}`}
-              title={translate("imageReview.eyedrop")}
               aria-label={translate("imageReview.eyedrop")}
               aria-pressed={eyedropActive}
               onClick={() => setEyedropActive(!eyedropActive)}
@@ -159,14 +158,12 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
               assetPath={asset.path}
               source={() => imageRef.current}
               revision={asset.previewUrl}
-              label={translate("imageReview.palette")}
               onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
             />}
             {!sharedColorControls && sample && (
               <button
                 type="button"
                 className="image-review-inline-sample"
-                title={`${sample.hex} · ${translate("imageReview.copy")}`}
                 aria-label={`${translate("imageReview.copy")} ${sample.hex}`}
                 onClick={() => void copySample()}
               >
@@ -178,7 +175,6 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
               <button
                 type="button"
                 className={`mini-icon-button ${layersOpen ? "active" : ""}`}
-                title={translate("imageReview.layers")}
                 aria-label={translate("imageReview.layers")}
                 aria-pressed={layersOpen}
                 onClick={() => setLayersOpen((value) => !value)}
@@ -215,7 +211,6 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
         assetPath={asset.path}
         source={() => imageRef.current}
         revision={asset.previewUrl}
-        label={translate("imageReview.palette")}
         onPaletteChange={(palette) => onPaletteChange?.(palette.map((color) => color.hex))}
       />}
 

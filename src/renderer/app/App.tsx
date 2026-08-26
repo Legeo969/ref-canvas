@@ -701,7 +701,6 @@ function WorkspaceApp() {
                   }
                 }}
                 aria-label={translate("titlebar.openBoardWindow")}
-                title={translate("titlebar.openBoardWindow")}
               >
                 <SquareArrowOutUpRight size={16} />
               </button>
@@ -717,7 +716,6 @@ function WorkspaceApp() {
                   window.setTimeout(() => setNotice(null), 4200);
                 }}
                 aria-label={translate("titlebar.collectProject")}
-                title={translate("titlebar.collectProject")}
               >
                 <PackageOpen size={16} />
               </button>
@@ -770,9 +768,8 @@ function WorkspaceApp() {
                 setAiPanelOpen((value) => !value);
               }
             }}
-            aria-label={translate("titlebar.ai")}
+            aria-label={translate("directory.aiDesignSupervisor")}
             aria-pressed={aiPanelOpen}
-            title={translate("directory.aiDesignSupervisor")}
           >
             <Sparkles size={16} />
           </button>
@@ -885,7 +882,6 @@ function WorkspaceApp() {
             className={`statusbar-button ${taskCenterOpen ? "active" : ""}`}
             onClick={() => setTaskCenterOpen((value) => !value)}
             aria-label={translate("tasks.title")}
-            title={translate("tasks.title")}
           >
             <ListTodo size={15} />
             {translate("titlebar.tasks")}

@@ -266,7 +266,6 @@ export function BoardToolbar({
             className={`${action.primary ? "toolbar-primary " : ""}${action.active ? "active" : ""}`.trim() || undefined}
             onClick={action.command}
             aria-label={action.label}
-            title={action.title}
             data-shortcut={action.shortcut}
           >
             {iconNode(action.icon)}

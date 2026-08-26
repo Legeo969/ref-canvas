@@ -133,7 +133,7 @@ describe("PreviewToolbar variants", () => {
         onNotesToggle={onNotes}
       />,
     ));
-    for (const label of ["LUT", "色彩栏", "提取多通道", "资产备注"]) {
+    for (const label of ["LUT", "吸取颜色并显示色彩栏", "提取多通道", "资产备注"]) {
       await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.click());
     }
     expect(onLut).toHaveBeenCalledOnce();
@@ -165,7 +165,7 @@ describe("PreviewToolbar variants", () => {
     const scroll = row.querySelector(".preview-toolbar-scroll")!;
     const tail = row.querySelector(".preview-toolbar-tail")!;
     const colorTools = host.querySelector(".preview-color-context-toolbar")!;
-    expect(scroll.querySelector('[aria-label="色彩栏"]')).toBeTruthy();
+    expect(scroll.querySelector('[aria-label="吸取颜色并显示色彩栏"]')).toBeTruthy();
     expect(tail.querySelectorAll(".preview-color-swatch")).toHaveLength(0);
     expect(colorTools.querySelectorAll(".preview-color-swatch.fixed")).toHaveLength(2);
     expect(colorTools.querySelectorAll(".preview-color-swatch.sampled")).toHaveLength(1);
@@ -198,7 +198,7 @@ describe("PreviewToolbar variants", () => {
     roots.push(root);
     await act(async () => root.render(<Harness />));
     expect(host.querySelector(".preview-color-context-toolbar")).toBeTruthy();
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="色彩栏"]')?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="吸取颜色并显示色彩栏"]')?.click());
     expect(host.querySelector(".preview-color-context-toolbar")).toBeNull();
   });
 
