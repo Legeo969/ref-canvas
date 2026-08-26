@@ -51,6 +51,17 @@
     .dot.checking { background: var(--muted); animation: pulse 1s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     .status-text { font-size: 12px; color: var(--muted); }
+    .err {
+      margin-top: 4px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(201, 92, 75, 0.12);
+      border: 1px solid rgba(201, 92, 75, 0.35);
+      color: #e7a89d;
+      font-size: 11px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
     .info { font-size: 11px; color: var(--muted); line-height: 1.5; }
     .info code { color: var(--accent); font-family: monospace; }
     .retry {
@@ -84,6 +95,7 @@
   <div class="info" id="info">
     Right-click any image on a webpage and select <strong>Add to RefCanvas</strong> to send it to your active reference board.
   </div>
+  <div class="err" id="errBox" hidden></div>
   <button class="retry" id="retry">Re-check connection</button>
   <script src="popup.js"></script>
 </body>

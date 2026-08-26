@@ -56,6 +56,17 @@ extensions/browser-capture/
 
 The extension connects to `http://127.0.0.1:17530` by default. If you need a different port, update `REFCANVAS_BASE` in `background.js` and the `port` argument in `src/main/index.ts`.
 
+## Troubleshooting
+
+Captures show an `ERR` badge or never land on the board:
+
+1. **Open the popup** — it shows the exact text of the last failure (stage + message + time), no DevTools needed.
+2. **RefCanvas must be running** (it can sit in the system tray with its window closed). The popup should say *Connected*.
+3. **Chrome may block access to local apps** — newer Chrome versions gate requests to loopback addresses behind a *Local Network Access* permission and require the server to answer CORS preflights with `Access-Control-Allow-Private-Network: true`. This is why a same-machine `curl http://127.0.0.1:17530/status` can succeed while every capture fails: curl skips the browser's preflight, and it is exactly that preflight which gets rejected. If Chrome shows a local-network prompt for RefCanvas, choose **Allow**.
+4. **Port occupied** — if another program holds port 17530, RefCanvas shows a tray notification and capture stays unavailable until it is freed (a reboot clears crashed leftovers).
+5. Some images are hotlink-protected or session-bound and genuinely cannot be extracted; use **Capture page to RefCanvas** as a fallback.
+6. Captures made while the board window was closed are queued by the app (a tray balloon says so) and imported automatically next time RefCanvas opens.
+
 ## Permissions explained
 
 | Permission | Why |
@@ -66,7 +77,7 @@ The extension connects to `http://127.0.0.1:17530` by default. If you need a dif
 | `storage` | Save extension settings (future use) |
 | `host_permissions: localhost:17530` | Talk to the RefCanvas local server only |
 
-The extension does **not** request `<all_urls>` — it only fetches images via the page's own context (content script), not from the service worker directly.
+The service worker tries a direct CORS fetch first (fast path for same-origin / CORS-enabled images) and falls back to injecting a content script that fetches the image from the page's own context, so no `<all_urls>` host permission is needed.
 
 ## Privacy
 
