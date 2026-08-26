@@ -122,7 +122,8 @@ describe("BoardReferenceService（阶段 6：Board V4 引用解析）", () => {
   it("文件删除：missing，Board document 不受影响", async () => {
     const { database, service, boardId, file } = await scaffold();
     try {
-      await rm(file, { force: true });
+      // Windows 并行 worker 下句柄释放有延迟（EBUSY），与多候选用例同款重试。
+      await rmWithRetry(file);
       const references = new BoardReferenceService(database);
       const [result] = await references.resolveReferences(boardId);
       expect(result.state).toBe("missing");
