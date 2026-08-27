@@ -35,6 +35,7 @@ import type {
   AiProviderSummary,
   AiSettings,
 } from "../../shared/contracts";
+import { SelectMenu } from "./SelectMenu";
 import { translate } from "../app/i18n";
 import type { MessageKey } from "../app/i18n";
 import { useAppStore } from "../app/store";
@@ -416,7 +417,16 @@ export function AiDesignSupervisorPanel({
               </button>
             </div>
             <div
-              className={`ai-drop-zone ${dragActive ? "active" : ""}`}
+              className={`ai-drop-zone ${dragActive ? "active" : ""}${sourcePath ? " has-source" : ""}`}
+              role={sourcePath ? undefined : "button"}
+              tabIndex={sourcePath ? undefined : 0}
+              onClick={() => { if (!sourcePath) void pickInput(); }}
+              onKeyDown={(event) => {
+                if (!sourcePath && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  void pickInput();
+                }
+              }}
               onDragEnter={(event) => {
                 event.preventDefault();
                 dragDepthRef.current += 1;
@@ -516,16 +526,13 @@ export function AiDesignSupervisorPanel({
             </label>
             <label className="ai-field-label ai-inline">
               {translate("ai.outputCount")}
-              <select
+              <SelectMenu<number>
+                className="ai-count-menu"
                 value={outputCount}
-                onChange={(event) => setOutputCount(Number(event.target.value))}
-              >
-                {[1, 2, 3, 4].map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
+                options={[1, 2, 3, 4].map((count) => ({ value: count, label: String(count) }))}
+                ariaLabel={translate("ai.outputCount")}
+                onValueChange={setOutputCount}
+              />
             </label>
           </section>
 
@@ -555,18 +562,16 @@ export function AiDesignSupervisorPanel({
               <label className="ai-field-label" htmlFor="ai-provider">
                 {translate("ai.provider")}
               </label>
-              <select
+              <SelectMenu<string>
                 id="ai-provider"
                 value={provider}
-                onChange={(event) => setProvider(event.target.value)}
-              >
-                {availableProviders.map((item) => (
-                  <option key={item.kind} value={item.kind}>
-                    {item.label}
-                    {item.available ? "" : translate("ai.unavailable")}
-                  </option>
-                ))}
-              </select>
+                options={availableProviders.map((item) => ({
+                  value: item.kind,
+                  label: `${item.label}${item.available ? "" : translate("ai.unavailable")}`,
+                }))}
+                ariaLabel={translate("ai.provider")}
+                onValueChange={setProvider}
+              />
             </section>
           )}
 
@@ -588,7 +593,7 @@ export function AiDesignSupervisorPanel({
           </footer>
         </div>
 
-        <div className="ai-history">
+        <div className={`ai-history${jobs.length === 0 ? " empty" : ""}`}>
           <div className="ai-section-label">
             <span>{translate("ai.history")}</span>
             <button

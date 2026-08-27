@@ -9,6 +9,7 @@ import type {
   DirectorySearchSnapshot,
 } from "../shared/contracts";
 import { isProtectedSystemDirectory } from "../shared/system-directory-filter";
+import { MAX_RETAINED_DIRECTORY_SEARCHES } from "../shared/directory-search-retention";
 
 interface WorkerRequest {
   id: string;
@@ -67,6 +68,29 @@ if (!parentPort) throw new Error("DIRECTORY_WORKER_PARENT_MISSING");
 let database: Database.Database | null = null;
 const scans = new Map<string, ScanState>();
 const cancelledSearches = new Set<string>();
+
+function pruneCompletedSearches(db: Database.Database): void {
+  const stale = db.prepare(`
+    SELECT search_id
+    FROM directory_searches
+    WHERE state != 'running'
+    ORDER BY completed_at DESC, created_at DESC, rowid DESC
+    LIMIT -1 OFFSET ?
+  `).all(MAX_RETAINED_DIRECTORY_SEARCHES) as Array<{ search_id: string }>;
+  if (!stale.length) return;
+  const deleteEntries = db.prepare(
+    "DELETE FROM directory_search_entries WHERE search_id = ?",
+  );
+  const deleteSearch = db.prepare(
+    "DELETE FROM directory_searches WHERE search_id = ?",
+  );
+  db.transaction(() => {
+    for (const { search_id: searchId } of stale) {
+      deleteEntries.run(searchId);
+      deleteSearch.run(searchId);
+    }
+  })();
+}
 
 function extensionFor(name: string, isDirectory: boolean): string {
   if (isDirectory) return "";
@@ -161,6 +185,7 @@ function initialize(filename: string): Database.Database {
       new Date().toISOString(),
       JSON.stringify([{ path: "", reason: "SEARCH_INTERRUPTED_RESTART" }]),
     );
+  pruneCompletedSearches(database);
   try {
     const staleScans = database
       .prepare("SELECT directory_path FROM directory_scans WHERE state = 'scanning'")
@@ -431,6 +456,7 @@ async function runSearch(
     `).run(revision, pending.length, completedAt, searchId);
   }
   emitSearchProgress(searchId);
+  pruneCompletedSearches(db);
 }
 
 function entryFromName(
@@ -502,6 +528,13 @@ function readPage(
       WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}${favorite.clause}
     `).get(directoryPath, ...extensionArgs, ...favorite.args) as { count: number }
   ).count;
+  const totalDirectories = (
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM directory_entries
+      WHERE directory_path = ? AND is_directory = 1 AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}${favorite.clause}
+    `).get(directoryPath, ...extensionArgs, ...favorite.args) as { count: number }
+  ).count;
   const entries: DirectoryEntry[] = rows.map((row) => ({
     path: row.entry_path,
     name: row.name,
@@ -516,6 +549,7 @@ function readPage(
     total,
     // 只看收藏时 total 即过滤后的素材数（文件夹已排除）。
     totalFiles: favoritesOnly ? total : scan.file_total,
+    totalDirectories,
     offset,
     revision: scan.revision,
     scanState: scan.state,
@@ -855,6 +889,7 @@ parentPort.on("message", (event) => {
           searchId,
         );
         emitSearchProgress(searchId);
+        if (database) pruneCompletedSearches(database);
       });
     } else if (request.type === "search-page") {
       const offset = Math.max(0, request.offset ?? 0);
@@ -909,16 +944,38 @@ parentPort.on("message", (event) => {
       if (!scan || scan.state !== "complete" || scan.revision !== request.revision) {
         throw new Error("DIRECTORY_REVISION_CHANGED");
       }
-      const target = database!.prepare(
-        "SELECT name, is_directory FROM directory_entries WHERE directory_path = ? AND entry_path = ?",
-      ).get(directoryPath, entryPath) as { name: string; is_directory: number } | undefined;
+      const visibleSequence = request.collapseSequences !== false
+        ? `(sequence_json IS NULL OR
+            CAST(json_extract(sequence_json, '$.frame') AS INTEGER) =
+            CAST(json_extract(sequence_json, '$.startFrame') AS INTEGER))`
+        : "1 = 1";
+      const extensionFilter = request.extensions?.length
+        ? ` AND (is_directory = 1 OR extension IN (${request.extensions.map(() => "?").join(",")}))`
+        : "";
+      const extensionArgs = request.extensions?.length ? request.extensions : [];
       const favorite = favoritePathClause(request.favoritesOnly, request.favoritePaths);
+      const systemDirectoryFilter = ` AND NOT (
+        is_directory = 1 AND lower(name) IN ('$recycle.bin', 'system volume information')
+      )`;
+      const pathComparison = process.platform === "win32"
+        ? "entry_path = ? COLLATE NOCASE"
+        : "entry_path = ?";
+      const target = database!.prepare(`
+        SELECT entry_path, name, is_directory FROM directory_entries
+        WHERE directory_path = ? AND ${pathComparison} AND ${visibleSequence}
+          ${systemDirectoryFilter}${extensionFilter}${favorite.clause}
+      `).get(
+        directoryPath,
+        entryPath,
+        ...extensionArgs,
+        ...favorite.args,
+      ) as { entry_path: string; name: string; is_directory: number } | undefined;
       const location = target
         ? (database!.prepare(`
             SELECT COUNT(*) AS count FROM directory_entries
-            WHERE directory_path = ?${request.favoritesOnly
+            WHERE directory_path = ? AND ${visibleSequence}${systemDirectoryFilter}${extensionFilter}${favorite.clause}${request.favoritesOnly
               ? " AND is_directory = 0"
-              : ""}${favorite.clause} AND (
+              : ""} AND (
               ${request.favoritesOnly
                 ? `name COLLATE NOCASE < ? COLLATE NOCASE OR
                   (name COLLATE NOCASE = ? COLLATE NOCASE AND entry_path < ?)`
@@ -928,16 +985,17 @@ parentPort.on("message", (event) => {
             )
           `).get(
             directoryPath,
+            ...extensionArgs,
             ...favorite.args,
             ...(request.favoritesOnly
-              ? [target.name, target.name, entryPath]
+              ? [target.name, target.name, target.entry_path]
               : [
                   target.is_directory,
                   target.is_directory,
                   target.name,
                   target.is_directory,
                   target.name,
-                  entryPath,
+                  target.entry_path,
                 ]),
           ) as { count: number }).count
         : null;

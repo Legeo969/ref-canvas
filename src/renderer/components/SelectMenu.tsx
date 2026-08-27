@@ -21,6 +21,8 @@ interface SelectMenuProps<T extends string | number> {
   options: readonly SelectMenuOption<T>[];
   onValueChange(value: T): void;
   ariaLabel?: string;
+  id?: string;
+  autoFocus?: boolean;
   className?: string;
   disabled?: boolean;
 }
@@ -38,6 +40,8 @@ export function SelectMenu<T extends string | number>({
   options,
   onValueChange,
   ariaLabel,
+  id,
+  autoFocus = false,
   className = "",
   disabled = false,
 }: SelectMenuProps<T>) {
@@ -168,6 +172,8 @@ export function SelectMenu<T extends string | number>({
       <button
         ref={triggerRef}
         type="button"
+        id={id}
+        data-autofocus={autoFocus ? "" : undefined}
         className={`select-menu-trigger${open ? " open" : ""}${
           className ? ` ${className}` : ""
         }`}

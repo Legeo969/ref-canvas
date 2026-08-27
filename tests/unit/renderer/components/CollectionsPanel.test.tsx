@@ -119,10 +119,27 @@ describe("CollectionsPanel", () => {
       resolve(process.cwd(), "src/renderer/styles/collections.css"),
       "utf8",
     );
+    expect(css).toMatch(
+      /\.collection-node\s*\{[^}]*position:\s*relative;/s,
+    );
     expect(css).toMatch(/\.collection-menu\s*\{[^}]*z-index:\s*120;/s);
     expect(css).toMatch(
       /\.collection-menu-head\s*\{[^}]*position:\s*relative;/s,
     );
+  });
+
+  it("keeps collection chevrons isolated from directory tree sizing", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/renderer/styles/collections.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.collection-row\s*\{[^}]*grid-template-columns:\s*34px\s+minmax\(0,\s*1fr\)\s+auto\s+auto;/s,
+    );
+    expect(css).toMatch(
+      /\.collection-row\s+\.collection-tree-chevron\s*\{[^}]*width:\s*28px;[^}]*min-width:\s*28px;[^}]*height:\s*34px;[^}]*min-height:\s*34px;/s,
+    );
+    expect(css).not.toMatch(/\.collection-row[^}]*dir-tree-chevron/s);
   });
 
   it("shows an empty hint and creates a collection via the plus menu", async () => {
@@ -273,6 +290,77 @@ describe("CollectionsPanel", () => {
     expect(detailsHost.textContent).toContain("4 项");
   });
 
+  it("only marks collections active in directory workspace", async () => {
+    const collection = sampleCollection("c-1", "灵感");
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      workspaceMode: "board",
+      collections: [collection],
+      collectionTree: { "": [collection] },
+      collectionItems: {},
+      activeCollectionId: collection.id,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    expect(host.querySelector(".collection-row.active")).toBeNull();
+
+    await act(async () => {
+      useAppStore.setState({ workspaceMode: "directory" });
+    });
+    expect(host.querySelector(".collection-row.active")).toBeTruthy();
+  });
+
+  it("opens a collection on the first click even when the create menu is open", async () => {
+    const collection = sampleCollection("c-1", "灵感");
+    const openCollection = vi.fn();
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      workspaceMode: "directory",
+      collections: [collection],
+      collectionTree: { "": [collection] },
+      collectionItems: {},
+      activeCollectionId: null,
+      openCollection,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>('[aria-label="新建集合"]')?.click();
+    });
+    expect(host.querySelector(".collection-menu-head")).toBeTruthy();
+
+    const row = host.querySelector<HTMLButtonElement>(".collection-row-main");
+    await act(async () => {
+      row?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      row?.click();
+    });
+    expect(openCollection).toHaveBeenCalledWith(collection.id);
+  });
+
   it("exports a collection and shows the summary", async () => {
     const collections = [sampleCollection("c-1", "灵感")];
     const { refCanvas, collections: api } = baseRefCanvas();
@@ -311,7 +399,7 @@ describe("CollectionsPanel", () => {
     });
     // 冲突策略表单出现；默认 rename，直接提交。
     await act(async () => {
-      expect(document.querySelector(".form-dialog select")).toBeTruthy();
+      expect(document.querySelector('.form-dialog [role="combobox"]')).toBeTruthy();
       host
         .querySelector<HTMLButtonElement>(".form-dialog button[type='submit']")
         ?.click();

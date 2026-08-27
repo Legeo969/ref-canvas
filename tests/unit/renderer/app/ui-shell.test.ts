@@ -29,6 +29,32 @@ describe("UI shell regressions", () => {
     expect(css).not.toMatch(/\.presentation-mode \.asset-panel/);
   });
 
+  it("reserves a dedicated grid row for startup banners", async () => {
+    const css = await readStyles();
+    const app = await readFile(path.resolve("src/renderer/app/App.tsx"), "utf8");
+    expect(app).toContain('className="startup-banners"');
+    expect(css).toMatch(
+      /\.app-shell\.has-startup-banner\s*{[^}]*grid-template-rows: auto 48px minmax\(0, 1fr\) 28px;/s,
+    );
+    expect(css).toMatch(
+      /\.app-shell\.presentation-mode\.has-startup-banner\s*{[^}]*grid-template-rows: minmax\(0, 1fr\);/s,
+    );
+  });
+
+  it("keeps global keyboard focus indicators inside clipped panels", async () => {
+    const css = await readFile(path.resolve("src/renderer/styles/shell.css"), "utf8");
+    expect(css).toMatch(
+      /button:focus-visible,[\s\S]*?outline-offset:\s*-2px;/,
+    );
+  });
+
+  it("does not show a user-facing banner for a previous unclean exit", async () => {
+    const app = await readFile(path.resolve("src/renderer/app/App.tsx"), "utf8");
+    expect(app).not.toContain("showPreviousCrashBanner");
+    expect(app).not.toContain("previous-crash-banner");
+    expect(app).toContain("const hasStartupBanner = startupHealth?.mode === \"degraded\"");
+  });
+
   it("uses mutually exclusive disk, collection, and board workspace grids", async () => {
     const css = await readStyles();
     expect(css).toMatch(
@@ -52,6 +78,13 @@ describe("UI shell regressions", () => {
       /\.workspace-mode-switch\s*{[^}]*grid-template-columns: repeat\(2,/s,
     );
     expect(css).not.toMatch(/\.dir-current-row\s*{/);
+  });
+
+  it("registers a picker-selected folder as a mount before browsing it", async () => {
+    const app = await readFile(path.resolve("src/renderer/app/App.tsx"), "utf8");
+    expect(app).toMatch(
+      /const openPickedDirectory = async[\s\S]*?mounts\.add\(directory\)[\s\S]*?openDirectory\(mount\.path\)/,
+    );
   });
 
   it("keeps narrow asset panel controls inside the panel", async () => {

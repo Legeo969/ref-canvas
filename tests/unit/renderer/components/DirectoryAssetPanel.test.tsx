@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   PREVIEW_SETTINGS_DEFAULTS,
+  type DirectoryProgressSnapshot,
   type RefCanvasApi,
 } from "../../../../src/shared/contracts";
 import { useAppStore } from "../../../../src/renderer/app/store";
@@ -527,6 +528,354 @@ describe("DirectoryAssetPanel", () => {
     });
     expect(cards()[0]?.classList.contains("selected")).toBe(false);
     expect(cards()[1]?.classList.contains("selected")).toBe(true);
+  });
+
+  it("loads, selects, and scrolls to a reveal target beyond the first page", async () => {
+    const entries = Array.from({ length: 700 }, (_, index) => ({
+      path: `D:\\refs\\asset-${String(index).padStart(3, "0")}.png`,
+      name: `asset-${String(index).padStart(3, "0")}.png`,
+      isDirectory: false,
+      extension: "png",
+      size: 4,
+    }));
+    const target = entries[600];
+    const listDirectory = vi.fn(async (
+      _path: string,
+      options?: { offset?: number; pageSize?: number },
+    ) => {
+      const offset = options?.offset ?? 0;
+      const pageSize = options?.pageSize ?? 512;
+      return {
+        entries: entries.slice(offset, offset + pageSize),
+        total: entries.length,
+        totalFiles: entries.length,
+        totalDirectories: 0,
+        nextCursor: offset + pageSize < entries.length ? String(offset + pageSize) : null,
+        offset,
+        revision: "revision-1",
+        scanState: "complete" as const,
+      };
+    });
+    const locateEntry = vi.fn(async () => 600);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          locateEntry,
+          onDirectoryProgress: () => () => undefined,
+          onSearchProgress: () => () => undefined,
+        },
+        system: {
+          getPreferences: vi.fn(async () => ({
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
+          })),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: entries.slice(0, 512),
+      directoryTotal: entries.length,
+      directoryRevealRequest: { id: 901, path: target.path },
+      selectedDirectoryEntry: null,
+      activeTabId: "reveal-tab",
+      browserTabs: [{
+        id: "reveal-tab",
+        kind: "directory",
+        targetId: "D:\\refs",
+        title: "refs",
+        backStack: [],
+        forwardStack: [],
+        query: "",
+        typeFilters: [],
+        flattenDepth: 0,
+        gridSize: 200,
+        selectedKeys: [],
+        scrollOffset: 24,
+      }],
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(useAppStore.getState().selectedDirectoryEntry?.path).toBe(target.path);
+    });
+    const viewport = host.querySelector<HTMLElement>(".asset-viewport");
+    expect(locateEntry).toHaveBeenCalledWith(
+      "D:\\refs",
+      target.path,
+      "revision-1",
+      { collapseSequences: true, flattenDepth: 0, showHidden: false },
+    );
+    expect(listDirectory).toHaveBeenCalledWith(
+      "D:\\refs",
+      expect.objectContaining({ offset: 512, pageSize: 512 }),
+    );
+    expect(viewport?.scrollTop).toBeGreaterThan(0);
+    expect(useAppStore.getState().directoryRevealRequest).toBeNull();
+    expect(
+      Array.from(host.querySelectorAll(".directory-card.selected"))
+        .some((node) => node.textContent?.includes(target.name)),
+    ).toBe(true);
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 90));
+    });
+    expect(viewport?.scrollTop).toBeGreaterThan(1_000);
+    expect(
+      Array.from(host.querySelectorAll(".directory-card.selected"))
+        .some((node) => node.textContent?.includes(target.name)),
+    ).toBe(true);
+    await act(async () => {
+      useAppStore.setState({ browserTabs: [], activeTabId: "" });
+    });
+  });
+
+  it("keeps an in-flight reveal alive when index progress refreshes panel state", async () => {
+    const entries = Array.from({ length: 700 }, (_, index) => ({
+      path: `D:\\refs\\asset-${String(index).padStart(3, "0")}.png`,
+      name: `asset-${String(index).padStart(3, "0")}.png`,
+      isDirectory: false,
+      extension: "png",
+      size: 4,
+    }));
+    const target = entries[600];
+    const listDirectory = vi.fn(async (
+      _path: string,
+      options?: { offset?: number; pageSize?: number },
+    ) => {
+      const offset = options?.offset ?? 0;
+      const pageSize = options?.pageSize ?? 512;
+      return {
+        entries: entries.slice(offset, offset + pageSize),
+        total: entries.length,
+        totalFiles: entries.length,
+        totalDirectories: 0,
+        nextCursor: offset + pageSize < entries.length ? String(offset + pageSize) : null,
+        offset,
+        revision: "revision-1",
+        scanState: "complete" as const,
+      };
+    });
+    let resolveLocate: (value: number | null) => void = () => undefined;
+    const locateEntry = vi.fn(() => new Promise<number | null>((resolve) => {
+      resolveLocate = resolve;
+    }));
+    let emitDirectoryProgress: (snapshot: DirectoryProgressSnapshot) => void = () => undefined;
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          locateEntry,
+          onDirectoryProgress: (callback: (snapshot: DirectoryProgressSnapshot) => void) => {
+            emitDirectoryProgress = callback;
+            return () => undefined;
+          },
+          onSearchProgress: () => () => undefined,
+        },
+        system: {
+          getPreferences: vi.fn(async () => ({
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
+          })),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: entries.slice(0, 512),
+      directoryTotal: entries.length,
+      directoryRevealRequest: { id: 902, path: target.path },
+      selectedDirectoryEntry: null,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(locateEntry).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      emitDirectoryProgress({
+        path: "D:\\refs",
+        revision: "revision-2",
+        state: "metadata",
+      });
+      await Promise.resolve();
+      resolveLocate(600);
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(useAppStore.getState().selectedDirectoryEntry?.path).toBe(target.path);
+    });
+    expect(useAppStore.getState().directoryRevealRequest).toBeNull();
+    expect(host.querySelector<HTMLElement>(".asset-viewport")?.scrollTop).toBeGreaterThan(0);
+  });
+
+  it("waits for an already loading target page before selecting and scrolling", async () => {
+    const entries = Array.from({ length: 100 }, (_, index) => ({
+      path: `D:\\refs\\asset-${String(index).padStart(3, "0")}.png`,
+      name: `asset-${String(index).padStart(3, "0")}.png`,
+      isDirectory: false,
+      extension: "png",
+      size: 4,
+    }));
+    const target = entries[49];
+    const page = {
+      entries,
+      total: entries.length,
+      totalFiles: entries.length,
+      totalDirectories: 0,
+      nextCursor: null,
+      offset: 0,
+      revision: "revision-1",
+      scanState: "complete" as const,
+    };
+    const pageResolvers: Array<() => void> = [];
+    const listDirectory = vi.fn(() => new Promise<typeof page>((resolve) => {
+      pageResolvers.push(() => resolve(page));
+    }));
+    const locateEntry = vi.fn(async () => 49);
+    let emitDirectoryProgress: (snapshot: DirectoryProgressSnapshot) => void = () => undefined;
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          locateEntry,
+          onDirectoryProgress: (callback: (snapshot: DirectoryProgressSnapshot) => void) => {
+            emitDirectoryProgress = callback;
+            return () => undefined;
+          },
+          onSearchProgress: () => () => undefined,
+        },
+        system: {
+          getPreferences: vi.fn(async () => ({
+            previewSettings: PREVIEW_SETTINGS_DEFAULTS,
+          })),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: entries.length,
+      directoryRevealRequest: { id: 903, path: target.path },
+      selectedDirectoryEntry: null,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(listDirectory).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      emitDirectoryProgress({
+        path: "D:\\refs",
+        revision: "revision-1",
+        state: "reset",
+      });
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(listDirectory.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(locateEntry).toHaveBeenCalledWith(
+        "D:\\refs",
+        target.path,
+        "revision-1",
+        { collapseSequences: true, flattenDepth: 0, showHidden: false },
+      );
+    });
+
+    await act(async () => {
+      for (const resolvePage of pageResolvers) resolvePage();
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(useAppStore.getState().selectedDirectoryEntry?.path).toBe(target.path);
+    });
+    expect(host.querySelector<HTMLElement>(".asset-viewport")?.scrollTop).toBeGreaterThan(0);
+    expect(useAppStore.getState().directoryRevealRequest).toBeNull();
+  });
+
+  it("reveals a target while the containing directory uses a flattened view", async () => {
+    const entries = Array.from({ length: 8 }, (_, index) => ({
+      path: index === 5
+        ? "D:\\refs\\target.png"
+        : `D:\\refs\\nested\\asset-${index}.png`,
+      name: index === 5 ? "target.png" : `asset-${index}.png`,
+      isDirectory: false,
+      extension: "png",
+      size: 4,
+      depth: index === 5 ? 0 : 1,
+    }));
+    const target = entries[5];
+    const listDirectory = vi.fn(async () => ({
+      entries,
+      total: entries.length,
+      totalFiles: entries.length,
+      nextCursor: null,
+    }));
+    const locateEntry = vi.fn(async () => 5);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          locateEntry,
+          onDirectoryProgress: () => () => undefined,
+          onSearchProgress: () => () => undefined,
+        },
+        system: {
+          getPreferences: vi.fn(async () => ({
+            previewSettings: {
+              ...PREVIEW_SETTINGS_DEFAULTS,
+              flattenPerFolder: { "D:\\refs": 1 },
+            },
+          })),
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: entries.length,
+      directoryRevealRequest: { id: 904, path: target.path },
+      selectedDirectoryEntry: null,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+      await Promise.resolve();
+    });
+
+    await vi.waitFor(() => {
+      expect(locateEntry).toHaveBeenCalledWith(
+        "D:\\refs",
+        target.path,
+        "flattened",
+        { collapseSequences: true, flattenDepth: 1, showHidden: false },
+      );
+      expect(useAppStore.getState().selectedDirectoryEntry?.path).toBe(target.path);
+    });
+    expect(useAppStore.getState().directoryRevealRequest).toBeNull();
   });
 
   it("collapses an image sequence to one grid item", async () => {
@@ -1381,7 +1730,7 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
     expect(document.querySelector(".form-dialog")).toBeTruthy();
-    expect(document.querySelector(".form-dialog select")).toBeTruthy();
+    expect(document.querySelector('.form-dialog [role="combobox"]')).toBeTruthy();
     const directoryInput = host.querySelector<HTMLInputElement>(
       ".form-dialog input",
     );
@@ -2125,7 +2474,11 @@ describe("DirectoryAssetPanel", () => {
       // 模拟真实 openDirectory：完成后首批条目进入 store。
       useAppStore.setState({ directoryEntries: [fileEntry] });
     });
-    const selectDirectoryEntry = vi.fn();
+    let resolveSelection!: () => void;
+    const selectionCompleted = new Promise<void>((resolve) => {
+      resolveSelection = resolve;
+    });
+    const selectDirectoryEntry = vi.fn(() => resolveSelection());
     const originalActions = {
       openDirectory: useAppStore.getState().openDirectory,
       selectDirectoryEntry: useAppStore.getState().selectDirectoryEntry,
@@ -2172,10 +2525,7 @@ describe("DirectoryAssetPanel", () => {
         bubbles: true,
         inputType: "insertFromPaste",
       }));
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      await selectionCompleted;
     });
     // 打开的是所在目录，并选中该文件。
     expect(pathType).toHaveBeenCalledWith("D:\\refs\\concept.psd");
@@ -2185,7 +2535,7 @@ describe("DirectoryAssetPanel", () => {
     );
     expect(startSearch).not.toHaveBeenCalled();
     // 恢复被覆盖的 store action，避免污染后续用例。
-    useAppStore.setState(originalActions);
+    act(() => useAppStore.setState(originalActions));
   });
 
   it("falls back to keyword search for non-path input and invalid paths", async () => {
@@ -2838,7 +3188,7 @@ describe("DirectoryAssetPanel", () => {
     expect(host.querySelector(".directory-extension-badge")?.textContent).toBe("TXT");
   });
 
-  it("keeps the view-mode toggle and settings gear in the format filter row", async () => {
+  it("keeps directory controls compact and discoverable across the toolbar rows", async () => {
     Object.assign(window, {
       refCanvas: {
         filesystem: {
@@ -2863,19 +3213,33 @@ describe("DirectoryAssetPanel", () => {
       await Promise.resolve();
     });
 
-    // 网格/列表切换位于筛选行内（排序控件旁边），面包屑行右侧不再包含它。
-    const filterRow = host.querySelector<HTMLElement>(".dir-format-filter");
-    expect(filterRow?.querySelector('[data-testid="directory-view-grid"]')).toBeTruthy();
-    expect(filterRow?.querySelector('[data-testid="directory-view-list"]')).toBeTruthy();
+    // 格式筛选收进搜索栏的单个按钮，默认不再常驻一整行。
+    expect(host.querySelector(".dir-format-filter")).toBeNull();
+    const searchScope = host.querySelector<HTMLElement>(".search-scope-select");
+    expect(searchScope).toBeTruthy();
+    expect(searchScope?.textContent).toContain("当前目录");
+    const filterTrigger = host.querySelector<HTMLButtonElement>(".search-filter-trigger");
+    expect(filterTrigger).toBeTruthy();
+    await act(async () => {
+      filterTrigger?.click();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".search-filter-popover")).toBeTruthy();
+    expect(host.querySelector(".search-filter-popover")?.textContent).not.toContain("当前目录");
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".search-filter-popover")).toBeNull();
     const pathBarRight = host.querySelector<HTMLElement>(".dir-path-bar-right");
-    expect(pathBarRight?.querySelector('[data-testid="directory-view-grid"]')).toBeNull();
-    // 面包屑行右侧保留缩放滑块 + 视图选项按钮。
+    expect(pathBarRight?.querySelector('[data-testid="directory-view-grid"]')).toBeTruthy();
+    expect(pathBarRight?.querySelector('[data-testid="directory-view-list"]')).toBeTruthy();
     expect(pathBarRight?.querySelector('[data-testid="directory-zoom-slider"]')).toBeTruthy();
     expect(pathBarRight?.querySelector('[data-testid="directory-view-options-toggle"]')).toBeTruthy();
 
-    // ⚙ 设置入口在筛选行，触发与头部 Settings2 相同的入口事件。
+    // 预览设置入口位于目录面板头部，避免在工具栏重复出现齿轮。
     const settingsButton = host.querySelector<HTMLButtonElement>(
-      '[data-testid="directory-filter-settings"]',
+      '[data-testid="directory-preview-settings"]',
     );
     expect(settingsButton).toBeTruthy();
     const openSettings = vi.fn();

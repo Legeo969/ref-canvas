@@ -17,7 +17,8 @@ import {
   PanelsTopLeft,
   RefreshCw,
   Scissors,
-  Settings,
+  ScanSearch,
+  Search,
   Settings2,
   Shrink,
   SlidersHorizontal,
@@ -35,12 +36,15 @@ import type {
   DirectoryBatchAction,
   DirectoryBatchSnapshot,
   DirectoryEntry,
+  DirectoryPage,
   DirectorySearchSnapshot,
   PreviewFormatGroupId,
   RegisteredScript,
+  SearchScope,
   SequenceGroupInfo,
 } from "../../shared/contracts";
-import { isDownscalableImageExtension } from "../../shared/asset-kind";
+import { assetKindForExtension, isDownscalableImageExtension } from "../../shared/asset-kind";
+import { LruCache } from "../../shared/lru-cache";
 import {
   isExportableImageExtension,
   isExportableVideoExtension,
@@ -66,8 +70,10 @@ import {
 import { useAppStore } from "../app/store";
 import { translate } from "../app/i18n";
 import { placeTriggerMenu } from "../app/menu-position";
+import { runWithDirectoryWriteAccess } from "../app/directory-write-access";
 import { useStableCallback } from "../app/use-stable-callback";
 import { useDialog } from "./DialogProvider";
+import { SelectMenu } from "./SelectMenu";
 import { DirectoryQuickPreview } from "./DirectoryQuickPreview";
 import { FolderGlyph } from "./FolderGlyph";
 import { HighlightedText } from "./HighlightedText";
@@ -97,6 +103,7 @@ import {
 } from "../features/directory/directory-preview-coordinator";
 import { resolveDirectorySelectionScope } from "../features/directory/directory-query-model";
 import { DirectoryBatchToolbar } from "./directory/DirectoryBatchToolbar";
+import { ActionRunDialog } from "./actions/ActionRunDialog";
 
 type DirectoryFormatFilter = "all" | PreviewFormatGroupId | "other";
 
@@ -131,9 +138,10 @@ export function directoryGroupColor(filename: string): string {
  * 稳定，直到 LRU 淘汰/窗口关闭）。面板重挂或 priority（visible/overscan）
  * 翻转时，如果渲染端每次都重取 token 并重建
  * `refbrowse://thumbnail/<token>?priority=...`，URL 查询串一变即缓存未命中，
- * 缩略图就会「切窗口回来/滚动」反复重载。这里把 token 复用起来，让 URL 稳定。
+ * 缩略图就会「切窗口回来/滚动」反复重载。这里用有界 LRU 复用近期 token，
+ * 既让 URL 稳定，也避免长时间浏览不同目录后无限占用内存。
  */
-const directoryThumbnailTokenCache = new Map<string, string>();
+const directoryThumbnailTokenCache = new LruCache<string, string>(5_000);
 
 interface DirectoryCardProps {
   entry: DirectoryEntry;
@@ -568,9 +576,13 @@ export function DirectoryAssetPanel() {
     );
   };
   const [query, setQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<SearchScope>("current-directory");
+  const [searchSuggestionsOpen, setSearchSuggestionsOpen] = useState(false);
   const [pathEditing, setPathEditing] = useState(false);
   const [pathDraft, setPathDraft] = useState("");
   const [formatFilter, setFormatFilter] = useState<DirectoryFormatFilter>("all");
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
+  const formatMenuRef = useRef<HTMLDivElement>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [searchId, setSearchId] = useState<string | null>(null);
   const activeSearchIdRef = useRef<string | null>(null);
@@ -587,6 +599,7 @@ export function DirectoryAssetPanel() {
     x: number;
     y: number;
   } | null>(null);
+  const [actionRunPaths, setActionRunPaths] = useState<string[] | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
   const viewOptionsRef = useRef<HTMLDivElement>(null);
@@ -617,8 +630,12 @@ export function DirectoryAssetPanel() {
     () => new Map(),
   );
   const [directoryTotal, setDirectoryTotal] = useState(0);
-  const pageRequestsRef = useRef(new Set<number>());
+  const pageRequestsRef = useRef(
+    new Map<number, Promise<DirectoryPage | undefined>>(),
+  );
   const searchPageRequestsRef = useRef(new Set<number>());
+  const directoryRevealInFlightRef = useRef<number | null>(null);
+  const directoryRevealMountedRef = useRef(true);
   const indexedEntriesRef = useRef(new Map<number, DirectoryEntry>());
   const scrollFrameRef = useRef<number | null>(null);
   const pendingScrollTopRef = useRef(0);
@@ -647,6 +664,12 @@ export function DirectoryAssetPanel() {
   );
   const previewPath = previewSnapshot.path;
   useEffect(() => () => previewCoordinator.dispose(), [previewCoordinator]);
+  useEffect(() => {
+    directoryRevealMountedRef.current = true;
+    return () => {
+      directoryRevealMountedRef.current = false;
+    };
+  }, []);
   useEffect(() => {
     const library = window.refCanvas.library;
     if (!library?.onLibraryChanged || !library.getByPath) return;
@@ -810,9 +833,26 @@ export function DirectoryAssetPanel() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!formatMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!formatMenuRef.current?.contains(event.target as Node)) {
+        setFormatMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFormatMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [formatMenuOpen]);
+
   // 视图选项 popover：点击外部 / Escape / 窗口缩放或滚动时关闭，
   // 与仓库其他 popover（如图层菜单）的外部点击 dismiss 模式一致。
-  // portal 到 body 逃逸 .dir-format-filter 的 overflow-x: auto 裁剪。
   const updateViewOptionsPosition = useCallback(() => {
     const trigger = viewOptionsRef.current;
     if (!trigger) return;
@@ -864,8 +904,8 @@ export function DirectoryAssetPanel() {
     updateViewOptionsPosition();
   }, [viewOptionsOpen, updateViewOptionsPosition]);
 
-  // 排序菜单：portal 到 body 逃逸 .dir-format-filter 的 overflow-x: auto 裁剪。
-  // 外部点击 / Escape 关闭；滚动与窗口尺寸变化时重定位（fixed 坐标）。
+  // 排序菜单：portal 到 body，外部点击 / Escape 关闭；滚动与窗口尺寸变化时
+  // 重定位（fixed 坐标）。
   const updateSortMenuPosition = useCallback(() => {
     const trigger = sortRef.current;
     if (!trigger) return;
@@ -987,7 +1027,11 @@ export function DirectoryAssetPanel() {
     });
   }, [batchJob?.id]);
 
-  const runSearch = (value: string, favoritesFlag: boolean = favoritesOnly) => {
+  const runSearch = (
+    value: string,
+    favoritesFlag: boolean = favoritesOnly,
+    scope: SearchScope = searchScope,
+  ) => {
     directorySelection.clear();
     if (searchId) {
       void window.refCanvas.filesystem.cancelSearch(searchId);
@@ -998,6 +1042,7 @@ export function DirectoryAssetPanel() {
     if (!value.trim() || !store.directoryPath) return;
     void window.refCanvas.filesystem
       .startSearch(store.directoryPath, value.trim(), {
+        ...(scope === "current-directory" ? {} : { scope }),
         collapseSequences: previewSettings.collapseImageSequences,
         extensions: formatFilterExtensions,
         favoritesOnly: favoritesFlag,
@@ -1092,6 +1137,11 @@ export function DirectoryAssetPanel() {
     debounceRef.current = window.setTimeout(() => runSearch(value), 160);
   };
 
+  const applySearchSuggestion = (value: string) => {
+    setSearchSuggestionsOpen(false);
+    onQueryChange(value);
+  };
+
   const cancelSearch = () => {
     if (searchId) {
       void window.refCanvas.filesystem.cancelSearch(searchId);
@@ -1143,10 +1193,15 @@ export function DirectoryAssetPanel() {
 
   useEffect(() => {
     if (!activeTab || activeTab.kind !== "directory") return;
+    // A board-to-directory reveal owns the initial scroll position. Restoring
+    // the tab's previous offset (including the delayed 60 ms retry) would move
+    // the newly selected target back out of view.
+    if (store.directoryRevealRequest) return;
     if (activeTab.query) {
       setQuery(activeTab.query);
       void window.refCanvas.filesystem
         .startSearch(store.directoryPath ?? "", activeTab.query, {
+          ...(searchScope === "current-directory" ? {} : { scope: searchScope }),
           collapseSequences: previewSettings.collapseImageSequences,
           extensions: formatFilterExtensions,
           favoritesOnly,
@@ -1469,6 +1524,185 @@ export function DirectoryAssetPanel() {
   };
 
   useEffect(() => {
+    const request = store.directoryRevealRequest;
+    if (!request || !store.directoryPath) return;
+    if (
+      normalizeQuickAccessPath(dirnameOf(request.path)) !==
+      normalizeQuickAccessPath(store.directoryPath)
+    ) return;
+
+    // A locate command means "show this exact disk entry", so temporary
+    // search/filter state must not keep the result invisible.
+    if (searchId || query) {
+      cancelSearch();
+      return;
+    }
+    if (formatFilter !== "all") {
+      setFormatFilter("all");
+      return;
+    }
+    if (favoritesOnly) {
+      setFavoritesOnly(false);
+      return;
+    }
+    const flattenedReveal = currentFlattenDepth > 0;
+    if (!flattenedReveal && (!directoryScanComplete || !directoryRevision)) return;
+    if (directoryRevealInFlightRef.current === request.id) return;
+
+    directoryRevealInFlightRef.current = request.id;
+    const requestPath = store.directoryPath;
+    const requestIsCurrent = () => {
+      const current = useAppStore.getState();
+      return directoryRevealMountedRef.current &&
+        current.directoryRevealRequest?.id === request.id &&
+        current.directoryPath !== null &&
+        normalizeQuickAccessPath(current.directoryPath) ===
+          normalizeQuickAccessPath(requestPath);
+    };
+    void (async () => {
+      let revealPath = request.path;
+      let sequenceGroup: SequenceGroupInfo | undefined;
+      const locateOptions = {
+        collapseSequences: previewSettings.collapseImageSequences,
+        flattenDepth: currentFlattenDepth,
+        showHidden: previewSettings.showHiddenFiles,
+      };
+      const locate = async (entryPath: string) => {
+        const initialRevision = flattenedReveal ? "flattened" : directoryRevision;
+        try {
+          return await window.refCanvas.filesystem.locateEntry(
+            requestPath,
+            entryPath,
+            initialRevision,
+            locateOptions,
+          );
+        } catch (error) {
+          if (
+            flattenedReveal ||
+            !String(error).includes("DIRECTORY_REVISION_CHANGED")
+          ) throw error;
+          const refreshed = await window.refCanvas.filesystem.listDirectory(
+            requestPath,
+            {
+              pageSize: 1,
+              collapseSequences: previewSettings.collapseImageSequences,
+            },
+          );
+          if (refreshed.scanState !== "complete" || !refreshed.revision) throw error;
+          return window.refCanvas.filesystem.locateEntry(
+            requestPath,
+            entryPath,
+            refreshed.revision,
+            locateOptions,
+          );
+        }
+      };
+      let index = await locate(revealPath);
+
+      // A non-leading sequence frame is intentionally absent from a collapsed
+      // directory page. Reveal its representative card instead.
+      if (
+        index === null &&
+        previewSettings.collapseImageSequences &&
+        window.refCanvas.sequences?.detect
+      ) {
+        const groups = await window.refCanvas.sequences.detect(store.directoryPath!);
+        const wanted = normalizeQuickAccessPath(request.path);
+        sequenceGroup = groups.find((group) =>
+          group.files.some((filename) => normalizeQuickAccessPath(filename) === wanted),
+        );
+        if (sequenceGroup?.files[0]) {
+          revealPath = sequenceGroup.files[0];
+          index = await locate(revealPath);
+        }
+      }
+
+      if (!requestIsCurrent()) return;
+      if (index === null) {
+        showShortcutNotice(translate("directory.locateNotFound"));
+        store.completeDirectoryReveal(request.id);
+        return;
+      }
+
+      const offset = Math.floor(index / directoryPageSize) * directoryPageSize;
+      const page = await loadDirectoryPage(offset);
+      if (!requestIsCurrent() || !page) return;
+      const wanted = normalizeQuickAccessPath(revealPath);
+      const found = page.entries.find(
+        (entry) => normalizeQuickAccessPath(entry.path) === wanted,
+      );
+      if (!found) {
+        showShortcutNotice(translate("directory.locateNotFound"));
+        store.completeDirectoryReveal(request.id);
+        return;
+      }
+
+      const entry = sequenceGroup ? { ...found, sequenceGroup } : found;
+      directorySelection.selectOnly(entry.path);
+      store.selectDirectoryEntry(entry);
+
+      const visibleFolderCount = page.totalDirectories ?? folderCount;
+      const revealFolderHeaderHeight = visibleFolderCount > 0
+        ? directoryGroupHeaderHeight
+        : 0;
+      const revealFolderRows = foldersExpanded
+        ? Math.ceil(visibleFolderCount / folderColumns)
+        : 0;
+      const revealFileRegionTop =
+        revealFolderHeaderHeight + revealFolderRows * folderRowHeight;
+      const targetTop = entry.isDirectory
+        ? revealFolderHeaderHeight +
+          Math.floor(index / folderColumns) * folderRowHeight
+        : revealFileRegionTop +
+          Math.floor(Math.max(0, index - visibleFolderCount) / columns) *
+            effectiveRowHeight;
+      const targetHeight = entry.isDirectory ? folderRowHeight : effectiveRowHeight;
+      const node = viewportRef.current;
+      const scrollTop = node
+        ? Math.max(0, targetTop - Math.max(0, (node.clientHeight - targetHeight) / 2))
+        : targetTop;
+      if (node) node.scrollTop = scrollTop;
+      pendingScrollTopRef.current = scrollTop;
+      setViewport((current) => ({ ...current, top: scrollTop }));
+      store.updateActiveBrowserTab({
+        selectedKeys: [entry.path],
+        scrollOffset: Math.round(scrollTop),
+      });
+      showShortcutNotice(
+        translate("directory.locatedNamed").replace("{name}", entry.name),
+      );
+      store.completeDirectoryReveal(request.id);
+    })()
+      .catch(() => {
+        if (!requestIsCurrent()) return;
+        showShortcutNotice(translate("directory.locateFailed"));
+        store.completeDirectoryReveal(request.id);
+      })
+      .finally(() => {
+        if (directoryRevealInFlightRef.current === request.id) {
+          directoryRevealInFlightRef.current = null;
+        }
+      });
+  }, [
+    columns,
+    currentFlattenDepth,
+    directoryRevision,
+    directoryScanComplete,
+    effectiveRowHeight,
+    favoritesOnly,
+    folderColumns,
+    folderCount,
+    folderRowHeight,
+    foldersExpanded,
+    formatFilter,
+    previewSettings.collapseImageSequences,
+    query,
+    searchId,
+    store.directoryPath,
+    store.directoryRevealRequest,
+  ]);
+
+  useEffect(() => {
     if (
       !store.directoryPath ||
       !totalEntries ||
@@ -1609,7 +1843,11 @@ export function DirectoryAssetPanel() {
           window.refCanvas.filesystem.locateEntry
         ) {
           void window.refCanvas.filesystem
-            .locateEntry(store.directoryPath!, anchorPath, snapshot.revision, favoritesOnly)
+            .locateEntry(store.directoryPath!, anchorPath, snapshot.revision, {
+              collapseSequences: previewSettings.collapseImageSequences,
+              extensions: formatFilterExtensions,
+              favoritesOnly,
+            })
             .then((index) => {
               const nextIndex = index ?? topIndex;
               const nextOffset = Math.floor(nextIndex / directoryPageSize) * directoryPageSize;
@@ -1887,7 +2125,7 @@ export function DirectoryAssetPanel() {
       danger: true,
     });
     if (!confirmed) return;
-    await window.refCanvas.filesystem.trash(
+    const operation = () => window.refCanvas.filesystem.trash(
       [entry.path],
       directoryScanComplete && directoryRevision && store.directoryPath
         ? {
@@ -1896,6 +2134,10 @@ export function DirectoryAssetPanel() {
           }
         : undefined,
     );
+    const result = store.directoryPath
+      ? await runWithDirectoryWriteAccess(store.directoryPath, operation)
+      : { completed: true, value: await operation() };
+    if (!result.completed) return;
     await store.reloadDirectory();
     previewCoordinator.close();
     directorySelection.clear();
@@ -2043,10 +2285,12 @@ export function DirectoryAssetPanel() {
       favoritesOnly,
     });
     if (!selection) return false;
-    const snapshot = await window.refCanvas.filesystem.startBatch(
-      selection,
-      action,
-    );
+    const start = () => window.refCanvas.filesystem.startBatch(selection, action);
+    const result = action.type === "trash" && store.directoryPath
+      ? await runWithDirectoryWriteAccess(store.directoryPath, start)
+      : { completed: true, value: await start() };
+    if (!result.completed || !result.value) return true;
+    const snapshot = result.value;
     setBatchJob(snapshot);
     clearSelection();
     return true;
@@ -2128,7 +2372,7 @@ export function DirectoryAssetPanel() {
     if (await startAllBatch({ type: "trash" })) return;
     const paths = selectedFilePaths();
     if (!paths.length) return;
-    await store.trashEntries(paths);
+    if (!(await store.trashEntries(paths))) return;
     previewCoordinator.close();
     clearSelection();
   };
@@ -2372,6 +2616,9 @@ export function DirectoryAssetPanel() {
   const menuEntryIsDownscalableImage = isDownscalableImageExtension(
     contextMenu?.entry.extension ?? "",
   );
+  const menuEntryIsImage = assetKindForExtension(
+    contextMenu?.entry.extension ?? "",
+  ) === "image";
   const menuEntryIsVideo = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(
     contextMenu?.entry.extension ?? "",
   );
@@ -2704,6 +2951,7 @@ export function DirectoryAssetPanel() {
           </button>
           <button
             className="icon-button"
+            data-testid="directory-preview-settings"
             aria-label={translate("directory.previewSettings")}
             onClick={() =>
               window.dispatchEvent(
@@ -2717,6 +2965,110 @@ export function DirectoryAssetPanel() {
           </button>
         </div>
       </header>
+
+      <div className="search-field">
+        <Search size={15} />
+        <SelectMenu<SearchScope>
+          className="search-scope-select"
+          value={searchScope}
+          ariaLabel={translate("directory.searchScope")}
+          options={[
+            { value: "current-directory", label: translate("directory.searchScopeDirectory") },
+            { value: "current-mount", label: translate("directory.searchScopeMount") },
+            { value: "all-mounts", label: translate("directory.searchScopeAllMounts") },
+          ]}
+          onValueChange={(next) => {
+            setSearchScope(next);
+            if (query.trim()) void runSearch(query, favoritesOnly, next);
+          }}
+        />
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(
+            event.target.value,
+            (event.nativeEvent as InputEvent).inputType,
+          )}
+          placeholder={translate("directory.searchPlaceholder")}
+          aria-label={translate("directory.searchCurrent")}
+          onFocus={() => setSearchSuggestionsOpen(true)}
+          onBlur={() => window.setTimeout(() => setSearchSuggestionsOpen(false), 120)}
+        />
+        <div className="search-filter-wrap" ref={formatMenuRef}>
+          <button
+            type="button"
+            className={`search-filter-trigger${formatFilter !== "all" || searchScope !== "current-directory" ? " active" : ""}`}
+            aria-label={translate("directory.formatFilter")}
+            aria-haspopup="menu"
+            aria-expanded={formatMenuOpen}
+            onClick={() => setFormatMenuOpen((open) => !open)}
+          >
+            <SlidersHorizontal size={14} />
+            {formatFilter !== "all" && <span aria-hidden="true" />}
+          </button>
+          {formatMenuOpen && (
+            <div className="search-filter-popover" role="menu" aria-label={translate("directory.formatFilter")}>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={formatFilter === "all"}
+                className={formatFilter === "all" ? "active" : ""}
+                onClick={() => { setFormatFilter("all"); setFormatMenuOpen(false); }}
+              >
+                {translate("directory.all")}
+              </button>
+              {previewSettings.formatGroups.map((group) => (
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  key={group.id}
+                  aria-checked={formatFilter === group.id}
+                  className={formatFilter === group.id ? "active" : ""}
+                  title={translate("directory.extensionCount").replace("{count}", String(group.extensions.length))}
+                  onClick={() => { setFormatFilter(group.id); setFormatMenuOpen(false); }}
+                >
+                  {group.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={formatFilter === "other"}
+                className={formatFilter === "other" ? "active" : ""}
+                title={translate("directory.extensionCount").replace("{count}", String(previewSettings.formatWhitelist.length))}
+                onClick={() => { setFormatFilter("other"); setFormatMenuOpen(false); }}
+              >
+                {translate("directory.other")}
+              </button>
+            </div>
+          )}
+        </div>
+        {searchSuggestionsOpen && (
+          <div className="search-suggestions" role="listbox" aria-label="搜索条件建议">
+            <div className="suggestion-group">
+              <span className="suggestion-group-label">条件</span>
+              {["type:image", "type:video", "rating:>=4", "width:>=1920", "size:<=10mb", "after:2026-01-01"].map((suggestion) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  key={suggestion}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applySearchSuggestion(suggestion)}
+                >
+                  <Search size={13} aria-hidden="true" />
+                  <span>{suggestion}</span>
+                </button>
+              ))}
+            </div>
+            <span className="suggestion-hint">输入关键词或条件，按 Enter 搜索</span>
+          </div>
+        )}
+        {query ? (
+          <button className="search-cancel" aria-label="清除搜索" onClick={cancelSearch}><X size={14} /></button>
+        ) : (
+          <kbd>Ctrl K</kbd>
+        )}
+      </div>
 
       {searchSnapshot && !searching && (
         <p className="directory-search-status">
@@ -2774,6 +3126,13 @@ export function DirectoryAssetPanel() {
         onClipboardCopy={() => clipboardSelection("copy")}
         onClipboardCut={() => clipboardSelection("cut")}
         onTag={() => void batchTag()}
+        onBatchActions={() => {
+          if (allMatchingSelected) {
+            setShortcutNotice("批处理模板需要明确选择素材，请取消“全选全部结果”后重试");
+            return;
+          }
+          setActionRunPaths([...selectedPaths]);
+        }}
         onTrash={() => void batchTrash()}
         onClear={clearSelection}
       />
@@ -2894,6 +3253,97 @@ export function DirectoryAssetPanel() {
               onChange={(event) => setCardScale(Number(event.target.value))}
             />
           </label>
+          <button
+            type="button"
+            className={`dir-favorites-filter${favoritesOnly ? " active" : ""}`}
+            aria-pressed={favoritesOnly}
+            aria-label={translate("directory.favoritesOnly")}
+            onClick={toggleFavoritesOnly}
+          >
+            <Star size={15} />
+          </button>
+          <div className="dir-sort-control" ref={sortRef}>
+            <button
+              type="button"
+              className="dir-sort-trigger"
+              data-testid="directory-sort-toggle"
+              aria-haspopup="menu"
+              aria-expanded={sortOpen}
+              title={translate("directory.sortBy")}
+              onClick={() => setSortOpen((open) => !open)}
+            >
+              <ArrowUpDown size={14} />
+              <span>
+                {sortMode === "mtime"
+                  ? translate("directory.sortModified")
+                  : sortMode === "size"
+                    ? translate("directory.sortSize")
+                    : translate("directory.sortName")}
+              </span>
+              <ChevronDown size={12} />
+            </button>
+            {sortOpen && typeof document !== "undefined" && createPortal(
+              <div
+                ref={sortMenuRef}
+                className="dir-sort-popover"
+                role="menu"
+                style={{
+                  left: sortMenuPosition?.left ?? 0,
+                  top: sortMenuPosition?.top ?? 0,
+                  maxHeight: sortMenuPosition?.maxHeight ?? 220,
+                  visibility: sortMenuPosition ? "visible" : "hidden",
+                }}
+              >
+                {(["name", "mtime", "size"] as const).map((mode) => (
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={sortMode === mode}
+                    className={`dir-sort-option ${sortMode === mode ? "active" : ""}`}
+                    key={mode}
+                    data-testid={`directory-sort-${mode}`}
+                    onClick={() => {
+                      setSortMode(mode);
+                      setSortOpen(false);
+                    }}
+                  >
+                    {mode === "mtime"
+                      ? translate("directory.sortModified")
+                      : mode === "size"
+                        ? translate("directory.sortSize")
+                        : translate("directory.sortName")}
+                  </button>
+                ))}
+              </div>,
+              document.body,
+            )}
+          </div>
+          <div
+            className="dir-view-mode"
+            role="group"
+            aria-label={translate("directory.viewMode")}
+          >
+            <button
+              type="button"
+              className={viewMode === "grid" ? "active" : ""}
+              data-testid="directory-view-grid"
+              aria-label={translate("directory.gridView")}
+              aria-pressed={viewMode === "grid"}
+              onClick={() => setViewMode("grid")}
+            >
+              <LayoutGrid size={15} />
+            </button>
+            <button
+              type="button"
+              className={viewMode === "list" ? "active" : ""}
+              data-testid="directory-view-list"
+              aria-label={translate("directory.listView")}
+              aria-pressed={viewMode === "list"}
+              onClick={() => setViewMode("list")}
+            >
+              <List size={15} />
+            </button>
+          </div>
           <div className="dir-view-options" ref={viewOptionsRef}>
           <button
             type="button"
@@ -2986,144 +3436,6 @@ export function DirectoryAssetPanel() {
         </div>
         </div>
       </div>
-      <div className="dir-format-filter" role="group" aria-label={translate("directory.formatFilter")}>
-        <button
-          type="button"
-          className={formatFilter === "all" ? "active" : ""}
-          aria-pressed={formatFilter === "all"}
-          onClick={() => setFormatFilter("all")}
-        >
-          {translate("directory.all")}
-        </button>
-        {previewSettings.formatGroups.map((group) => (
-          <button
-            type="button"
-            key={group.id}
-            className={formatFilter === group.id ? "active" : ""}
-            aria-pressed={formatFilter === group.id}
-            title={translate("directory.extensionCount").replace("{count}", String(group.extensions.length))}
-            onClick={() => setFormatFilter(group.id)}
-          >
-            {group.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          className={formatFilter === "other" ? "active" : ""}
-          aria-pressed={formatFilter === "other"}
-          title={translate("directory.extensionCount").replace("{count}", String(previewSettings.formatWhitelist.length))}
-          onClick={() => setFormatFilter("other")}
-        >
-          {translate("directory.other")}
-        </button>
-        <button
-          type="button"
-          className={`dir-favorites-filter${favoritesOnly ? " active" : ""}`}
-          aria-pressed={favoritesOnly}
-          aria-label={translate("directory.favoritesOnly")}
-          onClick={toggleFavoritesOnly}
-        >
-          <Star size={15} />
-        </button>
-        <div className="dir-sort-control" ref={sortRef}>
-          <button
-            type="button"
-            className="dir-sort-trigger"
-            data-testid="directory-sort-toggle"
-            aria-haspopup="menu"
-            aria-expanded={sortOpen}
-            title={translate("directory.sortBy")}
-            onClick={() => setSortOpen((open) => !open)}
-          >
-            <ArrowUpDown size={14} />
-            <span>
-              {sortMode === "mtime"
-                ? translate("directory.sortModified")
-                : sortMode === "size"
-                  ? translate("directory.sortSize")
-                  : translate("directory.sortName")}
-            </span>
-            <ChevronDown size={12} />
-          </button>
-          {sortOpen && typeof document !== "undefined" && createPortal(
-            <div
-              ref={sortMenuRef}
-              className="dir-sort-popover"
-              role="menu"
-              style={{
-                left: sortMenuPosition?.left ?? 0,
-                top: sortMenuPosition?.top ?? 0,
-                maxHeight: sortMenuPosition?.maxHeight ?? 220,
-                visibility: sortMenuPosition ? "visible" : "hidden",
-              }}
-            >
-              {(["name", "mtime", "size"] as const).map((mode) => (
-                <button
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={sortMode === mode}
-                  className={`dir-sort-option ${sortMode === mode ? "active" : ""}`}
-                  key={mode}
-                  data-testid={`directory-sort-${mode}`}
-                  onClick={() => {
-                    setSortMode(mode);
-                    setSortOpen(false);
-                  }}
-                >
-                  {mode === "mtime"
-                    ? translate("directory.sortModified")
-                    : mode === "size"
-                      ? translate("directory.sortSize")
-                      : translate("directory.sortName")}
-                </button>
-              ))}
-            </div>,
-            document.body,
-          )}
-        </div>
-        <div
-          className="dir-view-mode"
-          role="group"
-          aria-label={translate("directory.viewMode")}
-        >
-          <button
-            type="button"
-            className={viewMode === "grid" ? "active" : ""}
-            data-testid="directory-view-grid"
-            aria-label={translate("directory.gridView")}
-            aria-pressed={viewMode === "grid"}
-            onClick={() => setViewMode("grid")}
-          >
-            <LayoutGrid size={15} />
-          </button>
-          <button
-            type="button"
-            className={viewMode === "list" ? "active" : ""}
-            data-testid="directory-view-list"
-            aria-label={translate("directory.listView")}
-            aria-pressed={viewMode === "list"}
-            onClick={() => setViewMode("list")}
-          >
-            <List size={15} />
-          </button>
-        </div>
-        <button
-          type="button"
-          className="dir-filter-settings"
-          data-testid="directory-filter-settings"
-          aria-label={translate("directory.previewSettings")}
-          onClick={() =>
-            window.dispatchEvent(
-              new CustomEvent("refcanvas:open-settings", {
-                detail: "preview",
-              }),
-            )
-          }
-        >
-          <Settings size={14} />
-        </button>
-      </div>
-
       {currentFlattenDepth > 0 && totalEntries > 5000 && (
         <div className="dir-flatten-warning">
           {translate("directory.flattenWarning").replace("{count}", String(totalEntries))}
@@ -3264,6 +3576,21 @@ export function DirectoryAssetPanel() {
                 <PanelsTopLeft size={16} />
                 {translate("directory.addToBoard")}
               </button>
+              {menuEntryIsImage && (
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    const entry = contextMenu.entry;
+                    setContextMenu(null);
+                    window.dispatchEvent(new CustomEvent("refcanvas:find-similar", {
+                      detail: { path: entry.path },
+                    }));
+                  }}
+                >
+                  <ScanSearch size={16} />
+                  {translate("similar.title")}
+                </button>
+              )}
             </>
           )}
           <button
@@ -3483,59 +3810,78 @@ export function DirectoryAssetPanel() {
           onClose={closePreview}
         />
       )}
+      {actionRunPaths && (
+        <ActionRunDialog paths={actionRunPaths} onClose={() => setActionRunPaths(null)} />
+      )}
     </section>
   );
 
   async function loadDirectoryPage(offset: number) {
     if (
       !store.directoryPath ||
-      !window.refCanvas.filesystem.listDirectory ||
-      pageRequestsRef.current.has(offset)
-    ) return;
+      !window.refCanvas.filesystem.listDirectory
+    ) return undefined;
+    const existing = pageRequestsRef.current.get(offset);
+    if (existing) return existing;
     const requestPath = store.directoryPath;
-    if (!requestPath) return;
-    pageRequestsRef.current.add(offset);
-    setLoadingMore(true);
-    try {
-      // 阶段 5 §10.1：flatten 深度（每文件夹记忆优先于默认）+ 隐藏文件。
-      const page = await window.refCanvas.filesystem.listDirectory(
-        requestPath,
-        {
-          pageSize: directoryPageSize,
-          offset,
-          flattenDepth: currentFlattenDepth,
-          showHidden: previewSettings.showHiddenFiles,
-          collapseSequences: previewSettings.collapseImageSequences,
-          extensions: formatFilterExtensions,
-          favoritesOnly,
-        },
-      );
-      if (useAppStore.getState().directoryPath !== requestPath) return;
-      setDirectoryTotal(page.total);
-      setDirectoryRevision(page.revision ?? "");
-      setDirectoryFileTotal(
-        page.totalFiles ?? page.entries.filter((entry) => !entry.isDirectory).length,
-      );
-      setDirectoryScanComplete(page.scanState === "complete");
-      setDirectoryPages((current) => {
-        const next = new Map(current);
-        next.set(offset, page.entries);
-        const currentOffset = Math.floor(
-          currentViewportIndex() / directoryPageSize,
-        ) * directoryPageSize;
-        return trimDirectoryPageCache(
-          next,
-          currentOffset,
-          maximumCachedPages,
-          previewPath,
+    if (!requestPath) return undefined;
+    const request = (async () => {
+      setLoadingMore(true);
+      try {
+        // 阶段 5 §10.1：flatten 深度（每文件夹记忆优先于默认）+ 隐藏文件。
+        const page = await window.refCanvas.filesystem.listDirectory(
+          requestPath,
+          {
+            pageSize: directoryPageSize,
+            offset,
+            flattenDepth: currentFlattenDepth,
+            showHidden: previewSettings.showHiddenFiles,
+            collapseSequences: previewSettings.collapseImageSequences,
+            extensions: formatFilterExtensions,
+            favoritesOnly,
+          },
         );
-      });
-    } finally {
-      pageRequestsRef.current.delete(offset);
-      if (useAppStore.getState().directoryPath === requestPath) {
-        setLoadingMore(false);
+        if (useAppStore.getState().directoryPath !== requestPath) return undefined;
+        setDirectoryTotal(page.total);
+        setDirectoryRevision(page.revision ?? "");
+        setDirectoryFileTotal(
+          page.totalFiles ?? page.entries.filter((entry) => !entry.isDirectory).length,
+        );
+        setDirectoryScanComplete(page.scanState === "complete");
+        setDirectoryPages((current) => {
+          const next = new Map(current);
+          next.set(offset, page.entries);
+          const currentOffset = Math.floor(
+            currentViewportIndex() / directoryPageSize,
+          ) * directoryPageSize;
+          return trimDirectoryPageCache(
+            next,
+            currentOffset,
+            maximumCachedPages,
+            previewPath,
+          );
+        });
+        return page;
+      } finally {
+        if (useAppStore.getState().directoryPath === requestPath) {
+          setLoadingMore(false);
+        }
       }
-    }
+    })();
+    pageRequestsRef.current.set(offset, request);
+    void request.then(
+      () => {
+        if (pageRequestsRef.current.get(offset) === request) {
+          pageRequestsRef.current.delete(offset);
+        }
+      },
+      () => {
+        if (pageRequestsRef.current.get(offset) === request) {
+          pageRequestsRef.current.delete(offset);
+        }
+      },
+    );
+    return request;
   }
 
   async function loadSearchPage(id: string, offset: number) {

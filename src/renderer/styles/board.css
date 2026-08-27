@@ -27,8 +27,10 @@
   gap: 3px;
 }
 
-.board-switcher select {
+.board-switcher .board-switcher-menu {
   max-width: 220px;
+  min-width: 120px;
+  min-height: 30px;
   height: 24px;
   padding: 0 22px 0 0;
   border: 0;
@@ -38,11 +40,7 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 650;
-}
-
-.board-switcher select option {
-  background: #232829;
-  color: #e7eeea;
+  box-shadow: none;
 }
 
 .board-switcher button {
@@ -413,8 +411,9 @@
   scale: 1;
 }
 
-.board-focus-controls select {
+.board-focus-controls .focus-select-menu {
   min-width: 66px;
+  min-height: 40px;
   height: 40px;
   padding: 0 24px 0 9px;
   border: 0;
@@ -425,6 +424,10 @@
   color: #aeb8b3;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+.board-focus-controls .focus-order-menu {
+  min-width: 112px;
 }
 
 .draw-settings-panel {
@@ -1117,7 +1120,7 @@
   min-width: 32px;
 }
 
-.quick-preview-organize select {
+.quick-preview-organize .select-menu-trigger {
   height: 40px;
   min-width: 92px;
   padding: 0 28px 0 10px;
@@ -1132,8 +1135,8 @@
   transition-timing-function: ease-out;
 }
 
-.quick-preview-organize select:hover,
-.quick-preview-organize select:focus-visible {
+.quick-preview-organize .select-menu-trigger:hover,
+.quick-preview-organize .select-menu-trigger:focus-visible {
   background-color: rgba(255, 255, 255, 0.055);
   color: #e5ebe8;
 }
@@ -1669,15 +1672,59 @@
 }
 
 .loading-screen {
-  display: flex;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
   width: 100%;
   height: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  gap: 0;
   background: var(--bg-deep);
   color: #818a86;
   font-size: 12px;
+}
+
+.loading-titlebar {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: #171a1b;
+}
+
+.loading-sidebar {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 22px 14px;
+  border-right: 1px solid var(--line);
+  background: #191d1e;
+}
+
+.loading-sidebar span,
+.loading-workspace span {
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.loading-sidebar span {
+  width: 72%;
+  height: 12px;
+}
+
+.loading-sidebar span:nth-child(3n + 1) {
+  width: 42%;
+}
+
+.loading-workspace {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-auto-rows: 112px;
+  align-content: start;
+  gap: 12px;
+  padding: 54px 18px 18px;
+  background: var(--bg-base);
 }
 
 /* 迁移失败恢复页（FND-001）：不进入主工作区，展示数据库与备份位置。 */
@@ -1894,12 +1941,6 @@
 .degraded-banner-icon {
   flex: none;
   font-size: 13px;
-}
-
-.previous-crash-banner {
-  background: #2a2f26;
-  color: #c8d0a8;
-  border-bottom-color: rgba(180, 200, 120, 0.35);
 }
 
 .capture-overlay > img,

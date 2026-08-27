@@ -65,9 +65,9 @@ describe("GifExportStudio embedded range mode", () => {
     });
 
     expect(host.querySelector(".gif-clip-list")).toBeNull();
-    expect(host.querySelectorAll(".gif-export-options select")).toHaveLength(4);
+    expect(host.querySelectorAll(".gif-export-options .select-menu-trigger")).toHaveLength(4);
     expect(host.querySelector<HTMLInputElement>('.gif-export-options input')?.value).toBe("shot");
-    expect(host.querySelector('.gif-export-options select')?.textContent).toContain("25 FPS");
+    expect(host.querySelector('.gif-export-options .select-menu-trigger')?.textContent).toContain("25 FPS");
     await act(async () => host.querySelector<HTMLButtonElement>(".gif-export-actions .primary-button")?.click());
     expect(exportGif).toHaveBeenCalledWith(expect.objectContaining({
       files: files.slice(1, 4),

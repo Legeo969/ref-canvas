@@ -7,6 +7,38 @@ import type {
 } from "../../../src/main/platform/write-access-controller";
 
 describe("filesystem mutation authorization matrix", () => {
+  it("resolves broad search scopes only from registered online mounts", async () => {
+    const handlers = new Map<string, (...args: unknown[]) => unknown>();
+    const ipc = {
+      handle: (channel: string, handler: (...args: unknown[]) => unknown) => handlers.set(channel, handler),
+      handleWithEvent: vi.fn(),
+      on: vi.fn(),
+    } as unknown as SecureIpcRegistrar;
+    const startSearch = vi.fn(async () => "search-1");
+    registerFilesystemIpc(ipc, {
+      getDirectoryService: () => ({ startSearch }),
+      getMountRoots: () => [
+        { id: "a", path: "C:\\refs", displayName: "Refs", volumeId: null, state: "online", lastSeenAt: null },
+        { id: "b", path: "D:\\library", displayName: "Library", volumeId: null, state: "online", lastSeenAt: null },
+        { id: "c", path: "E:\\offline", displayName: "Offline", volumeId: null, state: "offline", lastSeenAt: null },
+      ],
+    } as unknown as Parameters<typeof registerFilesystemIpc>[1]);
+
+    await handlers.get("filesystem:start-search")!(
+      "C:\\refs\\current",
+      "concept",
+      { scope: "all-mounts" },
+    );
+
+    expect(startSearch).toHaveBeenCalledWith(
+      "C:\\refs",
+      "concept",
+      expect.objectContaining({
+        rootPaths: ["C:\\refs", "D:\\library"],
+      }),
+    );
+  });
+
   it("authorizes the required source/target roles before each mutation", async () => {
     const source = "C:\\source\\asset.exr";
     const target = "D:\\deliveries";

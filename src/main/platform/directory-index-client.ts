@@ -162,6 +162,8 @@ export class DirectoryIndexClient {
     directoryPath: string,
     entryPath: string,
     revision: string,
+    collapseSequences?: boolean,
+    extensions?: string[],
     favoritesOnly?: boolean,
     favoritePaths?: string[],
   ): Promise<number | null> {
@@ -177,6 +179,8 @@ export class DirectoryIndexClient {
       directoryPath,
       entryPath,
       revision,
+      collapseSequences,
+      extensions,
       favoritesOnly,
       favoritePaths,
     });

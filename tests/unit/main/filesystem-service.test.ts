@@ -5,7 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RefCanvasDatabase } from "../../../src/main/persistence/database";
-import { FilesystemService } from "../../../src/main/services/filesystem-service";
+import {
+  FilesystemService,
+  MAX_DIRECTORY_CACHE_ENTRIES,
+} from "../../../src/main/services/filesystem-service";
+import { MAX_RETAINED_DIRECTORY_SEARCHES } from "../../../src/shared/directory-search-retention";
 import { LibraryService } from "../../../src/main/services/library-service";
 
 const temporaryDirectories: string[] = [];
@@ -52,6 +56,99 @@ describe("listRoots", () => {
 });
 
 describe("listDirectory", () => {
+  it("locates entries consistently when the index worker is unavailable", async () => {
+    const directoryPath = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-locate-"));
+    temporaryDirectories.push(directoryPath);
+    await Promise.all([
+      writeFile(path.join(directoryPath, "asset.png"), "png"),
+      writeFile(path.join(directoryPath, "notes.txt"), "notes"),
+      writeFile(path.join(directoryPath, "shot_0001.exr"), "one"),
+      writeFile(path.join(directoryPath, "shot_0002.exr"), "two"),
+      writeFile(path.join(directoryPath, "shot_0003.exr"), "three"),
+    ]);
+    const { database, directory } = createService();
+    try {
+      const assetPath = path.join(directoryPath, "asset.png");
+      await expect(directory.locateEntry(
+        directoryPath,
+        process.platform === "win32" ? assetPath.toUpperCase() : assetPath,
+        "fallback",
+        { collapseSequences: true, extensions: ["png"] },
+      )).resolves.toBe(0);
+      await expect(directory.locateEntry(
+        directoryPath,
+        path.join(directoryPath, "notes.txt"),
+        "fallback",
+        { extensions: ["png"] },
+      )).resolves.toBeNull();
+      await expect(directory.locateEntry(
+        directoryPath,
+        path.join(directoryPath, "shot_0002.exr"),
+        "fallback",
+        { collapseSequences: true },
+      )).resolves.toBeNull();
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("locates and pages entries in the same flattened grid order", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-flatten-locate-"));
+    temporaryDirectories.push(root);
+    const nested = path.join(root, "nested");
+    await mkdir(nested);
+    const directPath = path.join(root, "direct.png");
+    const targetPath = path.join(nested, "target.png");
+    await Promise.all([
+      writeFile(directPath, "direct"),
+      writeFile(targetPath, "target"),
+    ]);
+    const { database, directory } = createService();
+    try {
+      await expect(directory.locateEntry(
+        root,
+        targetPath,
+        "flattened",
+        { collapseSequences: true, flattenDepth: 1, showHidden: false },
+      )).resolves.toBe(1);
+      const secondPage = await directory.listDirectory(root, {
+        flattenDepth: 1,
+        offset: 1,
+        pageSize: 1,
+      });
+      expect(secondPage.entries.map((entry) => entry.path)).toEqual([targetPath]);
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("evicts old fallback directory snapshots at the cache limit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-cache-"));
+    temporaryDirectories.push(root);
+    const directories = await Promise.all(
+      Array.from({ length: MAX_DIRECTORY_CACHE_ENTRIES + 1 }, async (_, index) => {
+        const directoryPath = path.join(root, String(index));
+        await mkdir(directoryPath);
+        return directoryPath;
+      }),
+    );
+    const { database, directory } = createService();
+    try {
+      for (const directoryPath of directories) {
+        await directory.listDirectory(directoryPath);
+      }
+      await writeFile(path.join(directories[0], "fresh.txt"), "fresh");
+
+      const refreshed = await directory.listDirectory(directories[0]);
+      expect(refreshed.entries.map((entry) => entry.name)).toContain("fresh.txt");
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
   it("does not create an implicit watcher while paging", async () => {
     const directoryPath = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
     temporaryDirectories.push(directoryPath);
@@ -461,6 +558,62 @@ describe("listDirectory flatten + hidden（阶段 5 §10.1）", () => {
 });
 
 describe("directory search", () => {
+  it("aggregates authorized mount roots into one paged search", async () => {
+    const firstRoot = await mkdtemp(path.join(os.tmpdir(), "refcanvas-mount-a-"));
+    const secondRoot = await mkdtemp(path.join(os.tmpdir(), "refcanvas-mount-b-"));
+    temporaryDirectories.push(firstRoot, secondRoot);
+    await Promise.all([
+      writeFile(path.join(firstRoot, "concept-a.png"), Buffer.alloc(8)),
+      writeFile(path.join(secondRoot, "concept-b.png"), Buffer.alloc(8)),
+    ]);
+    const { database, directory } = createService();
+    try {
+      const id = await directory.startSearch(firstRoot, "concept", {
+        rootPaths: [firstRoot, secondRoot],
+      });
+      await vi.waitFor(() => {
+        expect(directory.getSearch(id)?.state).toBe("completed");
+      });
+      const snapshot = directory.getSearch(id)!;
+      expect(snapshot.rootPaths).toEqual([firstRoot, secondRoot]);
+      expect(snapshot.entries.map((entry) => entry.name).sort()).toEqual([
+        "concept-a.png",
+        "concept-b.png",
+      ]);
+      const page = await directory.getSearchPage(id, { offset: 1, pageSize: 1 });
+      expect(page.entries).toHaveLength(1);
+      expect(page.total).toBe(2);
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
+  it("retains only the newest completed search snapshots", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-search-cache-"));
+    temporaryDirectories.push(root);
+    const { database, directory } = createService();
+    const ids: string[] = [];
+    try {
+      for (let index = 0; index < MAX_RETAINED_DIRECTORY_SEARCHES + 2; index += 1) {
+        const id = await directory.startSearch(root, `#missing-${index}`);
+        ids.push(id);
+        await vi.waitFor(() => {
+          expect(directory.getSearch(id)?.state).toBe("completed");
+        });
+      }
+
+      expect(directory.getSearch(ids[0])).toBeNull();
+      expect(directory.getSearch(ids[1])).toBeNull();
+      expect(directory.getSearch(ids.at(-1)!)).toMatchObject({
+        state: "completed",
+      });
+    } finally {
+      directory.close();
+      database.close();
+    }
+  });
+
   it("returns current-level results and streams subdirectory matches", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-fs-"));
     temporaryDirectories.push(root);
@@ -510,6 +663,7 @@ describe("directory search", () => {
       const outsideAsset = await library.materializePath(outsideFile);
       database.setAssetTags(inside.asset.id, ["hero"]);
       database.setAssetTags(outsideAsset.asset.id, ["hero"]);
+      database.updateAsset(inside.asset.id, { rating: 4 });
 
       const completed = new Promise<void>((resolve) => {
         const unsubscribe = directory.onSearchProgress((snapshot) => {
@@ -518,7 +672,7 @@ describe("directory search", () => {
           resolve();
         });
       });
-      const id = await directory.startSearch(root, "#hero");
+      const id = await directory.startSearch(root, "#hero type:image rating:>=4");
       await completed;
       const snapshot = directory.getSearch(id)!;
       expect(snapshot.entries.map((entry) => entry.path)).toEqual([insideFile]);

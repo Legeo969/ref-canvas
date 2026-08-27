@@ -37,9 +37,34 @@ function SidebarSplitter({
   onDragEnd(): void;
 }) {
   const dragRef = useRef<{ startY: number } | null>(null);
+  const pendingDeltaRef = useRef(0);
+  const frameRef = useRef<number | null>(null);
+
+  const scheduleFrame = (callback: () => void) =>
+    typeof window.requestAnimationFrame === "function"
+      ? window.requestAnimationFrame(callback)
+      : window.setTimeout(callback, 0);
+
+  const cancelFrame = (frame: number) => {
+    if (typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(frame);
+    } else {
+      window.clearTimeout(frame);
+    }
+  };
+
+  const flushDrag = () => {
+    if (frameRef.current !== null) {
+      cancelFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    if (dragRef.current) onDrag(pendingDeltaRef.current);
+  };
+
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     dragRef.current = { startY: event.clientY };
+    pendingDeltaRef.current = 0;
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.classList.add("dragging");
     document.body.classList.add("sidebar-resizing");
@@ -49,10 +74,16 @@ function SidebarSplitter({
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    onDrag(event.clientY - drag.startY);
+    pendingDeltaRef.current = event.clientY - drag.startY;
+    if (frameRef.current !== null) return;
+    frameRef.current = scheduleFrame(() => {
+      frameRef.current = null;
+      if (dragRef.current) onDrag(pendingDeltaRef.current);
+    });
   };
   const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
+    flushDrag();
     dragRef.current = null;
     event.currentTarget.classList.remove("dragging");
     document.body.classList.remove("sidebar-resizing");
@@ -91,6 +122,11 @@ export function Sidebar() {
   );
   /** 白板（参考板）区折叠态：与其他面板一致，可展开/折叠。 */
   const [boardsCollapsed, setBoardsCollapsed] = useState(false);
+  const recentBoardIds = new Set(store.recentBoards.map((board) => board.id));
+  const boardRows = [
+    ...store.recentBoards,
+    ...store.boards.filter((board) => !recentBoardIds.has(board.id)),
+  ];
   // onDragEnd / 键盘调整是同步连续流：state 异步更新，ref 镜像保证
   // 结束时读到的是最新高度。
   const layoutRef = useRef(layout);
@@ -333,7 +369,7 @@ export function Sidebar() {
               />
             </div>
           </div>
-          {!boardsCollapsed && store.boards.map((board) => (
+          {!boardsCollapsed && boardRows.map((board) => (
             <button
               className={`nav-row ${
                 store.workspaceMode === "board" &&
@@ -344,7 +380,11 @@ export function Sidebar() {
               key={board.id}
               onClick={() => void store.switchBoard(board.id)}
             >
-              <PanelsTopLeft size={16} strokeWidth={1.8} />
+              {board.thumbnailUrl ? (
+                <img className="board-nav-thumbnail" src={board.thumbnailUrl} alt="" />
+              ) : (
+                <PanelsTopLeft size={16} strokeWidth={1.8} />
+              )}
               <span>{board.title}</span>
             </button>
           ))}

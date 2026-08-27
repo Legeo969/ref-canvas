@@ -23,7 +23,10 @@ const executable = process.argv[2] ?? path.join(
 const runId = `${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${process.pid}`;
 const qaRoot = path.join(os.tmpdir(), "RefCanvas-QA", runId);
 const profile = path.join(qaRoot, "profile");
-const browseRoot = path.join(qaRoot, "mounted-files");
+// Keep smoke fixtures inside its isolated userData capability root. Production
+// users grant external mount access through the native directory picker; the
+// headless smoke must not bypass that boundary or add a test-only backdoor.
+const browseRoot = path.join(profile, "mounted-files");
 const reportPath = path.join(qaRoot, "runtime-report.json");
 const screenshotRoot = path.join(qaRoot, "screenshots");
 

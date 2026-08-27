@@ -2,6 +2,7 @@ import {
   Eye,
   FolderOpen,
   LoaderCircle,
+  ScanSearch,
   SquareArrowOutUpRight,
   X,
   Globe2,
@@ -686,7 +687,8 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     multichannelButtonRef={setMultichannelAnchor}
                     rendererControlsRef={setControlsTarget}
                     trailingActions={(
-                      <>{reflectionCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label={translate("preview.reflectionBall")} aria-pressed={hdrViewMode === "reflection"} onClick={() => {
+                      <>{asset.kind === "image" && <button type="button" className="preview-tool-btn" aria-label={translate("similar.title")} onClick={() => window.dispatchEvent(new CustomEvent("refcanvas:find-similar", { detail: { assetId: asset.id } }))}><ScanSearch size={15} /></button>}
+                      {reflectionCapable && <button type="button" className={`preview-tool-btn${hdrViewMode === "reflection" ? " active" : ""}`} aria-label={translate("preview.reflectionBall")} aria-pressed={hdrViewMode === "reflection"} onClick={() => {
                           const next = hdrViewMode === "reflection" ? "flat" : "reflection";
                           const currentPath = entry.sequenceGroup?.files[transport.snapshot?.frameIndex ?? 0] ?? asset.path;
                           setHdrViewMode(next);

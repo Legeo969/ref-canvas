@@ -145,27 +145,60 @@ export function registerFilesystemIpc(
   ipc.handle("filesystem:path-type", (filename) =>
     service().pathType(assertAllowedPath(pathSchema.parse(filename))),
   );
-  ipc.handle("filesystem:locate-entry", (filename, entryPath, revision, favoritesOnly) =>
+  ipc.handle("filesystem:locate-entry", (filename, entryPath, revision, options) =>
     service().locateEntry(
       assertAllowedPath(pathSchema.parse(filename)),
       assertAllowedPath(pathSchema.parse(entryPath)),
       z.string().min(1).max(128).parse(revision),
-      z.boolean().optional().parse(favoritesOnly),
+      z.object({
+        collapseSequences: z.boolean().optional(),
+        extensions: z.array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i)).max(256).optional(),
+        favoritesOnly: z.boolean().optional(),
+        flattenDepth: z.number().int().min(0).max(8).optional(),
+        showHidden: z.boolean().optional(),
+      }).optional().parse(options),
     ),
   );
   ipc.handle("filesystem:start-search", (filename, query, options) =>
-    service().startSearch(
-      assertAllowedPath(pathSchema.parse(filename)),
-      z.string().max(1_000).parse(query),
-      z.object({
+    (() => {
+      const currentPath = assertAllowedPath(pathSchema.parse(filename));
+      const parsedOptions = z.object({
+        scope: z.enum(["current-directory", "current-mount", "all-mounts"]).optional(),
         collapseSequences: z.boolean().optional(),
         extensions: z
           .array(z.string().trim().regex(/^\.?[a-z0-9]{1,16}$/i))
           .max(256)
           .optional(),
         favoritesOnly: z.boolean().optional(),
-      }).optional().parse(options),
-    ),
+      }).optional().parse(options);
+      const onlineMounts = dependencies.getMountRoots()
+        .filter((mount) => mount.state === "online")
+        .map((mount) => path.resolve(mount.path));
+      const contains = (root: string, candidate: string) => {
+        const relative = path.relative(root, candidate);
+        return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+      };
+      const currentMount = onlineMounts
+        .filter((root) => contains(root, currentPath))
+        .sort((left, right) => right.length - left.length)[0]
+        ?? path.parse(currentPath).root;
+      const rootPaths = parsedOptions?.scope === "all-mounts"
+        ? [...new Set([...onlineMounts, currentMount])]
+        : parsedOptions?.scope === "current-mount"
+          ? [currentMount]
+          : [currentPath];
+      rootPaths.forEach(assertAllowedPath);
+      return service().startSearch(
+        rootPaths[0],
+        z.string().max(1_000).parse(query),
+        {
+          rootPaths,
+          collapseSequences: parsedOptions?.collapseSequences,
+          extensions: parsedOptions?.extensions,
+          favoritesOnly: parsedOptions?.favoritesOnly,
+        },
+      );
+    })(),
   );
   ipc.handle("filesystem:cancel-search", (id) =>
     service().cancelSearch(z.string().min(1).max(128).parse(id)),
@@ -381,7 +414,7 @@ export function registerFilesystemIpc(
       filters: [{ name: "UTF-8 文本", extensions: ["txt"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
       { path: result.filePath, mode: "destination" },
     ]);
     await writeFile(destination, "\uFEFF", "utf8");

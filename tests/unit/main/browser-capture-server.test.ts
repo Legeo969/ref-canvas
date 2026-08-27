@@ -9,6 +9,12 @@ import { pruneOrphanedCaptures } from "../../../src/main/services/browser-captur
 
 const BASE64_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M8AAAMBAQDJZIgAAAAASUVORK5CYII=";
+const BASE64_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#3ab28f"/></svg>',
+).toString("base64");
+const EXTENSION_ORIGIN = `chrome-extension://${"a".repeat(32)}`;
+const EXTENSION_ID = "a".repeat(32);
+const TOKEN = "x".repeat(43);
 
 function getFreePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -21,7 +27,10 @@ function getFreePort(): Promise<number> {
 }
 
 async function fetchJson(url: string, init?: RequestInit): Promise<{ status: number; json: unknown }> {
-  const res = await fetch(url, init);
+  const headers = new Headers(init?.headers);
+  headers.set("Origin", EXTENSION_ORIGIN);
+  headers.set("Authorization", `Bearer ${TOKEN}`);
+  const res = await fetch(url, { ...init, headers });
   return { status: res.status, json: await res.json() };
 }
 
@@ -39,6 +48,18 @@ describe("browser-capture-server", () => {
         getCaptureDirectory: () => path.join(tmpdir(), "refcanvas-capture-test"),
         getBoardsSummary: () => [{ id: "board-1", title: "测试板" }],
         onCapture: (path, meta) => capturedFiles.push({ path, ...meta }),
+        pair: () => ({
+          token: TOKEN,
+          pairing: {
+            id: "pairing-1",
+            origin: EXTENSION_ORIGIN,
+            label: "测试浏览器",
+            createdAt: new Date().toISOString(),
+            lastUsedAt: null,
+          },
+        }),
+        authenticate: (origin, token) =>
+          origin === EXTENSION_ORIGIN && token === TOKEN,
       },
       port,
     );
@@ -77,6 +98,21 @@ describe("browser-capture-server", () => {
     expect(capturedFiles[0].path).toContain("test-capture");
     expect(capturedFiles[0].path).toMatch(/\.png$/);
     expect(capturedFiles[0].sourceUrl).toBe("https://example.com/page.html");
+  });
+
+  it("rasterizes SVG captures to safe PNG files", async () => {
+    const { status } = await fetchJson(`${baseUrl}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: BASE64_SVG,
+        contentType: "image/svg+xml",
+        filename: "vector.svg",
+      }),
+    });
+    expect(status).toBe(200);
+    expect(capturedFiles).toHaveLength(1);
+    expect(capturedFiles[0].path).toMatch(/\.png$/);
   });
 
   // 回归：网页图片大量重名（image.png / index.jpg），若按原始名落盘，
@@ -170,9 +206,25 @@ describe("browser-capture-server", () => {
   });
 
   it("returns CORS headers on all responses", async () => {
-    const res = await fetch(`${baseUrl}/status`);
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const res = await fetch(`${baseUrl}/status`, {
+      headers: { Origin: EXTENSION_ORIGIN, Authorization: `Bearer ${TOKEN}` },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBe(EXTENSION_ORIGIN);
     expect(res.headers.get("access-control-allow-methods")).toContain("GET");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "X-RefCanvas-Extension-Id",
+    );
+  });
+
+  it("accepts an authenticated extension request when Chromium omits Origin", async () => {
+    const res = await fetch(`${baseUrl}/status`, {
+      headers: {
+        "X-RefCanvas-Extension-Id": EXTENSION_ID,
+        Authorization: `Bearer ${TOKEN}`,
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ connected: true });
   });
 
   // 回归：Chrome 的 Local Network Access（PNA 后继）要求"更公开上下文 → 回环
@@ -183,20 +235,66 @@ describe("browser-capture-server", () => {
     const res = await fetch(`${baseUrl}/capture`, {
       method: "OPTIONS",
       headers: {
-        Origin: "chrome-extension://refcanvas-test",
+        Origin: EXTENSION_ORIGIN,
         "Access-Control-Request-Method": "POST",
         "Access-Control-Request-Headers": "content-type",
         "Access-Control-Request-Private-Network": "true",
       },
     });
     expect(res.status).toBe(204);
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-origin")).toBe(EXTENSION_ORIGIN);
     expect(res.headers.get("access-control-allow-private-network")).toBe("true");
   });
 
   it("returns 404 for unknown routes", async () => {
-    const res = await fetch(`${baseUrl}/unknown`);
+    const res = await fetch(`${baseUrl}/unknown`, {
+      headers: { Origin: EXTENSION_ORIGIN, Authorization: `Bearer ${TOKEN}` },
+    });
     expect(res.status).toBe(404);
+  });
+
+  it("rejects unpaired, revoked, and web-origin requests", async () => {
+    const noToken = await fetch(`${baseUrl}/status`, {
+      headers: { Origin: EXTENSION_ORIGIN },
+    });
+    expect(noToken.status).toBe(401);
+
+    const wrongToken = await fetch(`${baseUrl}/status`, {
+      headers: { Origin: EXTENSION_ORIGIN, Authorization: `Bearer ${"y".repeat(43)}` },
+    });
+    expect(wrongToken.status).toBe(401);
+
+    const webOrigin = await fetch(`${baseUrl}/status`, {
+      headers: {
+        Origin: "https://example.com",
+        "X-RefCanvas-Extension-Id": EXTENSION_ID,
+        Authorization: `Bearer ${TOKEN}`,
+      },
+    });
+    expect(webOrigin.status).toBe(403);
+    expect(webOrigin.headers.get("access-control-allow-origin")).toBeNull();
+
+    const mismatchedIdentity = await fetch(`${baseUrl}/status`, {
+      headers: {
+        Origin: EXTENSION_ORIGIN,
+        "X-RefCanvas-Extension-Id": "b".repeat(32),
+        Authorization: `Bearer ${TOKEN}`,
+      },
+    });
+    expect(mismatchedIdentity.status).toBe(403);
+  });
+
+  it("rejects non-image payloads before writing", async () => {
+    const { status } = await fetchJson(`${baseUrl}/capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: Buffer.from("not an image").toString("base64"),
+        filename: "fake.png",
+      }),
+    });
+    expect(status).toBe(400);
+    expect(capturedFiles).toHaveLength(0);
   });
 });
 

@@ -43,6 +43,10 @@ describe("GIFPreview decode lifecycle", () => {
       width: frame.displayWidth,
       height: frame.displayHeight,
     })));
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      clearRect: vi.fn(),
+      drawImage: vi.fn(),
+    } as unknown as CanvasRenderingContext2D);
     Object.assign(window, {
       refCanvas: {
         system: { saveRegionCapture: vi.fn(), writeClipboard: vi.fn() },

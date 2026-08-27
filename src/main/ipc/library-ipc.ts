@@ -327,6 +327,20 @@ export function registerLibraryIpc(
   ipc.handle("library:delete-auto-tag-rule", (id) =>
     database().deleteAutoTagRule(z.string().min(1).max(64).parse(id)),
   );
+  ipc.handle("library:preview-auto-tag-rule", (rule) =>
+    library().previewAutoTagRule(
+      z
+        .object({
+          name: z.string().trim().min(1).max(120),
+          filenamePattern: z.string().max(256).nullable().default(null),
+          pathPattern: z.string().max(512).nullable().default(null),
+          extension: z.string().regex(/^[a-z0-9]{1,16}$/i).nullable().default(null),
+          tags: z.array(z.string().trim().min(1).max(64)).max(64),
+          enabled: z.boolean().default(true),
+        })
+        .parse(rule),
+    ),
+  );
   ipc.handle("library:apply-auto-tag-rules", () =>
     library().applyAutoTagRules(),
   );
@@ -454,6 +468,9 @@ export function registerLibraryIpc(
       result.filePaths[0],
       `${dependencies.safeFilename(board.summary.title)}.refcanvas-project`,
     );
+    await dependencies.writeAccess.authorizePickerSelection([
+      { path: result.filePaths[0], mode: "destination" },
+    ]);
     const [destination] = await dependencies.writeAccess.authorize(
       dependencies.windowForSender(event), "export", [
         { path: requestedDestination, mode: "destination" },
@@ -495,9 +512,7 @@ export function registerLibraryIpc(
       properties: ["openDirectory", "createDirectory"],
     });
     if (result.canceled || !result.filePaths[0]) return null;
-    const [targetDirectory] = await dependencies.writeAccess.authorize(
-      dependencies.windowForSender(event),
-      "export",
+    const [targetDirectory] = await dependencies.writeAccess.authorizePickerSelection(
       [{ path: result.filePaths[0], mode: "destination" }],
     );
     const bundle = new BundleService({

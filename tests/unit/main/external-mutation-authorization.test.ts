@@ -54,7 +54,7 @@ describe("external mutation authorization inventory", () => {
       ipcText.indexOf('ipc.handle("scripts:list"'),
       ipcText.indexOf("// --- color:get-status"),
     );
-    // B 方案信任链：运行前必须经过盘符授权；注册输入必须有界。
+    // B 方案信任链：运行前必须经过目录范围校验；注册输入必须有界。
     expect(scripts).toContain('handleWithEvent("scripts:run"');
     expect(scripts).toContain("writeAccess.authorize");
     expect(scripts).toContain('"execute"');

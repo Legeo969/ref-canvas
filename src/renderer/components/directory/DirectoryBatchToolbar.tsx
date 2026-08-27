@@ -6,6 +6,7 @@ import {
   Scissors,
   Tags,
   Trash2,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { translate } from "../../app/i18n";
@@ -23,6 +24,7 @@ export function DirectoryBatchToolbar({
   onClipboardCut,
   onTag,
   onTrash,
+  onBatchActions,
   onClear,
 }: {
   selectedCount: number;
@@ -37,6 +39,7 @@ export function DirectoryBatchToolbar({
   onClipboardCut(): void;
   onTag(): void;
   onTrash(): void;
+  onBatchActions(): void;
   onClear(): void;
 }) {
   if (selectedCount <= 0) return null;
@@ -53,6 +56,7 @@ export function DirectoryBatchToolbar({
       <button onClick={onClipboardCopy} title={translate("directory.copyToClipboard")}><Copy size={14} /></button>
       <button onClick={onClipboardCut} title={translate("directory.cut")}><Scissors size={14} /></button>
       <button onClick={onTag} title={translate("preview.setTags")}><Tags size={14} /></button>
+      <button onClick={onBatchActions} aria-label="批处理"><WandSparkles size={14} /></button>
       <button className="danger" onClick={onTrash} title={translate("preview.moveToTrash")}><Trash2 size={14} /></button>
       <button className="danger" onClick={onClear} title={translate("directory.clearSelection")}><X size={14} /></button>
     </div>

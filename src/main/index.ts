@@ -18,7 +18,6 @@ import {
   mkdir,
   readFile,
   readdir,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -28,6 +27,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import Database from "better-sqlite3";
 import { copyFileDurable } from "./platform/fsync";
+import { moveToRecycleBin } from "./platform/recycle-bin";
 import { BackupService } from "./services/backup-service";
 import { ActionService } from "./services/action-service";
 import { RefCanvasDatabase, APP_MAX_SCHEMA_VERSION } from "./persistence/database";
@@ -77,6 +77,8 @@ import { DocumentProvider } from "./providers/document-provider";
 import { DccProvider } from "./providers/dcc-provider";
 import { registerProtocols } from "./platform/protocols";
 import { createCaptureServer } from "./platform/browser-capture-server";
+import { BrowserCapturePairingService } from "./services/browser-capture-pairing-service";
+import { ActionPresetService } from "./services/action-preset-service";
 import { pruneOrphanedCaptures } from "./services/browser-capture-maintenance";
 import { CaptureDeliveryService, type CaptureDeliveryTarget } from "./services/capture-delivery";
 import { registerSecureListener } from "./platform/secure-ipc";
@@ -104,6 +106,7 @@ import { registerResourcesIpc } from "./ipc/resources-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
 import { registerAiIpc, readAiSettings } from "./ipc/ai-ipc";
 import { registerTaskCenterIpc } from "./ipc/task-center-ipc";
+import { registerBrowserCaptureIpc } from "./ipc/browser-capture-ipc";
 import { AiJobService } from "./services/ai/ai-job-service";
 import type { AiProvider } from "./services/ai/ai-provider";
 import type { AiProviderKind } from "../shared/contracts";
@@ -166,7 +169,21 @@ const boardFlushResolvers = new Map<number, (saved: boolean) => void>();
 const boardWindowsClosingAfterFlush = new Set<number>();
 const mainWindowsClosingAfterFlush = new Set<number>();
 const trustedWindows = new TrustedWindowRegistry();
-const writeAccess = new WriteAccessController(() => [app.getPath("userData")]);
+const writeAccess = new WriteAccessController(() => {
+  const roots = [
+    app.getPath("userData"),
+    path.join(app.getPath("pictures"), "RefCanvas Actions"),
+    path.join(app.getPath("pictures"), "RefCanvas Captures"),
+  ];
+  try {
+    roots.push(...database.listMountRoots().map((mount) => mount.path));
+  } catch {
+    // Startup recovery registers IPC before the database is available.
+  }
+  return roots;
+});
+const browserCapturePairings = new BrowserCapturePairingService(() => database);
+const actionPresets = new ActionPresetService(() => database);
 let database: RefCanvasDatabase;
 let library: LibraryService;
 let backups: BackupService;
@@ -249,66 +266,8 @@ const squirrelFirstRun = isSquirrelFirstRun(process.argv);
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
-/** Windows 并行 worker/预览流下句柄释放有延迟：rename 带短重试（EBUSY 安全）。 */
-async function renameWithRetry(
-  from: string,
-  to: string,
-  attempts = 8,
-): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      await rename(from, to);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (attempt === attempts - 1 || (code !== "EBUSY" && code !== "EPERM")) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
-    }
-  }
-}
-
-/** Windows 下删除被占用文件同样可能 EBUSY：rm 带短重试。 */
-async function rmWithRetry(
-  filename: string,
-  attempts = 8,
-): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      await rm(filename, { force: true });
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (attempt === attempts - 1 || (code !== "EBUSY" && code !== "EPERM")) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
-    }
-  }
-}
-
 async function trashDirectoryPath(filename: string): Promise<void> {
-  try {
-    await shell.trashItem(filename);
-  } catch {
-    const fallback = directoryService.fallbackTrashRoot;
-    await mkdir(fallback, { recursive: true });
-    const target = path.join(
-      fallback,
-      `${path.basename(filename)}-${Date.now()}`,
-    );
-    try {
-      // 优先同卷 rename；句柄未释放时短重试。
-      await renameWithRetry(filename, target);
-    } catch (error) {
-      // 跨卷（EXDEV）或重试后仍占用：复制到回收站，再删除原文件。
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "EXDEV" && code !== "EBUSY" && code !== "EPERM") throw error;
-      await copyFile(filename, target);
-      await rmWithRetry(filename);
-    }
-  }
+  await moveToRecycleBin(filename, (target) => shell.trashItem(target));
   const existing = database.getAssetByPath(filename);
   if (existing && existing.lifecycle === "active") {
     database.setLinkState(existing.id, "missing");
@@ -1174,6 +1133,8 @@ function scheduleWalCheckpoint(delayMs = 3_000): void {
 function registerIpc(): void {
   const ipc = new SecureIpcRegistrar(validateSender, () => scheduleWalCheckpoint());
 
+  registerBrowserCaptureIpc(ipc, () => browserCapturePairings);
+
   registerLibraryIpc(ipc, {
     copyProjectAsset,
     getDatabase: () => database,
@@ -1267,6 +1228,7 @@ function registerIpc(): void {
 
   registerActionIpc(ipc, {
     getActions: () => actions,
+    getPresets: () => actionPresets,
     windowForSender,
     writeAccess,
   });
@@ -1380,21 +1342,6 @@ function createRecoveryWindow(): void {
   mainWindow.once("ready-to-show", () => {
     const window = mainWindow;
     window?.show();
-    if (!squirrelFirstRun || !window) return;
-    const isChinese = app.getLocale().toLowerCase().startsWith("zh");
-    void dialog.showMessageBox(window, {
-      type: "info",
-      title: isChinese ? "RefCanvas 安装完成" : "RefCanvas installed",
-      message: isChinese
-        ? `RefCanvas ${app.getVersion()} 已安装完成`
-        : `RefCanvas ${app.getVersion()} was installed successfully`,
-      detail: isChinese
-        ? "现在可以开始使用。以后可在“设置 → 关于”或 Windows“已安装的应用”中卸载。"
-        : "You can start using it now. Uninstall later from Settings → About or Windows Installed apps.",
-      buttons: [isChinese ? "开始使用" : "Get started"],
-      defaultId: 0,
-      noLink: true,
-    });
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -1457,7 +1404,10 @@ function createWindow(): void {
   mainWindow.webContents.on("did-finish-load", () => {
     captureDelivery.flushQueue();
   });
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.once("ready-to-show", () => {
+    const window = mainWindow;
+    window?.show();
+  });
   mainWindow.on("enter-full-screen", () => {
     setFullscreenTitleBarOverlay(mainWindow, true);
     mainWindow?.webContents.send("system:presentation-mode-changed", true);
@@ -1490,15 +1440,21 @@ function createWindow(): void {
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    const query = new URLSearchParams();
+    if (fpsCheckMode) query.set("fps", "1");
+    if (app.isPackaged && squirrelFirstRun) query.set("first-run", "1");
+    const suffix = query.toString() ? `?${query.toString()}` : "";
     void mainWindow.loadURL(
-      fpsCheckMode
-        ? `${MAIN_WINDOW_VITE_DEV_SERVER_URL}?fps=1`
-        : MAIN_WINDOW_VITE_DEV_SERVER_URL,
+      `${MAIN_WINDOW_VITE_DEV_SERVER_URL}${suffix}`,
     );
   } else {
+    const query = {
+      ...(fpsCheckMode ? { fps: "1" } : {}),
+      ...(app.isPackaged && squirrelFirstRun ? { "first-run": "1" } : {}),
+    };
     void mainWindow.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-      { query: fpsCheckMode ? { fps: "1" } : undefined },
+      { query: Object.keys(query).length ? query : undefined },
     );
   }
   if (savedBounds.maximized) mainWindow.maximize();
@@ -1903,6 +1859,10 @@ void app.whenReady().then(async () => {
           alt: meta.alt,
         });
       },
+      pair: (code, origin, label) =>
+        browserCapturePairings.pair(code, origin, label),
+      authenticate: (origin, token) =>
+        Boolean(browserCapturePairings.authenticate(origin, token)),
     },
     17530,
   ).on("error", (error) => {

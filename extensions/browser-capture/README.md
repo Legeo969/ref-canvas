@@ -34,13 +34,14 @@ Chrome/Edge 扩展（Manifest V3），把网页上的图片一键送进 RefCanva
                                   └────────────────────┘
 ```
 
-通信仅限本机回环地址（`127.0.0.1`），不发起任何外部网络请求。
+通信仅限本机回环地址（`127.0.0.1`），不发起任何外部网络请求。状态与捕获接口需要一次性配对后取得的本机令牌，网页不能读取板列表或投递文件。
 
 ## 安装（开发）
 
 1. 启动 RefCanvas（捕获服务随应用自动启动）
 2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）→ 开启右上角**开发者模式** → **加载已解压的扩展程序** → 选择本目录（`extensions/browser-capture/`）
-3. 固定到工具栏即可使用
+3. 在 RefCanvas 的“设置 → 浏览器捕获”生成六位配对码（60 秒有效）
+4. 打开扩展设置，输入配对码；成功后固定到工具栏即可使用
 
 分发 zip：`pnpm package:extension`（输出到 `out/`）。
 
@@ -53,7 +54,7 @@ background/api.js     — HTTP 客户端与错误记录
 background/capture.js — 图片提取（直连 fetch → 页面注入兜底）与发送
 background/boards.js  — 右键菜单与板子菜单管理
 background/history.js — 最近捕获历史
-background/settings.js— 设置存取（chrome.storage.sync）
+background/settings.js— 普通设置使用 `chrome.storage.sync`，配对令牌仅使用 `chrome.storage.local`
 content/picker.js     — 拾取器覆盖层（注入式）
 popup/                — 弹窗面板
 options/              — 设置页
@@ -67,6 +68,7 @@ generate-icons.cjs    — 由 SVG 重新生成图标（node generate-icons.cjs�
 |---|---|
 | 默认板 | `跟随应用当前板`（默认）：捕获进应用当前打开的板；指定固定板：捕获自动切到该板导入，接收 400（板已删）后自动重置为跟随 |
 | 服务端口 | 与应用侧捕获服务端口一致，默认 `17530`；改后需在扩展侧同步修改 |
+| 浏览器配对 | 六位码只使用一次并在 60 秒后过期；应用只保存令牌哈希，可随时在设置中撤销 |
 
 ## 快捷键
 
@@ -105,4 +107,5 @@ generate-icons.cjs    — 由 SVG 重新生成图标（node generate-icons.cjs�
 ## 隐私
 
 - 全部通信仅限本机（`127.0.0.1`）
+- 捕获接口绑定扩展 Origin；令牌仅保存在 `chrome.storage.local`，不会随浏览器账号同步
 - 不上传、不追踪、不存储浏览数据；历史记录只存本地

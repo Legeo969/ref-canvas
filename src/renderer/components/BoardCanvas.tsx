@@ -35,6 +35,7 @@ import {
   Undo2,
   X,
 } from "lucide-react";
+import { SelectMenu } from "./SelectMenu";
 import {
   Canvas as FabricCanvas,
   FabricImage,
@@ -5542,17 +5543,13 @@ export function BoardCanvas({
         <div className="board-title-group">
           <span className="eyebrow">{translate("board.currentBoard")}</span>
           <div className="board-switcher">
-            <select
+            <SelectMenu
+              className="board-switcher-menu"
               value={board.id}
-              onChange={(event) => void switchBoard(event.target.value)}
-              aria-label={translate("board.switchBoard")}
-            >
-              {boards.map((item) => (
-                <option value={item.id} key={item.id}>
-                  {item.title}
-                </option>
-              ))}
-            </select>
+              ariaLabel={translate("board.switchBoard")}
+              options={boards.map((item) => ({ value: item.id, label: item.title }))}
+              onValueChange={(value) => void switchBoard(value)}
+            />
             <button onClick={() => void createBoard()} aria-label={translate("boards.new")}>
               <Plus size={14} />
             </button>
@@ -6281,7 +6278,7 @@ export function BoardCanvas({
                   <span className="text-tool-icon">NN</span>
                   {translate("board.toggleSampling")}
                 </button>
-                {eventBindingsRef.current.onLocateAsset && (
+                {eventBindingsRef.current.onLocateAsset && boardContextMenu.target.assetId && (
                   <button
                     role="menuitem"
                     onClick={() => {
@@ -6289,9 +6286,14 @@ export function BoardCanvas({
                       if (assetId) {
                         void window.refCanvas.library
                           .get(assetId)
-                          .then((loaded) => {
-                            if (loaded) eventBindingsRef.current.onLocateAsset?.(loaded);
-                          });
+                          .then(async (loaded) => {
+                            if (!loaded) {
+                              showDropNotice(translate("board.locateAssetMissing"));
+                              return;
+                            }
+                            await eventBindingsRef.current.onLocateAsset?.(loaded);
+                          })
+                          .catch(() => showDropNotice(translate("board.locateFailed")));
                       }
                       setBoardContextMenu(null);
                     }}

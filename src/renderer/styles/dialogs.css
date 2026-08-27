@@ -32,9 +32,9 @@
   padding: 0 12px 8px;
 }
 
-.asset-filter-row select,
-.batch-actions-popover select,
-.asset-property-row select {
+.asset-filter-row .select-menu-trigger,
+.batch-actions-popover .select-menu-trigger,
+.asset-property-row .select-menu-trigger {
   min-width: 0;
   height: 34px;
   padding: 0 8px;
@@ -111,7 +111,7 @@
 }
 
 .advanced-filters input,
-.advanced-filters select {
+.advanced-filters .select-menu-trigger {
   min-width: 0;
   height: 32px;
   padding: 0 8px;
@@ -312,7 +312,7 @@
 }
 
 .batch-actions-popover button,
-.batch-actions-popover select {
+.batch-actions-popover .select-menu-trigger {
   width: 100%;
   min-width: 0;
   height: 40px;
@@ -502,7 +502,7 @@
   background: transparent;
 }
 
-.asset-property-row select {
+.asset-property-row .select-menu-trigger {
   flex: 1;
 }
 
@@ -904,6 +904,121 @@
   place-items: center;
   background: rgba(7, 9, 9, 0.64);
   backdrop-filter: blur(7px);
+}
+
+.install-complete-backdrop {
+  position: fixed;
+  z-index: 950;
+  display: grid;
+  inset: 0;
+  place-items: center;
+  background: rgba(7, 9, 9, 0.72);
+  backdrop-filter: blur(10px);
+  animation: install-complete-enter 180ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.install-complete-card {
+  display: grid;
+  width: min(420px, calc(100vw - 40px));
+  justify-items: center;
+  gap: 10px;
+  padding: 32px 34px 26px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: #202526;
+  box-shadow:
+    0 0 0 1px rgba(58, 178, 143, 0.08),
+    0 28px 80px rgba(0, 0, 0, 0.52);
+  text-align: center;
+}
+
+.install-complete-art {
+  position: relative;
+  display: grid;
+  width: 112px;
+  height: 112px;
+  place-items: center;
+  margin-bottom: 4px;
+  border-radius: 28px;
+  background: #171b1c;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 16px 36px rgba(0, 0, 0, 0.26);
+}
+
+.install-complete-art::before {
+  position: absolute;
+  content: "";
+  inset: 10px;
+  border: 1px solid rgba(82, 199, 173, 0.24);
+  border-radius: 22px;
+}
+
+.install-complete-art img {
+  width: 74px;
+  height: 74px;
+  object-fit: contain;
+  outline: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 17px;
+}
+
+.install-complete-check {
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 4px solid #202526;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #10211c;
+}
+
+.install-complete-eyebrow {
+  margin: 2px 0 0;
+  color: #8cdec5;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.install-complete-card h1 {
+  margin: 0;
+  color: #f0f5f2;
+  font-size: 23px;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+.install-complete-description,
+.install-complete-footnote {
+  max-width: 320px;
+  margin: 0;
+  color: #aab5af;
+  font-size: 12px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.install-complete-footnote {
+  color: #71807a;
+  font-size: 10px;
+}
+
+.install-complete-action {
+  min-width: 176px;
+  min-height: 40px;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+@keyframes install-complete-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-panel {
@@ -1323,7 +1438,7 @@
   font-size: 9px;
 }
 
-.settings-row select {
+.settings-row .select-menu-trigger {
   flex: 0 0 auto;
   min-width: 150px;
   height: 34px;
@@ -1512,6 +1627,56 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   color: #c8d1cc;
   font-size: 10px;
+}
+
+/* Settings text fields share the same quiet surface and accent focus ring as
+   the reference input: compact dark fill by default, green only on focus. */
+.settings-panel input[type="text"],
+.settings-panel input[type="number"],
+.settings-panel input[type="search"],
+.settings-panel input[type="url"],
+.settings-panel input[type="password"],
+.settings-panel input:not([type]),
+.settings-panel textarea {
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  outline: none;
+  background: #1b2021;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  color: var(--text);
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: 140ms;
+  transition-timing-function: ease-out;
+}
+
+.settings-panel input[type="text"]:hover:not(:disabled),
+.settings-panel input[type="number"]:hover:not(:disabled),
+.settings-panel input[type="search"]:hover:not(:disabled),
+.settings-panel input[type="url"]:hover:not(:disabled),
+.settings-panel input[type="password"]:hover:not(:disabled),
+.settings-panel input:not([type]):hover:not(:disabled),
+.settings-panel textarea:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #202627;
+}
+
+.settings-panel input[type="text"]:focus,
+.settings-panel input[type="number"]:focus,
+.settings-panel input[type="search"]:focus,
+.settings-panel input[type="url"]:focus,
+.settings-panel input[type="password"]:focus,
+.settings-panel input:not([type]):focus,
+.settings-panel textarea:focus {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px rgba(58, 178, 143, 0.14),
+    inset 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.settings-panel input::placeholder,
+.settings-panel textarea::placeholder {
+  color: #707a75;
 }
 
 .format-whitelist-editor > p {
@@ -2709,7 +2874,7 @@
     grid-template-columns: minmax(0, 1fr) 40px;
   }
 
-  .asset-filter-row select:nth-child(2) {
+  .asset-filter-row .select-menu-trigger:nth-child(2) {
     display: none;
   }
 
@@ -3914,7 +4079,7 @@
 
   .settings-row > input[type="text"],
   .settings-row > input[type="number"],
-  .settings-row select,
+  .settings-row .select-menu-trigger,
   .settings-row > .select-menu-trigger,
   .settings-path-control {
     width: 100%;
@@ -4322,7 +4487,7 @@
   flex: 1 1 180px;
 }
 
-.hdr-layer-select select {
+.hdr-layer-select .select-menu-trigger {
   width: min(280px, 100%);
   min-width: 0;
 }
@@ -4369,7 +4534,7 @@
   font-size: 11px;
 }
 
-.hdr-preview-controls select {
+.hdr-preview-controls .select-menu-trigger {
   height: 28px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
@@ -4725,51 +4890,6 @@
 }
 
 
-/* 阶段 5：Folder flattening & format filter */
-
-.dir-format-filter {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 3px;
-  padding: 0 12px 6px;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.dir-format-filter button {
-  min-width: 40px;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.035);
-  box-shadow: var(--shadow-border);
-  color: #8d9992;
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0;
-  cursor: pointer;
-  transition-property: background-color, box-shadow, color, scale;
-  transition-duration: 120ms;
-  transition-timing-function: ease-out;
-}
-
-.dir-format-filter button:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #d6e0da;
-}
-
-.dir-format-filter button.active {
-  background: rgba(53, 198, 160, 0.16);
-  box-shadow: 0 0 0 1px rgba(53, 198, 160, 0.35);
-  color: #a9e4cd;
-}
-
-.dir-format-filter button:active {
-  scale: 0.96;
-}
-
 .dir-flatten-warning {
   margin: 0 14px 8px;
   padding: 7px 12px;
@@ -4998,9 +5118,9 @@
 }
 
 .gif-export-options input,
-.gif-export-options select,
+.gif-export-options .select-menu-trigger,
 .video-frames-form input,
-.video-frames-form select {
+.video-frames-form .select-menu-trigger {
   min-width: 0;
   height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.1);

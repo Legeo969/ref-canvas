@@ -2,7 +2,8 @@
 
 .ai-panel-backdrop {
   position: fixed;
-  inset: 0;
+  /* Keep the native window controls/titlebar outside the overlay. */
+  inset: 48px 0 0;
   z-index: 80;
   display: flex;
   justify-content: flex-end;
@@ -22,7 +23,7 @@
 
 .ai-panel {
   display: flex;
-  width: min(460px, 92vw);
+  width: min(500px, 94vw);
   height: 100%;
   flex-direction: column;
   background: #1a1f20;
@@ -41,6 +42,7 @@
 
 .ai-panel.embedded .ai-panel-body {
   flex: 1 1 auto;
+  max-height: none;
   gap: 0;
   padding: 0;
   overflow-y: auto;
@@ -50,6 +52,10 @@
   flex: 0 1 24%;
   padding: 10px 12px;
   background: var(--surface-1);
+}
+
+.ai-panel.embedded .ai-history.empty {
+  flex: 0 0 auto;
 }
 
 .ai-panel.embedded .preview-ai-source-region {
@@ -128,7 +134,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 58px;
+  min-height: 62px;
   padding: 0 14px 0 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -156,10 +162,12 @@
 
 .ai-panel-body {
   display: flex;
+  flex: 0 1 auto;
+  max-height: 70%;
   min-height: 0;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 14px 16px 12px;
   overflow-y: auto;
 }
 
@@ -176,7 +184,6 @@
   color: #828c87;
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.4px;
   text-transform: uppercase;
 }
 
@@ -194,7 +201,7 @@
 
 .ai-drop-zone {
   display: grid;
-  min-height: 108px;
+  min-height: 96px;
   place-items: center;
   padding: 12px;
   border-radius: 10px;
@@ -202,6 +209,17 @@
   background: rgba(255, 255, 255, 0.02);
   transition-property: border-color, background-color;
   transition-duration: 130ms;
+}
+
+.ai-drop-zone:not(.has-source) {
+  cursor: pointer;
+}
+
+.ai-drop-zone:not(.has-source):hover,
+.ai-drop-zone:not(.has-source):focus-visible {
+  border-color: rgba(89, 202, 166, 0.7);
+  background: rgba(58, 178, 143, 0.06);
+  outline: none;
 }
 
 .ai-drop-zone.active {
@@ -376,7 +394,7 @@
 
 .ai-prompt-input,
 .ai-output-picker input,
-.ai-panel select {
+.ai-panel .select-menu-trigger {
   width: 100%;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
@@ -388,12 +406,12 @@
 .ai-prompt-input {
   padding: 9px 11px;
   resize: vertical;
-  min-height: 64px;
+  min-height: 84px;
 }
 
 .ai-prompt-input:focus,
 .ai-output-picker input:focus,
-.ai-panel select:focus {
+.ai-panel .select-menu-trigger:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -402,6 +420,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 48px;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .ai-toggle {
@@ -429,8 +452,13 @@
   padding: 8px 10px;
 }
 
-.ai-provider-row select {
+.ai-provider-row .select-menu-trigger {
   padding: 8px 10px;
+}
+
+.ai-count-menu {
+  min-width: 68px;
+  min-height: 36px;
 }
 
 .ai-field-error {
@@ -444,7 +472,7 @@
 }
 
 .ai-panel-footer {
-  padding-top: 4px;
+  padding-top: 0;
 }
 
 .ai-panel-footer .primary-button {
@@ -461,6 +489,12 @@
   padding: 12px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
+}
+
+.ai-history.empty {
+  flex: 0 0 auto;
+  min-height: 76px;
+  max-height: 96px;
 }
 
 .ai-history-empty {

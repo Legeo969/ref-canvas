@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Pause, Play, X } from "lucide-react";
 import { translate } from "../../app/i18n";
+import { SelectMenu } from "../SelectMenu";
 
 export function BoardFocusOverlay({
   title,
@@ -43,15 +44,27 @@ export function BoardFocusOverlay({
       <button onClick={onNext} aria-label={translate("board.focusNext")} data-shortcut="→"><ChevronRight size={17} /></button>
       <label>
         <span className="sr-only">{translate("board.focusInterval")}</span>
-        <select value={interval} onChange={(event) => onIntervalChange(Number(event.target.value))} aria-label={translate("board.focusInterval")}>
-          <option value="3">{intervalSeconds(3)}</option><option value="5">{intervalSeconds(5)}</option><option value="10">{intervalSeconds(10)}</option>
-        </select>
+        <SelectMenu
+          value={interval}
+          options={[3, 5, 10].map((value) => ({ value, label: intervalSeconds(value) }))}
+          ariaLabel={translate("board.focusInterval")}
+          onValueChange={onIntervalChange}
+          className="focus-select-menu"
+        />
       </label>
       <label>
         <span className="sr-only">{translate("board.focusOrder")}</span>
-        <select value={mode} onChange={(event) => onModeChange(event.target.value as "order" | "shuffle" | "random")} aria-label={translate("board.focusOrder")}>
-          <option value="order">{translate("board.focusOrderMode")}</option><option value="shuffle">{translate("board.focusShuffle")}</option><option value="random">{translate("board.focusRandom")}</option>
-        </select>
+        <SelectMenu
+          value={mode}
+          options={[
+            { value: "order" as const, label: translate("board.focusOrderMode") },
+            { value: "shuffle" as const, label: translate("board.focusShuffle") },
+            { value: "random" as const, label: translate("board.focusRandom") },
+          ]}
+          ariaLabel={translate("board.focusOrder")}
+          onValueChange={onModeChange}
+          className="focus-select-menu focus-order-menu"
+        />
       </label>
       <button onClick={onExit} aria-label={translate("board.exitFocus")}><X size={16} /></button>
     </div>

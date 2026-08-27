@@ -142,8 +142,13 @@ export function registerResourcesIpc(
   // --- mounts（计划 §7.2 / §13.4）---
 
   ipc.handle("mounts:list", () => database().listMountRoots());
-  ipc.handle("mounts:add", async (mountPath) => {
-    const resolved = assertAbsoluteLocalPath(pathSchema.parse(mountPath));
+  ipc.handleWithEvent("mounts:add", async (event, mountPath) => {
+    const requested = assertAbsoluteLocalPath(pathSchema.parse(mountPath));
+    const [resolved] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "mount",
+      [{ path: requested, mode: "destination" }],
+    );
     const existing = database()
       .listMountRoots()
       .find((item) => item.path === resolved);
@@ -1098,10 +1103,10 @@ export function registerResourcesIpc(
     });
   });
 
-  // Arbitrary child processes cannot be constrained by drive grants. The
+  // Arbitrary child processes cannot be constrained by directory grants. The
   // script trust chain (B 方案) mitigates this explicitly instead:
   // 注册前 inspect+confirm（路径/sha256/命令行），运行前重校验 sha256，
-  // cwd 经盘符授权提示，超时杀进程树。见 ScriptsService。
+  // cwd 经目录范围校验，超时杀进程树。见 ScriptsService。
   ipc.handle("scripts:list", () => dependencies.getScriptsService().list());
 
   ipc.handle("scripts:inspect", (request) => {
@@ -1134,7 +1139,7 @@ export function registerResourcesIpc(
     const parsed = z
       .object({ id: z.string().min(1).max(64), cwd: pathSchema })
       .parse(request);
-    // 运行目录所在盘必须经过既有盘符授权提示；脚本本身仍以用户完整权限
+    // 运行目录必须经过目录范围校验；脚本本身仍以用户完整权限
     // 运行（设置页文案已明示），这是 B 方案下明示的信任边界。
     const [cwd] = await dependencies.writeAccess.authorize(
       dependencies.windowForSender(event),

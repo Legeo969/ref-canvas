@@ -94,6 +94,9 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
     expect(css).toMatch(
       /\.ai-panel-backdrop\s*\{[^}]*pointer-events:\s*none;/s,
     );
+    expect(css).toMatch(
+      /\.ai-panel-backdrop\s*\{[^}]*inset:\s*48px 0 0;/s,
+    );
     expect(css).toMatch(/\.ai-panel\s*\{[^}]*pointer-events:\s*auto;/s);
   });
 
@@ -113,6 +116,30 @@ describe("AiDesignSupervisorPanel (FND-008)", () => {
     expect(host.querySelector("textarea#ai-prompt")).toBeTruthy();
     expect(host.textContent).toContain("任务历史");
     expect(host.textContent).toContain("2 个输出");
+  });
+
+  it("keeps an empty history compact and opens the source picker from the drop zone", async () => {
+    const { refCanvas } = baseRefCanvas();
+    const listJobs = vi.fn(async () => []);
+    (refCanvas.ai as unknown as { listJobs: typeof listJobs }).listJobs = listJobs;
+    Object.assign(window, { refCanvas });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<AiDesignSupervisorPanel onClose={() => undefined} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.querySelector(".ai-history.empty")).toBeTruthy();
+    await act(async () => {
+      host.querySelector<HTMLElement>('.ai-drop-zone[role="button"]')?.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(refCanvas.system.pickFile).toHaveBeenCalled();
+    expect(host.textContent).toContain("源图");
   });
 
   it("uses the Preview four-region structure when embedded", async () => {

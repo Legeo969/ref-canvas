@@ -125,12 +125,18 @@ describe("ActionService", () => {
     try {
       await service.importPaths([source]);
       const asset = database.searchAssets().items[0];
-      const snapshot = actions.start({
+      const request = {
         type: "convert",
         targets: { mode: "ids", ids: [asset.id] },
         options: { format: "png" },
         outputDirectory: output,
+      } satisfies import("../../../src/shared/contracts").AssetActionRequest;
+      expect(actions.preview(request)).toMatchObject({
+        inputCount: 1,
+        outputDirectory: output,
+        conflicts: [existing],
       });
+      const snapshot = actions.start(request);
       await waitForCompletion(actions, snapshot.id);
       const reviewing = actions.get(snapshot.id)!;
       expect(reviewing.state).toBe("reviewing");

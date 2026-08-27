@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
+import { MAX_RETAINED_DIRECTORY_SEARCHES } from "../../../src/shared/directory-search-retention";
 
 const temporaryDirectories: string[] = [];
 
@@ -193,6 +195,65 @@ describe("directory index search", () => {
       expect(filteredData.entries.map((entry) => entry.name)).toEqual(["art", "model.glb"]);
       expect(filteredData.total).toBe(2);
 
+      const filteredRevision = (filteredPage.page as { revision: string }).revision;
+      receive?.({
+        data: {
+          id: "locate-filtered",
+          type: "locate",
+          directoryPath: directory,
+          entryPath: path.join(
+            directory,
+            process.platform === "win32" ? "MODEL.GLB" : "model.glb",
+          ),
+          revision: filteredRevision,
+          collapseSequences: true,
+          extensions: ["glb"],
+        },
+      });
+      receive?.({
+        data: {
+          id: "locate-filtered-out",
+          type: "locate",
+          directoryPath: directory,
+          entryPath: path.join(directory, "notes.txt"),
+          revision: filteredRevision,
+          collapseSequences: true,
+          extensions: ["glb"],
+        },
+      });
+      receive?.({
+        data: {
+          id: "locate-collapsed-frame",
+          type: "locate",
+          directoryPath: directory,
+          entryPath: path.join(directory, "shot_0002.exr"),
+          revision: filteredRevision,
+          collapseSequences: true,
+        },
+      });
+      await new Promise<void>((resolve) => {
+        const timer = setInterval(() => {
+          const ids = new Set(messages.flatMap((message) =>
+            typeof message === "object" && message !== null && "id" in message
+              ? [String((message as { id?: string }).id)]
+              : [],
+          ));
+          if (!["locate-filtered", "locate-filtered-out", "locate-collapsed-frame"]
+            .every((id) => ids.has(id))) return;
+          clearInterval(timer);
+          resolve();
+        }, 5);
+      });
+      const locationFor = (id: string) => (
+        messages.find((message) =>
+          typeof message === "object" && message !== null &&
+          (message as { id?: string }).id === id,
+        ) as { location?: number | null }
+      ).location;
+      expect(locationFor("locate-filtered")).toBe(1);
+      expect(locationFor("locate-filtered-out")).toBeNull();
+      expect(locationFor("locate-collapsed-frame")).toBeNull();
+
       // 路径片段搜索：输入 art\scene 只命中路径（文件名 scene.png 不含
       // 「art\scene」），证明地址路径可作为搜索内容。
       receive?.({
@@ -250,12 +311,70 @@ describe("directory index search", () => {
       expect(pathData.total).toBe(1);
       expect(pathData.entries[0]?.path).toContain("scene.png");
 
+      const retainedSearchIds: string[] = [];
+      for (
+        let index = 0;
+        index < MAX_RETAINED_DIRECTORY_SEARCHES + 2;
+        index += 1
+      ) {
+        const searchId = `retained-${index}`;
+        retainedSearchIds.push(searchId);
+        receive?.({
+          data: {
+            id: `start-${searchId}`,
+            type: "start-search",
+            searchId,
+            directoryPath: directory,
+            query: "shot",
+          },
+        });
+        await new Promise<void>((resolve) => {
+          const timer = setInterval(() => {
+            const completed = messages.some(
+              (message) =>
+                typeof message === "object" &&
+                message !== null &&
+                (message as { type?: string }).type === "search-progress" &&
+                (message as { search?: { id?: string; state?: string } }).search
+                  ?.id === searchId &&
+                (message as { search?: { state?: string } }).search?.state ===
+                  "completed",
+            );
+            if (!completed) return;
+            clearInterval(timer);
+            resolve();
+          }, 5);
+        });
+      }
+
       receive?.({
         data: {
           id: "close",
           type: "close",
         },
       });
+      const cache = new Database(path.join(directory, "index.db"), {
+        readonly: true,
+      });
+      try {
+        const searchCount = cache.prepare(
+          "SELECT COUNT(*) AS count FROM directory_searches",
+        ).get() as { count: number };
+        const orphanCount = cache.prepare(`
+          SELECT COUNT(*) AS count
+          FROM directory_search_entries entries
+          LEFT JOIN directory_searches searches
+            ON searches.search_id = entries.search_id
+          WHERE searches.search_id IS NULL
+        `).get() as { count: number };
+        expect(searchCount.count).toBe(MAX_RETAINED_DIRECTORY_SEARCHES);
+        expect(orphanCount.count).toBe(0);
+        expect(cache.prepare(
+          "SELECT 1 FROM directory_searches WHERE search_id = ?",
+        ).get(retainedSearchIds[0])).toBeUndefined();
+      } finally {
+        cache.close();
+      }
     } finally {
       processWithPort.parentPort = previousPort;
     }

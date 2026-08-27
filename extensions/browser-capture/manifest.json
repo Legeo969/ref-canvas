@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RefCanvas 网页捕获",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "右键网页图片或拾取页面元素，发送到 RefCanvas 参考板。",
   "icons": {
     "16": "icons/icon-16.png",

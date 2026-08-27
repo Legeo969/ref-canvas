@@ -61,10 +61,23 @@
       color: var(--muted);
     }
     .tips code { color: var(--accent); font-family: Consolas, monospace; }
+    .pairing { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .pairing input { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+    button { min-height: 40px; transition: background-color 150ms ease-out, transform 100ms ease-out; }
+    button:active { transform: scale(0.96); }
   </style>
 </head>
 <body>
   <h1>RefCanvas 网页捕获设置</h1>
+
+  <div class="field">
+    <label for="pairingCode">浏览器配对</label>
+    <div class="pairing">
+      <input id="pairingCode" inputmode="numeric" maxlength="6" placeholder="输入 RefCanvas 显示的六位码" />
+      <button id="pairButton">配对</button>
+    </div>
+    <div class="hint">令牌只保存在此浏览器本机。撤销后需重新配对。</div>
+  </div>
 
   <div class="field">
     <label for="boardSelect">默认板（右键"添加到 RefCanvas"与拾取器的投放目标）</label>

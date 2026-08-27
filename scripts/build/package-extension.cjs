@@ -43,6 +43,18 @@ function collectFiles(basePath, prefix = "") {
 
 fs.mkdirSync(outDir, { recursive: true });
 
+// Keep one unambiguous install artifact. Stale extension zips are especially
+// easy to reload by mistake because Chrome's unpacked-extension flow does not
+// warn when the selected files are older than the running desktop app.
+for (const name of fs.readdirSync(outDir)) {
+  if (
+    name !== zipName &&
+    /^refcanvas-browser-capture-\d+\.\d+\.\d+\.zip$/.test(name)
+  ) {
+    fs.rmSync(path.join(outDir, name), { force: true });
+  }
+}
+
 // Stage included files into a clean tree so the zip mirrors the extension
 // layout exactly.
 const staging = path.join(outDir, "_ext-staging");

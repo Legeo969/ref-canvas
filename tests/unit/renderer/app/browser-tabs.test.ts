@@ -133,6 +133,22 @@ describe("browser tabs (FND-002 §5.2)", () => {
     expect(useAppStore.getState().directoryPath).toBe("D:\\refs");
   });
 
+  it("leaves a collection when a different directory is clicked", async () => {
+    const listDirectory = installRefCanvas();
+    useAppStore.setState({
+      browserTabs: [], activeTabId: "", directoryPath: null,
+      directoryHistory: [], directoryHistoryIndex: 0, activeCollectionId: null,
+    });
+    await useAppStore.getState().createBrowserTabForPath("D:\\refs");
+    useAppStore.setState({ activeCollectionId: "collection-1" });
+
+    await useAppStore.getState().openDirectory("D:\\");
+
+    expect(useAppStore.getState().activeCollectionId).toBeNull();
+    expect(useAppStore.getState().directoryPath).toBe("D:\\");
+    expect(listDirectory).toHaveBeenLastCalledWith("D:\\", expect.anything());
+  });
+
   it("opens a collection in a new tab and switches back without losing directory state", async () => {
     const listDirectory = installRefCanvas();
     const refreshCollections = vi.fn(async () => undefined);

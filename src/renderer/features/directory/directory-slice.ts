@@ -14,6 +14,7 @@ export interface DirectorySliceState {
   directoryHistoryIndex: number;
   quickAccess: QuickAccessEntry[];
   selectedDirectoryEntry: DirectoryEntry | null;
+  directoryRevealRequest: { id: number; path: string } | null;
 }
 
 export function createDirectorySliceState(): DirectorySliceState {
@@ -27,5 +28,6 @@ export function createDirectorySliceState(): DirectorySliceState {
     directoryHistoryIndex: 0,
     quickAccess: [],
     selectedDirectoryEntry: null,
+    directoryRevealRequest: null,
   };
 }

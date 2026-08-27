@@ -24,3 +24,20 @@ export async function setSettings(patch) {
   await chrome.storage.sync.set(next);
   return next;
 }
+
+export async function getPairingToken() {
+  try {
+    const { pairingToken } = await chrome.storage.local.get("pairingToken");
+    return typeof pairingToken === "string" ? pairingToken : "";
+  } catch {
+    return "";
+  }
+}
+
+export async function setPairingToken(pairingToken) {
+  await chrome.storage.local.set({ pairingToken });
+}
+
+export async function clearPairingToken() {
+  await chrome.storage.local.remove("pairingToken");
+}

@@ -27,7 +27,9 @@ function renderStatus(status) {
     statusText.textContent = `已连接 — ${board}`;
   } else {
     dot.className = "dot disconnected";
-    statusText.textContent = "未连接（RefCanvas 在运行吗？）";
+    statusText.textContent = status.pairingRequired
+      ? "需要配对（打开设置）"
+      : "未连接（RefCanvas 在运行吗？）";
   }
 
   // LNA 提示：fetch 被拒最常见的原因是应用没开或浏览器拦掉回环访问。
@@ -56,7 +58,7 @@ function renderStatus(status) {
   }
   boardSelect.value = status.settings?.defaultBoardId ?? "follow";
   if (!boardSelect.value) boardSelect.value = "follow";
-  boardSelect.disabled = false;
+  boardSelect.disabled = !status.connected;
 }
 
 boardSelect.addEventListener("change", () => {

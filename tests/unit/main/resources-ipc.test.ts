@@ -53,6 +53,11 @@ describe("resources IPC mount events", () => {
     }));
     const removeWatchRoot = vi.fn(async () => undefined);
     const notifyMountsChanged = vi.fn();
+    const authorize = vi.fn(async (
+      _window: Electron.BrowserWindow,
+      _operation: string,
+      requests: Array<{ path: string }>,
+    ) => requests.map((request) => request.path));
     addWatchRoot.mockImplementationOnce(async () => {
       mounts.push({
         id: mountId,
@@ -76,11 +81,18 @@ describe("resources IPC mount events", () => {
       getScriptsService: () => ({}),
       previewTokens: {},
       notifyMountsChanged,
+      windowForSender: () => ({}) as Electron.BrowserWindow,
+      writeAccess: { authorize },
       getMediaJobRegistry: () => ({ start: vi.fn(), attachController: vi.fn(), complete: vi.fn(), fail: vi.fn(), cancel: vi.fn(), list: vi.fn(() => []) }),
     } as unknown as Parameters<typeof registerResourcesIpc>[1];
     registerResourcesIpc(ipc, dependencies);
 
     await handlers.get("mounts:add")?.("D:\\refs");
+    expect(authorize).toHaveBeenCalledWith(
+      expect.anything(),
+      "mount",
+      [{ path: "D:\\refs", mode: "destination" }],
+    );
     expect(notifyMountsChanged).toHaveBeenCalledWith({
       type: "added",
       mountId,
@@ -375,7 +387,7 @@ describe("resources IPC mount events", () => {
     await handlers.get("scripts:register")?.({ path: "D:\\tools\\hello.py", timeoutMs: 60_000 });
     expect(register).toHaveBeenCalledWith("D:\\tools\\hello.py", undefined, 60_000);
 
-    // 运行前 cwd 必须先过盘符授权，再转发给服务。
+    // 运行前 cwd 必须先过目录范围校验，再转发给服务。
     await handlers.get("scripts:run")?.({ id: "s1", cwd: "D:\\work" });
     expect(authorize).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith("s1", "D:\\work");

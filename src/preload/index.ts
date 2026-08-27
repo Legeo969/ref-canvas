@@ -17,6 +17,13 @@ function applyUiScale(preferences: unknown): void {
 }
 
 const api: RefCanvasApi = {
+  browserCapture: {
+    createPairingCode: () =>
+      ipcRenderer.invoke("browser-capture:create-pairing-code"),
+    listPairings: () => ipcRenderer.invoke("browser-capture:list-pairings"),
+    revokePairing: (id) =>
+      ipcRenderer.invoke("browser-capture:revoke-pairing", id),
+  },
   library: {
     search: (input) => ipcRenderer.invoke("library:search", input),
     searchWindow: (input) => ipcRenderer.invoke("library:search-window", input),
@@ -106,6 +113,8 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("library:update-auto-tag-rule", id, patch),
     deleteAutoTagRule: (id) =>
       ipcRenderer.invoke("library:delete-auto-tag-rule", id),
+    previewAutoTagRule: (rule) =>
+      ipcRenderer.invoke("library:preview-auto-tag-rule", rule),
     applyAutoTagRules: () =>
       ipcRenderer.invoke("library:apply-auto-tag-rules"),
     setCustomThumbnail: (id, path) =>
@@ -344,13 +353,13 @@ const api: RefCanvasApi = {
       return () =>
         ipcRenderer.removeListener("filesystem:directory-progress", listener);
     },
-    locateEntry: (path, entryPath, revision, favoritesOnly) =>
+    locateEntry: (path, entryPath, revision, options) =>
       ipcRenderer.invoke(
         "filesystem:locate-entry",
         path,
         entryPath,
         revision,
-        favoritesOnly,
+        options,
       ),
     startSearch: (path, query, options) =>
       ipcRenderer.invoke("filesystem:start-search", path, query, options),
@@ -442,7 +451,13 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("boards:relink-reference", id, assetId, path),
   },
   actions: {
+    preview: (request) => ipcRenderer.invoke("actions:preview", request),
     start: (request) => ipcRenderer.invoke("actions:start", request),
+    listPresets: () => ipcRenderer.invoke("actions:list-presets"),
+    savePreset: (input) => ipcRenderer.invoke("actions:save-preset", input),
+    updatePreset: (id, input) => ipcRenderer.invoke("actions:update-preset", id, input),
+    deletePreset: (id) => ipcRenderer.invoke("actions:delete-preset", id),
+    runPreset: (id, targets) => ipcRenderer.invoke("actions:run-preset", id, targets),
     get: (id) => ipcRenderer.invoke("actions:get", id),
     cancel: (id) => ipcRenderer.invoke("actions:cancel", id),
     retry: (id) => ipcRenderer.invoke("actions:retry", id),

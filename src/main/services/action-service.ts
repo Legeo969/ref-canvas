@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -13,6 +14,7 @@ import { promisify } from "node:util";
 import sharp from "sharp";
 import type {
   AssetActionRequest,
+  AssetActionPreview,
   AssetActionSnapshot,
   AssetActionType,
   ChangeExtensionOptions,
@@ -170,6 +172,66 @@ export class ActionService {
     const job = this.jobs.get(id);
     if (!job) throw new Error("ACTION_JOB_NOT_FOUND");
     return this.authorizationDirectoryFor(job.request);
+  }
+
+  preview(request: AssetActionRequest): AssetActionPreview {
+    const assets = this.database.resolveSelection(request.targets)
+      .map((id) => {
+        const asset = this.database.getAsset(id);
+        const filename = this.database.getAssetPath(id);
+        return asset && filename ? { asset, filename } : null;
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const inputBytes = assets.reduce((sum, item) => sum + item.asset.size, 0);
+    const outputDirectory = this.authorizationDirectoryFor(request);
+    const previewJob: ActionJob = {
+      snapshot: {
+        id: "preview",
+        type: request.type,
+        state: "queued",
+        total: assets.length,
+        processed: 0,
+        created: 0,
+        failed: 0,
+        conflicts: [],
+        items: [],
+        createdAt: "",
+        completedAt: null,
+        outputDirectory,
+        error: null,
+      },
+      controller: new AbortController(),
+      request,
+      targets: assets.map(({ asset, filename }) => ({
+        id: asset.id,
+        path: filename,
+        title: asset.title,
+      })),
+    };
+    const conflicts = previewJob.targets.flatMap((target, index) => {
+      const sourceName = path.basename(target.path);
+      const extension = path.extname(sourceName).slice(1);
+      const name = extension
+        ? sourceName.slice(0, -extension.length - 1)
+        : sourceName;
+      const relative = this.outputRelativePath(
+        previewJob,
+        target.path,
+        name,
+        extension,
+        index,
+      );
+      const output = path.join(outputDirectory, relative);
+      return existsSync(output) ? [output] : [];
+    });
+    return {
+      inputCount: assets.length,
+      inputBytes,
+      estimatedOutputBytes: inputBytes,
+      outputDirectory,
+      namingTemplate: request.namingTemplate ?? "{name}",
+      conflicts,
+    };
   }
 
   cancel(id: string): boolean {

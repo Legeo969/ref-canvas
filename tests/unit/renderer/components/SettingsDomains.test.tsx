@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { AboutSettings } from "../../../../src/renderer/components/settings/AboutSettings";
@@ -28,6 +30,20 @@ describe("settings domain sections", () => {
     act(() => root?.render(element));
     return host;
   }
+
+  it("uses the reference surface and accent focus ring for settings inputs", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/renderer/styles/dialogs.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.settings-panel input\[type="text"\][\s\S]*?border:\s*1px solid rgba\(255, 255, 255, 0\.1\);/,
+    );
+    expect(css).toMatch(
+      /\.settings-panel input\[type="text"\]:focus[\s\S]*?border-color:\s*var\(--accent\);/,
+    );
+    expect(css).not.toMatch(/\.settings-panel input\[type="checkbox"\]\s*\{/);
+  });
 
   it("keeps uninstall intent in the parent orchestrator", () => {
     const onRequestUninstall = vi.fn();

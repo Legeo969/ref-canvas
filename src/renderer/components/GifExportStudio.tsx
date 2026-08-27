@@ -12,6 +12,7 @@ import type { ExportGifResult } from "../../shared/contracts";
 import { formatBytes } from "../app/format-bytes";
 import { centeredGifRange } from "../app/gif-export-range";
 import { translate } from "../app/i18n";
+import { SelectMenu } from "./SelectMenu";
 
 interface GifClipDraft {
   id: string;
@@ -321,10 +322,10 @@ export function GifExportStudio({
               if (selected) setOutputDirectory(selected);
             }}><FolderOpen size={14} /></button></div></label>
             <div className="gif-option-grid">
-              <label>{translate("preview.rateFps")}<select value={fps} onChange={(event) => setFps(Number(event.target.value))}>{Array.from(new Set([6, 8, 10, 12, 15, 20, 24, 25, 30, sequence?.fps].filter((value): value is number => typeof value === "number"))).sort((a, b) => a - b).map((value) => <option key={value} value={value}>{value} FPS</option>)}</select></label>
-              <label>{translate("gif.maxWidth")}<select value={maxWidth} onChange={(event) => setMaxWidth(Number(event.target.value))}>{[320, 480, 640, 800, 960, 1280].map((value) => <option key={value} value={value}>{value}px</option>)}</select></label>
-              <label>{translate("gif.colors")}<select value={colors} onChange={(event) => setColors(Number(event.target.value))}>{[32, 64, 128, 256].map((value) => <option key={value} value={value}>{translate("gif.colorCount").replace("{count}", String(value))}</option>)}</select></label>
-              <label>{translate("gif.dither")}<select value={dither} onChange={(event) => setDither(event.target.value as typeof dither)}><option value="none">{translate("gif.ditherOff")}</option><option value="bayer">Bayer</option><option value="floyd_steinberg">Floyd–Steinberg</option><option value="sierra2_4a">{translate("gif.ditherSierra")}</option></select></label>
+              <label>{translate("preview.rateFps")}<SelectMenu<number> value={fps} options={Array.from(new Set([6, 8, 10, 12, 15, 20, 24, 25, 30, sequence?.fps].filter((value): value is number => typeof value === "number"))).sort((a, b) => a - b).map((value) => ({ value, label: `${value} FPS` }))} ariaLabel={translate("preview.rateFps")} onValueChange={setFps} /></label>
+              <label>{translate("gif.maxWidth")}<SelectMenu<number> value={maxWidth} options={[320, 480, 640, 800, 960, 1280].map((value) => ({ value, label: `${value}px` }))} ariaLabel={translate("gif.maxWidth")} onValueChange={setMaxWidth} /></label>
+              <label>{translate("gif.colors")}<SelectMenu<number> value={colors} options={[32, 64, 128, 256].map((value) => ({ value, label: translate("gif.colorCount").replace("{count}", String(value)) }))} ariaLabel={translate("gif.colors")} onValueChange={setColors} /></label>
+              <label>{translate("gif.dither")}<SelectMenu<typeof dither> value={dither} options={[{ value: "none" as const, label: translate("gif.ditherOff") }, { value: "bayer" as const, label: "Bayer" }, { value: "floyd_steinberg" as const, label: "Floyd–Steinberg" }, { value: "sierra2_4a" as const, label: translate("gif.ditherSierra") }]} ariaLabel={translate("gif.dither")} onValueChange={setDither} /></label>
             </div>
             <div className="gif-size-estimate"><span>{translate("gif.clipDuration")}</span><strong>{translate("gif.durationSeconds").replace("{seconds}", durationSeconds.toFixed(2))}</strong><span>{translate("gif.estimatedSize")}</span><strong>{translate("gif.about").replace("{size}", formatBytes(estimatedBytes, "—"))}</strong><small>{translate("gif.estimateHint")}</small></div>
             {result && <div className="gif-export-result"><strong>{translate("gif.exported").replace("{size}", result.sizeBytes ? formatBytes(result.sizeBytes, "") : "")}</strong><span title={result.outputPath}>{result.outputPath}</span><button onClick={() => void window.refCanvas.filesystem.reveal(result.outputPath)}><FolderOpen size={14} />{translate("gif.showFile")}</button></div>}

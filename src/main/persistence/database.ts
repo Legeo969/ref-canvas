@@ -2197,14 +2197,50 @@ export class RefCanvasDatabase {
 
   /** Records that a board was opened, most recent first (max 10). */
   touchBoard(id: string): void {
-    const current = this.getSetting<string[]>("recentBoards", []);
-    const next = [id, ...current.filter((item) => item !== id)].slice(0, 10);
+    const current = this.readRecentBoardRecords();
+    const next = [
+      { id, lastOpenedAt: new Date().toISOString() },
+      ...current.filter((item) => item.id !== id),
+    ].slice(0, 10);
     this.setSetting("recentBoards", next);
   }
 
   recentBoards(): BoardSummary[] {
-    const ids = this.getSetting<string[]>("recentBoards", []);
-    return this.boardsRepository.listByIds(ids);
+    const records = this.readRecentBoardRecords();
+    const byId = new Map(records.map((record) => [record.id, record.lastOpenedAt]));
+    return this.boardsRepository.listByIds(records.map((record) => record.id))
+      .map((board) => {
+        const document = this.boardsRepository.load(board.id)?.document;
+        const thumbnailAssetId = document ? boardAssetIds(document)[0] : undefined;
+        return {
+          ...board,
+          lastOpenedAt: byId.get(board.id),
+          thumbnailUrl: thumbnailAssetId
+            ? `refasset://thumbnail/${thumbnailAssetId}`
+            : undefined,
+        };
+      });
+  }
+
+  private readRecentBoardRecords(): Array<{ id: string; lastOpenedAt: string }> {
+    const value = this.getSetting<unknown[]>("recentBoards", []);
+    return value.flatMap((entry) => {
+      if (typeof entry === "string") {
+        return [{ id: entry, lastOpenedAt: "" }];
+      }
+      if (
+        entry &&
+        typeof entry === "object" &&
+        typeof (entry as { id?: unknown }).id === "string"
+      ) {
+        const record = entry as { id: string; lastOpenedAt?: unknown };
+        return [{
+          id: record.id,
+          lastOpenedAt: typeof record.lastOpenedAt === "string" ? record.lastOpenedAt : "",
+        }];
+      }
+      return [];
+    });
   }
 
   rebuildBoardAssetIndex(): void {

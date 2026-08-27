@@ -96,7 +96,7 @@ describe("asset query revisions", () => {
     expect(searchWindow.mock.calls.slice(1).every(([input]) => !input.includeTotal)).toBe(true);
   });
 
-  it("locates a board asset in an unfiltered library result", async () => {
+  it("opens the asset directory and emits a reveal request for the directory panel", async () => {
     const located = {
       id: "22222222-2222-4222-8222-222222222222",
       title: "Exact board reference",
@@ -119,6 +119,10 @@ describe("asset query revisions", () => {
     expect(listDirectory).toHaveBeenCalledWith("C:\\refs\\board", { pageSize: 512 });
     expect(state.workspaceMode).toBe("directory");
     expect(state.directoryPath).toBe("C:\\refs\\board");
-    expect(state.selectedDirectoryEntry?.path).toBe(located.path);
+    expect(state.selectedDirectoryEntry).toBeNull();
+    expect(state.directoryRevealRequest).toEqual({
+      id: expect.any(Number),
+      path: located.path,
+    });
   });
 });

@@ -36,7 +36,9 @@ import {
 } from "lucide-react";
 import {
   type DragEvent,
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -51,6 +53,7 @@ import type {
 } from "../../shared/contracts";
 import { useAppStore } from "../app/store";
 import { translate, type MessageKey } from "../app/i18n";
+import { placeTriggerMenu, type MenuPlacement } from "../app/menu-position";
 import { useDialog } from "./DialogProvider";
 import { PaneCollapseButton } from "./PaneCollapseButton";
 import { VisibilityToggle } from "./VisibilityToggle";
@@ -147,9 +150,72 @@ function CollectionNode({
   const items = store.collectionItems[collection.id];
   const [expanded, setExpanded] = useState(depth === 0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<MenuPlacement | null>(null);
   const [draggingOver, setDraggingOver] = useState(false);
   const [pending, setPending] = useState(false);
-  const active = store.activeCollectionId === collection.id;
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const active =
+    store.workspaceMode === "directory" &&
+    store.activeCollectionId === collection.id;
+
+  const updateMenuPlacement = useCallback(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const rect = row.getBoundingClientRect();
+    const menu = menuRef.current;
+    const next = placeTriggerMenu(
+      {
+        left: rect.left + 22,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      },
+      { width: menu?.offsetWidth || 220, height: menu?.offsetHeight || 340 },
+      { width: window.innerWidth, height: window.innerHeight },
+      2,
+      8,
+    );
+    setMenuPlacement(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPlacement(null);
+      return;
+    }
+    updateMenuPlacement();
+  }, [menuOpen, updateMenuPlacement]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const reposition = () => updateMenuPlacement();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [menuOpen, updateMenuPlacement]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      // Let menu items and the trigger receive their own click; other targets
+      // should close this menu without blocking the underlying navigation.
+      if (
+        target.closest(".collection-menu") ||
+        target.closest(".collection-row-actions")
+      ) {
+        return;
+      }
+      setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
 
   const addPaths = async (paths: string[]) => {
     if (!paths.length) return;
@@ -360,6 +426,7 @@ function CollectionNode({
   return (
     <div className="collection-node">
       <div
+        ref={rowRef}
         className={`collection-row ${active ? "active" : ""} ${draggingOver ? "drop-target" : ""}`}
         style={{ paddingLeft: 6 + depth * 14 }}
         draggable
@@ -375,7 +442,7 @@ function CollectionNode({
         onDrop={(event) => onDrop(event)}
       >
         <button
-          className="dir-tree-chevron"
+          className="collection-tree-chevron"
           aria-label={translate(expanded ? "collections.collapse" : "collections.expand")}
           onClick={() => setExpanded((value) => !value)}
         >
@@ -395,7 +462,12 @@ function CollectionNode({
           <button
             className="mini-icon-button"
             aria-label={translate("collections.menu")}
-            onClick={() => setMenuOpen((value) => !value)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuOpen((value) => !value);
+            }}
           >
             <MoreHorizontal size={14} />
           </button>
@@ -403,8 +475,20 @@ function CollectionNode({
       </div>
       {menuOpen && (
         <>
-          <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
-          <div className="collection-menu" role="menu">
+          <div className="context-menu-dismiss collection-menu-dismiss" onClick={() => setMenuOpen(false)} />
+          <div
+            ref={menuRef}
+            className="collection-menu"
+            role="menu"
+            style={{
+              position: "fixed",
+              left: menuPlacement?.left ?? 0,
+              top: menuPlacement?.top ?? 0,
+              margin: 0,
+              maxHeight: menuPlacement?.maxHeight ?? 340,
+              visibility: menuPlacement ? "visible" : "hidden",
+            }}
+          >
             <button role="menuitem" onClick={() => { void onAddFiles(collection.id); setMenuOpen(false); }}>
               <Plus size={15} />
               {translate("collections.addFiles")}
@@ -673,6 +757,17 @@ export function CollectionDetailsPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!itemMenu) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".asset-context-menu")) return;
+      setItemMenu(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [itemMenu]);
+
   if (!collection) {
     return (
       <section className="board-panel board-unavailable">
@@ -723,7 +818,7 @@ export function CollectionDetailsPanel() {
       danger: true,
     });
     if (!confirmed) return;
-    await store.trashEntries([item.lastResolvedPath]);
+    if (!(await store.trashEntries([item.lastResolvedPath]))) return;
     await window.refCanvas.collections.removeItems(collection.id, [item.id]);
     await Promise.all([store.refreshCollections(), store.reloadAssets()]);
   };
@@ -961,7 +1056,7 @@ export function CollectionDetailsPanel() {
               </button>
             )}
           </div>
-          <div className="context-menu-dismiss" onClick={() => setItemMenu(null)} />
+          <div className="context-menu-dismiss collection-menu-dismiss" onClick={() => setItemMenu(null)} />
         </>
       )}
     </section>
@@ -980,6 +1075,44 @@ export function CollectionsPanel({
   const [draggingOver, setDraggingOver] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuPlacement, setMenuPlacement] = useState<MenuPlacement | null>(null);
+
+  const updateMenuPlacement = useCallback(() => {
+    const trigger = menuTriggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menu = menuRef.current;
+    const next = placeTriggerMenu(
+      rect,
+      { width: menu?.offsetWidth || 220, height: menu?.offsetHeight || 90 },
+      { width: window.innerWidth, height: window.innerHeight },
+      4,
+      8,
+      "right",
+    );
+    setMenuPlacement(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPlacement(null);
+      return;
+    }
+    updateMenuPlacement();
+  }, [menuOpen, updateMenuPlacement]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const reposition = () => updateMenuPlacement();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [menuOpen, updateMenuPlacement]);
 
   const createCollection = async () => {
     setMenuOpen(false);
@@ -1118,8 +1251,23 @@ export function CollectionsPanel({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMenuOpen(false);
     };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (
+        target.closest(".collection-menu-head") ||
+        target.closest('[aria-label="新建集合"]')
+      ) {
+        return;
+      }
+      setMenuOpen(false);
+    };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
   }, [menuOpen]);
 
   const roots = useMemo(
@@ -1150,6 +1298,7 @@ export function CollectionsPanel({
           <button
             type="button"
             className="mini-icon-button"
+            ref={menuTriggerRef}
             aria-label={translate("collections.create")}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
@@ -1167,8 +1316,20 @@ export function CollectionsPanel({
         <div className="sidebar-pane-content">
           {menuOpen && (
             <>
-              <div className="context-menu-dismiss" onClick={() => setMenuOpen(false)} />
-              <div className="collection-menu collection-menu-head" role="menu">
+              <div className="context-menu-dismiss collection-menu-dismiss" onClick={() => setMenuOpen(false)} />
+              <div
+                ref={menuRef}
+                className="collection-menu collection-menu-head"
+                role="menu"
+                style={{
+                  position: "fixed",
+                  left: menuPlacement?.left ?? 0,
+                  top: menuPlacement?.top ?? 0,
+                  margin: 0,
+                  maxHeight: menuPlacement?.maxHeight ?? 90,
+                  visibility: menuPlacement ? "visible" : "hidden",
+                }}
+              >
                 <button type="button" role="menuitem" onClick={() => void createCollection()}>
                   <FolderPlus size={15} />
                   {translate("collections.create")}

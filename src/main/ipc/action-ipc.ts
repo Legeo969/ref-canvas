@@ -5,6 +5,7 @@ import { selectionSchema } from "./schemas";
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import { assertAbsoluteLocalPath } from "../platform/local-path-security";
 import type { WriteAccessController } from "../platform/write-access-controller";
+import type { ActionPresetService } from "../services/action-preset-service";
 
 const actionRequestSchema = z.object({
   type: z.enum([
@@ -69,45 +70,92 @@ const exportCsvSchema = z.object({
     .min(1)
     .max(20),
 });
+const noOptionsSchema = z.object({}).strict();
+
+const actionPresetSchema = actionRequestSchema.omit({ targets: true }).extend({
+  name: z.string().trim().min(1).max(120),
+});
+
+function parseOptions(type: z.infer<typeof actionRequestSchema>["type"], options: Record<string, unknown>) {
+  return type === "convert" || type === "webp"
+    ? convertOptionsSchema.parse(options)
+    : type === "merge-images"
+      ? mergeOptionsSchema.parse(options)
+      : type === "compress"
+        ? compressOptionsSchema.parse(options)
+        : type === "video-to-gif"
+          ? videoToGifOptionsSchema.parse(options)
+          : type === "change-extension"
+            ? changeExtensionSchema.parse(options)
+            : type === "export-csv"
+              ? exportCsvSchema.parse(options)
+              : noOptionsSchema.parse(options);
+}
 
 export function registerActionIpc(
   ipc: SecureIpcRegistrar,
   dependencies: {
     getActions(): ActionService;
+    getPresets(): ActionPresetService;
     windowForSender(event: IpcMainInvokeEvent): BrowserWindow;
     writeAccess: WriteAccessController;
   },
 ): void {
   const getActions = () => dependencies.getActions();
-  ipc.handleWithEvent("actions:start", async (event, request) => {
+  const getPresets = () => dependencies.getPresets();
+  const normalizedRequest = (request: unknown) => {
     const parsed = actionRequestSchema.parse(request);
-    const options =
-      parsed.type === "convert" || parsed.type === "webp"
-        ? convertOptionsSchema.parse(parsed.options)
-        : parsed.type === "merge-images"
-          ? mergeOptionsSchema.parse(parsed.options)
-          : parsed.type === "compress"
-            ? compressOptionsSchema.parse(parsed.options)
-            : parsed.type === "video-to-gif"
-              ? videoToGifOptionsSchema.parse(parsed.options)
-              : parsed.type === "change-extension"
-                ? changeExtensionSchema.parse(parsed.options)
-                : parsed.type === "export-csv"
-                  ? exportCsvSchema.parse(parsed.options)
-                  : parsed.options;
-    const next = {
+    return {
       ...parsed,
-      options,
+      options: parseOptions(parsed.type, parsed.options),
       outputDirectory: parsed.outputDirectory ?? null,
       namingTemplate: parsed.namingTemplate ?? null,
     };
-    const directory = parsed.outputDirectory
-      ? assertAbsoluteLocalPath(parsed.outputDirectory)
+  };
+
+  ipc.handle("actions:preview", (request) =>
+    getActions().preview(normalizedRequest(request)),
+  );
+  ipc.handleWithEvent("actions:start", async (event, request) => {
+    const next = normalizedRequest(request);
+    const directory = next.outputDirectory
+      ? assertAbsoluteLocalPath(next.outputDirectory)
       : getActions().authorizationDirectoryFor(next);
     const [authorizedDirectory] = await dependencies.writeAccess.authorize(
       dependencies.windowForSender(event), "export", [{ path: directory, mode: "destination" }],
     );
     return getActions().start({ ...next, outputDirectory: authorizedDirectory });
+  });
+  ipc.handle("actions:list-presets", () => getPresets().list());
+  ipc.handle("actions:save-preset", (input) => {
+    const parsed = actionPresetSchema.parse(input);
+    return getPresets().save({
+      ...parsed,
+      options: parseOptions(parsed.type, parsed.options),
+    });
+  });
+  ipc.handle("actions:update-preset", (id, input) => {
+    const parsed = actionPresetSchema.parse(input);
+    return getPresets().update(z.string().uuid().parse(id), {
+      ...parsed,
+      options: parseOptions(parsed.type, parsed.options),
+    });
+  });
+  ipc.handle("actions:delete-preset", (id) =>
+    getPresets().delete(z.string().uuid().parse(id)),
+  );
+  ipc.handleWithEvent("actions:run-preset", async (event, id, targets) => {
+    const preset = getPresets().get(z.string().uuid().parse(id));
+    const request = normalizedRequest({ ...preset, targets: selectionSchema.parse(targets) });
+    const directory = request.outputDirectory
+      ? assertAbsoluteLocalPath(request.outputDirectory)
+      : getActions().authorizationDirectoryFor(request);
+    const [authorizedDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "export",
+      [{ path: directory, mode: "destination" }],
+    );
+    return getActions().start({ ...request, outputDirectory: authorizedDirectory });
   });
   ipc.handle("actions:get", (id) =>
     getActions().get(z.string().min(1).max(64).parse(id)),

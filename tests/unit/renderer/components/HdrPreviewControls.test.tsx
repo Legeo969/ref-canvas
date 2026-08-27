@@ -394,6 +394,10 @@ describe("HDR preview controls", () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(600));
     expect(probe).toHaveBeenCalledTimes(2);
-    expect(document.body.querySelector<HTMLSelectElement>(".hdr-layer-select select")?.textContent).toContain("Beauty");
+    await act(async () => {
+      document.body.querySelector<HTMLButtonElement>(".hdr-layer-select .select-menu-trigger")?.click();
+    });
+    expect(Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+      .some((option) => option.textContent?.includes("Beauty"))).toBe(true);
   });
 });

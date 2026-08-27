@@ -78,6 +78,61 @@ describe("DirectoryBrowser", () => {
     expect(addQuickAccess).toHaveBeenCalledWith("D:\\", "D:");
   });
 
+  it("only marks directory entries active in directory workspace", async () => {
+    const listRoots = vi.fn(async () => [
+      { path: "D:\\", name: "D:", isDirectory: true, extension: "" },
+    ]);
+    useAppStore.setState({
+      workspaceMode: "board",
+      navigationSource: "directory",
+      directoryPath: "D:\\",
+      activeCollectionId: null,
+      quickAccess: [
+        {
+          id: "qa-1",
+          path: "D:\\",
+          name: "D:",
+          sortOrder: 1,
+          expanded: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listRoots,
+          onDirectoryProgress: () => () => undefined,
+        },
+      },
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <DirectoryBrowser />
+        </DialogProvider>,
+      );
+    });
+
+    expect(host.querySelector(".dir-root-row")?.classList.contains("active")).toBe(false);
+    expect(
+      host.querySelector(".quick-access-row")?.classList.contains("active"),
+    ).toBe(false);
+
+    await act(async () => {
+      useAppStore.setState({ workspaceMode: "directory" });
+    });
+    expect(host.querySelector(".dir-root-row")?.classList.contains("active")).toBe(true);
+    expect(
+      host.querySelector(".quick-access-row")?.classList.contains("active"),
+    ).toBe(true);
+  });
+
   it("loads expanded folders and refreshes them after filesystem events", async () => {
     let libraryChanged:
       | ((event: LibraryChangedEvent) => void)

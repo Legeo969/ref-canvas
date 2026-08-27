@@ -258,7 +258,11 @@ export function registerSystemIpc(
       defaultPath: parsed.defaultPath,
       properties: ["openDirectory", "createDirectory"],
     });
-    return result.canceled ? null : result.filePaths[0] ?? null;
+    if (result.canceled || !result.filePaths[0]) return null;
+    const [directory] = await dependencies.writeAccess.authorizePickerSelection([
+      { path: result.filePaths[0], mode: "destination" },
+    ]);
+    return directory;
   });
   ipc.handleWithEvent("system:pick-file", async (event, options) => {
     const parsed = z
@@ -315,7 +319,7 @@ export function registerSystemIpc(
       filters: [{ name: "PNG", extensions: ["png"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
       { path: result.filePath, mode: "destination" },
     ]);
     await writeFile(destination, png);
@@ -492,7 +496,7 @@ export function registerSystemIpc(
       filters: [{ name: "JSON", extensions: ["json"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
       { path: result.filePath, mode: "destination" },
     ]);
     const databaseStat = await stat(dependencies.getDatabaseFilename()).catch(

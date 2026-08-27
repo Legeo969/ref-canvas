@@ -4,20 +4,25 @@ import { watch as watchNative, type FSWatcher, type Stats } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type {
+  AssetSearchInput,
   DirectoryEntry,
   DirectoryPage,
   DirectoryProgressSnapshot,
   DirectorySearchSnapshot,
   QuickAccessEntry,
 } from "../../shared/contracts";
+import { parseAssetSearchQuery } from "../../shared/search-query";
 import type { RefCanvasDatabase } from "../persistence/database";
 import { detectFileSequences } from "../../shared/file-sequence";
 import type { DirectoryIndexClient } from "../platform/directory-index-client";
 import { isProtectedSystemDirectory } from "../../shared/system-directory-filter";
+import { LruCache } from "../../shared/lru-cache";
+import { MAX_RETAINED_DIRECTORY_SEARCHES } from "../../shared/directory-search-retention";
 
 const QUICK_ACCESS_KEY = "quickAccessEntries";
 const MAX_QUICK_ACCESS = 64;
 const ROOT_PROBE_TIMEOUT_MS = 250;
+export const MAX_DIRECTORY_CACHE_ENTRIES = 8;
 /** 「只看收藏」视图的伪 revision：收藏枚举实时取自数据库，无需扫描校验。 */
 const FAVORITES_ONLY_REVISION = "favorites";
 
@@ -100,6 +105,11 @@ function favoriteScopePrefix(scopeKey: string): string {
   return scopeKey.endsWith(path.sep) ? scopeKey : `${scopeKey}${path.sep}`;
 }
 
+function isStructuredAssetSearch(query: string): boolean {
+  const input = parseAssetSearchQuery(query).input;
+  return Object.keys(input).some((key) => key !== "query");
+}
+
 /** 只保留已收藏的素材条目（文件夹一并隐藏）。 */
 function filterFavorites(
   entries: DirectoryEntry[],
@@ -116,10 +126,10 @@ function filterFavorites(
  */
 export class FilesystemService {
   private readonly events = new EventEmitter();
-  private readonly directoryCache = new Map<
+  private readonly directoryCache = new LruCache<
     string,
     { entries: DirectoryEntry[]; metadataResolved: boolean }
-  >();
+  >(MAX_DIRECTORY_CACHE_ENTRIES);
   private readonly metadataJobs = new Map<string, Promise<void>>();
   private readonly searches = new Map<string, DirectorySearchSnapshot>();
   private searchSequence = 0;
@@ -165,6 +175,7 @@ export class FilesystemService {
       ? this.indexClient.onSearchProgress((snapshot) => {
           this.searches.set(snapshot.id, snapshot);
           this.emitSearch(snapshot);
+          this.trimCompletedSearches();
         })
       : null;
   }
@@ -196,7 +207,17 @@ export class FilesystemService {
         snapshot.completedAt = new Date().toISOString();
       }
     }
+    this.searches.clear();
     this.events.removeAllListeners();
+  }
+
+  private trimCompletedSearches(): void {
+    if (this.searches.size <= MAX_RETAINED_DIRECTORY_SEARCHES) return;
+    for (const [id, snapshot] of this.searches) {
+      if (snapshot.state === "running") continue;
+      this.searches.delete(id);
+      if (this.searches.size <= MAX_RETAINED_DIRECTORY_SEARCHES) return;
+    }
   }
 
   private emitSearch(snapshot: DirectorySearchSnapshot): void {
@@ -373,7 +394,10 @@ export class FilesystemService {
         ? filterFavorites(filtered, favoriteKeys)
         : filtered;
       const pageSize = Math.max(1, Math.min(10_000, options.pageSize ?? 500));
-      const cursor = Number.parseInt(options.cursor ?? "0", 10);
+      const cursor = Number.parseInt(
+        options.cursor ?? String(options.offset ?? 0),
+        10,
+      );
       const start = Number.isFinite(cursor) ? Math.max(0, cursor) : 0;
       return {
         entries: scoped.slice(start, start + pageSize),
@@ -583,28 +607,93 @@ export class FilesystemService {
     );
   }
 
-  locateEntry(
+  async locateEntry(
     directoryPath: string,
     entryPath: string,
     revision: string,
-    favoritesOnly?: boolean,
+    options: {
+      collapseSequences?: boolean;
+      extensions?: string[];
+      favoritesOnly?: boolean;
+      flattenDepth?: number;
+      showHidden?: boolean;
+    } = {},
   ): Promise<number | null> {
-    if (favoritesOnly) {
-      // 只看收藏视图：位置基于收藏集枚举（与 listFavoriteEntries 同一排序）。
-      const candidates = this.favoriteAssetPathsUnder(path.resolve(directoryPath))
-        .sort((left, right) =>
-          path.basename(left).localeCompare(path.basename(right), "zh-CN"),
-        );
-      const index = candidates.indexOf(path.resolve(entryPath));
-      return Promise.resolve(index >= 0 ? index : null);
+    const flattenDepth = Math.max(0, Math.min(8, options.flattenDepth ?? 0));
+    if (flattenDepth > 0) {
+      let candidates = await this.listFlattened(
+        path.resolve(directoryPath),
+        flattenDepth,
+        options.showHidden ?? false,
+        0,
+      );
+      candidates = filterExtensions(candidates, options.extensions);
+      if (options.collapseSequences !== false) {
+        const sequences = detectFileSequences(candidates);
+        for (const entry of candidates) entry.sequence = sequences.get(entry.path);
+        candidates = collapseSequenceEntries(candidates);
+      }
+      const wanted = path.resolve(entryPath);
+      const index = candidates.findIndex((entry) =>
+        process.platform === "win32"
+          ? entry.path.toLocaleLowerCase("en-US") === wanted.toLocaleLowerCase("en-US")
+          : entry.path === wanted,
+      );
+      return index >= 0 ? index : null;
     }
-    if (!this.indexClient) return Promise.resolve(null);
+    if (options.favoritesOnly) {
+      // 只看收藏视图：位置基于收藏集枚举（与 listFavoriteEntries 同一排序）。
+      let candidates: DirectoryEntry[] = this.favoriteAssetPathsUnder(path.resolve(directoryPath))
+        .map((assetPath) => ({
+          path: assetPath,
+          name: path.basename(assetPath),
+          isDirectory: false,
+          extension: extensionFor(path.basename(assetPath), false),
+        }));
+      candidates = filterExtensions(candidates, options.extensions);
+      if (options.collapseSequences !== false) {
+        const sequences = detectFileSequences(candidates);
+        for (const entry of candidates) entry.sequence = sequences.get(entry.path);
+        candidates = collapseSequenceEntries(candidates);
+      }
+      candidates = sortDirectory(candidates);
+      const wanted = path.resolve(entryPath);
+      const index = candidates.findIndex((entry) =>
+        process.platform === "win32"
+          ? entry.path.toLocaleLowerCase("en-US") === wanted.toLocaleLowerCase("en-US")
+          : entry.path === wanted,
+      );
+      return index >= 0 ? index : null;
+    }
+    if (!this.indexClient) {
+      const wanted = path.resolve(entryPath);
+      let offset = 0;
+      while (true) {
+        const page = await this.listDirectory(directoryPath, {
+          offset,
+          pageSize: 10_000,
+          collapseSequences: options.collapseSequences,
+          extensions: options.extensions,
+        });
+        const localIndex = page.entries.findIndex((entry) =>
+          process.platform === "win32"
+            ? entry.path.toLocaleLowerCase("en-US") === wanted.toLocaleLowerCase("en-US")
+            : entry.path === wanted,
+        );
+        if (localIndex >= 0) return offset + localIndex;
+        if (!page.nextCursor) return null;
+        offset = Number.parseInt(page.nextCursor, 10);
+        if (!Number.isFinite(offset)) return null;
+      }
+    }
     return this.indexClient.locate(
       path.resolve(directoryPath),
       path.resolve(entryPath),
       revision,
-      favoritesOnly,
-      favoritesOnly
+      options.collapseSequences,
+      options.extensions,
+      options.favoritesOnly,
+      options.favoritesOnly
         ? this.favoritePathsFor(path.resolve(directoryPath), false)
         : undefined,
     );
@@ -752,8 +841,9 @@ export class FilesystemService {
     options: { offset?: number; pageSize?: number } = {},
   ): Promise<DirectoryPage> {
     const snapshot = this.searches.get(id);
-    const tagSearch = snapshot?.query.trim().startsWith("#") ?? false;
-    if (this.indexClient && !tagSearch) {
+    const structuredSearch = snapshot ? isStructuredAssetSearch(snapshot.query) : false;
+    const workerSearch = (snapshot?.rootPaths?.length ?? 1) === 1;
+    if (this.indexClient && !structuredSearch && workerSearch) {
       return this.indexClient.searchPage(
         id,
         Math.max(0, options.offset ?? 0),
@@ -787,18 +877,21 @@ export class FilesystemService {
     rootPath: string,
     query: string,
     options: {
+      rootPaths?: string[];
       collapseSequences?: boolean;
       extensions?: string[];
       favoritesOnly?: boolean;
     } = {},
   ): Promise<string> {
-    const resolved = path.resolve(rootPath);
+    const roots = [...new Set((options.rootPaths?.length ? options.rootPaths : [rootPath])
+      .map((root) => path.resolve(root)))];
+    const resolved = roots[0];
     const normalized = query.trim().toLocaleLowerCase("en-US");
     const extensions = options.extensions?.map((extension) =>
       extension.replace(/^\./, "").toLowerCase(),
     );
     const favorites = options.favoritesOnly
-      ? new Set(this.favoritePathsFor(resolved, true))
+      ? new Set(roots.flatMap((root) => this.favoritePathsFor(root, true)))
       : null;
     const id = `search-${Date.now()}-${this.searchSequence++}`;
     const createdAt = new Date().toISOString();
@@ -806,6 +899,7 @@ export class FilesystemService {
       id,
       state: "running",
       rootPath: resolved,
+      rootPaths: roots,
       query,
       entries: [],
       processedDirectories: 0,
@@ -815,17 +909,16 @@ export class FilesystemService {
       completedAt: null,
     };
     this.searches.set(id, snapshot);
+    this.trimCompletedSearches();
     this.emitSearch({ ...snapshot });
 
-    const tag = normalized.startsWith("#")
-      ? normalized.slice(1).trim()
-      : "";
-    if (tag) {
-      void this.runTagSearch(id, resolved, tag, extensions, favorites);
+    const parsedQuery = parseAssetSearchQuery(query);
+    if (isStructuredAssetSearch(query)) {
+      void this.runIndexedSearch(id, roots, parsedQuery.input, extensions, favorites);
       return id;
     }
 
-    if (this.indexClient) {
+    if (this.indexClient && roots.length === 1) {
       void this.indexClient
         .startSearch(
           id,
@@ -837,98 +930,114 @@ export class FilesystemService {
           favorites ? [...favorites] : undefined,
         )
         .then((workerSnapshot) => {
-        this.searches.set(id, workerSnapshot);
-        this.emitSearch(workerSnapshot);
-      }).catch((error) => {
-        const failed = this.searches.get(id);
-        if (!failed) return;
-        failed.state = "failed";
-        failed.completedAt = new Date().toISOString();
-        failed.failedDirectories.push({
-          path: resolved,
-          reason: error instanceof Error ? error.message : "SEARCH_FAILED",
+          this.searches.set(id, workerSnapshot);
+          this.emitSearch(workerSnapshot);
+          this.trimCompletedSearches();
+        })
+        .catch((error) => {
+          const failed = this.searches.get(id);
+          if (!failed) return;
+          failed.state = "failed";
+          failed.completedAt = new Date().toISOString();
+          failed.failedDirectories.push({
+            path: resolved,
+            reason: error instanceof Error ? error.message : "SEARCH_FAILED",
+          });
+          this.emitSearch({ ...failed });
+          this.trimCompletedSearches();
         });
-        this.emitSearch({ ...failed });
-      });
     } else {
-      void this.runSearch(id, resolved, normalized, extensions, favorites);
+      void this.runSearch(id, roots, normalized, extensions, favorites);
     }
     return id;
   }
 
-  private async runTagSearch(
+  private async runIndexedSearch(
     id: string,
-    root: string,
-    tag: string,
+    roots: string[],
+    input: AssetSearchInput,
     extensions?: string[],
     favorites?: Set<string> | null,
   ): Promise<void> {
     const pageSize = 500;
-    let offset = 0;
-    let total = 0;
     const entries: DirectoryEntry[] = [];
+    const seen = new Set<string>();
     try {
-      do {
-        const current = this.searches.get(id);
-        if (!current || current.state === "cancelled") return;
-        const page = this.database.searchAssetWindow({
-          query: { tag, pathContains: root },
-          offset,
-          pageSize,
-          includeTotal: offset === 0,
-        });
-        if (offset === 0) total = page.total ?? page.items.length;
-        for (const asset of page.items) {
-          const relative = path.relative(root, asset.path);
-          if (
-            !relative ||
-            relative.startsWith("..") ||
-            path.isAbsolute(relative)
-          ) continue;
-          if (extensions?.length && !extensions.includes(asset.extension)) continue;
-          if (favorites && !favorites.has(favoritePathKey(asset.path))) continue;
-          entries.push({
-            path: asset.path,
-            name: path.basename(asset.path),
-            isDirectory: false,
-            extension: asset.extension,
-            size: asset.size,
-            mtimeMs: asset.mtimeMs,
-            tags: asset.tags,
+      for (const root of roots) {
+        let offset = 0;
+        let total = 0;
+        do {
+          const current = this.searches.get(id);
+          if (!current || current.state === "cancelled") return;
+          const page = this.database.searchAssetWindow({
+            query: { ...input, lifecycle: "active", pathContains: root },
+            offset,
+            pageSize,
+            includeTotal: offset === 0,
           });
-        }
-        offset += page.items.length;
-        if (page.items.length === 0) break;
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      } while (offset < total);
+          if (offset === 0) total = page.total ?? page.items.length;
+          for (const asset of page.items) {
+            const relative = path.relative(root, asset.path);
+            if (
+              !relative ||
+              relative.startsWith("..") ||
+              path.isAbsolute(relative) ||
+              seen.has(favoritePathKey(asset.path))
+            ) continue;
+            if (
+              input.pathContains &&
+              !asset.path.toLocaleLowerCase("en-US").includes(
+                input.pathContains.toLocaleLowerCase("en-US"),
+              )
+            ) continue;
+            if (extensions?.length && !extensions.includes(asset.extension)) continue;
+            if (favorites && !favorites.has(favoritePathKey(asset.path))) continue;
+            seen.add(favoritePathKey(asset.path));
+            entries.push({
+              path: asset.path,
+              name: path.basename(asset.path),
+              isDirectory: false,
+              extension: asset.extension,
+              size: asset.size,
+              mtimeMs: asset.mtimeMs,
+              tags: asset.tags,
+            });
+          }
+          offset += page.items.length;
+          if (page.items.length === 0) break;
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        } while (offset < total);
+      }
       const finished = this.searches.get(id);
       if (!finished || finished.state === "cancelled") return;
       finished.entries = entries.sort((left, right) =>
         left.name.localeCompare(right.name, "zh-CN"),
       );
       finished.state = "completed";
-      finished.processedDirectories = 1;
-      finished.totalDirectories = 1;
+      finished.processedDirectories = roots.length;
+      finished.totalDirectories = roots.length;
       finished.totalFiles = finished.entries.length;
-      finished.revision = `tag-${Date.now()}`;
+      finished.revision = `indexed-${Date.now()}`;
       finished.completedAt = new Date().toISOString();
       this.emitSearch({ ...finished });
+      this.trimCompletedSearches();
     } catch (error) {
       const failed = this.searches.get(id);
       if (!failed) return;
       failed.state = "failed";
       failed.completedAt = new Date().toISOString();
       failed.failedDirectories.push({
-        path: root,
-        reason: error instanceof Error ? error.message : "TAG_SEARCH_FAILED",
+        path: roots.join(path.delimiter),
+        reason: error instanceof Error ? error.message : "INDEXED_SEARCH_FAILED",
       });
       this.emitSearch({ ...failed });
+      this.trimCompletedSearches();
     }
   }
 
   private async runSearch(
     id: string,
-    root: string,
+    roots: string[],
     query: string,
     extensions?: string[],
     favorites?: Set<string> | null,
@@ -937,7 +1046,8 @@ export class FilesystemService {
       !query ||
       entryPath.toLocaleLowerCase("en-US").includes(query);
     const allowedExtensions = extensions?.length ? new Set(extensions) : null;
-    const pending: string[] = [root];
+    const pending: string[] = [...roots];
+    const seenFiles = new Set<string>();
     let offset = 0;
     try {
       while (offset < pending.length) {
@@ -960,7 +1070,9 @@ export class FilesystemService {
                   if (!isProtectedSystemDirectory(entry.name, true)) pending.push(entry.path);
                 } else if (matchPath(entry.path) &&
                   (!allowedExtensions || allowedExtensions.has(entry.extension)) &&
-                  (!favorites || favorites.has(favoritePathKey(entry.path)))) {
+                  (!favorites || favorites.has(favoritePathKey(entry.path))) &&
+                  !seenFiles.has(favoritePathKey(entry.path))) {
+                  seenFiles.add(favoritePathKey(entry.path));
                   matches.push(entry);
                 }
               }
@@ -994,16 +1106,18 @@ export class FilesystemService {
       finished.totalDirectories = pending.length;
       finished.completedAt = new Date().toISOString();
       this.emitSearch({ ...finished });
+      this.trimCompletedSearches();
     } catch (error) {
       const failed = this.searches.get(id);
       if (!failed) return;
       failed.state = "failed";
       failed.completedAt = new Date().toISOString();
       failed.failedDirectories.push({
-        path: root,
+        path: roots.join(path.delimiter),
         reason: error instanceof Error ? error.message : "SEARCH_FAILED",
       });
       this.emitSearch({ ...failed });
+      this.trimCompletedSearches();
     }
   }
 
@@ -1013,7 +1127,11 @@ export class FilesystemService {
     snapshot.state = "cancelled";
     snapshot.completedAt = new Date().toISOString();
     this.emitSearch({ ...snapshot });
-    if (!snapshot.query.trim().startsWith("#")) {
+    this.trimCompletedSearches();
+    if (
+      !isStructuredAssetSearch(snapshot.query) &&
+      (snapshot.rootPaths?.length ?? 1) === 1
+    ) {
       void this.indexClient?.cancelSearch(id);
     }
   }

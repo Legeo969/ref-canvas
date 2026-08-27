@@ -691,6 +691,30 @@ describe("RefCanvasDatabase", () => {
     expect(object.src).toBe(`refasset://asset/${keep.id}`);
   });
 
+  it("returns recent boards with a lazy local thumbnail and open time", () => {
+    database = new RefCanvasDatabase(":memory:");
+    const asset = database.upsertAsset(createAsset()).asset;
+    const board = database.createBoard("Recent references");
+    database.saveBoard(board.id, {
+      schemaVersion: 1,
+      canvas: {
+        objects: [{
+          type: "image",
+          data: { type: "asset", assetId: asset.id },
+        }],
+      },
+    });
+    database.touchBoard(board.id);
+
+    expect(database.recentBoards()).toEqual([
+      expect.objectContaining({
+        id: board.id,
+        thumbnailUrl: `refasset://thumbnail/${asset.id}`,
+        lastOpenedAt: expect.any(String),
+      }),
+    ]);
+  });
+
   it("persists smart folders", () => {
     database = new RefCanvasDatabase(":memory:");
     const view = database.saveView("Large favorites", {

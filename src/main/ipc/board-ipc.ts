@@ -116,7 +116,7 @@ export function registerBoardIpc(
       filters: [{ name: "RefCanvas 项目", extensions: ["refcanvas"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
       { path: result.filePath, mode: "destination" },
     ]);
     if (!parsedOptions.embedAssets) {
@@ -194,7 +194,7 @@ export function registerBoardIpc(
       filters: [{ name: "RefCanvas 项目", extensions: ["refcanvas"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
       { path: result.filePath, mode: "destination" },
     ]);
     await writeFile(
@@ -213,7 +213,7 @@ export function registerBoardIpc(
       filters: [{ name: "PNG 图片", extensions: ["png"] }],
     });
     if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
       { path: result.filePath, mode: "destination" },
     ]);
     await writeFile(

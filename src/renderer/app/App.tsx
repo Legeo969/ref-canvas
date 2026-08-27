@@ -18,9 +18,12 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type {
+  AssetRecord,
   BoardSettings,
   BoardSummary,
   BrowserCapturePayload,
+  SimilarAsset,
+  SimilarityIndexSnapshot,
 } from "../../shared/contracts";
 import {
   BOARD_PANEL_IDS,
@@ -55,6 +58,8 @@ import { useDialog } from "../components/DialogProvider";
 import { DuplicatesPanel } from "../components/DuplicatesPanel";
 import { PanelDividers } from "../components/PanelDividers";
 import { SettingsPanel } from "../components/SettingsPanel";
+import { InstallCompleteScreen } from "../components/InstallCompleteScreen";
+import { SimilarPanel } from "../components/SimilarPanel";
 import { Sidebar } from "../components/Sidebar";
 import { PreviewPanel } from "../components/PreviewPanel";
 import { useAppStore } from "./store";
@@ -110,6 +115,14 @@ function WorkspaceApp() {
   const [recoveryMode] = useState(() =>
     new URLSearchParams(window.location.search).get("recovery") === "1",
   );
+  const [installCompleteOpen, setInstallCompleteOpen] = useState(() =>
+    !recoveryMode &&
+    new URLSearchParams(window.location.search).get("first-run") === "1",
+  );
+  const dismissInstallComplete = useCallback(() => {
+    setInstallCompleteOpen(false);
+    window.focus();
+  }, []);
   const [migrationFailure, setMigrationFailure] = useState<Awaited<
     ReturnType<typeof window.refCanvas.system.getMigrationFailure>
   > | null>(null);
@@ -123,6 +136,17 @@ function WorkspaceApp() {
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
+  const [similarSource, setSimilarSource] = useState<AssetRecord | null>(null);
+  const [similarResults, setSimilarResults] = useState<SimilarAsset[]>([]);
+  const [similarIndex, setSimilarIndex] = useState<SimilarityIndexSnapshot>({
+    state: "idle",
+    total: 0,
+    processed: 0,
+    indexed: 0,
+    failed: 0,
+  });
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarMinScore, setSimilarMinScore] = useState(70);
   const [settingsTab, setSettingsTab] = useState<"general" | "preview">("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [panelLayout, setPanelLayout] = useState(PANEL_DEFAULTS);
@@ -158,6 +182,46 @@ function WorkspaceApp() {
     }
     void window.refCanvas.system.getStartupHealth().then(setStartupHealth);
   }, [recoveryMode]);
+
+  const refreshSimilar = useCallback(async (
+    source: AssetRecord,
+    minScore = similarMinScore,
+  ) => {
+    setSimilarLoading(true);
+    try {
+      const [results, index] = await Promise.all([
+        window.refCanvas.library.findSimilar(source.id, { limit: 100, minScore }),
+        window.refCanvas.library.getSimilarityIndex(),
+      ]);
+      setSimilarResults(results);
+      setSimilarIndex(index);
+    } finally {
+      setSimilarLoading(false);
+    }
+  }, [similarMinScore]);
+
+  useEffect(() => {
+    const unsubscribe = window.refCanvas.library.onSimilarityProgress?.(setSimilarIndex);
+    const onFindSimilar = (event: Event) => {
+      const detail = (event as CustomEvent<{ assetId?: string; path?: string }>).detail;
+      void (async () => {
+        const source = detail.assetId
+          ? await window.refCanvas.library.get(detail.assetId)
+          : detail.path
+            ? (await window.refCanvas.metadata.ensure(detail.path)).asset
+            : null;
+        if (!source || source.kind !== "image") return;
+        setSimilarSource(source);
+        setSimilarResults([]);
+        await refreshSimilar(source);
+      })();
+    };
+    window.addEventListener("refcanvas:find-similar", onFindSimilar);
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener("refcanvas:find-similar", onFindSimilar);
+    };
+  }, [refreshSimilar]);
 
   useEffect(() => {
     if (recoveryMode) return; // 恢复模式不初始化主工作区。
@@ -335,6 +399,10 @@ function WorkspaceApp() {
     store.workspaceMode,
   );
 
+  // 异常退出状态仍由主进程保留用于诊断，但不向用户显示打扰性横幅。
+  // 只有数据库降级/只读等会影响当前操作安全的状态需要常驻提示。
+  const hasStartupBanner = startupHealth?.mode === "degraded";
+
   useEffect(() => {
     if (store.workspaceMode === "board" || !presentationMode) return;
     void setPresentationMode(false);
@@ -504,8 +572,16 @@ function WorkspaceApp() {
   if (store.loading) {
     return (
       <div className="loading-screen">
-        <span className="brand-mark">R</span>
-        <span>{translate("app.loadingWorkspace")}</span>
+        <div className="loading-titlebar">
+          <span className="brand-mark">R</span>
+          <span>{translate("app.loadingWorkspace")}</span>
+        </div>
+        <div className="loading-sidebar" aria-hidden="true">
+          {Array.from({ length: 8 }, (_, index) => <span key={index} />)}
+        </div>
+        <div className="loading-workspace" aria-hidden="true">
+          {Array.from({ length: 12 }, (_, index) => <span key={index} />)}
+        </div>
       </div>
     );
   }
@@ -562,7 +638,8 @@ function WorkspaceApp() {
   };
 
   const openPickedDirectory = async (directory: string) => {
-    await store.openDirectory(directory);
+    const mount = await window.refCanvas.mounts.add(directory);
+    await store.openDirectory(mount.path);
   };
 
   const activePanelIds =
@@ -586,7 +663,7 @@ function WorkspaceApp() {
     <main
       className={`app-shell ${store.focusMode ? "focus-mode" : ""} ${
         boardPresentationMode ? "presentation-mode" : ""
-      }`}
+      } ${hasStartupBanner ? "has-startup-banner" : ""}`}
     >
 
       {duplicatesOpen && (
@@ -606,17 +683,35 @@ function WorkspaceApp() {
         <AiDesignSupervisorPanel onClose={() => setAiPanelOpen(false)} />
       )}
       {taskCenterOpen && <TaskCenter onClose={() => setTaskCenterOpen(false)} />}
-      {notice && <div className="app-toast">{notice}</div>}
-      {startupHealth?.mode === "degraded" && (
-        <div className="degraded-banner" role="alert">
-          <span className="degraded-banner-icon">⚠</span>
-          <span>{translate("app.degradedBanner")}</span>
-        </div>
+      {similarSource && (
+        <SimilarPanel
+          source={similarSource}
+          results={similarResults}
+          index={similarIndex}
+          loading={similarLoading}
+          minScore={similarMinScore}
+          onMinScoreChange={setSimilarMinScore}
+          onRefresh={() => void refreshSimilar(similarSource)}
+          onCancelIndex={() => void window.refCanvas.library.cancelSimilarityIndex()}
+          onSelect={(asset) => {
+            setSimilarSource(null);
+            void store.locateAssetInLibrary(asset);
+          }}
+          onClose={() => setSimilarSource(null)}
+        />
       )}
-      {startupHealth?.previousCrash && startupHealth.mode !== "safe" && startupHealth.mode !== "too-new" && (
-        <div className="degraded-banner previous-crash-banner" role="alert">
-          <span className="degraded-banner-icon">⚠</span>
-          <span>{translate("app.previousCrash")}</span>
+      {notice && <div className="app-toast">{notice}</div>}
+      {installCompleteOpen && (
+        <InstallCompleteScreen onOpen={dismissInstallComplete} />
+      )}
+      {hasStartupBanner && (
+        <div className="startup-banners">
+          {startupHealth?.mode === "degraded" && (
+            <div className="degraded-banner" role="alert">
+              <span className="degraded-banner-icon">⚠</span>
+              <span>{translate("app.degradedBanner")}</span>
+            </div>
+          )}
         </div>
       )}
       <header className="titlebar">

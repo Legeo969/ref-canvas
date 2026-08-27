@@ -14,6 +14,8 @@ import {
 import path from "node:path";
 import sharp from "sharp";
 import type {
+  AutoTagRule,
+  AutoTagRulePreview,
   AssetKind,
   AssetRecord,
   DuplicateGroup,
@@ -109,6 +111,21 @@ export function globMatch(pattern: string, value: string): boolean {
   }
   regex += "$";
   return new RegExp(regex).test(source);
+}
+
+export function autoTagRuleMatches(
+  rule: Pick<AutoTagRule, "filenamePattern" | "pathPattern" | "extension">,
+  filename: string,
+  directory: string,
+  extension: string,
+): boolean {
+  return !(
+    (rule.filenamePattern && !globMatch(rule.filenamePattern, filename)) ||
+    (rule.pathPattern && !directory.toLocaleLowerCase("en-US").includes(
+      rule.pathPattern.toLocaleLowerCase("en-US"),
+    )) ||
+    (rule.extension && extension !== rule.extension.toLowerCase())
+  );
 }
 
 export async function quickFingerprint(
@@ -857,7 +874,10 @@ export class LibraryService {
               const saved = savedAssets[index];
               const item = inspected[index];
               if (saved.reused) snapshot.reused += 1;
-              else snapshot.imported += 1;
+              else {
+                snapshot.imported += 1;
+                this.applyAutoTagsToAsset(saved.asset);
+              }
               if (item.candidate.watchRootPath) {
                 identities.push({
                   pathKey: path.normalize(saved.asset.path).toLocaleLowerCase("en-US"),
@@ -973,6 +993,7 @@ export class LibraryService {
     const result = this.database.upsertAsset(next);
     const asset = result.asset;
     this.updateIdentity(asset);
+    if (!existing) this.applyAutoTagsToAsset(asset);
     // 重新读取以反映索引后的最新记录。
     const fresh = this.database.getAsset(asset.id)!;
     return { asset: fresh, created: !existing };
@@ -1650,17 +1671,7 @@ export class LibraryService {
         const directory = path.dirname(asset.path);
         const matched = new Set<string>();
         for (const rule of rules) {
-          if (
-            (rule.filenamePattern &&
-              !globMatch(rule.filenamePattern, filename)) ||
-            (rule.pathPattern &&
-              directory.toLocaleLowerCase("en-US").includes(
-                rule.pathPattern.toLocaleLowerCase("en-US"),
-              )) ||
-            (rule.extension && asset.extension !== rule.extension.toLowerCase())
-          ) {
-            continue;
-          }
+          if (!autoTagRuleMatches(rule, filename, directory, asset.extension)) continue;
           for (const tag of rule.tags) matched.add(tag);
         }
         if (!matched.size) continue;
@@ -1672,6 +1683,50 @@ export class LibraryService {
       }
     });
     return tagged;
+  }
+
+  private applyAutoTagsToAsset(asset: AssetRecord): boolean {
+    const filename = path.basename(asset.path);
+    const directory = path.dirname(asset.path);
+    const matched = new Set<string>();
+    for (const rule of this.database.listAutoTagRules()) {
+      if (!rule.enabled || rule.tags.length === 0) continue;
+      if (!autoTagRuleMatches(rule, filename, directory, asset.extension)) continue;
+      for (const tag of rule.tags) matched.add(tag);
+    }
+    if (matched.size === 0) return false;
+    const combined = [...new Set([...asset.tags, ...matched])];
+    if (combined.length === asset.tags.length) return false;
+    this.database.setAssetTags(asset.id, combined);
+    return true;
+  }
+
+  previewAutoTagRule(
+    rule: Omit<AutoTagRule, "id" | "createdAt" | "updatedAt">,
+    sampleLimit = 12,
+  ): AutoTagRulePreview {
+    let total = 0;
+    const samples: AutoTagRulePreview["samples"] = [];
+    this.database.forEachActiveAsset(256, (assets) => {
+      for (const asset of assets) {
+        if (!autoTagRuleMatches(
+          rule,
+          path.basename(asset.path),
+          path.dirname(asset.path),
+          asset.extension,
+        )) continue;
+        total += 1;
+        if (samples.length < sampleLimit) {
+          samples.push({
+            id: asset.id,
+            title: asset.title,
+            path: asset.path,
+            extension: asset.extension,
+          });
+        }
+      }
+    });
+    return { total, samples };
   }
 
   async close(): Promise<void> {

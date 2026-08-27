@@ -564,7 +564,7 @@ describe("PreviewPanel smoke", () => {
     expect(host.querySelector(".preview-slider .range-start")).toBeTruthy();
     expect(host.querySelector(".preview-slider .range-end")).toBeTruthy();
     expect(host.querySelector(".preview-context-tray-gif .gif-export-studio.embedded")).toBeTruthy();
-    expect(host.querySelectorAll(".preview-context-tray-gif .gif-export-options select")).toHaveLength(4);
+    expect(host.querySelectorAll(".preview-context-tray-gif .gif-export-options .select-menu-trigger")).toHaveLength(4);
   });
 
   it("exposes active HDR capabilities for an EXR sequence", async () => {

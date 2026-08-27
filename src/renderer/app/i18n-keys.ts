@@ -266,6 +266,16 @@ export type MessageKey =
 
   | "app.workspaceInitFailed"
 
+  | "app.installComplete.eyebrow"
+
+  | "app.installComplete.title"
+
+  | "app.installComplete.description"
+
+  | "app.installComplete.open"
+
+  | "app.installComplete.footnote"
+
   | "audio.loadingWaveform"
 
   | "audio.metaAuthor"
@@ -655,6 +665,10 @@ export type MessageKey =
   | "board.loading"
 
   | "board.locateInIndex"
+
+  | "board.locateAssetMissing"
+
+  | "board.locateFailed"
 
   | "board.lockCanvas"
 
@@ -1158,6 +1172,7 @@ export type MessageKey =
   | "directory.cut"
 
   | "directory.deleteNamed"
+  | "directory.authorizeWrite"
 
   | "directory.deleteSelectedCount"
 
@@ -1309,6 +1324,12 @@ export type MessageKey =
 
   | "directory.operationFailed"
 
+  | "directory.locatedNamed"
+
+  | "directory.locateNotFound"
+
+  | "directory.locateFailed"
+
   | "directory.other"
 
   | "directory.outputDirectory"
@@ -1360,6 +1381,14 @@ export type MessageKey =
   | "directory.searchComplete"
 
   | "directory.searchCurrent"
+
+  | "directory.searchScope"
+
+  | "directory.searchScopeAllMounts"
+
+  | "directory.searchScopeDirectory"
+
+  | "directory.searchScopeMount"
 
   | "directory.searchEmpty"
 
@@ -2258,6 +2287,10 @@ export type MessageKey =
   | "settings.noWatchRoots"
 
   | "settings.options"
+
+  | "settings.capture"
+
+  | "settings.organize"
 
   | "settings.parsingMedia"
 

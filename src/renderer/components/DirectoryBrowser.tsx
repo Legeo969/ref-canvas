@@ -1,9 +1,14 @@
 import {
+  Bookmark,
   ChevronDown,
   ChevronRight,
+  Copy,
   HardDrive,
+  Pencil,
+  Plus,
   RefreshCw,
   Star,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
@@ -15,6 +20,7 @@ import { useAppStore } from "../app/store";
 import { FolderGlyph } from "./FolderGlyph";
 import { PaneCollapseButton } from "./PaneCollapseButton";
 import { VisibilityToggle } from "./VisibilityToggle";
+import { useDialog } from "./DialogProvider";
 
 function normalizePath(value: string): string {
   return value.replace(/[\\/]+/g, "\\").replace(/\\$/, "").toLowerCase();
@@ -82,8 +88,9 @@ function DirectoryNode({
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<DirectoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  // 查看集合时不把之前浏览的磁盘目录继续显示为选中态。
+  // 只有磁盘工作区才显示目录激活态；其他工作区仍保留路径用于返回恢复。
   const active =
+    store.workspaceMode === "directory" &&
     store.activeCollectionId === null &&
     store.directoryPath === entry.path;
   const refreshToken = `${globalRefreshVersion}:${
@@ -183,6 +190,7 @@ function RootNode({
 }) {
   const store = useAppStore();
   const active =
+    store.workspaceMode === "directory" &&
     store.activeCollectionId === null &&
     store.directoryPath === entry.path;
   return (
@@ -228,6 +236,7 @@ export function QuickAccessPane({
   style?: React.CSSProperties;
 }) {
   const store = useAppStore();
+  const dialog = useDialog();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -256,6 +265,7 @@ export function QuickAccessPane({
               {store.quickAccess.map((entry) => (
                 <div
                   className={`quick-access-row ${
+                    store.workspaceMode === "directory" &&
                     store.activeCollectionId === null &&
                     store.directoryPath === entry.path
                       ? "active"
@@ -283,6 +293,70 @@ export function QuickAccessPane({
             </div>
           ) : (
             <p className="directory-empty">{translate("directory.favoriteHint")}</p>
+          )}
+          <div className="saved-view-heading">
+            <span><Bookmark size={12} /> 保存搜索</span>
+            <button
+              className="mini-icon-button"
+              aria-label="保存当前搜索"
+              onClick={() => void dialog.requestForm({
+                title: "保存当前搜索",
+                confirmLabel: "保存",
+                fields: [{ name: "title", label: "名称", required: true, maxLength: 120 }],
+                onSubmit: ({ title }) => store.saveCurrentView(title),
+              })}
+            >
+              <Plus size={13} />
+            </button>
+          </div>
+          {store.savedViews.length === 0 ? (
+            <p className="directory-empty">筛选后可保存为常用搜索</p>
+          ) : (
+            <div className="saved-view-list">
+              {store.savedViews.map((view) => (
+                <div className="saved-view-row" key={view.id}>
+                  <button className="saved-view-main" onClick={() => store.applySavedView(view)}>
+                    <Bookmark size={14} />
+                    <span title={view.title}>{view.title}</span>
+                  </button>
+                  <div className="saved-view-actions">
+                    <button
+                      className="mini-icon-button"
+                      aria-label={`重命名 ${view.title}`}
+                      onClick={() => void dialog.requestForm({
+                        title: "重命名保存搜索",
+                        confirmLabel: "保存",
+                        fields: [{ name: "title", label: "名称", initialValue: view.title, required: true, maxLength: 120 }],
+                        onSubmit: ({ title }) => store.updateSavedView(view.id, { title }),
+                      })}
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      className="mini-icon-button"
+                      aria-label={`复制 ${view.title}`}
+                      onClick={() => void store.duplicateSavedView(view.id)}
+                    >
+                      <Copy size={12} />
+                    </button>
+                    <button
+                      className="mini-icon-button danger"
+                      aria-label={`删除 ${view.title}`}
+                      onClick={() => void dialog.requestConfirm({
+                        title: "删除保存搜索",
+                        description: `“${view.title}”只会从侧栏移除，不会删除素材。`,
+                        confirmLabel: "删除",
+                        danger: true,
+                      }).then((confirmed) => {
+                        if (confirmed) return store.deleteSavedView(view.id);
+                      })}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,21 +23,70 @@ async function fixture(): Promise<string> {
 }
 
 describe("WriteAccessController", () => {
-  it("denies before mutation and reuses an approved drive for the session", async () => {
+  it("does not prompt for direct local file-management operations", async () => {
     const filename = await fixture();
-    const deny = vi.fn(async () => false);
-    const denied = new WriteAccessController(() => [], deny);
-    await expect(denied.authorize(window, "trash", [{ path: filename, mode: "existing" }]))
-      .rejects.toThrow("WRITE_ACCESS_DENIED");
-
-    const approve = vi.fn(async () => true);
-    const controller = new WriteAccessController(() => [], approve);
-    await controller.authorize(window, "trash", [{ path: filename, mode: "existing" }]);
-    await controller.authorize(window, "rename", [{ path: filename, mode: "existing" }]);
-    expect(approve).toHaveBeenCalledTimes(1);
+    const prompt = vi.fn(async () => false);
+    const controller = new WriteAccessController(() => [], prompt);
+    for (const operation of ["trash", "rename", "copy", "move"] as const) {
+      await expect(controller.authorize(window, operation, [
+        { path: filename, mode: "existing" },
+      ])).resolves.toEqual([filename]);
+    }
+    expect(prompt).not.toHaveBeenCalled();
   });
 
-  it("deduplicates concurrent prompts for the same drive", async () => {
+  it("rejects untrusted renderer paths without prompting by default", async () => {
+    const filename = await fixture();
+    const controller = new WriteAccessController(() => []);
+
+    await expect(controller.authorize(window, "export", [
+      { path: filename, mode: "destination" },
+    ])).rejects.toThrow("WRITE_ACCESS_DENIED");
+  });
+
+  it("reuses a capability created by the native picker", async () => {
+    const filename = await fixture();
+    const sibling = path.join(path.dirname(filename), "sibling.txt");
+    await writeFile(sibling, "sibling");
+    const controller = new WriteAccessController(() => []);
+
+    await controller.authorizePickerSelection([
+      { path: filename, mode: "destination" },
+    ]);
+    await expect(controller.authorize(window, "export", [
+      { path: sibling, mode: "destination" },
+    ])).resolves.toEqual([sibling]);
+  });
+
+  it("does not widen one directory approval to the whole drive", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-scope-"));
+    temporaryDirectories.push(root);
+    const firstDirectory = path.join(root, "first");
+    const secondDirectory = path.join(root, "second");
+    await Promise.all([mkdir(firstDirectory), mkdir(secondDirectory)]);
+    const first = path.join(firstDirectory, "first.txt");
+    const sibling = path.join(firstDirectory, "sibling.txt");
+    const second = path.join(secondDirectory, "second.txt");
+    await Promise.all([
+      writeFile(first, "first"),
+      writeFile(sibling, "sibling"),
+      writeFile(second, "second"),
+    ]);
+    const prompt = vi.fn(async (_request: WriteGrantPrompt) => true);
+    const controller = new WriteAccessController(() => [], prompt);
+
+    await controller.authorize(window, "export", [{ path: first, mode: "destination" }]);
+    await controller.authorize(window, "export", [{ path: sibling, mode: "destination" }]);
+    await controller.authorize(window, "export", [{ path: second, mode: "destination" }]);
+
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt.mock.calls.map(([request]) => request.scopePath)).toEqual([
+      firstDirectory,
+      secondDirectory,
+    ]);
+  });
+
+  it("deduplicates concurrent prompts for the same directory", async () => {
     const filename = await fixture();
     let resolve!: (allowed: boolean) => void;
     const prompt = vi.fn(() => new Promise<boolean>((done) => { resolve = done; }));
@@ -58,7 +107,7 @@ describe("WriteAccessController", () => {
     expect(prompt).not.toHaveBeenCalled();
   });
 
-  it("requires both lexical and resolved drives for a cross-drive junction", async () => {
+  it("requires both lexical and resolved scopes for a cross-drive junction", async () => {
     if (process.platform !== "win32") return;
     const root = await mkdtemp(path.join(os.tmpdir(), "refcanvas-cross-drive-"));
     temporaryDirectories.push(root);
@@ -72,12 +121,13 @@ describe("WriteAccessController", () => {
     }
     const prompt = vi.fn(async (_request: WriteGrantPrompt) => true);
     const controller = new WriteAccessController(() => [], prompt);
-    await controller.authorize(window, "trash", [
+    await controller.authorize(window, "execute", [
       { path: path.join(junction, "package.json"), mode: "existing" },
     ]);
     expect(prompt.mock.calls.map(([request]) => request.drive).sort()).toEqual([
       path.parse(root).root.slice(0, 2).toUpperCase(),
       path.parse(process.cwd()).root.slice(0, 2).toUpperCase(),
     ].sort());
+    expect(prompt.mock.calls.map(([request]) => request.scopePath)).toHaveLength(2);
   });
 });

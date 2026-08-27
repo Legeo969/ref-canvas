@@ -99,6 +99,15 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         }
         return null;
       };
+      const waitForText = async (selector, expected, timeout = 5000) => {
+        const deadline = Date.now() + timeout;
+        while (Date.now() < deadline) {
+          const element = document.querySelector(selector);
+          if (element?.textContent?.trim() === expected) return element;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return null;
+      };
       await waitForSelector(".app-shell .workspace", 10_000);
       const defaultWorkspaceMode =
         document.querySelector(".workspace")?.className ?? null;
@@ -113,11 +122,27 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
       const app = await window.refCanvas.system.getAppInfo();
       const boards = await window.refCanvas.boards.list();
       const board = boards[0] ?? await window.refCanvas.boards.create("Runtime smoke");
-      const directoryCard = Array.from(document.querySelectorAll(".directory-card"))
-        .find((item) => item.textContent?.includes("runtime-smoke.txt")) ?? await waitForSelector(".directory-card");
-      directoryCard?.click();
+      let directoryCard = null;
+      const directoryCardDeadline = Date.now() + 10_000;
+      while (Date.now() < directoryCardDeadline) {
+        directoryCard = Array.from(document.querySelectorAll(".directory-card"))
+          .find((item) => item.textContent?.includes("runtime-smoke.txt")) ?? null;
+        if (directoryCard) {
+          directoryCard.click();
+          if (await waitForText(
+            ".directory-details-panel .directory-inspector-title",
+            "runtime-smoke.txt",
+            2_000,
+          )) break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       const inspector = await waitForSelector(".directory-details-panel");
-      await waitForSelector(".directory-details-panel .directory-inspector-title");
+      await waitForText(
+        ".directory-details-panel .directory-inspector-title",
+        "runtime-smoke.txt",
+        5_000,
+      );
       const inspectorTitle =
         inspector?.querySelector(".directory-inspector-title")
           ?.textContent?.trim() ?? null;

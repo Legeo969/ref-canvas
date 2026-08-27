@@ -5,6 +5,8 @@ const portInput = document.getElementById("portInput");
 const saveButton = document.getElementById("saveButton");
 const testButton = document.getElementById("testButton");
 const statusText = document.getElementById("statusText");
+const pairingCode = document.getElementById("pairingCode");
+const pairButton = document.getElementById("pairButton");
 
 function send(message) {
   return chrome.runtime.sendMessage(message);
@@ -34,13 +36,35 @@ async function load() {
     boardSelect.disabled = false;
     portInput.value = String(status?.settings?.port ?? 17530);
     setStatus(
-      status?.connected ? "已连接 RefCanvas" : "RefCanvas 未运行",
+      status?.connected
+        ? "已连接 RefCanvas"
+        : status?.pairingRequired
+          ? "需要配对"
+          : "RefCanvas 未运行",
       !status?.connected,
     );
   } catch (error) {
     setStatus(`加载设置失败：${String(error?.message ?? error)}`, true);
   }
 }
+
+pairButton.addEventListener("click", async () => {
+  const code = pairingCode.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    setStatus("请输入六位配对码", true);
+    return;
+  }
+  pairButton.disabled = true;
+  const result = await send({ type: "PAIR", code });
+  pairButton.disabled = false;
+  if (!result?.ok) {
+    setStatus(result?.error ?? "配对失败", true);
+    return;
+  }
+  pairingCode.value = "";
+  setStatus("配对成功");
+  await load();
+});
 
 saveButton.addEventListener("click", async () => {
   const port = Number(portInput.value);
@@ -57,10 +81,15 @@ testButton.addEventListener("click", async () => {
   setStatus("测试中…");
   await send({ type: "SET_PORT", port: Number(portInput.value) });
   const status = await send({ type: "GET_STATUS" });
+  const failure =
+    status?.error ||
+    (status?.pairingRequired
+      ? "浏览器尚未与 RefCanvas 配对，请先输入六位配对码"
+      : "无法读取连接状态，请重新加载扩展后重试");
   setStatus(
     status?.connected
       ? `连接成功，找到 ${status.boards?.length ?? 0} 块板`
-      : `连接失败：${status?.error ?? "未知原因"}`,
+      : `连接失败：${failure}`,
     !status?.connected,
   );
 });

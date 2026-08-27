@@ -2,6 +2,7 @@ import { FolderOpen, Images, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ExportVideoFramesResult } from "../../shared/contracts";
 import { translate } from "../app/i18n";
+import { SelectMenu } from "./SelectMenu";
 
 function stem(filename: string): string {
   return filename.split(/[\\/]/).pop()?.replace(/\.[^.]*$/, "") || "frames";
@@ -69,8 +70,8 @@ export function VideoFramesExportDialog({
       <section className={`video-frames-dialog ${variant === "panel" ? "embedded" : ""}`} role={variant === "dialog" ? "dialog" : "region"} aria-modal={variant === "dialog" ? "true" : undefined} aria-label={translate("video.framesExportDialog")} onMouseDown={(event) => event.stopPropagation()}>
         <header><div><Images size={18} /><div><h2>{translate("video.framesExport")}</h2><p>{translate("video.framesExportHint")}</p></div></div>{variant === "dialog" && <button className="mini-icon-button" aria-label={translate("video.closeFramesExport")} disabled={running} onClick={onClose}><X size={16} /></button>}</header>
         <div className="video-frames-form">
-          <label>{translate("video.format")}<select value={format} onChange={(event) => setFormat(event.target.value as typeof format)}><option value="png">{translate("video.pngLossless")}</option><option value="jpeg">{translate("video.jpgSmaller")}</option></select></label>
-          <label>{translate("preview.rateFps")}<select value={fps ?? "source"} onChange={(event) => setFps(event.target.value === "source" ? null : Number(event.target.value))}><option value="source">{translate("video.keepSourceFps")}</option>{[6, 8, 10, 12, 15, 24, 25, 30, 60].map((value) => <option key={value} value={value}>{value} FPS</option>)}</select></label>
+          <label>{translate("video.format")}<SelectMenu<typeof format> value={format} options={[{ value: "png" as const, label: translate("video.pngLossless") }, { value: "jpeg" as const, label: translate("video.jpgSmaller") }]} ariaLabel={translate("video.format")} onValueChange={setFormat} /></label>
+          <label>{translate("preview.rateFps")}<SelectMenu<number | "source"> value={fps ?? "source"} options={[{ value: "source" as const, label: translate("video.keepSourceFps") }, ...[6, 8, 10, 12, 15, 24, 25, 30, 60].map((value) => ({ value, label: `${value} FPS` }))]} ariaLabel={translate("preview.rateFps")} onValueChange={(value) => setFps(value === "source" ? null : value)} /></label>
           <label>{translate("video.inPoint")}<input type="number" min={0} max={endSeconds} step={0.01} value={startSeconds} onChange={(event) => setStartSeconds(Math.max(0, Math.min(endSeconds, Number(event.target.value))))} /></label>
           <label>{translate("video.outPoint")}<input type="number" min={startSeconds} max={durationSeconds} step={0.01} value={endSeconds} onChange={(event) => setEndSeconds(Math.max(startSeconds, Math.min(durationSeconds, Number(event.target.value))))} /></label>
           {format === "jpeg" && <label>{translate("video.jpgQuality")}<input type="range" min={40} max={100} value={quality} onChange={(event) => setQuality(Number(event.target.value))} /><output>{quality}</output></label>}

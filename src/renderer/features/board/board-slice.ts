@@ -5,6 +5,7 @@ import type {
 
 export interface BoardSliceState {
   boards: BoardSummary[];
+  recentBoards: BoardSummary[];
   activeBoard: BoardSummary | null;
   boardDocument: BoardDocumentV3 | null;
   pendingBoardAssetIds: string[];
@@ -14,6 +15,7 @@ export interface BoardSliceState {
 export function createBoardSliceState(): BoardSliceState {
   return {
     boards: [],
+    recentBoards: [],
     activeBoard: null,
     boardDocument: null,
     pendingBoardAssetIds: [],

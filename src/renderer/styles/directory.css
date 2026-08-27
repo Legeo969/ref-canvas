@@ -463,6 +463,30 @@
   width: 100%;
 }
 
+.asset-panel:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(58, 178, 143, 0.28);
+}
+
+.directory-card:focus-visible,
+.directory-folder-row:focus-visible,
+.directory-row:focus-visible {
+  outline: none;
+}
+
+.directory-card:focus-visible .asset-preview {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 4px rgba(58, 178, 143, 0.1),
+    0 7px 18px rgba(0, 0, 0, 0.2);
+}
+
+.directory-folder-row:focus-visible,
+.directory-row:focus-visible {
+  background: rgba(58, 178, 143, 0.09);
+  box-shadow: inset 2px 0 var(--accent);
+}
+
 .directory-tag-badge {
   position: absolute;
   bottom: 7px;
@@ -641,7 +665,8 @@
 }
 
 .dir-path-input:focus {
-  border-color: #0078d4;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(58, 178, 143, 0.22);
 }
 
 .dir-path-edit {
@@ -1254,7 +1279,7 @@
   opacity: 0.35;
 }
 
-.tag-nav-actions select {
+.tag-nav-actions .select-menu-trigger {
   width: 88px;
   height: 30px;
   margin-left: 8px;
@@ -2192,12 +2217,16 @@
   font-weight: 600;
 }
 
-/* 面包屑行右侧：缩放滑块 + 视图选项按钮（网格/列表切换已移到筛选行）。 */
+/* 面包屑行右侧：缩放、收藏、排序与视图选项。 */
 .dir-path-bar-right {
   display: flex;
   flex: none;
   align-items: center;
   gap: 6px;
+}
+
+.dir-path-bar-right .dir-sort-control {
+  margin-left: 0;
 }
 
 .directory-zoom {
@@ -2214,6 +2243,14 @@
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.directory-zoom input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.directory-zoom input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(58, 178, 143, 0.18);
 }
 
 .dir-view-mode {
@@ -2249,8 +2286,7 @@
   color: #8cdec5;
 }
 
-/* 排序控件：格式筛选行右侧的弹出菜单入口。
-   （.dir-format-filter button 选择器特异性更高且后加载，这里用两段式选择器覆盖。） */
+/* 排序控件：面包屑工具栏右侧的弹出菜单入口。 */
 .dir-sort-control {
   position: relative;
   display: flex;
@@ -2284,8 +2320,7 @@
   color: #dbe3df;
 }
 
-/* 排序弹层：portal 到 body，fixed 定位逃逸 .dir-format-filter 的
-   overflow-x: auto 裁剪；left/top/maxHeight 由 placeTriggerMenu 计算注入。 */
+/* 排序弹层：portal 到 body，left/top/maxHeight 由 placeTriggerMenu 注入。 */
 .dir-sort-popover {
   position: fixed;
   z-index: 120;
@@ -2333,11 +2368,9 @@
   color: #8cdec5;
 }
 
-/* ===== 视图切换 / ⚙ 设置：移到格式筛选行（排序控件旁边，迅雷布局） =====
-   这两组控件现在位于 .dir-format-filter 内部，会被 dialogs.css 的
-   .dir-format-filter button 通用样式命中，用两段式选择器覆盖回紧凑外观。 */
+/* ===== 视图切换：路径工具栏右侧的紧凑控件 ===== */
 
-.dir-format-filter .dir-view-mode {
+.dir-path-bar-right .dir-view-mode {
   display: flex;
   flex: none;
   align-items: center;
@@ -2347,7 +2380,7 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
-.dir-format-filter .dir-view-mode button {
+.dir-path-bar-right .dir-view-mode button {
   display: grid;
   width: 28px;
   height: 26px;
@@ -2366,17 +2399,17 @@
   transition-timing-function: ease-out;
 }
 
-.dir-format-filter .dir-view-mode button:hover {
+.dir-path-bar-right .dir-view-mode button:hover {
   color: #dbe3df;
 }
 
-.dir-format-filter .dir-view-mode button.active {
+.dir-path-bar-right .dir-view-mode button.active {
   background: var(--accent-soft);
   color: #8cdec5;
 }
 
-/* 筛选行 ⚙ 设置入口：与视图选项按钮同款主题图标按钮。 */
-.dir-format-filter .dir-filter-settings {
+/* 只看收藏：与路径工具栏其他图标按钮同款紧凑尺寸。 */
+.dir-path-bar-right .dir-favorites-filter {
   display: grid;
   width: 28px;
   height: 28px;
@@ -2394,36 +2427,33 @@
   transition-timing-function: ease-out;
 }
 
-.dir-format-filter .dir-filter-settings:hover {
+.dir-path-bar-right .dir-favorites-filter:hover {
   background: rgba(255, 255, 255, 0.06);
   color: #dbe3df;
 }
 
-/* 只看收藏：纯星号图标按钮，与 ⚙ 设置入口同款紧凑尺寸。 */
-.dir-format-filter .dir-favorites-filter {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  padding: 0;
-  place-items: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  box-shadow: none;
-  color: #8b9590;
-  cursor: pointer;
-  transition-property: background-color, color;
-  transition-duration: 120ms;
-  transition-timing-function: ease-out;
-}
-
-.dir-format-filter .dir-favorites-filter:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #dbe3df;
-}
-
-.dir-format-filter .dir-favorites-filter.active {
+.dir-path-bar-right .dir-favorites-filter.active {
   background: var(--accent-soft);
   color: #8cdec5;
+}
+
+@container (max-width: 500px) {
+  .dir-path-bar-right {
+    gap: 2px;
+  }
+
+  .directory-zoom input[type="range"] {
+    display: none;
+  }
+
+  .dir-sort-trigger span,
+  .dir-sort-trigger svg:last-child {
+    display: none;
+  }
+
+  .dir-sort-control .dir-sort-trigger {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
 }

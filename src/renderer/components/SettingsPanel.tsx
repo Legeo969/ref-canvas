@@ -3,6 +3,7 @@ import {
   FolderOpen,
   Gauge,
   Info,
+  Link2,
   MonitorCog,
   PanelLeftClose,
   Plus,
@@ -10,6 +11,7 @@ import {
   Settings2,
   SlidersHorizontal,
   Sparkles,
+  Tags,
   Trash2,
   X,
 } from "lucide-react";
@@ -36,11 +38,15 @@ import { AiProviderSettings } from "./AiProviderSettings";
 import { SelectMenu } from "./SelectMenu";
 import { AboutSettings } from "./settings/AboutSettings";
 import { MaintenanceSettings } from "./settings/MaintenanceSettings";
+import { BrowserCaptureSettings } from "./settings/BrowserCaptureSettings";
+import { OrganizeSettings } from "./settings/OrganizeSettings";
 
 export type SettingsTab =
   | "general"
   | "board"
   | "preview"
+  | "capture"
+  | "organize"
   | "ai"
   | "maintenance"
   | "about";
@@ -54,6 +60,8 @@ const TABS: Array<{ id: SettingsTab; labelKey: MessageKey; icon: typeof Info }> 
   { id: "general", labelKey: "settings.general", icon: SlidersHorizontal },
   { id: "board", labelKey: "settings.board", icon: MonitorCog },
   { id: "preview", labelKey: "settings.options", icon: ScanLine },
+  { id: "capture", labelKey: "settings.capture", icon: Link2 },
+  { id: "organize", labelKey: "settings.organize", icon: Tags },
   { id: "ai", labelKey: "settings.ai", icon: Sparkles },
   { id: "maintenance", labelKey: "settings.maintenance", icon: Gauge },
   { id: "about", labelKey: "settings.about", icon: Info },
@@ -439,6 +447,10 @@ export function SettingsPanel({
                 </label>
               </div>
             )}
+
+            {tab === "capture" && <BrowserCaptureSettings />}
+
+            {tab === "organize" && <OrganizeSettings />}
 
             {tab === "preview" && (
               <div className="settings-group">

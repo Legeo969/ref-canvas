@@ -11,6 +11,7 @@ import { ImagePreviewViewport } from "./ImagePreviewViewport";
 import { useRetryingPreviewUrl } from "./useRetryingPreviewUrl";
 import { PanoramaPreview, type EnvironmentPreviewMode } from "./PanoramaPreview";
 import type { ColorStatus } from "../../shared/contracts";
+import { SelectMenu } from "./SelectMenu";
 
 type ToneMappingName = "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw";
 /** 色彩管理方案：每个方案是一套完整组合（输入解释 + 显示变换），用户无需分别理解。 */
@@ -815,11 +816,17 @@ export function HdrPreview({
           <div className="hdr-channel-control" role="group" aria-label={translate("preview.multichannel")}>
             <label className="hdr-layer-select">
               <span>{translate("hdr.layers")}</span>
-              <select aria-label={translate("hdr.layersSelect")} value={layer} onChange={(event) => { setLayer(event.target.value); setComponent("composite"); }}>
-                <option value={AUTO_LAYER}>{translate("hdr.auto")}</option>
-                {layers.length === 0 && <option value={MAIN_LAYER}>Main</option>}
-                {layers.map((item) => <option key={item.name || MAIN_LAYER} value={item.name || MAIN_LAYER}>{item.name || "Main"}</option>)}
-              </select>
+              <SelectMenu
+                className="hdr-layer-menu"
+                ariaLabel={translate("hdr.layersSelect")}
+                value={layer}
+                options={[
+                  { value: AUTO_LAYER, label: translate("hdr.auto") },
+                  ...(layers.length === 0 ? [{ value: MAIN_LAYER, label: "Main" }] : []),
+                  ...layers.map((item) => ({ value: item.name || MAIN_LAYER, label: item.name || "Main" })),
+                ]}
+                onValueChange={(value) => { setLayer(value); setComponent("composite"); }}
+              />
             </label>
             <div className="hdr-component-control" role="group" aria-label={translate("hdr.channels")}>
               <button type="button" className={component === "composite" ? "active" : ""} aria-pressed={component === "composite"} onClick={() => setComponent("composite")}>{translate("hdr.composite")}</button>

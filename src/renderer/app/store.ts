@@ -16,6 +16,7 @@ import type {
   SelectionScope,
   SortDirection,
 } from "../../shared/contracts";
+import { parseAssetSearchQuery } from "../../shared/search-query";
 import { readDurableNavigationState, updateNavigationState } from "./navigation-state";
 import {
   readDurableNavigationStateV3,
@@ -54,6 +55,7 @@ import {
   selectionStateFromScope,
 } from "../features/library/selection-model";
 import { importJobState } from "../features/library/import-job-model";
+import { runWithDirectoryWriteAccess } from "./directory-write-access";
 import {
   renamedBoardState,
   savedBoardState,
@@ -62,6 +64,16 @@ export {
   ASSET_PAGE_SIZE,
   MAX_RESIDENT_ASSET_PAGES,
 } from "../features/library/query-window";
+
+function prependRecentBoard(
+  recentBoards: BoardSummary[],
+  board: BoardSummary,
+): BoardSummary[] {
+  return [
+    { ...board, lastOpenedAt: new Date().toISOString() },
+    ...recentBoards.filter((item) => item.id !== board.id),
+  ].slice(0, 10);
+}
 
 interface AppState
   extends LibraryQuerySliceState,
@@ -104,6 +116,7 @@ interface AppState
   setSort(sort: AssetSortKey, direction: SortDirection): void;
   selectAsset(asset: AssetRecord | null): void;
   locateAssetInLibrary(asset: AssetRecord): Promise<void>;
+  completeDirectoryReveal(id: number): void;
   selectAssetInGrid(id: string, mode: "replace" | "toggle" | "range"): void;
   selectAllMatching(): void;
   clearSelection(): void;
@@ -205,7 +218,7 @@ interface AppState
   /** 批量按需建立本地索引并打标签。 */
   materializeEntriesWithTags(paths: string[], tags: string[]): Promise<void>;
   /** 批量移入 Windows 回收站。 */
-  trashEntries(paths: string[]): Promise<void>;
+  trashEntries(paths: string[]): Promise<boolean>;
   refreshQuickAccess(): Promise<void>;
   addQuickAccess(path: string, name?: string): Promise<void>;
   removeQuickAccess(id: string): Promise<void>;
@@ -216,6 +229,7 @@ interface AppState
 
 let navigationHydrated = false;
 let assetQueryRevision = 0;
+let directoryRevealRequestId = 0;
 
 /** 路径规范化（大小写与分隔符；Windows 不区分大小写）。 */
 function normalizeDirectoryPath(value: string): string {
@@ -303,6 +317,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   initialize: async () => {
     const [
       boards,
+      recentBoards,
       tags,
       tagGroups,
       savedViews,
@@ -313,6 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       mounts,
     ] = await Promise.all([
       window.refCanvas.boards.list(),
+      Promise.resolve(window.refCanvas.boards.recent?.()).then((value) => value ?? []).catch(() => []),
       window.refCanvas.library.listTags(),
       window.refCanvas.library.listTagGroups(),
       window.refCanvas.library.listSavedViews(),
@@ -364,6 +380,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     navigationHydrated = true;
     set({
       boards,
+      recentBoards,
       tags,
       tagGroups,
       savedViews,
@@ -456,12 +473,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   currentSearch: (cursor) => {
     const state = get();
-    const tagQuery = state.query.startsWith("#")
-      ? state.query.slice(1).trim()
-      : "";
+    const parsedQuery = parseAssetSearchQuery(state.query).input;
     return {
-      query: tagQuery ? undefined : state.query || undefined,
-      tag: tagQuery || undefined,
       kind: state.kindFilter,
       linkState: state.linkStateFilter,
       lifecycle: state.lifecycleFilter,
@@ -486,6 +499,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       createdBefore: state.createdBefore,
       modifiedAfter: state.modifiedAfter,
       modifiedBefore: state.modifiedBefore,
+      ...parsedQuery,
       sort: state.sort,
       direction: state.direction,
       pageSize: ASSET_PAGE_SIZE,
@@ -725,12 +739,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   locateAssetInLibrary: async (asset) => {
     const separator = Math.max(asset.path.lastIndexOf("\\"), asset.path.lastIndexOf("/"));
-    if (separator < 0) return;
+    if (separator < 0) throw new Error("ASSET_PATH_INVALID");
     const directory = asset.path.slice(0, separator);
     await get().openDirectory(directory);
-    const entry = get().directoryEntries.find((item) => item.path === asset.path) ?? null;
-    set({ selectedDirectoryEntry: entry });
+    set({
+      workspaceMode: "directory",
+      navigationSource: "directory",
+      focusMode: false,
+      activeCollectionId: null,
+      selectedDirectoryEntry: null,
+      directoryRevealRequest: {
+        id: ++directoryRevealRequestId,
+        path: asset.path,
+      },
+    });
   },
+
+  completeDirectoryReveal: (id) =>
+    set((state) =>
+      state.directoryRevealRequest?.id === id
+        ? { directoryRevealRequest: null }
+        : {},
+    ),
 
   selectAssetInGrid: (id, mode) => {
     const state = get();
@@ -1015,9 +1045,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
     }
     const summary = await window.refCanvas.boards.create(title);
+    await window.refCanvas.boards.touch?.(summary.id);
     const loaded = await window.refCanvas.boards.load(summary.id);
     set((state) => ({
       boards: [summary, ...state.boards],
+      recentBoards: prependRecentBoard(state.recentBoards, summary),
       activeBoard: summary,
       boardDocument: loaded?.document ?? null,
       selectedAsset: null,
@@ -1027,25 +1059,34 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   renameBoard: async (id, title) => {
     const summary = await window.refCanvas.boards.rename(id, title);
-    set((state) => renamedBoardState(state.boards, state.activeBoard, summary));
+    set((state) => ({
+      ...renamedBoardState(state.boards, state.activeBoard, summary),
+      recentBoards: state.recentBoards.map((board) =>
+        board.id === id ? { ...board, ...summary } : board,
+      ),
+    }));
   },
 
   deleteBoard: async (id) => {
     await window.refCanvas.boards.delete(id);
     const boards = get().boards.filter((board) => board.id !== id);
     if (get().activeBoard?.id !== id) {
-      set({ boards });
+      set((state) => ({
+        boards,
+        recentBoards: state.recentBoards.filter((board) => board.id !== id),
+      }));
       return;
     }
     const loaded = boards[0]
       ? await window.refCanvas.boards.load(boards[0].id)
       : null;
-    set({
+    set((state) => ({
       boards,
+      recentBoards: state.recentBoards.filter((board) => board.id !== id),
       activeBoard: loaded?.summary ?? null,
       boardDocument: loaded?.document ?? null,
       selectedAsset: null,
-    });
+    }));
   },
 
   switchBoard: async (id) => {
@@ -1064,12 +1105,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const loaded = await window.refCanvas.boards.load(id);
     if (!loaded) return;
     void window.refCanvas.boards.touch(id);
-    set({
+    set((state) => ({
       activeBoard: loaded.summary,
       boardDocument: loaded.document,
       selectedAsset: null,
       workspaceMode: "board",
-    });
+      recentBoards: prependRecentBoard(state.recentBoards, loaded.summary),
+    }));
   },
 
   addDirectoryEntriesToBoard: async (paths) => {
@@ -1304,6 +1346,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       workspaceMode: "directory",
       navigationSource: "directory",
       focusMode: false,
+      activeCollectionId: null,
       directoryPath: path,
       directoryLoading: true,
       selectedIds: new Set(),
@@ -1311,6 +1354,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       excludedIds: new Set(),
       selectedAsset: null,
       selectedDirectoryEntry: null,
+      directoryRevealRequest: null,
     });
     try {
       const page = await window.refCanvas.filesystem.listDirectory(path, {
@@ -1505,13 +1549,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           pageSize: 1,
         })
       : null;
-    await window.refCanvas.filesystem.trash(
-      paths,
-      directoryPath && page?.revision
-        ? { directoryPath, revision: page.revision }
-        : undefined,
-    );
+    const result = directoryPath
+      ? await runWithDirectoryWriteAccess(directoryPath, () =>
+          window.refCanvas.filesystem.trash(
+            paths,
+            page?.revision
+              ? { directoryPath, revision: page.revision }
+              : undefined,
+          ),
+        )
+      : { completed: true, value: await window.refCanvas.filesystem.trash(paths) };
+    if (!result.completed) return false;
     await get().reloadDirectory();
+    return true;
   },
 
   refreshQuickAccess: async () => {

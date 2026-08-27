@@ -141,14 +141,16 @@ describe("DialogProvider textarea", () => {
       (document.querySelector("button") as HTMLButtonElement).click();
     });
 
-    const select = document.querySelector("select") as HTMLSelectElement;
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(
-        HTMLSelectElement.prototype,
-        "value",
-      )?.set;
-      setter?.call(select, "collection-2");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      const combobox = document.querySelector('[role="combobox"]') as HTMLButtonElement;
+      combobox.click();
+    });
+    await act(async () => {
+      const option = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'))
+        .find((item) => item.textContent?.includes("归档"));
+      option?.click();
+    });
+    await act(async () => {
       (document.querySelector("button[type=submit]") as HTMLButtonElement).click();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });

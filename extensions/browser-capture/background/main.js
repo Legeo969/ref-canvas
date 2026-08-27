@@ -9,6 +9,7 @@ import {
   BoardMissingError,
   clearLastError,
   getLastError,
+  pairWithCode,
   recordError,
 } from "./api.js";
 import {
@@ -180,15 +181,27 @@ chrome.commands.onCommand.addListener(async (command) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "GET_STATUS") {
     void (async () => {
-      const status = await syncStatusAndMenus();
-      sendResponse({
-        connected: status.connected,
-        error: status.error,
-        boards: status.boards ?? [],
-        activeBoardTitle: status.activeBoardTitle ?? null,
-        lastError: await getLastError(),
-        settings: await getSettings(),
-      });
+      try {
+        const status = await syncStatusAndMenus();
+        sendResponse({
+          connected: status.connected,
+          pairingRequired: status.pairingRequired,
+          error: status.error,
+          boards: status.boards ?? [],
+          activeBoardTitle: status.activeBoardTitle ?? null,
+          lastError: await getLastError(),
+          settings: await getSettings(),
+        });
+      } catch (error) {
+        sendResponse({
+          connected: false,
+          error: `连接检查失败：${String(error?.message ?? error)}`,
+          boards: [],
+          activeBoardTitle: null,
+          lastError: await getLastError(),
+          settings: await getSettings(),
+        });
+      }
     })();
     return true;
   }
@@ -210,6 +223,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         port: Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : 17530,
       });
       sendResponse({ settings });
+    })();
+    return true;
+  }
+
+  if (message?.type === "PAIR") {
+    void (async () => {
+      try {
+        const pairing = await pairWithCode(message.code);
+        await syncStatusAndMenus();
+        sendResponse({ ok: true, pairing });
+      } catch (error) {
+        sendResponse({ ok: false, error: String(error?.message ?? error) });
+      }
     })();
     return true;
   }

@@ -46,6 +46,7 @@
 }
 
 .collection-node {
+  position: relative;
   min-width: 0;
 }
 
@@ -53,7 +54,7 @@
   position: relative;
   display: grid;
   min-height: 34px;
-  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
   align-items: center;
   padding-right: 6px;
   border-radius: 7px;
@@ -62,6 +63,27 @@
   transition-property: background-color, color, box-shadow;
   transition-duration: 120ms;
   transition-timing-function: ease-out;
+}
+
+/* 集合行比目录树紧凑；不要复用 .dir-tree-chevron 的 40px 高度，
+   同时为折叠箭头与集合图标留出独立横向节奏，避免视觉重叠。 */
+.collection-row .collection-tree-chevron {
+  display: grid;
+  width: 28px;
+  min-width: 28px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.collection-tree-chevron:hover {
+  background: rgba(255, 255, 255, 0.065);
 }
 
 .collection-row:hover {
@@ -88,7 +110,7 @@
   min-width: 0;
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
-  gap: 2px;
+  gap: 8px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -196,6 +218,14 @@
   background: #23292a;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
   display: grid;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Dismiss on pointerdown while letting the clicked navigation row receive its
+   click, so closing a menu never requires a second click. */
+.collection-menu-dismiss {
+  pointer-events: none;
 }
 
 .collection-menu-head {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LruCache } from "../../shared/lru-cache";
 
 export type PreviewLoadStatus = "idle" | "loading" | "waiting" | "ready" | "failed";
 
@@ -24,9 +25,13 @@ export function previewUrlWithRetry(source: string, nonce: number): string {
  * 会话级「已成功加载」URL 集合。虚拟网格/列表会反复挂载/卸载卡片（滚动、
  * 导航、切窗口回来都会触发），每次重挂都会重新走 loading→ready，导致已经
  * 显示过的缩略图又闪一下占位图。记录已加载 URL，重挂时直接以 ready 起步，
- * 图片本身靠 HTTP/磁盘缓存瞬间出图，不再闪「加载」。
+ * 图片本身靠 HTTP/磁盘缓存瞬间出图，不再闪「加载」。缓存采用 LRU 上限，
+ * 避免浏览大量不同素材后会话内存持续增长。
  */
-const readyPreviewUrls = new Set<string>();
+export const READY_PREVIEW_CACHE_CAPACITY = 5_000;
+const readyPreviewUrls = new LruCache<string, true>(
+  READY_PREVIEW_CACHE_CAPACITY,
+);
 
 /** 仅测试用：清空会话级「已加载」缓存，避免用例间相互污染。 */
 export function resetReadyPreviewCache(): void {
@@ -89,7 +94,7 @@ export function useRetryingPreviewUrl(
   const markReady = useCallback(() => {
     clearRetry();
     clearStall();
-    if (source) readyPreviewUrls.add(source);
+    if (source) readyPreviewUrls.set(source, true);
     setStatus("ready");
   }, [clearRetry, clearStall, source]);
 

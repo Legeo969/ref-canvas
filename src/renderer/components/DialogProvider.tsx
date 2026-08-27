@@ -10,6 +10,7 @@ import {
 } from "react";
 import { FolderOpen, X } from "lucide-react";
 import { translate } from "../app/i18n";
+import { SelectMenu } from "./SelectMenu";
 
 export interface FormDialogField {
   name: string;
@@ -151,7 +152,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       if (event.key !== "Tab" || !dialogRef.current) return;
       const focusable = Array.from(
         dialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [role="combobox"]:not([aria-disabled="true"]), [tabindex]:not([tabindex="-1"])',
         ),
       );
       if (!focusable.length) return;
@@ -279,26 +280,22 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                           }}
                         />
                       ) : field.type === "select" ? (
-                        <select
-                          data-autofocus={index === 0 ? "" : undefined}
-                          value={values[field.name] ?? ""}
-                          onChange={(event) => {
+                        <SelectMenu
+                          autoFocus={index === 0}
+                          value={values[field.name] ?? field.options?.[0]?.value ?? ""}
+                          options={field.options ?? []}
+                          ariaLabel={field.label}
+                          onValueChange={(value) => {
                             setValues((current) => ({
                               ...current,
-                              [field.name]: event.target.value,
+                              [field.name]: String(value),
                             }));
                             setErrors((current) => ({
                               ...current,
                               [field.name]: "",
                             }));
                           }}
-                        >
-                          {field.options?.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       ) : (
                         <input
                           data-autofocus={index === 0 ? "" : undefined}

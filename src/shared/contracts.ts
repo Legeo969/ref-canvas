@@ -147,6 +147,14 @@ export interface AssetSearchInput {
   offset?: number;
 }
 
+export type SearchScope = "current-directory" | "current-mount" | "all-mounts";
+
+export interface ParsedAssetSearch {
+  source: string;
+  input: AssetSearchInput;
+  unsupported: string[];
+}
+
 export interface AssetPage {
   items: AssetRecord[];
   total: number;
@@ -270,6 +278,11 @@ export interface AutoTagRule {
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AutoTagRulePreview {
+  total: number;
+  samples: Array<Pick<AssetRecord, "id" | "title" | "path" | "extension">>;
 }
 
 export interface LibraryPreferences {
@@ -594,6 +607,8 @@ export interface DirectoryPage {
   revision?: string;
   offset?: number;
   totalFiles?: number;
+  /** Number of visible directories before the file region. */
+  totalDirectories?: number;
   scanState?: "scanning" | "complete";
   order?: "discovery" | "name";
 }
@@ -682,6 +697,8 @@ export interface DirectorySearchSnapshot {
   id: string;
   state: DirectorySearchState;
   rootPath: string;
+  /** All authorized roots searched by this task; omitted for legacy single-root tasks. */
+  rootPaths?: string[];
   query: string;
   /** 当前层结果立即显示，子目录结果流式追加。 */
   entries: DirectoryEntry[];
@@ -885,6 +902,32 @@ export interface AssetActionRequest {
   writeSidecar?: boolean;
 }
 
+export interface ActionPresetInput {
+  name: string;
+  type: AssetActionType;
+  options: Record<string, unknown>;
+  outputDirectory?: string | null;
+  namingTemplate?: string | null;
+  keepHierarchy?: boolean;
+  writeSidecar?: boolean;
+}
+
+export interface ActionPreset extends ActionPresetInput {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssetActionPreview {
+  inputCount: number;
+  inputBytes: number;
+  estimatedOutputBytes: number;
+  outputDirectory: string;
+  namingTemplate: string;
+  /** Existing outputs that would pause for explicit overwrite confirmation. */
+  conflicts: string[];
+}
+
 // --- Action option payloads (validated in the main process) ---
 
 export interface ConvertOptions {
@@ -961,6 +1004,19 @@ export interface BrowserCapturePayload {
   alt?: string;
 }
 
+export interface CapturePairingRecord {
+  id: string;
+  origin: string;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface CapturePairingCode {
+  code: string;
+  expiresAt: string;
+}
+
 export interface BoardSummary {
   id: string;
   title: string;
@@ -968,6 +1024,10 @@ export interface BoardSummary {
   updatedAt: string;
   /** Monotonic document version used to reject stale writes from another window. */
   revision: number;
+  /** Lazily generated local thumbnail; absent for legacy boards. */
+  thumbnailUrl?: string;
+  /** Last explicit open time; absent until the board is opened once. */
+  lastOpenedAt?: string;
 }
 
 export interface BoardDocumentV1 {
@@ -1542,6 +1602,11 @@ export interface AiSettings {
 }
 
 export interface RefCanvasApi {
+  browserCapture: {
+    createPairingCode(): Promise<CapturePairingCode>;
+    listPairings(): Promise<CapturePairingRecord[]>;
+    revokePairing(id: string): Promise<void>;
+  };
   library: {
     search(input?: AssetSearchInput): Promise<AssetPage>;
     searchWindow(input: AssetSearchWindowInput): Promise<AssetSearchWindow>;
@@ -1617,6 +1682,9 @@ export interface RefCanvasApi {
     createAutoTagRule(rule: Omit<AutoTagRule, "id" | "createdAt" | "updatedAt">): Promise<AutoTagRule>;
     updateAutoTagRule(id: string, patch: Partial<Omit<AutoTagRule, "id" | "createdAt" | "updatedAt">>): Promise<AutoTagRule>;
     deleteAutoTagRule(id: string): Promise<void>;
+    previewAutoTagRule(
+      rule: Omit<AutoTagRule, "id" | "createdAt" | "updatedAt">,
+    ): Promise<AutoTagRulePreview>;
     /** Applies all enabled rules to every active asset; returns tagged count. */
     applyAutoTagRules(): Promise<number>;
     setCustomThumbnail(id: string, path: string | null): Promise<AssetRecord>;
@@ -1953,13 +2021,20 @@ export interface RefCanvasApi {
       path: string,
       entryPath: string,
       revision: string,
-      favoritesOnly?: boolean,
+      options?: {
+        collapseSequences?: boolean;
+        extensions?: string[];
+        favoritesOnly?: boolean;
+        flattenDepth?: number;
+        showHidden?: boolean;
+      },
     ): Promise<number | null>;
     /** 目录搜索：当前层即时结果 + 子目录流式追加；更换路径/关键词自动取消旧任务。 */
     startSearch(
       path: string,
       query: string,
       options?: {
+        scope?: SearchScope;
         collapseSequences?: boolean;
         extensions?: string[];
         favoritesOnly?: boolean;
@@ -2080,7 +2155,13 @@ export interface RefCanvasApi {
     relinkReference(id: string, assetId: string, path: string): Promise<BoardReferenceResolution>;
   };
   actions: {
+    preview(request: AssetActionRequest): Promise<AssetActionPreview>;
     start(request: AssetActionRequest): Promise<AssetActionSnapshot>;
+    listPresets(): Promise<ActionPreset[]>;
+    savePreset(input: ActionPresetInput): Promise<ActionPreset>;
+    updatePreset(id: string, input: ActionPresetInput): Promise<ActionPreset>;
+    deletePreset(id: string): Promise<void>;
+    runPreset(id: string, targets: SelectionScope): Promise<AssetActionSnapshot>;
     get(id: string): Promise<AssetActionSnapshot | null>;
     cancel(id: string): Promise<boolean>;
     retry(id: string): Promise<AssetActionSnapshot>;
