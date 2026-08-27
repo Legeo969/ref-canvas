@@ -1062,7 +1062,6 @@ async function reopenLibrary(
   // 只读降级模式：不执行写恢复/元数据回填（SQLite query_only 会拒绝这些写）。
   if (!database.readOnly) {
     await library.recoverPendingOperations();
-    library.resumePendingMetadata();
   }
   library.onLibraryChanged((event) => {
     broadcastAll("library:changed", event);

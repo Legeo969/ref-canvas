@@ -236,6 +236,10 @@ function normalizeDirectoryPath(value: string): string {
   return value.replace(/[\\/]+/g, "\\").replace(/\\$/, "").toLocaleLowerCase("en-US");
 }
 
+function isDriveRootPath(value: string): boolean {
+  return /^[a-z]:[\\/]*$/i.test(value.trim());
+}
+
 /** 标签标题：路径最后一段。 */
 function titleFromPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
@@ -306,6 +310,7 @@ async function moveDirectoryCursor(
   }
 }
 let lastNavigationSignature = "";
+let initializationPromise: Promise<void> | null = null;
 
 export const useAppStore = create<AppState>((set, get) => ({
   ...createLibraryQuerySliceState(),
@@ -315,6 +320,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   workspaceMode: "directory",
 
   initialize: async () => {
+    if (initializationPromise) return initializationPromise;
+    const run = (async () => {
     const [
       boards,
       recentBoards,
@@ -442,12 +449,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeTab.targetId !== "browser://empty"
         ? activeTab.targetId
         : navigation.directoryPath;
+    // Opening a drive root automatically starts a potentially huge recursive
+    // directory index scan; wait for the user to choose it explicitly.
     const candidates = startupDirectoryCandidates({
       rememberedPath,
       mounts,
       roots,
       quickAccess,
-    });
+    }).filter((candidate) => !isDriveRootPath(candidate));
     let directoryOpened = false;
     for (const candidate of candidates) {
       try {
@@ -468,6 +477,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         navigationSource: "directory",
         directoryPath: null,
       });
+    }
+    })();
+    initializationPromise = run;
+    try {
+      await run;
+    } catch (error) {
+      initializationPromise = null;
+      throw error;
     }
   },
 

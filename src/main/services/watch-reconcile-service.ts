@@ -30,6 +30,12 @@ export class WatchReconcileService {
     this.callbacks = callbacks;
     if (process.platform === "win32") {
       for (const root of roots) {
+        const resolvedRoot = path.resolve(root.path);
+        // A recursive watcher on `C:\\` observes the app's own database,
+        // cache, and dev build output, creating a self-triggering import loop.
+        // Drive roots are still valid for manual browsing, but are too broad
+        // to monitor safely.
+        if (path.parse(resolvedRoot).root === resolvedRoot) continue;
         try {
           this.startNativeRoot(root);
         } catch {
@@ -63,6 +69,8 @@ export class WatchReconcileService {
   addRoot(root: WatchRoot): void {
     if (!this.callbacks) return;
     if (process.platform === "win32") {
+      const resolvedRoot = path.resolve(root.path);
+      if (path.parse(resolvedRoot).root === resolvedRoot) return;
       try {
         this.startNativeRoot(root);
       } catch {

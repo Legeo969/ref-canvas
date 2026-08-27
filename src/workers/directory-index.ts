@@ -655,7 +655,22 @@ async function scanDirectory(
   });
   const sequenceCandidates: DirectoryEntry[] = [];
   let batch: DirectoryEntry[] = [];
-  const handle = await opendir(directoryPath);
+  let handle: Awaited<ReturnType<typeof opendir>>;
+  try {
+    handle = await opendir(directoryPath);
+  } catch {
+    // Protected folders can exist below a watched or manually opened root.
+    // Keep the scan usable and let the visible entries collected so far stand.
+    state.complete = true;
+    state.revision = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    db.prepare(`
+      UPDATE directory_scans
+      SET revision = ?, directory_mtime_ms = ?, state = 'complete', discovered = ?, file_total = ?
+      WHERE directory_path = ?
+    `).run(state.revision, mtimeMs, state.discovered, state.fileTotal, directoryPath);
+    resolveWaiters(directoryPath, state);
+    return;
+  }
   try {
     for await (const dirent of handle) {
       if (state.cancelled) break;
