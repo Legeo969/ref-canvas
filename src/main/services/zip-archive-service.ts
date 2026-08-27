@@ -203,6 +203,27 @@ export class ZipArchiveService {
       writer.on("finish", resolve);
       writer.on("error", reject);
     });
+    const writerClosed = new Promise<void>((resolve) => {
+      if (writer.closed) {
+        resolve();
+        return;
+      }
+      writer.once("close", resolve);
+    });
+
+    const removeTempFile = async (): Promise<void> => {
+      // Windows can release the stream handle one event-loop turn after close.
+      // Retry briefly so cancellation never leaves a visible .zip.tmp artifact.
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        try {
+          await rm(tempFile, { force: true });
+          return;
+        } catch {
+          if (attempt === 5) return;
+          await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+        }
+      }
+    };
 
     /** 写入并尊重背压：write() 返回 false 时等待 drain（流式、内存有界）。 */
     const writeBuffer = async (buffer: Buffer): Promise<void> => {
@@ -402,7 +423,9 @@ export class ZipArchiveService {
       };
     } catch (error) {
       writer.destroy();
-      await rm(tempFile, { force: true }).catch(() => undefined);
+      void written.catch(() => undefined);
+      await writerClosed.catch(() => undefined);
+      await removeTempFile();
       if (token.cancelled) {
         return {
           id: options.jobId,
