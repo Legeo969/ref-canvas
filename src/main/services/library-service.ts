@@ -79,10 +79,19 @@ async function walk(root: string, signal?: AbortSignal): Promise<string[]> {
     const batch = directories.slice(offset, offset + 16);
     offset += batch.length;
     const listings = await Promise.all(
-      batch.map(async (directory) => ({
-        directory,
-        entries: await readdir(directory, { withFileTypes: true }),
-      })),
+      batch.map(async (directory) => {
+        try {
+          return {
+            directory,
+            entries: await readdir(directory, { withFileTypes: true }),
+          };
+        } catch {
+          // Roots can contain protected system folders (for example
+          // `System Volume Information`). Skip unreadable directories while
+          // keeping the rest of reconciliation alive.
+          return { directory, entries: [] };
+        }
+      }),
     );
     for (const listing of listings) {
       for (const entry of listing.entries) {
@@ -245,6 +254,10 @@ export class LibraryService {
   private readonly metadataEnricher: MetadataEnricher;
   private pendingMetadataController: AbortController | null = null;
   private lastReconcileReport: ReconcileReport | null = null;
+  private readonly reconcileInFlight = new Set<string>();
+  private readonly reconcileRequestedAt = new Map<string, number>();
+  private readonly pendingWatchImports = new Set<string>();
+  private watchImportTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly database: RefCanvasDatabase,
@@ -960,14 +973,7 @@ export class LibraryService {
 
   async importPaths(inputPaths: string[]): Promise<ImportJobSnapshot> {
     const snapshot = this.startImport(inputPaths);
-    return new Promise((resolve) => {
-      const unsubscribe = this.onImportProgress((next) => {
-        if (next.id !== snapshot.id) return;
-        if (!["completed", "cancelled", "failed"].includes(next.state)) return;
-        unsubscribe();
-        resolve(next);
-      });
-    });
+    return this.importCoordinator.waitForCompletion(snapshot.id);
   }
 
   async relinkAsset(id: string, filename: string): Promise<AssetRecord> {
@@ -1090,7 +1096,7 @@ export class LibraryService {
     });
     if (this.watchReconcile.active) this.watchReconcile.addRoot(watchRoot);
     else await this.startWatching();
-    void this.importPaths([resolved]);
+    void this.importPaths([resolved]).catch(() => undefined);
     return watchRoot;
   }
 
@@ -1155,12 +1161,13 @@ export class LibraryService {
       onAdd: (filename) => {
         if (this.selfMovedPaths.has(path.normalize(filename))) return;
         void this.tryRelinkFromRecentUnlink(filename).then((relinked) => {
-          if (!relinked) void this.importPaths([filename]);
-        });
+          if (!relinked) this.scheduleWatchImport(filename);
+          return undefined;
+        }).catch(() => undefined);
       },
       onChange: (filename) => {
         if (!this.selfMovedPaths.has(path.normalize(filename))) {
-          void this.importPaths([filename]);
+          this.scheduleWatchImport(filename);
         }
       },
       onUnlink: (filename) => {
@@ -1179,12 +1186,12 @@ export class LibraryService {
         void stat(filename)
           .then(async (fileStat) => {
             if (fileStat.isDirectory()) {
-              await this.importPaths([filename]);
+              this.scheduleWatchImport(filename);
               return;
             }
             if (!fileStat.isFile()) return;
             const relinked = await this.tryRelinkFromRecentUnlink(filename);
-            if (!relinked) await this.importPaths([filename]);
+            if (!relinked) this.scheduleWatchImport(filename);
           })
           .catch(() => {
             const asset = this.database.getAssetByPath(filename);
@@ -1195,9 +1202,45 @@ export class LibraryService {
           });
       },
       onError: (rootId) => {
-        void this.reconcileRoots(rootId);
+        if (!rootId) return;
+        const watchRoot = this.database
+          .listWatchRoots()
+          .find((item) => item.id === rootId);
+        const resolvedRoot = watchRoot ? path.resolve(watchRoot.path) : "";
+        // Recursive Windows watchers are not reliable for a drive root and
+        // commonly fail on protected folders. Never turn that error into a
+        // full-drive reconcile during startup; it would scan the whole disk.
+        if (resolvedRoot && path.parse(resolvedRoot).root === resolvedRoot) {
+          return;
+        }
+        const now = Date.now();
+        const lastRequested = this.reconcileRequestedAt.get(rootId) ?? 0;
+        if (
+          this.reconcileInFlight.has(rootId) ||
+          now - lastRequested < 2_000
+        ) {
+          return;
+        }
+        this.reconcileRequestedAt.set(rootId, now);
+        this.reconcileInFlight.add(rootId);
+        void this.reconcileRoots(rootId)
+          .catch(() => undefined)
+          .finally(() => this.reconcileInFlight.delete(rootId));
       },
     });
+  }
+
+  /** 合并短时间内的 watcher 事件，避免每个文件变化都排队一个导入任务。 */
+  private scheduleWatchImport(filename: string): void {
+    this.pendingWatchImports.add(path.resolve(filename));
+    if (this.watchImportTimer) return;
+    this.watchImportTimer = setTimeout(() => {
+      this.watchImportTimer = null;
+      const paths = [...this.pendingWatchImports];
+      this.pendingWatchImports.clear();
+      if (paths.length) void this.importPaths(paths).catch(() => undefined);
+    }, 250);
+    this.watchImportTimer.unref?.();
   }
   async refreshLinkStates(): Promise<number> {
     let missing = 0;
@@ -2000,6 +2043,11 @@ export class LibraryService {
   }
 
   private async stopWatching(): Promise<void> {
+    if (this.watchImportTimer) {
+      clearTimeout(this.watchImportTimer);
+      this.watchImportTimer = null;
+    }
+    this.pendingWatchImports.clear();
     await this.watchReconcile.stop();
   }
 }

@@ -11,6 +11,10 @@ export interface ImportJob {
 export class ImportCoordinator {
   private tail: Promise<void> = Promise.resolve();
   private readonly jobs = new Map<string, ImportJob>();
+  private readonly completionWaiters = new Map<
+    string,
+    Set<(snapshot: ImportJobSnapshot) => void>
+  >();
 
   constructor(
     private readonly onProgress: (snapshot: ImportJobSnapshot) => void,
@@ -56,7 +60,28 @@ export class ImportCoordinator {
     const now = Date.now();
     if (!force && now - job.lastEmittedAt < 100) return;
     job.lastEmittedAt = now;
-    this.onProgress(structuredClone(job.snapshot));
+    const snapshot = structuredClone(job.snapshot);
+    this.onProgress(snapshot);
+    if (["completed", "cancelled", "failed"].includes(snapshot.state)) {
+      const waiters = this.completionWaiters.get(snapshot.id);
+      if (waiters) {
+        this.completionWaiters.delete(snapshot.id);
+        for (const resolve of waiters) resolve(snapshot);
+      }
+    }
+  }
+
+  waitForCompletion(id: string): Promise<ImportJobSnapshot> {
+    const current = this.jobs.get(id)?.snapshot;
+    if (!current) return Promise.reject(new Error("IMPORT_JOB_NOT_FOUND"));
+    if (["completed", "cancelled", "failed"].includes(current.state)) {
+      return Promise.resolve(structuredClone(current));
+    }
+    return new Promise((resolve) => {
+      const waiters = this.completionWaiters.get(id) ?? new Set();
+      waiters.add(resolve);
+      this.completionWaiters.set(id, waiters);
+    });
   }
 
   snapshot(id: string): ImportJobSnapshot | null {

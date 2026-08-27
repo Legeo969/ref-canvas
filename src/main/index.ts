@@ -1057,7 +1057,7 @@ async function reopenLibrary(
     broadcastAll("mounts:changed", { type: "state", mountId, state });
     if (state !== "online") return;
     const root = database.listWatchRoots().find((item) => item.id === mountId);
-    if (root) void library.reconcileRoots(root.id);
+    if (root) void library.reconcileRoots(root.id).catch(() => undefined);
   });
   // 只读降级模式：不执行写恢复/元数据回填（SQLite query_only 会拒绝这些写）。
   if (!database.readOnly) {

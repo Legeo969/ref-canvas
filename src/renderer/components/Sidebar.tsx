@@ -138,6 +138,7 @@ export function Sidebar() {
     available: number;
     collections: number;
   } | null>(null);
+  const resizingRef = useRef(false);
 
   const applyLayout = (next: SidebarLayoutPreference) => {
     layoutRef.current = next;
@@ -201,6 +202,10 @@ export function Sidebar() {
     const panes = panesRef.current;
     if (!panes || typeof ResizeObserver === "undefined") return;
     const refit = () => {
+      // During a splitter drag, the pointer owns the layout. The collections
+      // pane is flex-sized, so ResizeObserver would otherwise feed each drag
+      // frame back through fitSidebarLayout and make the splitter oscillate.
+      if (resizingRef.current) return;
       const available = panes.clientHeight;
       if (available <= 0) return;
       const fitted = fitSidebarLayout(
@@ -224,6 +229,7 @@ export function Sidebar() {
   }, []);
 
   const snapshotDragStart = () => {
+    resizingRef.current = true;
     dragStartRef.current = {
       quickAccess: layoutRef.current.quickAccessHeight,
       directory: layoutRef.current.directoryHeight,
@@ -238,6 +244,7 @@ export function Sidebar() {
   /** 拖动/键盘调整结束：清快照并持久化当前高度。 */
   const endDrag = () => {
     dragStartRef.current = null;
+    resizingRef.current = false;
     void window.refCanvas?.system?.setPreferences?.({
       sidebarLayout: layoutRef.current,
     })?.catch?.(() => undefined);
