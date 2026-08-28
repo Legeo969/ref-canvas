@@ -553,9 +553,25 @@
 }
 
 .collection-browser-header {
-  min-height: 64px;
+  min-height: 48px;
   flex-wrap: wrap;
-  padding: 8px 16px;
+  gap: 8px;
+  padding: 5px 12px;
+}
+
+.collection-browser-header .collection-title-row {
+  flex: 1 1 auto;
+  gap: 7px;
+}
+
+.collection-browser-header .collection-detail-actions {
+  gap: 4px;
+}
+
+.collection-browser-header .collection-detail-actions .secondary-button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 10px;
 }
 
 .collection-title-copy {
@@ -574,7 +590,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -585,17 +601,17 @@
 
 .collection-health-chip {
   display: inline-flex;
-  min-height: 30px;
+  min-height: 26px;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex: 0 0 auto;
-  padding: 0 8px;
+  padding: 0 7px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 7px;
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.025);
   color: #89948e;
   font: inherit;
-  font-size: 10px;
+  font-size: 9px;
   cursor: pointer;
   transition-property: background-color, border-color, color, scale;
   transition-duration: 120ms;
@@ -619,11 +635,11 @@
 
 .collection-browser-toolbar {
   display: flex;
-  min-height: 48px;
+  min-height: 44px;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 6px 16px;
+  padding: 5px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.012);
 }
@@ -670,9 +686,9 @@
 
 .collection-search-field {
   display: flex;
-  width: min(240px, 24vw);
-  min-width: 140px;
-  height: 32px;
+  width: min(230px, 24vw);
+  min-width: 130px;
+  height: 30px;
   align-items: center;
   gap: 6px;
   padding: 0 6px 0 9px;
@@ -689,7 +705,7 @@
   width: auto;
   min-width: 116px;
   max-width: 150px;
-  height: 32px;
+  height: 30px;
   padding: 0 7px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 7px;
@@ -714,8 +730,8 @@
 
 .collection-view-mode button {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   place-items: center;
   border: 0;
   border-radius: 5px;
@@ -768,23 +784,23 @@
   justify-content: center;
   gap: 9px;
   padding: 14px;
-  border: 1px solid rgba(226, 190, 102, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 8px;
-  background: rgba(226, 190, 102, 0.055);
-  color: #d8c48b;
+  background: rgba(255, 255, 255, 0.025);
+  color: #c7d0cb;
   text-align: left;
   cursor: pointer;
   transition-property: background-color, border-color, scale;
   transition-duration: 120ms;
 }
 
-.collection-folder-card:hover { border-color: rgba(226, 190, 102, 0.42); background: rgba(226, 190, 102, 0.1); }
+.collection-folder-card:hover { border-color: rgba(58, 178, 143, 0.42); background: rgba(58, 178, 143, 0.08); }
 .collection-folder-card:active { scale: 0.98; }
-.collection-folder-icon { color: #d5b866; }
+.collection-folder-icon { color: #8eaaa0; }
 .collection-folder-copy { display: grid; min-width: 0; gap: 4px; }
-.collection-folder-copy strong { overflow: hidden; color: #e9d9a8; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.collection-folder-copy small { color: #9e916d; font-size: 10px; font-variant-numeric: tabular-nums; }
-.collection-folder-arrow { position: absolute; right: 10px; bottom: 10px; color: #a9986b; }
+.collection-folder-copy strong { overflow: hidden; color: #d7e0db; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.collection-folder-copy small { color: #7f8d86; font-size: 10px; font-variant-numeric: tabular-nums; }
+.collection-folder-arrow { position: absolute; right: 10px; bottom: 10px; color: #7f9b91; }
 .collection-folder-card.list { min-height: 42px; flex-direction: row; align-items: center; gap: 9px; padding: 5px 10px; border-radius: 6px; }
 .collection-folder-card.list .collection-folder-icon { display: grid; place-items: center; }
 .collection-folder-card.list .collection-folder-copy { display: flex; min-width: 0; flex: 1; align-items: baseline; justify-content: space-between; gap: 12px; }

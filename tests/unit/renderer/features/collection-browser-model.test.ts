@@ -47,6 +47,7 @@ describe("collection browser model", () => {
       item("c", "D:\\refs\\mood\\c.jpg"),
     ];
     const tree = buildCollectionVirtualTree(items);
+    expect(filterCollectionItems(items, tree, { folderId: "" }).map((value) => value.id)).toEqual(["a", "b", "c"]);
     expect(filterCollectionItems(items, tree, { folderId: "d:/refs/shots" }).map((value) => value.id)).toEqual(["a", "b"]);
     expect(filterCollectionItems(items, tree, { folderId: "d:/refs/shots", state: "missing" }).map((value) => value.id)).toEqual(["b"]);
     expect(filterCollectionItems(items, tree, { folderId: "d:/refs/shots", scope: "all", query: "mood" }).map((value) => value.id)).toEqual(["c"]);

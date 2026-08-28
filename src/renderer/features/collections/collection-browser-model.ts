@@ -143,8 +143,10 @@ export function filterCollectionItems(
   const folderId = options.folderId ?? "";
   return items.filter((item) => {
     if (state !== "all" && item.state !== state) return false;
-    if (scope === "current" && (tree.itemFolderIds.get(item.id) ?? "") !== folderId) {
-      return false;
+    if (scope === "current") {
+      // The virtual root is the collection's landing view: keep the legacy
+      // flat-materials behavior while still exposing source folders above it.
+      if (folderId && (tree.itemFolderIds.get(item.id) ?? "") !== folderId) return false;
     }
     if (!query) return true;
     const haystack = `${itemName(item)} ${item.lastResolvedPath} ${item.pathKey}`.toLocaleLowerCase("zh-CN");
