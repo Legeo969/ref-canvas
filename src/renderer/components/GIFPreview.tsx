@@ -150,6 +150,14 @@ export function gifFrameIndexForPosition(
   return frames.length - 1;
 }
 
+/**
+ * Non-looping playback stops at the end, but a subsequent Play command should
+ * start a new pass instead of immediately stopping on the same end position.
+ */
+export function gifPlaybackStartPosition(position: number, looping: boolean): number {
+  return !looping && position >= 1 ? 0 : Math.min(1, Math.max(0, position));
+}
+
 type ImageDecoderLike = {
   tracks: {
     ready: Promise<void>;
@@ -513,6 +521,16 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
     } else {
       if (gifRef.current?.frames.length && !canvasBroken) {
         // 解码模式：画布已定格在当前帧，直接续播，不重置进度。
+        if (!looping && nativePositionRef.current >= 1) {
+          // 非循环播放到末帧后再次点击播放，应从头开始新一轮播放。
+          const start = gifPlaybackStartPosition(nativePositionRef.current, looping);
+          nativePositionRef.current = start;
+          playheadRef.current = durationMs * start;
+          frameIndexRef.current = 0;
+          setNativePosition(start);
+          setFrameIndex(0);
+          drawFrameRef.current(0);
+        }
         setPlaying(true);
       } else {
         // 回退/异常模式：原生 <img> 从头播，同步归零。
