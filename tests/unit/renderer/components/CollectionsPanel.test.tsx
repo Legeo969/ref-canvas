@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RefCanvasApi } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { useAppStore } from "../../../../src/renderer/app/store";
-import { CollectionsPanel } from "../../../../src/renderer/components/CollectionsPanel";
+import { CollectionDetailsPanel, CollectionsPanel } from "../../../../src/renderer/components/CollectionsPanel";
 import { DialogProvider } from "../../../../src/renderer/components/DialogProvider";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -449,6 +449,14 @@ describe("CollectionsPanel", () => {
 
     // 打开条目右键菜单 → 重定位。
     await act(async () => {
+      host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
       host
         .querySelector(".collection-item-card")
         ?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
@@ -501,6 +509,14 @@ describe("CollectionsPanel", () => {
       );
     });
 
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click();
+      await Promise.resolve();
+    });
     await act(async () => {
       host
         .querySelector(".collection-item-card")
@@ -697,5 +713,39 @@ describe("CollectionsPanel", () => {
     });
     expect(api.update).toHaveBeenNthCalledWith(1, "c-1", { sortOrder: 1 });
     expect(api.update).toHaveBeenNthCalledWith(2, "c-2", { sortOrder: 0 });
+  });
+
+  it("browses source folders and exposes collection status filters", async () => {
+    const collection = sampleCollection("c-1", "灵感");
+    const items = [
+      sampleItem("c-1", "D:\\refs\\shots\\a.png", "resolved"),
+      sampleItem("c-1", "D:\\refs\\shots\\b.png", "missing"),
+    ];
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      collections: [collection],
+      collectionTree: { "": [collection] },
+      collectionItems: { "c-1": items },
+      activeCollectionId: "c-1",
+      refreshCollections: vi.fn(async () => undefined),
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><CollectionDetailsPanel /></DialogProvider>);
+    });
+    expect(host.querySelector(".collection-folder-card")).toBeTruthy();
+    expect(host.textContent).toContain("2 项");
+    await act(async () => host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click());
+    expect(host.querySelector(".collection-item-card")).toBeTruthy();
+    await act(async () => host.querySelector<HTMLButtonElement>('.collection-health-chip.state-missing')?.click());
+    expect(host.querySelectorAll(".collection-item-card")).toHaveLength(1);
+    expect(host.textContent).toContain("b.png");
   });
 });
