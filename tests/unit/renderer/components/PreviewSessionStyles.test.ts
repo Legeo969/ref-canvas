@@ -29,14 +29,14 @@ describe("preview session controls", () => {
     );
   });
 
-  it("centers the preview filename independently of right-side metadata", async () => {
+  it("vertically centers the preview filename with right-side metadata", async () => {
     const css = await readFile(
       path.resolve("src/renderer/styles/preview-panel.css"),
       "utf8",
     );
-    expect(css).toMatch(/\.preview-file-row\s*{[^}]*position:\s*relative;/s);
+    expect(css).toMatch(/\.preview-file-row\s*{[^}]*align-items:\s*center;/s);
     expect(css).toMatch(
-      /\.preview-filename\s*{[^}]*position:\s*absolute;[^}]*inset-inline:\s*72px;[^}]*text-align:\s*center;/s,
+      /\.preview-filename\s*{[^}]*margin:\s*0;/s,
     );
   });
 
