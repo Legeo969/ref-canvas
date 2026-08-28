@@ -2557,6 +2557,7 @@ export type MessageKey =
   | "similar.cancelIndex"
 
   | "similar.comparing"
+  | "similar.error"
 
   | "similar.findFor"
 

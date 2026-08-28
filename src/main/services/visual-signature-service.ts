@@ -7,17 +7,22 @@ export interface VisualSignature {
 }
 
 export async function imageVisualSignature(filename: string): Promise<VisualSignature> {
-  const source = sharp(filename, { animated: false, failOn: "none" }).rotate();
-  const [gray, color] = await Promise.all([
-    source.clone().resize(9, 8, { fit: "fill" }).greyscale().raw().toBuffer(),
-    source
-      .clone()
-      .flatten({ background: { r: 255, g: 255, b: 255 } })
-      .resize(4, 4, { fit: "fill" })
-      .removeAlpha()
-      .raw()
-      .toBuffer({ resolveWithObject: true }),
-  ]);
+  // Keep the two libvips pipelines independent and sequential. Sharing one
+  // input across concurrent clone pipelines can crash inside the native Sharp
+  // addon for some images instead of rejecting the JavaScript promise.
+  const gray = await sharp(filename, { animated: false, failOn: "none" })
+    .rotate()
+    .resize(9, 8, { fit: "fill" })
+    .greyscale()
+    .raw()
+    .toBuffer();
+  const color = await sharp(filename, { animated: false, failOn: "none" })
+    .rotate()
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .resize(4, 4, { fit: "fill" })
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
   let hash = 0n;
   for (let y = 0; y < 8; y += 1) {
     for (let x = 0; x < 8; x += 1) {

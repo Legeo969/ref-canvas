@@ -1,11 +1,15 @@
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import type { EnumeratedImportPath } from "../main/services/import-enumerator";
+import {
+  isExcludedImportPath,
+  type EnumeratedImportPath,
+} from "../main/services/import-enumerator";
 
 interface WorkerRequest {
   id: string;
   type: "start" | "ack" | "cancel";
   inputPaths?: string[];
+  excludedRoots?: string[];
   batchId?: number;
 }
 
@@ -22,6 +26,7 @@ const acknowledgements = new Map<string, () => void>();
 
 async function enumerate(request: WorkerRequest): Promise<void> {
   const inputPaths = request.inputPaths ?? [];
+  const excludedRoots = request.excludedRoots ?? [];
   let batch: EnumeratedImportPath[] = [];
   let batchId = 0;
   let discovered = 0;
@@ -39,6 +44,7 @@ async function enumerate(request: WorkerRequest): Promise<void> {
     for (const inputPath of inputPaths) {
       if (cancelled.has(request.id)) break;
       const resolved = path.resolve(inputPath);
+      if (isExcludedImportPath(resolved, excludedRoots)) continue;
       const info = await stat(resolved);
       if (info.isFile()) {
         batch.push({ filename: resolved, sourceRoot: null });
@@ -51,9 +57,11 @@ async function enumerate(request: WorkerRequest): Promise<void> {
       for (let index = 0; index < directories.length; index += 1) {
         if (cancelled.has(request.id)) break;
         const directory = directories[index];
+        if (isExcludedImportPath(directory, excludedRoots)) continue;
         const entries = await readdir(directory, { withFileTypes: true });
         for (const entry of entries) {
           const filename = path.join(directory, entry.name);
+          if (isExcludedImportPath(filename, excludedRoots)) continue;
           if (entry.isDirectory()) directories.push(filename);
           else if (entry.isFile()) {
             batch.push({ filename, sourceRoot: resolved });

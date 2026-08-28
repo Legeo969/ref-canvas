@@ -195,6 +195,10 @@ function WorkspaceApp() {
       ]);
       setSimilarResults(results);
       setSimilarIndex(index);
+    } catch {
+      setSimilarResults([]);
+      setNotice(translate("similar.error"));
+      window.setTimeout(() => setNotice(null), 4200);
     } finally {
       setSimilarLoading(false);
     }

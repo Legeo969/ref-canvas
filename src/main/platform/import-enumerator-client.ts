@@ -31,6 +31,7 @@ export class ImportEnumeratorClient implements ImportEnumerator {
     inputPaths: string[],
     signal: AbortSignal,
     onBatch: (items: EnumeratedImportPath[]) => Promise<void>,
+    excludedRoots: string[] = [],
   ): Promise<number> {
     signal.throwIfAborted();
     const id = randomUUID();
@@ -44,7 +45,7 @@ export class ImportEnumeratorClient implements ImportEnumerator {
         onBatch,
         removeAbortListener: () => signal.removeEventListener("abort", onAbort),
       });
-      child.postMessage({ id, type: "start", inputPaths });
+      child.postMessage({ id, type: "start", inputPaths, excludedRoots });
     });
   }
 

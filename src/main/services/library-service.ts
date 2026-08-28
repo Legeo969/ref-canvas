@@ -49,11 +49,18 @@ import { managedStorePath, browserCapturesPath } from "./library-manager";
 import { MetadataEnricher } from "./metadata-enricher";
 import { WatchReconcileService } from "./watch-reconcile-service";
 import { specializedKindForExtension } from "../../shared/asset-kind";
+import { isPathInsideRoot } from "../platform/local-path-security";
 import {
   imageVisualSignature,
+  type VisualSignature,
   visualSimilarity,
 } from "./visual-signature-service";
 export { imageVisualSignature, visualSimilarity } from "./visual-signature-service";
+
+export interface VisualSignatureReader {
+  read(filename: string, signal?: AbortSignal): Promise<VisualSignature>;
+  close?(): void;
+}
 
 /**
  * Files whose extension is not a specialized kind are imported as `generic`
@@ -250,6 +257,8 @@ export class LibraryService {
   private libraryRoot: string;
   private readonly managedStore: string;
   private readonly importEnumerator: ImportEnumerator;
+  private readonly excludedSourceRoots: string[];
+  private readonly visualSignatureReader: VisualSignatureReader;
   private readonly importCoordinator: ImportCoordinator;
   private readonly metadataEnricher: MetadataEnricher;
   private pendingMetadataController: AbortController | null = null;
@@ -269,6 +278,8 @@ export class LibraryService {
     options: {
       libraryRoot?: string;
       importEnumerator?: ImportEnumerator;
+      visualSignatureReader?: VisualSignatureReader;
+      excludedSourceRoots?: string[];
     } = {},
   ) {
     this.libraryRoot = path.resolve(
@@ -277,6 +288,12 @@ export class LibraryService {
     );
     this.managedStore = managedStorePath(this.libraryRoot);
     this.importEnumerator = options.importEnumerator ?? new LocalImportEnumerator();
+    this.excludedSourceRoots = [...new Set(
+      (options.excludedSourceRoots ?? []).map((root) => path.resolve(root)),
+    )];
+    this.visualSignatureReader = options.visualSignatureReader ?? {
+      read: (filename) => imageVisualSignature(filename),
+    };
     this.importCoordinator = new ImportCoordinator((snapshot) => {
       this.events.emit("import-progress", snapshot);
     });
@@ -382,6 +399,10 @@ export class LibraryService {
     );
   }
 
+  private isExcludedSourcePath(filename: string): boolean {
+    return this.excludedSourceRoots.some((root) => isPathInsideRoot(filename, root));
+  }
+
   getSimilarityIndex(): SimilarityIndexSnapshot {
     return structuredClone(this.similaritySnapshot);
   }
@@ -390,7 +411,9 @@ export class LibraryService {
     if (this.similaritySnapshot.state === "running") {
       return this.getSimilarityIndex();
     }
-    const candidates = this.database.listImagesMissingVisualIndex();
+    const candidates = this.database
+      .listImagesMissingVisualIndex()
+      .filter((candidate) => !this.isExcludedSourcePath(candidate.path));
     this.similarityController = new AbortController();
     this.similaritySnapshot = {
       state: candidates.length ? "running" : "completed",
@@ -410,35 +433,25 @@ export class LibraryService {
     candidates: Array<{ id: string; path: string }>,
     controller: AbortController,
   ): Promise<void> {
-    for (let index = 0; index < candidates.length; index += 4) {
+    for (let index = 0; index < candidates.length; index += 1) {
       if (controller.signal.aborted) break;
-      const batch = candidates.slice(index, index + 4);
-      const results = await Promise.all(
-        batch.map(async (candidate) => {
-          try {
-            return {
-              candidate,
-              signature: await imageVisualSignature(candidate.path),
-            };
-          } catch {
-            return null;
-          }
-        }),
-      );
-      for (const result of results) {
-        if (result) {
-          this.database.setVisualSignature(
-            result.candidate.id,
-            result.signature.visualHash,
-            result.signature.colorSignature,
-            result.signature.dominantColor,
-          );
-          this.similaritySnapshot.indexed += 1;
-        } else {
-          this.similaritySnapshot.failed += 1;
-        }
+      const candidate = candidates[index];
+      try {
+        const signature = await this.visualSignatureReader.read(
+          candidate.path,
+          controller.signal,
+        );
+        this.database.setVisualSignature(
+          candidate.id,
+          signature.visualHash,
+          signature.colorSignature,
+          signature.dominantColor,
+        );
+        this.similaritySnapshot.indexed += 1;
+      } catch {
+        if (!controller.signal.aborted) this.similaritySnapshot.failed += 1;
       }
-      this.similaritySnapshot.processed += batch.length;
+      this.similaritySnapshot.processed += 1;
       this.emitSimilarity();
       await new Promise<void>((resolve) => setImmediate(resolve));
     }
@@ -567,7 +580,7 @@ export class LibraryService {
     if (!asset || asset.kind !== "image") throw new Error("IMAGE_ASSET_REQUIRED");
     let source = this.database.getVisualSignature(id);
     if (!source) {
-      const signature = await imageVisualSignature(asset.path);
+      const signature = await this.visualSignatureReader.read(asset.path);
       this.database.setVisualSignature(
         id,
         signature.visualHash,
@@ -592,6 +605,7 @@ export class LibraryService {
     await this.database.forEachVisualSignature(256, (batch) => {
       for (const candidate of batch) {
         if (candidate.id === id) continue; // 排除源资产自身
+        if (this.isExcludedSourcePath(candidate.path)) continue;
         pushCandidate({
           id: candidate.id,
           score: visualSimilarity(source!, candidate),
@@ -831,12 +845,16 @@ export class LibraryService {
         controller.signal,
         async (items: EnumeratedImportPath[]) => {
           if (controller.signal.aborted) return;
-          snapshot.discovered += items.length;
+          const includedItems = items.filter(
+            (item) => !this.isExcludedSourcePath(item.filename),
+          );
+          snapshot.discovered += includedItems.length;
+          if (!includedItems.length) return;
           if (snapshot.state !== "processing") {
             snapshot.state = "processing";
             this.importCoordinator.emit(job);
           }
-          const candidates: ImportCandidate[] = items.map((item) => {
+          const candidates: ImportCandidate[] = includedItems.map((item) => {
             const watchRootPath = watchRoots.find(
               (root) =>
                 item.filename === root || item.filename.startsWith(`${root}${path.sep}`),
@@ -907,6 +925,7 @@ export class LibraryService {
             this.importCoordinator.emit(job, false);
           }
         },
+        this.excludedSourceRoots,
       );
       if (controller.signal.aborted) {
         snapshot.state = "cancelled";
@@ -980,6 +999,7 @@ export class LibraryService {
     const current = this.database.getAsset(id);
     if (!current) throw new Error("ASSET_NOT_FOUND");
     const resolved = path.resolve(filename);
+    if (this.isExcludedSourcePath(resolved)) throw new Error("APP_INTERNAL_PATH_EXCLUDED");
     const next = await this.readAsset(resolved, current);
     const asset = this.database.relinkAsset(id, next);
     this.updateIdentity(asset);
@@ -994,6 +1014,7 @@ export class LibraryService {
    */
   async materializePath(filename: string): Promise<MaterializeResult> {
     const resolved = path.resolve(filename);
+    if (this.isExcludedSourcePath(resolved)) throw new Error("APP_INTERNAL_PATH_EXCLUDED");
     const existing = this.database.getAssetByPath(resolved);
     const next = await this.readAsset(resolved, existing ?? undefined);
     const result = this.database.upsertAsset(next);
@@ -1135,6 +1156,7 @@ export class LibraryService {
   }
 
   private async tryRelinkFromRecentUnlink(filename: string): Promise<boolean> {
+    if (this.isExcludedSourcePath(filename)) return false;
     try {
       const fileStat = await stat(filename);
       const fingerprint = await quickFingerprint(filename, fileStat.size);
@@ -1232,6 +1254,7 @@ export class LibraryService {
 
   /** 合并短时间内的 watcher 事件，避免每个文件变化都排队一个导入任务。 */
   private scheduleWatchImport(filename: string): void {
+    if (this.isExcludedSourcePath(filename)) return;
     this.pendingWatchImports.add(path.resolve(filename));
     if (this.watchImportTimer) return;
     this.watchImportTimer = setTimeout(() => {
@@ -1778,6 +1801,7 @@ export class LibraryService {
     this.pendingMetadataController?.abort();
     this.importCoordinator.cancelAll();
     this.importEnumerator.close();
+    this.visualSignatureReader.close?.();
     await this.stopWatching();
   }
 

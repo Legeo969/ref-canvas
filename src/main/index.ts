@@ -62,6 +62,7 @@ import {
   backupCorruptPrimary,
 } from "./platform/database-health";
 import { ThumbnailWorkerClient } from "./platform/thumbnail-worker-client";
+import { VisualSignatureWorkerClient } from "./platform/visual-signature-worker-client";
 import { cleanupOrphanThumbnails } from "./platform/thumbnail-cache";
 import { ProviderRegistry } from "./platform/provider-registry";
 import { WorkerSupervisor } from "./platform/worker-supervisor";
@@ -920,11 +921,22 @@ async function reopenLibrary(
     migrationBackupDirectory: backupDirectoryFor(entry),
     readonly: options.readonly === true,
   });
+  const internalCacheRoot = path.join(app.getPath("userData"), "cache");
+  const purgedInternalRecords = options.readonly === true
+    ? 0
+    : database.purgeLinkedRecordsUnderRoots([internalCacheRoot]);
+  if (purgedInternalRecords) {
+    console.warn(`INTERNAL_CACHE_RECORDS_PURGED count=${purgedInternalRecords}`);
+  }
   library = new LibraryService(database, trashPathFor(entry), {
     libraryRoot: entry.root,
     importEnumerator: new ImportEnumeratorClient(
       path.join(__dirname, "import-enumerator.js"),
     ),
+    visualSignatureReader: new VisualSignatureWorkerClient(
+      path.join(__dirname, "visual-signature-worker.js"),
+    ),
+    excludedSourceRoots: [internalCacheRoot],
   });
   backups = new BackupService(database, backupDirectoryFor(entry));
   actions = new ActionService(

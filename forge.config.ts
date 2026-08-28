@@ -98,6 +98,10 @@ const config: ForgeConfig = {
           config: "vite.main.config.ts",
         },
         {
+          entry: { "visual-signature-worker": "src/workers/visual-signature.ts" },
+          config: "vite.main.config.ts",
+        },
+        {
           entry: { "directory-index-worker": "src/workers/directory-index.ts" },
           config: "vite.main.config.ts",
         },

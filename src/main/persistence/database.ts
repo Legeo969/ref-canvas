@@ -1133,6 +1133,7 @@ export class RefCanvasDatabase {
     batchSize: number,
     callback: (signatures: Array<{
       id: string;
+      path: string;
       visualHash: string;
       colorSignature: string;
     }>) => void | Promise<void>,
@@ -1144,20 +1145,21 @@ export class RefCanvasDatabase {
       for (;;) {
         let rows: Array<{
           id: string;
+          path: string;
           visual_hash: string;
           color_signature: string;
           created_at: string;
         }>;
         if (lastCreatedAt === null) {
           rows = this.db.prepare(`
-            SELECT id, visual_hash, color_signature, created_at FROM assets
+            SELECT id, path, visual_hash, color_signature, created_at FROM assets
             WHERE lifecycle = 'active' AND kind = 'image'
               AND visual_hash IS NOT NULL AND color_signature IS NOT NULL
             ORDER BY created_at ASC, id ASC LIMIT ?
           `).all(limit) as typeof rows;
         } else {
           rows = this.db.prepare(`
-            SELECT id, visual_hash, color_signature, created_at FROM assets
+            SELECT id, path, visual_hash, color_signature, created_at FROM assets
             WHERE lifecycle = 'active' AND kind = 'image'
               AND visual_hash IS NOT NULL AND color_signature IS NOT NULL
               AND (created_at > ? OR (created_at = ? AND id > ?))
@@ -1168,6 +1170,7 @@ export class RefCanvasDatabase {
         await callback(
           rows.map((row) => ({
             id: row.id,
+            path: row.path,
             visualHash: row.visual_hash,
             colorSignature: row.color_signature,
           })),
@@ -1225,6 +1228,26 @@ export class RefCanvasDatabase {
     }
     const result = this.db.prepare("DELETE FROM assets WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  /** Removes linked records under app-owned roots without touching disk files. */
+  purgeLinkedRecordsUnderRoots(roots: string[]): number {
+    const resolvedRoots = roots.map((root) => path.resolve(root));
+    if (!resolvedRoots.length) return 0;
+    const rows = this.db.prepare(`
+      SELECT id, path FROM assets
+      WHERE lifecycle = 'active' AND storage_mode = 'linked'
+    `).all() as Array<{ id: string; path: string }>;
+    const ids = rows
+      .filter((row) => resolvedRoots.some((root) => {
+        const relative = path.relative(root, path.resolve(row.path));
+        return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+      }))
+      .map((row) => row.id);
+    this.db.transaction(() => {
+      for (const id of ids) this.purgeRecord(id);
+    })();
+    return ids.length;
   }
 
   listManagedAssets(): Array<{
