@@ -700,6 +700,9 @@
 .preview-file-actions .preview-session-mode-actions button {
   width: 28px;
   height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  flex: 0 0 28px;
   border-radius: 6px;
 }
 
@@ -1138,7 +1141,9 @@ body:has(
 /* ─── Toolbar ─── */
 
 .preview-toolbar {
+  display: flex;
   flex: 0 0 auto;
+  flex-direction: column;
   background: var(--preview-toolbar);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   container-type: inline-size;
@@ -1146,19 +1151,44 @@ body:has(
 
 .preview-toolbar-row {
   display: flex;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  flex: 0 0 40px;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
   padding: 0 6px;
+  overflow: hidden;
+}
+
+.preview-toolbar-row:not(.secondary) {
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.preview-toolbar-row:not(.secondary)::-webkit-scrollbar {
+  display: none;
 }
 
 .preview-toolbar-row.secondary {
-  min-height: 40px;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   padding-right: 0;
-  overflow: hidden;
+}
+
+/* 次级工具行的外层固定为 40px；横向滚动只发生在内部工具区，避免
+   Windows 滚动条轨道把整行撑高并在按钮下方留下空白。 */
+.preview-toolbar-row.secondary,
+.preview-toolbar-scroll,
+.preview-toolbar-renderer-controls,
+.preview-toolbar-renderer-controls .image-preview-toolbar-start,
+.preview-toolbar-renderer-controls .image-preview-toolbar-end,
+.preview-toolbar-tail,
+.preview-toolbar-tail .preview-session-mode-actions {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  align-items: center;
 }
 
 .preview-toolbar-scroll {
@@ -1169,7 +1199,11 @@ body:has(
   gap: 6px;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+
+.preview-toolbar-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .preview-toolbar-tail {

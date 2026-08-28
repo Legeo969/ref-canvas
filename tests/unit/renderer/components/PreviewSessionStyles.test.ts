@@ -38,6 +38,26 @@ describe("preview session controls", () => {
     expect(css).toMatch(
       /\.preview-filename\s*{[^}]*margin:\s*0;/s,
     );
+    expect(css).toMatch(
+      /\.preview-file-actions \.preview-session-mode-actions button\s*{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*min-width:\s*28px;[^}]*min-height:\s*28px;[^}]*flex:\s*0 0 28px;/s,
+    );
+  });
+
+  it("keeps every preview toolbar compact without a horizontal scrollbar gutter", async () => {
+    const css = await readFile(
+      path.resolve("src/renderer/styles/preview-panel.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.preview-toolbar-row\s*\{[^}]*height:\s*40px;[^}]*min-height:\s*40px;[^}]*max-height:\s*40px;[^}]*flex:\s*0 0 40px;[^}]*overflow:\s*hidden;/s,
+    );
+    expect(css).toMatch(
+      /\.preview-toolbar-row\.secondary,[^{]*\.preview-toolbar-tail \.preview-session-mode-actions\s*{[^}]*height:\s*40px;[^}]*min-height:\s*40px;[^}]*max-height:\s*40px;[^}]*align-items:\s*center;/s,
+    );
+    expect(css).toMatch(
+      /\.preview-toolbar-scroll\s*{[^}]*overflow-x:\s*auto;[^}]*scrollbar-width:\s*none;/s,
+    );
+    expect(css).toMatch(/\.preview-toolbar-scroll::-webkit-scrollbar\s*{[^}]*display:\s*none;/s);
   });
 
   it("makes focus and fullscreen previews media-first with legible frosted overlay controls", async () => {
