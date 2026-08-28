@@ -55,9 +55,9 @@ describe("preview session controls", () => {
       /\.preview-toolbar-row\.secondary,[^{]*\.preview-toolbar-tail \.preview-session-mode-actions\s*{[^}]*height:\s*40px;[^}]*min-height:\s*40px;[^}]*max-height:\s*40px;[^}]*align-items:\s*center;/s,
     );
     expect(css).toMatch(
-      /\.preview-toolbar-scroll\s*{[^}]*overflow-x:\s*auto;[^}]*scrollbar-width:\s*none;/s,
+      /\.preview-toolbar-scroll\s*{[^}]*overflow:\s*hidden;/s,
     );
-    expect(css).toMatch(/\.preview-toolbar-scroll::-webkit-scrollbar\s*{[^}]*display:\s*none;/s);
+    expect(css).not.toMatch(/\.preview-toolbar-scroll\s*{[^}]*overflow-x:\s*auto;/s);
   });
 
   it("makes focus and fullscreen previews media-first with legible frosted overlay controls", async () => {

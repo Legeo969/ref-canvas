@@ -1176,8 +1176,8 @@ body:has(
   padding-right: 0;
 }
 
-/* 次级工具行的外层固定为 40px；横向滚动只发生在内部工具区，避免
-   Windows 滚动条轨道把整行撑高并在按钮下方留下空白。 */
+/* 次级工具行的外层和内部工具区都固定为 40px。内部工具区不创建原生
+   滚动容器，避免 Windows 横向滚动条轨道在按钮下方额外占位。 */
 .preview-toolbar-row.secondary,
 .preview-toolbar-scroll,
 .preview-toolbar-renderer-controls,
@@ -1197,13 +1197,7 @@ body:has(
   flex: 1 1 auto;
   align-items: center;
   gap: 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.preview-toolbar-scroll::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }
 
 .preview-toolbar-tail {
