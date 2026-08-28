@@ -653,11 +653,23 @@
   align-items: center;
 }
 
-.collection-breadcrumb-nav { gap: 2px; }
-.collection-browser-tools { gap: 6px; }
+.collection-breadcrumb-nav {
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.collection-browser-tools {
+  flex: 0 1 auto;
+  gap: 6px;
+  min-width: 0;
+}
 
 .collection-virtual-crumbs {
+  flex: 1 1 auto;
   gap: 2px;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
 }

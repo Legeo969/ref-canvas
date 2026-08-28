@@ -741,6 +741,8 @@ describe("CollectionsPanel", () => {
     expect(host.querySelector(".collection-folder-card")).toBeNull();
     expect(host.textContent).toContain("2 项");
     expect(host.querySelectorAll(".collection-item-card")).toHaveLength(2);
+    await act(async () => host.querySelector<HTMLDivElement>(".collection-item-card")?.click());
+    expect(host.querySelector(".collection-batch-toolbar")?.textContent).toContain("删除源文件");
     await act(async () => host.querySelector<HTMLButtonElement>('.collection-health-chip.state-missing')?.click());
     expect(host.querySelectorAll(".collection-item-card")).toHaveLength(1);
     expect(host.textContent).toContain("b.png");

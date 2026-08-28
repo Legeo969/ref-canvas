@@ -1321,6 +1321,7 @@ export function CollectionDetailsPanel() {
     : [];
   const selectedItems = items.filter((item) => selectedIds.has(item.id));
   const selectedResolved = selectedItems.filter((item) => item.state === "resolved");
+  const selectedDeletable = selectedItems.filter((item) => item.state !== "missing");
   const crumbs = [
     { id: "", label: translate("collections.paneTitle") },
     ...currentFolder.segments.map((segment, index) => ({
@@ -1383,6 +1384,19 @@ export function CollectionDetailsPanel() {
     if (selectedItems.length) {
       void window.refCanvas.system.writeClipboard(selectedItems.map((item) => item.lastResolvedPath).join("\r\n"));
     }
+  };
+  const deleteSelectedFiles = async () => {
+    if (!selectedDeletable.length) return;
+    const confirmed = await dialog.requestConfirm({
+      title: translate("collections.deleteSelectedFiles").replace("{count}", String(selectedDeletable.length)),
+      description: translate("collections.deleteSelectedFilesDesc").replace("{count}", String(selectedDeletable.length)),
+      confirmLabel: translate("collections.deleteFile"),
+      danger: true,
+    });
+    if (!confirmed || !(await store.trashEntries(selectedDeletable.map((item) => item.lastResolvedPath)))) return;
+    await window.refCanvas.collections.removeItems(collection.id, selectedDeletable.map((item) => item.id));
+    clearSelection();
+    await Promise.all([store.refreshCollections(), store.reloadAssets()]);
   };
   const exportCollection = async () => {
     const targetDirectory = await window.refCanvas.system.pickDirectory({
@@ -1543,10 +1557,12 @@ export function CollectionDetailsPanel() {
 
       {selectedItems.length > 0 && (
         <div className="collection-batch-toolbar" role="toolbar" aria-label={translate("collections.batchToolbar")}>
-          <strong>{selectedItems.length} {translate("collections.selectedShort")}</strong>
+          <strong className="collection-selection-count">{selectedItems.length} {translate("collections.selectedShort")}</strong>
+          <span className="collection-batch-divider" aria-hidden="true" />
           <button className="secondary-button" onClick={addSelectedToBoard} disabled={!selectedResolved.length}><PanelsTopLeft size={14} />{translate("directory.addToBoard")}</button>
           <button className="secondary-button" onClick={copySelectedPaths}><Copy size={14} />{translate("preview.copyPath")}</button>
-          <button className="secondary-button danger" onClick={() => void removeSelected()}><Trash2 size={14} />{translate("collections.removeItem")}</button>
+          <button className="secondary-button danger" onClick={() => void deleteSelectedFiles()} disabled={!selectedDeletable.length}><Trash2 size={14} />{translate("collections.deleteFile")}</button>
+          <button className="secondary-button" onClick={() => void removeSelected()}><X size={14} />{translate("collections.removeItem")}</button>
           <button className="mini-icon-button" aria-label={translate("directory.clearSelection")} onClick={() => selection.clear()}><X size={14} /></button>
         </div>
       )}

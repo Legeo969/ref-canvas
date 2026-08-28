@@ -1034,6 +1034,8 @@ export type MessageKey =
   | "collections.deleteCaptureFileDesc"
   | "collections.deleteFile"
   | "collections.deleteFileDesc"
+  | "collections.deleteSelectedFiles"
+  | "collections.deleteSelectedFilesDesc"
   | "collections.adopt"
   | "collections.adoptNone"
   | "collections.adoptPickTitle"
