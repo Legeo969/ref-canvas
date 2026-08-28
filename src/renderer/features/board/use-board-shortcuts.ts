@@ -27,7 +27,6 @@ export interface BoardShortcutActions {
   readonly toggleCanvasGrayscale: () => void;
   readonly toggleSampling: () => void;
   readonly toggleLock: () => void;
-  readonly startFocusPlayback: () => void;
   readonly exitFocus: () => void;
   readonly fitAll: () => void;
   readonly zoom100: () => void;
@@ -111,7 +110,6 @@ export function useBoardShortcuts(
         if (event.ctrlKey && event.altKey && !event.shiftKey && key === "g") { event.preventDefault(); dispatch("toggleCanvasGrayscale"); return; }
         if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "t") { event.preventDefault(); dispatch("toggleSampling"); return; }
         if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "l") { event.preventDefault(); dispatch("toggleLock"); return; }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "s") { event.preventDefault(); dispatch("startFocusPlayback"); return; }
         if (event.ctrlKey && event.shiftKey && !event.altKey && key === "z") { event.preventDefault(); dispatch("redo"); return; }
       }
       if (!isEditing && event.key === "Escape" && state.focused) { event.preventDefault(); dispatch("exitFocus"); return; }

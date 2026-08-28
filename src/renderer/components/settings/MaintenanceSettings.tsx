@@ -31,7 +31,7 @@ export function MaintenanceSettings({
   const importLibrary = async () => {
     const pick = await window.refCanvas.system.pickFile({
       title: translate("settings.importBundleTitle"),
-      filters: [{ name: "RefCanvas 库", extensions: ["refcanvas-bundle"] }],
+      filters: [{ name: translate("settings.libraryBundleFilter"), extensions: ["refcanvas-bundle"] }],
     });
     const bundlePath = pick[0];
     if (!bundlePath) return;

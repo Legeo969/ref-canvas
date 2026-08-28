@@ -361,6 +361,60 @@ describe("CollectionsPanel", () => {
     expect(openCollection).toHaveBeenCalledWith(collection.id);
   });
 
+  it("opens collections from the full row without hijacking row controls", async () => {
+    const collection = sampleCollection("c-1", "灵感");
+    const openCollection = vi.fn();
+    const { refCanvas } = baseRefCanvas();
+    Object.assign(window, { refCanvas });
+    useAppStore.setState({
+      workspaceMode: "directory",
+      collections: [collection],
+      collectionTree: { "": [collection] },
+      collectionItems: {
+        [collection.id]: [sampleItem(collection.id, "D:\\refs\\a.png", "resolved")],
+      },
+      activeCollectionId: null,
+      openCollection,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(
+        <DialogProvider>
+          <CollectionsPanel />
+        </DialogProvider>,
+      );
+    });
+
+    const row = host.querySelector<HTMLElement>(".collection-row");
+    const main = row?.querySelector<HTMLButtonElement>(".collection-row-main");
+    const count = row?.querySelector<HTMLElement>(".nav-count");
+    const chevron = row?.querySelector<HTMLButtonElement>(".collection-tree-chevron");
+    const menu = row?.querySelector<HTMLButtonElement>(".collection-row-actions button");
+
+    await act(async () => main?.click());
+    expect(openCollection).toHaveBeenCalledTimes(1);
+
+    openCollection.mockClear();
+    await act(async () => count?.click());
+    expect(openCollection).toHaveBeenCalledTimes(1);
+    expect(openCollection).toHaveBeenCalledWith(collection.id);
+
+    openCollection.mockClear();
+    await act(async () => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(openCollection).toHaveBeenCalledTimes(1);
+
+    openCollection.mockClear();
+    await act(async () => chevron?.click());
+    await act(async () => menu?.click());
+    expect(openCollection).not.toHaveBeenCalled();
+  });
+
   it("exports a collection and shows the summary", async () => {
     const collections = [sampleCollection("c-1", "灵感")];
     const { refCanvas, collections: api } = baseRefCanvas();

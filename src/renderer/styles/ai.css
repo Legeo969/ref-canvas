@@ -642,6 +642,40 @@
   gap: 6px;
 }
 
+.ai-settings .settings-row {
+  min-height: 0;
+  align-items: stretch;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.ai-settings .settings-row > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.ai-settings .settings-row > input:not([type]),
+.ai-settings .settings-row > input[type="text"],
+.ai-settings .settings-row > input[type="password"],
+.ai-settings .settings-row > .select-menu-trigger,
+.ai-settings .settings-row > .secondary-button {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.ai-settings .settings-row > input:not([type]),
+.ai-settings .settings-row > input[type="text"],
+.ai-settings .settings-row > input[type="password"] {
+  height: 34px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
 .ai-settings-actions {
   display: flex;
   align-items: center;

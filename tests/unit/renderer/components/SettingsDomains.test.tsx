@@ -5,8 +5,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
+import { DialogProvider } from "../../../../src/renderer/components/DialogProvider";
 import { AboutSettings } from "../../../../src/renderer/components/settings/AboutSettings";
+import { BrowserCaptureSettings } from "../../../../src/renderer/components/settings/BrowserCaptureSettings";
 import { MaintenanceSettings } from "../../../../src/renderer/components/settings/MaintenanceSettings";
+import { OrganizeSettings } from "../../../../src/renderer/components/settings/OrganizeSettings";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -21,6 +24,7 @@ describe("settings domain sections", () => {
     host?.remove();
     root = null;
     host = null;
+    setLanguage("zh-CN");
   });
 
   function mount(element: React.ReactNode): HTMLDivElement {
@@ -97,5 +101,43 @@ describe("settings domain sections", () => {
     expect(onCreateBackup).toHaveBeenCalledOnce();
     expect(onRestoreBackup).toHaveBeenCalledWith(backup);
     expect(node.textContent).toContain("10 / 10");
+  });
+
+  it("keeps browser capture and organize pages in the selected language", async () => {
+    Object.assign(window, {
+      refCanvas: {
+        browserCapture: {
+          createPairingCode: vi.fn(),
+          listPairings: vi.fn(async () => []),
+          revokePairing: vi.fn(),
+        },
+        library: {
+          applyAutoTagRules: vi.fn(),
+          createAutoTagRule: vi.fn(),
+          deleteAutoTagRule: vi.fn(),
+          listAutoTagRules: vi.fn(async () => []),
+          previewAutoTagRule: vi.fn(),
+          updateAutoTagRule: vi.fn(),
+        },
+      },
+    });
+    const sections = () => (
+      <DialogProvider>
+        <BrowserCaptureSettings />
+        <OrganizeSettings />
+      </DialogProvider>
+    );
+
+    setLanguage("en");
+    const node = mount(sections());
+    await act(async () => { await Promise.resolve(); });
+    expect(node.textContent).toContain("Browser Capture");
+    expect(node.textContent).toContain("Automatic tags");
+    expect(node.textContent).not.toContain("尚无已配对浏览器");
+
+    setLanguage("zh-CN");
+    await act(async () => root?.render(sections()));
+    expect(node.textContent).toContain("浏览器捕获");
+    expect(node.textContent).toContain("自动标签");
   });
 });

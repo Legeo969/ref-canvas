@@ -2,6 +2,8 @@
 
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { AiProviderSettings } from "../../../../src/renderer/components/AiProviderSettings";
@@ -71,6 +73,19 @@ function installRefCanvas(overrides: Record<string, unknown> = {}) {
 
 describe("AiProviderSettings (FND-009/010)", () => {
   const roots: Array<ReturnType<typeof createRoot>> = [];
+
+  it("uses stacked full-width controls throughout AI settings", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/renderer/styles/ai.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.ai-settings \.settings-row\s*\{[\s\S]*?align-items:\s*stretch;[\s\S]*?flex-direction:\s*column;/,
+    );
+    expect(css).toMatch(
+      /\.ai-settings \.settings-row > input:not\(\[type\]\)[\s\S]*?\.ai-settings \.settings-row > \.secondary-button\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*none;/,
+    );
+  });
 
   function setInputValue(input: HTMLInputElement, value: string) {
     const setter = Object.getOwnPropertyDescriptor(

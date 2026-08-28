@@ -523,7 +523,6 @@ describe("physical module boundaries", () => {
     for (const component of [
       "BoardToolbar.tsx",
       "BoardLayerPanel.tsx",
-      "BoardFocusOverlay.tsx",
     ]) {
       const presentation = await readFile(
         path.join(rendererRoot, "components", "board", component),
@@ -534,6 +533,7 @@ describe("physical module boundaries", () => {
       expect(presentation).not.toContain("getActiveObjects(");
       expect(boardCanvas).toContain(`./board/${component.replace(".tsx", "")}`);
     }
+    expect(boardCanvas).not.toContain("BoardFocusOverlay");
     const inspector = await readFile(
       path.join(rendererRoot, "components", "BoardInspector.tsx"),
       "utf8",

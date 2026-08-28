@@ -10,7 +10,7 @@ export const DIRECTORY_GROUP_HEADER_HEIGHT = 28;
 /** 列表视图行高（px）。 */
 export const DIRECTORY_LIST_ROW_HEIGHT = 40;
 /** 卡片预览区之外（标题 + 元信息）的固定高度（px），缩放时预览区随之伸缩。 */
-export const DIRECTORY_CARD_FOOTER_HEIGHT = 34;
+export const DIRECTORY_CARD_FOOTER_HEIGHT = 40;
 /** 文件夹区紧凑行行高（px，迅雷式多列行；与列表视图行高一致）。 */
 export const DIRECTORY_FOLDER_ROW_HEIGHT = 40;
 /** 文件夹区紧凑行的最小列宽（px）：列数 = floor((width+gap)/(minWidth+gap))。 */

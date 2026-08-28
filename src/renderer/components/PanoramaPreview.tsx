@@ -89,14 +89,15 @@ export function PanoramaPreview({
     const host = canvasHostRef.current;
     if (!host || !environmentEligible || !environmentImage || effectiveMode === "flat" || panoramaError) return;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x101314);
+    const isReflection = effectiveMode === "reflection";
+    scene.background = new THREE.Color(isReflection ? 0x121617 : 0x101314);
     const camera = new THREE.PerspectiveCamera(
-      effectiveMode === "panorama" ? 72 : 44,
+      isReflection ? 44 : 72,
       1,
       0.1,
       100,
     );
-    camera.position.set(0, 0, effectiveMode === "panorama" ? 0.01 : 3.2);
+    camera.position.set(0, 0, effectiveMode === "panorama" ? 0.01 : 3.25);
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -113,10 +114,10 @@ export function PanoramaPreview({
     controls.enablePan = false;
     controls.enableZoom = true;
     controls.enableDamping = true;
-    controls.minDistance = effectiveMode === "panorama" ? 0.01 : 2.1;
-    controls.maxDistance = effectiveMode === "panorama" ? 0.01 : 6;
+    controls.minDistance = effectiveMode === "panorama" ? 0.01 : 2.35;
+    controls.maxDistance = effectiveMode === "panorama" ? 0.01 : 6.5;
     const geometry = new THREE.SphereGeometry(
-      effectiveMode === "panorama" ? 10 : 1,
+      effectiveMode === "panorama" ? 10 : 1.1,
       64,
       32,
     );
@@ -131,6 +132,30 @@ export function PanoramaPreview({
         });
     const sphere = new THREE.Mesh(geometry, material);
     scene.add(sphere);
+    // The neutral studio lights keep the ball readable when the source has
+    // little energy in its lower hemisphere; the environment still drives
+    // the visible reflections through scene.environment.
+    let ground: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial> | null = null;
+    if (isReflection) {
+      scene.add(new THREE.HemisphereLight(0xe9efec, 0x1b211f, 0.18));
+      const key = new THREE.DirectionalLight(0xffffff, 0.42);
+      key.position.set(3, 4, 4);
+      scene.add(key);
+      ground = new THREE.Mesh(
+        new THREE.CircleGeometry(1.55, 64),
+        new THREE.MeshBasicMaterial({
+          color: 0x050706,
+          transparent: true,
+          opacity: 0.25,
+          depthWrite: false,
+        }),
+      );
+      // A camera-facing, vertically compressed disc reads as the soft contact
+      // shadow used by studio HDRI viewers without requiring a shadow map.
+      ground.scale.set(1, 0.24, 1);
+      ground.position.set(0, -1.02, -0.28);
+      scene.add(ground);
+    }
     const texture = createEnvironmentTexture(environmentImage);
     let reflectionEnvironment: THREE.Texture | null = null;
     let pmremGenerator: THREE.PMREMGenerator | null = null;
@@ -180,6 +205,10 @@ export function PanoramaPreview({
       renderer.setAnimationLoop(null);
       controls.dispose();
       geometry.dispose();
+      if (ground) {
+        ground.geometry.dispose();
+        ground.material.dispose();
+      }
       texture.dispose();
       reflectionEnvironment?.dispose();
       pmremGenerator?.dispose();
@@ -192,7 +221,7 @@ export function PanoramaPreview({
   const showingEnvironment = effectiveMode !== "flat" && environmentEligible && !panoramaError;
 
   return (
-    <div className="panorama-preview">
+    <div className="panorama-preview" data-environment-mode={effectiveMode}>
       {showingEnvironment ? (<>
         <img
           className={`panorama-media-fallback ${environmentFallbackKind(effectiveMode)}`}
@@ -205,6 +234,7 @@ export function PanoramaPreview({
           ref={canvasHostRef}
           data-environment-mode={effectiveMode}
         />
+        {effectiveMode === "reflection" && <span className="panorama-reflection-fallback-shade" aria-hidden="true" />}
       </>) : (
         <img src={source} alt={alt} draggable={false} />
       )}

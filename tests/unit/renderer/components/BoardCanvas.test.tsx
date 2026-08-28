@@ -97,7 +97,7 @@ describe("BoardCanvas selection persistence", () => {
             boardSettings: {
               interactionPreset: "pureref",
               snapEnabled: true,
-              bringToFrontOnSelect: false,
+              bringToFrontOnSelect: true,
               sampling: "bilinear",
               undoLimit: 99,
             },
@@ -173,6 +173,87 @@ describe("BoardCanvas selection persistence", () => {
     expect(setActiveObject).toHaveBeenCalledWith(expect.any(BoardActiveSelection));
     expect(historyPush).toHaveBeenCalledTimes(pushesBeforeSelection);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("brings an image to the front for created and updated selections", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const loadFromJSON = vi.spyOn(FabricCanvas.prototype, "loadFromJSON");
+    vi.spyOn(FabricCanvas.prototype, "requestRenderAll").mockImplementation(() => undefined);
+    const onSave = vi.fn(async () => ({ ...board, revision: board.revision + 1 }));
+
+    await act(async () => {
+      root?.render(
+        <DialogProvider>
+          <BoardCanvas
+            board={board}
+            document={boardDocument}
+            assets={[]}
+            boards={[board]}
+            onSelectAsset={vi.fn()}
+            onSave={onSave}
+            onSwitchBoard={async () => undefined}
+            onCreateBoard={async () => undefined}
+            onRenameBoard={async () => undefined}
+            onDeleteBoard={async () => undefined}
+            onLibraryChanged={async () => undefined}
+          />
+        </DialogProvider>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await loadFromJSON.mock.results[0]?.value;
+      await Promise.resolve();
+    });
+
+    const canvas = loadFromJSON.mock.instances[0] as FabricCanvas;
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/png;base64,",
+    );
+    const firstSource = document.createElement("canvas");
+    const secondSource = document.createElement("canvas");
+    firstSource.width = secondSource.width = 20;
+    firstSource.height = secondSource.height = 20;
+    const firstImage = new FabricImage(firstSource, {
+      data: { objectId: "first-image", assetId: "asset-first" },
+    });
+    const secondImage = new FabricImage(secondSource, {
+      data: { objectId: "second-image", assetId: "asset-second" },
+    });
+    const bringObjectToFront = vi.spyOn(canvas, "bringObjectToFront");
+    let activeImage = firstImage;
+    const getActiveObject = vi
+      .spyOn(canvas, "getActiveObject")
+      .mockImplementation(() => activeImage);
+
+    await act(async () => {
+      canvas.fire("selection:created", {
+        selected: [firstImage],
+      });
+      await Promise.resolve();
+    });
+
+    expect(bringObjectToFront).toHaveBeenCalledWith(firstImage);
+
+    bringObjectToFront.mockClear();
+    activeImage = secondImage;
+    await act(async () => {
+      canvas.fire("selection:updated", {
+        selected: [secondImage],
+        deselected: [firstImage],
+      });
+      await Promise.resolve();
+    });
+
+    expect(bringObjectToFront).toHaveBeenCalledWith(secondImage);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(onSave).toHaveBeenCalledOnce();
+    getActiveObject.mockRestore();
   });
 
   it("upgrades a mouse marquee selection to the bulk-optimized board selection", async () => {

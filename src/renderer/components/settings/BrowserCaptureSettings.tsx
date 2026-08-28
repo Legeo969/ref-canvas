@@ -4,11 +4,12 @@ import type {
   CapturePairingCode,
   CapturePairingRecord,
 } from "../../../shared/contracts";
+import { getLanguage, translate } from "../../app/i18n";
 import { useDialog } from "../DialogProvider";
 
 function pairingTime(value: string | null): string {
-  if (!value) return "尚未使用";
-  return new Intl.DateTimeFormat(undefined, {
+  if (!value) return translate("settings.capture.notUsed");
+  return new Intl.DateTimeFormat(getLanguage(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
@@ -49,9 +50,12 @@ export function BrowserCaptureSettings() {
 
   const revoke = async (pairing: CapturePairingRecord) => {
     const confirmed = await dialog.requestConfirm({
-      title: "撤销浏览器配对",
-      description: `撤销后，“${pairing.label}”需要重新输入配对码才能捕获。`,
-      confirmLabel: "撤销",
+      title: translate("settings.capture.revokeTitle"),
+      description: translate("settings.capture.revokeDescription").replace(
+        "{label}",
+        pairing.label,
+      ),
+      confirmLabel: translate("settings.capture.revoke"),
       danger: true,
     });
     if (!confirmed) return;
@@ -61,47 +65,47 @@ export function BrowserCaptureSettings() {
 
   return (
     <div className="settings-group browser-capture-settings">
-      <h3>浏览器捕获</h3>
+      <h3>{translate("settings.capture")}</h3>
       <p className="settings-note">
-        Chrome 和 Edge 扩展只连接本机。首次输入配对码后，日常捕获不会再弹出授权提示。
+        {translate("settings.capture.description")}
       </p>
 
       <div className="capture-pairing-row">
         {pairingCode ? (
           <div className="capture-pairing-code" aria-live="polite">
             <strong>{pairingCode.code}</strong>
-            <span>{remainingSeconds} 秒后失效</span>
+            <span>{translate("settings.capture.expiresIn").replace("{seconds}", String(remainingSeconds))}</span>
             <button
               className="icon-button"
-              aria-label="复制配对码"
+              aria-label={translate("settings.capture.copyCode")}
               onClick={() => void navigator.clipboard.writeText(pairingCode.code)}
             >
               <Copy size={15} />
             </button>
           </div>
         ) : (
-          <span className="settings-note">配对码仅显示 60 秒，使用一次后立即失效。</span>
+          <span className="settings-note">{translate("settings.capture.codeHint")}</span>
         )}
         <button className="secondary-button" onClick={() => void createCode()}>
           {pairingCode ? <RefreshCw size={15} /> : <Link2 size={15} />}
-          {pairingCode ? "重新生成" : "生成配对码"}
+          {pairingCode ? translate("settings.capture.regenerate") : translate("settings.capture.generate")}
         </button>
       </div>
 
-      <h3>已配对浏览器</h3>
+      <h3>{translate("settings.capture.pairedTitle")}</h3>
       {pairings.length === 0 ? (
-        <p className="settings-note">尚无已配对浏览器。</p>
+        <p className="settings-note">{translate("settings.capture.pairedEmpty")}</p>
       ) : (
         <div className="capture-pairing-list">
           {pairings.map((pairing) => (
             <div className="capture-pairing-item" key={pairing.id}>
               <div>
                 <strong>{pairing.label}</strong>
-                <small>最近使用：{pairingTime(pairing.lastUsedAt)}</small>
+                <small>{translate("settings.capture.lastUsed").replace("{time}", pairingTime(pairing.lastUsedAt))}</small>
               </div>
               <button
                 className="icon-button danger"
-                aria-label={`撤销 ${pairing.label}`}
+                aria-label={translate("settings.capture.revokePairing").replace("{label}", pairing.label)}
                 onClick={() => void revoke(pairing)}
               >
                 <Trash2 size={15} />

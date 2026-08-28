@@ -45,11 +45,15 @@ describe("i18n runtime (FND-011)", () => {
     setLanguage("en");
     expect(translate("workspace.disk")).toBe("Disk");
     expect(translate("settings.title")).toBe("Settings");
+    expect(translate("settings.capture.pairedTitle")).toBe("Paired browsers");
+    expect(translate("settings.organize.autoTag")).toBe("Automatic tags");
     expect(translate("capture.save")).toBe("Save screenshot");
     expect(translate("tasks.empty")).toBe("No tasks yet.");
     setLanguage("zh-CN");
     expect(translate("workspace.disk")).toBe("磁盘");
     expect(translate("collections.state.resolved")).toBe("可用");
+    expect(translate("settings.capture.pairedTitle")).toBe("已配对浏览器");
+    expect(translate("settings.organize.autoTag")).toBe("自动标签");
   });
 
   it("every MessageKey resolves to a non-empty string in every catalog", () => {

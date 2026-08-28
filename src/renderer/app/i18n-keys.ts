@@ -2280,6 +2280,8 @@ export type MessageKey =
 
   | "settings.layout"
 
+  | "settings.libraryBundleFilter"
+
   | "settings.localBackups"
 
   | "settings.maintenance"
@@ -2312,7 +2314,79 @@ export type MessageKey =
 
   | "settings.capture"
 
+  | "settings.capture.codeHint"
+
+  | "settings.capture.copyCode"
+
+  | "settings.capture.description"
+
+  | "settings.capture.expiresIn"
+
+  | "settings.capture.generate"
+
+  | "settings.capture.lastUsed"
+
+  | "settings.capture.notUsed"
+
+  | "settings.capture.pairedEmpty"
+
+  | "settings.capture.pairedTitle"
+
+  | "settings.capture.regenerate"
+
+  | "settings.capture.revoke"
+
+  | "settings.capture.revokeDescription"
+
+  | "settings.capture.revokePairing"
+
+  | "settings.capture.revokeTitle"
+
   | "settings.organize"
+
+  | "settings.organize.applyEnabled"
+
+  | "settings.organize.autoTag"
+
+  | "settings.organize.delete"
+
+  | "settings.organize.deleteDescription"
+
+  | "settings.organize.deleteRule"
+
+  | "settings.organize.deleteTitle"
+
+  | "settings.organize.description"
+
+  | "settings.organize.editRule"
+
+  | "settings.organize.editRuleTitle"
+
+  | "settings.organize.empty"
+
+  | "settings.organize.extension"
+
+  | "settings.organize.filenamePattern"
+
+  | "settings.organize.history"
+
+  | "settings.organize.historyUpdated"
+
+  | "settings.organize.matchCount"
+
+  | "settings.organize.newRule"
+
+  | "settings.organize.pathPattern"
+
+  | "settings.organize.previewMatches"
+
+  | "settings.organize.ruleName"
+
+  | "settings.organize.saveRule"
+
+  | "settings.organize.tags"
+
+  | "settings.organize.tagsPlaceholder"
 
   | "settings.parsingMedia"
 

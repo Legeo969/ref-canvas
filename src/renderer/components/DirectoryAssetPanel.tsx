@@ -2803,10 +2803,10 @@ export function DirectoryAssetPanel() {
       // 自定义属性经断言绕过 CSSProperties 的 excess check（与 HdrPreview 同法）。
       ...({
         "--directory-card-h": `${effectiveRowHeight}px`,
-        // 大缩略图：预览区约占卡高 75%（迅雷式大卡），剩余为文件名+元信息。
+        // 预览区只使用底栏之外的高度，缩小时仍为文件名和元信息保留完整空间。
         "--directory-preview-h": `${Math.max(
           60,
-          Math.round(effectiveRowHeight * 0.75),
+          effectiveRowHeight - directoryCardFooterHeight,
         )}px`,
       } as React.CSSProperties),
       ...(flattenMark

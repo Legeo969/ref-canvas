@@ -113,7 +113,10 @@ import {
 import {
   calculateCompactLayout,
   calculateFocusViewport,
+  findAxisSnapTarget,
   nextCircularIndex,
+  sceneAxisToViewport,
+  sceneDeltaToParent,
 } from "../app/board-layout";
 import { arrangeItems } from "../app/board-arrange";
 import {
@@ -195,7 +198,6 @@ import {
   BoardCanvasController,
   type PureRefGestureSnapshot,
 } from "../features/board/board-canvas-controller";
-import { BoardFocusOverlay } from "./board/BoardFocusOverlay";
 import { BoardLayerPanel } from "./board/BoardLayerPanel";
 import {
   applyBoardCanvasMode,
@@ -755,8 +757,6 @@ export function BoardCanvas({
   const dropNoticeTimerRef = useRef<number | null>(null);
   const [colorSampling, setColorSampling] = useState(false);
   const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
-  const [focusPlaying, setFocusPlaying] = useState(false);
-  const [focusInterval, setFocusInterval] = useState(5);
   const [appearance, setAppearance] = useState<BoardAppearance>(
     document.appearance ?? defaultBoardAppearance,
   );
@@ -1220,7 +1220,7 @@ export function BoardCanvas({
         .get(selection.missingAssetId)
         .then((loaded) => eventBindingsRef.current.onSelectAsset(loaded));
     };
-    controller.onCanvas(canvas, "selection:created", () => {
+    const handleSelectionChange = () => {
       const currentSelection = canvas.getActiveObject();
       const selection = currentSelection instanceof ActiveSelection
         ? optimizeBoardActiveSelection(currentSelection)
@@ -1230,29 +1230,19 @@ export function BoardCanvas({
         selection && !(selection instanceof ActiveSelection)
           ? (selection as CanvasObjectWithData)
           : undefined;
-      // 选中置顶偏好：点击图片对象时移到图层最前（不产生独立 undo 记录，
-      // 归入下一次手势或直接持久化）。
       if (
         target instanceof FabricImage &&
-        runtime.bringToFrontOnSelect
+        runtime.bringToFrontOnSelect &&
+        canvas.getObjects().at(-1) !== target
       ) {
         canvas.bringObjectToFront(target);
+        canvas.fire("object:modified", { target });
         canvas.requestRenderAll();
       }
       selectTargetAsset(target);
-    });
-    controller.onCanvas(canvas, "selection:updated", () => {
-      const currentSelection = canvas.getActiveObject();
-      const selection = currentSelection instanceof ActiveSelection
-        ? optimizeBoardActiveSelection(currentSelection)
-        : currentSelection;
-      if (selection) applyBoardControls(selection);
-      const target =
-        selection && !(selection instanceof ActiveSelection)
-          ? (selection as CanvasObjectWithData)
-          : undefined;
-      selectTargetAsset(target);
-    });
+    };
+    controller.onCanvas(canvas, "selection:created", handleSelectionChange);
+    controller.onCanvas(canvas, "selection:updated", handleSelectionChange);
     controller.onCanvas(canvas, "selection:cleared", () => {
       eventBindingsRef.current.onSelectAsset(null);
     });
@@ -1322,31 +1312,45 @@ export function BoardCanvas({
           continue;
         }
         const otherBounds = other.getBoundingRect();
-        const xTargets = [
+        const xSnap = findAxisSnapTarget(
+          bounds.left,
+          bounds.width,
           otherBounds.left,
-          otherBounds.left + otherBounds.width / 2 - bounds.width / 2,
-          otherBounds.left + otherBounds.width - bounds.width,
-        ];
-        const yTargets = [
+          otherBounds.width,
+          threshold,
+        );
+        const ySnap = findAxisSnapTarget(
+          bounds.top,
+          bounds.height,
           otherBounds.top,
-          otherBounds.top + otherBounds.height / 2 - bounds.height / 2,
-          otherBounds.top + otherBounds.height - bounds.height,
-        ];
-        const x = xTargets.find((value) => Math.abs(value - bounds.left) <= threshold);
-        const y = yTargets.find((value) => Math.abs(value - bounds.top) <= threshold);
-        if (x !== undefined) {
-          target.set("left", (target.left ?? 0) + x - bounds.left);
-          snapped = { ...snapped, x, other };
+          otherBounds.height,
+          threshold,
+        );
+        if (xSnap) {
+          target.set(
+            "left",
+            (target.left ?? 0) + xSnap.position - bounds.left,
+          );
+          snapped = { ...snapped, x: xSnap.guide, other };
         }
-        if (y !== undefined) {
-          target.set("top", (target.top ?? 0) + y - bounds.top);
-          snapped = { ...snapped, y, other };
+        if (ySnap) {
+          target.set(
+            "top",
+            (target.top ?? 0) + ySnap.position - bounds.top,
+          );
+          snapped = { ...snapped, y: ySnap.guide, other };
         }
       }
       if (snapped.x !== undefined || snapped.y !== undefined) {
+        const axis = snapped.x !== undefined ? "x" : "y";
+        const sceneValue = (snapped.x ?? snapped.y)!;
         setSnapIndicator({
-          axis: snapped.x !== undefined ? "x" : "y",
-          value: (snapped.x ?? snapped.y)!,
+          axis,
+          value: sceneAxisToViewport(
+            axis,
+            sceneValue,
+            canvas.viewportTransform ?? [1, 0, 0, 1, 0, 0],
+          ),
           visible: true,
         });
       } else {
@@ -1406,7 +1410,6 @@ export function BoardCanvas({
       if (target?.data?.assetId) focusBoardObject(target);
     });
     controller.onCanvas(canvas, "mouse:wheel", (event) => {
-      setFocusPlaying(false);
       const wheel = event.e as WheelEvent;
       const nextZoom = Math.min(
         4,
@@ -1510,7 +1513,6 @@ export function BoardCanvas({
       selectionBeforePointer = canvas.getActiveObject() as
         | CanvasObjectWithData
         | null;
-      setFocusPlaying(false);
       panning = true;
       panButton = "middle";
       lastX = event.clientX;
@@ -1633,7 +1635,6 @@ export function BoardCanvas({
         pointerEvent.preventDefault();
         canvas.endCurrentTransform(pointerEvent);
         restoreSelectionBeforeGesture();
-        setFocusPlaying(false);
         panning = true;
         panButton = isMiddleButtonPointer(pointerEvent)
           ? "middle"
@@ -1746,7 +1747,6 @@ export function BoardCanvas({
         const flipTarget = selectPureRefTarget(activeObject, pointedObject);
         if (!flipTarget) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "flip",
           startX: pointerEvent.clientX,
@@ -1778,7 +1778,6 @@ export function BoardCanvas({
         const opacityTarget = selectPureRefTarget(activeObject, pointedObject);
         if (!opacityTarget) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "opacity",
           startX: pointerEvent.clientX,
@@ -1810,7 +1809,6 @@ export function BoardCanvas({
         const scaleTarget = selectPureRefTarget(activeObject, pointedObject);
         if (!scaleTarget) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "scale",
           startX: pointerEvent.clientX,
@@ -1850,7 +1848,6 @@ export function BoardCanvas({
         const rotateTarget = selectPureRefTarget(activeObject, pointedObject);
         if (!rotateTarget) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "rotate",
           startX: pointerEvent.clientX,
@@ -1889,7 +1886,6 @@ export function BoardCanvas({
         const cropTarget = selectPureRefTarget(activeObject, pointedObject);
         if (!(cropTarget instanceof FabricImage)) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "crop",
           startX: pointerEvent.clientX,
@@ -1942,7 +1938,6 @@ export function BoardCanvas({
           (cropZoomTarget.cropY ?? 0) > 0;
         if (!isCropped) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "cropZoom",
           startX: pointerEvent.clientX,
@@ -1976,7 +1971,6 @@ export function BoardCanvas({
           (cropPanTarget.cropY ?? 0) > 0;
         if (!isCropped) return;
         canvas.endCurrentTransform(pointerEvent);
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "cropPan",
           startX: pointerEvent.clientX,
@@ -2002,7 +1996,6 @@ export function BoardCanvas({
       if (pureRef && heldKeys.has("z")) {
         canvas.endCurrentTransform(pointerEvent);
         restoreSelectionBeforeGesture();
-        setFocusPlaying(false);
         gestureRef.current = {
           kind: "zoom",
           startX: pointerEvent.clientX,
@@ -2746,6 +2739,42 @@ export function BoardCanvas({
     ) as CanvasObjectWithData[];
   };
 
+  const moveLayoutObjectInScene = (
+    object: CanvasObjectWithData,
+    deltaX: number,
+    deltaY: number,
+  ) => {
+    const delta = sceneDeltaToParent(
+      deltaX,
+      deltaY,
+      object.group?.calcTransformMatrix(),
+    );
+    object.set({
+      left: (object.left ?? 0) + delta.x,
+      top: (object.top ?? 0) + delta.y,
+    });
+    object.setCoords();
+  };
+
+  const commitLayoutObjects = (
+    canvas: FabricCanvas,
+    objects: CanvasObjectWithData[],
+  ) => {
+    const active = canvas.getActiveObject();
+    if (
+      active instanceof ActiveSelection &&
+      objects.some((object) => object.group === active)
+    ) {
+      active.triggerLayout();
+      active.setCoords();
+    }
+    for (const object of objects) {
+      object.setCoords();
+      canvas.fire("object:modified", { target: object });
+    }
+    canvas.requestRenderAll();
+  };
+
   const arrangeCompact = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -2762,14 +2791,13 @@ export function BoardCanvas({
     objects.forEach((object, index) => {
       const box = boxes[index];
       const position = positions[index];
-      object.set({
-        left: (object.left ?? 0) + originX + position.x - box.left,
-        top: (object.top ?? 0) + originY + position.y - box.top,
-      });
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
+      moveLayoutObjectInScene(
+        object,
+        originX + position.x - box.left,
+        originY + position.y - box.top,
+      );
     });
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, objects);
   };
 
   const normalizeSize = (axis: "width" | "height") => {
@@ -2788,10 +2816,8 @@ export function BoardCanvas({
         scaleX: (object.scaleX ?? 1) * ratio,
         scaleY: (object.scaleY ?? 1) * ratio,
       });
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
     });
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, objects);
   };
 
   /** 排列：按名称/添加时间/图层顺序/路径/随机/堆叠（支持正序/反序与间距）。 */
@@ -2828,14 +2854,17 @@ export function BoardCanvas({
       seed: key === "random" ? Math.floor(Math.random() * 0xffffffff) : 0,
     });
     const byId = new Map(results.map((result) => [result.id, result]));
-    objects.forEach((object) => {
-      const result = byId.get(object.data?.objectId ?? "");
+    objects.forEach((object, index) => {
+      const result = byId.get(object.data?.objectId ?? String(index));
       if (!result) return;
-      object.set({ left: result.x, top: result.y });
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
+      const box = object.getBoundingRect();
+      moveLayoutObjectInScene(
+        object,
+        result.x - box.left,
+        result.y - box.top,
+      );
     });
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, objects);
   };
 
   /** 统一面积：缩放使所有选中对象的呈现面积（宽×高）相等。 */
@@ -2857,10 +2886,8 @@ export function BoardCanvas({
         scaleX: (object.scaleX ?? 1) * ratio,
         scaleY: (object.scaleY ?? 1) * ratio,
       });
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
     });
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, objects);
   };
 
   /** 统一缩放：所有选中对象缩放到相同尺寸（宽高取中位数）。 */
@@ -2883,16 +2910,15 @@ export function BoardCanvas({
         scaleX: (object.scaleX ?? 1) * (targetWidth / box.width),
         scaleY: (object.scaleY ?? 1) * (targetHeight / box.height),
       });
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
     });
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, objects);
   };
 
   const resetSelectionTransform = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    for (const object of canvas.getActiveObjects() as CanvasObjectWithData[]) {
+    const objects = canvas.getActiveObjects() as CanvasObjectWithData[];
+    for (const object of objects) {
       object.set({
         angle: 0,
         flipX: false,
@@ -2900,10 +2926,8 @@ export function BoardCanvas({
         scaleX: object.data?.baseScaleX ?? 1,
         scaleY: object.data?.baseScaleY ?? 1,
       });
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
     }
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, objects);
   };
 
   const alignSelection = (
@@ -2921,16 +2945,17 @@ export function BoardCanvas({
     const top = Math.min(...bounds.map((item) => item.box.top));
     const bottom = Math.max(...bounds.map((item) => item.box.top + item.box.height));
     for (const { object, box } of bounds) {
-      if (mode === "left") object.set("left", (object.left ?? 0) + left - box.left);
-      if (mode === "right") object.set("left", (object.left ?? 0) + right - box.left - box.width);
-      if (mode === "centerX") object.set("left", (object.left ?? 0) + (left + right - box.width) / 2 - box.left);
-      if (mode === "top") object.set("top", (object.top ?? 0) + top - box.top);
-      if (mode === "bottom") object.set("top", (object.top ?? 0) + bottom - box.top - box.height);
-      if (mode === "centerY") object.set("top", (object.top ?? 0) + (top + bottom - box.height) / 2 - box.top);
-      object.setCoords();
-      canvas.fire("object:modified", { target: object });
+      let deltaX = 0;
+      let deltaY = 0;
+      if (mode === "left") deltaX = left - box.left;
+      if (mode === "right") deltaX = right - box.left - box.width;
+      if (mode === "centerX") deltaX = (left + right - box.width) / 2 - box.left;
+      if (mode === "top") deltaY = top - box.top;
+      if (mode === "bottom") deltaY = bottom - box.top - box.height;
+      if (mode === "centerY") deltaY = (top + bottom - box.height) / 2 - box.top;
+      moveLayoutObjectInScene(object, deltaX, deltaY);
     }
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, selected as CanvasObjectWithData[]);
   };
 
   const distributeSelection = (axis: "x" | "y") => {
@@ -2959,13 +2984,14 @@ export function BoardCanvas({
       const object = sorted[index];
       const box = boxes[index];
       const target = cursor + spacing;
-      if (axis === "x") object.set("left", (object.left ?? 0) + target - box.left);
-      else object.set("top", (object.top ?? 0) + target - box.top);
-      object.setCoords();
+      moveLayoutObjectInScene(
+        object as CanvasObjectWithData,
+        axis === "x" ? target - box.left : 0,
+        axis === "y" ? target - box.top : 0,
+      );
       cursor = target + (axis === "x" ? box.width : box.height);
-      canvas.fire("object:modified", { target: object });
     }
-    canvas.requestRenderAll();
+    commitLayoutObjects(canvas, selected as CanvasObjectWithData[]);
   };
 
   const normalizeHierarchyStack = (canvas: FabricCanvas) => {
@@ -3733,25 +3759,6 @@ export function BoardCanvas({
         !object.data?.guideAxis,
     );
 
-  /** 幻灯片播放顺序：顺序 / 洗牌 / 随机。 */
-  const [slideMode, setSlideMode] = useState<"order" | "shuffle" | "random">(
-    "order",
-  );
-  const slideModeRef = useRef<"order" | "shuffle" | "random">("order");
-  const shuffledOrderRef = useRef<string[]>([]);
-
-  const rebuildSlideOrder = (canvas: FabricCanvas) => {
-    const ids = focusObjects(canvas).map((object) => object.data?.objectId ?? "");
-    shuffledOrderRef.current = [...ids].sort(() => Math.random() - 0.5);
-  };
-
-  const setSlideModeAndRebuild = (mode: "order" | "shuffle" | "random") => {
-    slideModeRef.current = mode;
-    setSlideMode(mode);
-    const canvas = canvasRef.current;
-    if (canvas) rebuildSlideOrder(canvas);
-  };
-
   const focusBoardObject = (object: CanvasObjectWithData) => {
     const canvas = canvasRef.current;
     if (!canvas || !object.data?.assetId) return;
@@ -3791,7 +3798,6 @@ export function BoardCanvas({
     focusedObjectIdRef.current = null;
     preFocusViewportRef.current = null;
     setFocusedObjectId(null);
-    setFocusPlaying(false);
   };
 
   const toggleObjectFocus = () => {
@@ -3803,10 +3809,7 @@ export function BoardCanvas({
     if (!canvas) return;
     const active = canvas.getActiveObject() as CanvasObjectWithData | undefined;
     const first = active?.data?.assetId ? active : focusObjects(canvas)[0];
-    if (first) {
-      rebuildSlideOrder(canvas);
-      focusBoardObject(first);
-    }
+    if (first) focusBoardObject(first);
   };
 
   const stepFocusedObject = (delta: number) => {
@@ -3820,38 +3823,14 @@ export function BoardCanvas({
     const current = objects.findIndex(
       (object) => object.data?.objectId === focusedObjectIdRef.current,
     );
-    if (slideModeRef.current === "order") {
-      const next = nextCircularIndex(current, objects.length, delta);
-      if (next >= 0) focusBoardObject(objects[next]);
-      return;
-    }
-    // shuffle/random：沿洗牌顺序前进。
-    if (!shuffledOrderRef.current.length) rebuildSlideOrder(canvas);
-    const order = shuffledOrderRef.current;
-    const currentId = focusedObjectIdRef.current ?? "";
-    const index = order.indexOf(currentId);
-    const next = nextCircularIndex(index, order.length, delta);
-    if (next < 0) return;
-    const target = objects.find(
-      (object) => object.data?.objectId === order[next],
-    );
-    if (target) focusBoardObject(target);
+    const next = nextCircularIndex(current, objects.length, delta);
+    if (next >= 0) focusBoardObject(objects[next]);
   };
-
-  useEffect(() => {
-    if (!focusPlaying || !focusedObjectId) return;
-    const timer = window.setInterval(
-      () => stepFocusedObject(1),
-      focusInterval * 1000,
-    );
-    return () => window.clearInterval(timer);
-  }, [focusPlaying, focusInterval, focusedObjectId, slideMode]);
 
   useEffect(() => {
     focusedObjectIdRef.current = null;
     preFocusViewportRef.current = null;
     setFocusedObjectId(null);
-    setFocusPlaying(false);
   }, [board.id]);
 
 
@@ -3980,10 +3959,6 @@ export function BoardCanvas({
       case "toggleCanvasGrayscale": void toggleCanvasGrayscale(); break;
       case "toggleSampling": void toggleSampling(); break;
       case "toggleLock": toggleLockSelection(); break;
-      case "startFocusPlayback":
-        if (!focusedObjectIdRef.current) toggleObjectFocus();
-        setFocusPlaying(true);
-        break;
       case "exitFocus": exitObjectFocus(); break;
       case "fitAll": fitObjects(false); break;
       case "zoom100": void setZoom100(); break;
@@ -3994,7 +3969,6 @@ export function BoardCanvas({
       }
       case "toggleFocus": toggleObjectFocus(); break;
       case "stepFocus":
-        setFocusPlaying(false);
         stepFocusedObject(payload === 1 ? 1 : -1);
         break;
       case "stepPureRefObject": {
@@ -5307,7 +5281,6 @@ export function BoardCanvas({
 
 
   const selectedHasComment = capabilities.activeHasComment;
-  const focusSequence = boardStructure.focusItems;
 
   const handleToolbarCommand = (command: BoardToolbarCommand) => {
     switch (command) {
@@ -5377,13 +5350,6 @@ export function BoardCanvas({
       case "toggleSampling": void toggleSampling(); break;
     }
   };
-  const focusedIndex = focusSequence.findIndex(
-    (object) => object.id === focusedObjectId,
-  );
-  const focusedObject =
-    focusedIndex >= 0 ? focusSequence[focusedIndex] : undefined;
-  const focusedTitle = focusedObject?.title ?? translate("board.boardAssetDefaultTitle");
-
   return (
     <section
       className="board-panel"
@@ -6004,22 +5970,6 @@ export function BoardCanvas({
                   }
                 : undefined
             }
-          />
-        )}
-        {focusedObjectId && focusedIndex >= 0 && (
-          <BoardFocusOverlay
-            title={focusedTitle}
-            index={focusedIndex}
-            count={focusSequence.length}
-            playing={focusPlaying}
-            interval={focusInterval}
-            mode={slideMode}
-            onPrevious={() => { setFocusPlaying(false); stepFocusedObject(-1); }}
-            onTogglePlaying={() => setFocusPlaying((value) => !value)}
-            onNext={() => { setFocusPlaying(false); stepFocusedObject(1); }}
-            onIntervalChange={setFocusInterval}
-            onModeChange={setSlideModeAndRebuild}
-            onExit={exitObjectFocus}
           />
         )}
         <div className="zoom-control">

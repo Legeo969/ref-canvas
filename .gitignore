@@ -8,6 +8,7 @@ artifacts/
 .local/
 .mimosa/
 .dsh-vision-toolkit/
+docs/
 *.log
 .env
 .env.*

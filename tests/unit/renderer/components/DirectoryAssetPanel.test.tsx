@@ -3054,12 +3054,13 @@ describe("DirectoryAssetPanel", () => {
       slider?.dispatchEvent(new Event("input", { bubbles: true }));
       await Promise.resolve();
     });
-    // 0.75 缩放：卡片宽 111px、行高 max(96, round(126*0.75)) + 34 = 130px。
-    // jsdom 视口宽 0 ⇒ 1 列，第 3 张卡片在第 3 行：文件头已移除 ⇒ 2×130px。
+    // 0.75 缩放：卡片宽 111px，预览区最小 96px，底栏固定保留 40px。
+    // jsdom 视口宽 0 ⇒ 1 列，第 3 张卡片在第 3 行：文件头已移除 ⇒ 2×136px。
     const cards = host.querySelectorAll<HTMLElement>(".directory-card-wrap");
     expect(cards[0]?.style.width).toBe("111px");
-    expect(cards[0]?.style.getPropertyValue("--directory-card-h")).toBe("130px");
-    expect(cards[2]?.style.top).toBe("260px");
+    expect(cards[0]?.style.getPropertyValue("--directory-card-h")).toBe("136px");
+    expect(cards[0]?.style.getPropertyValue("--directory-preview-h")).toBe("96px");
+    expect(cards[2]?.style.top).toBe("272px");
   });
 
   it("sorts loaded entries by modified time and size from the sort menu", async () => {
@@ -3122,7 +3123,7 @@ describe("DirectoryAssetPanel", () => {
     expect(names()).toEqual(["b.txt", "c.txt", "a.txt"]); // 修改时间升序 1000/2000/3000
   });
 
-  it("renders folder compact rows with adaptive columns and file cards with a 75% thumbnail", async () => {
+  it("renders folder compact rows with adaptive columns and file cards with a reserved footer", async () => {
     let resizeCallback: ResizeObserverCallback | undefined;
     const observe = vi.fn();
     vi.stubGlobal(
@@ -3181,7 +3182,7 @@ describe("DirectoryAssetPanel", () => {
     expect(folderWraps[3]?.style.left).toBe("182px"); // (170+12) * 1
     expect(folderWraps[2]?.style.top).toBe("68px"); // 28px 文件夹头 + 1×40px
     expect(folderWraps[0]?.style.height).toBe("40px");
-    // 文件大卡：预览区占卡高 75%（160 × 0.75 = 120px），文件名/元信息居中。
+    // 文件大卡：160px 卡高预留 40px 底栏，剩余 120px 给预览区。
     const card = host.querySelector<HTMLElement>(".directory-card-wrap");
     expect(card?.style.getPropertyValue("--directory-preview-h")).toBe("120px");
     // 缩略图右上角元数据徽章、右下角扩展名徽章与文件名元素均保留。

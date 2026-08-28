@@ -14,6 +14,75 @@ export interface FocusViewport {
   offsetY: number;
 }
 
+export type AffineTransform = readonly [
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+];
+
+export interface AxisSnapTarget {
+  /** New scene-space start coordinate for the moving bounds. */
+  position: number;
+  /** Scene-space coordinate where the guide must be drawn. */
+  guide: number;
+}
+
+/** Converts a scene-space movement vector into an object's parent coordinate plane. */
+export function sceneDeltaToParent(
+  x: number,
+  y: number,
+  parentTransform?: AffineTransform,
+): LayoutPosition {
+  if (!parentTransform) return { x, y };
+  const [a, b, c, d] = parentTransform;
+  const determinant = a * d - b * c;
+  if (Math.abs(determinant) < Number.EPSILON) return { x, y };
+  return {
+    x: (d * x - c * y) / determinant,
+    y: (-b * x + a * y) / determinant,
+  };
+}
+
+/** Finds the matching edge/center and keeps its actual scene-space guide axis. */
+export function findAxisSnapTarget(
+  movingStart: number,
+  movingSize: number,
+  stationaryStart: number,
+  stationarySize: number,
+  threshold: number,
+): AxisSnapTarget | null {
+  const candidates: AxisSnapTarget[] = [
+    { position: stationaryStart, guide: stationaryStart },
+    {
+      position: stationaryStart + stationarySize / 2 - movingSize / 2,
+      guide: stationaryStart + stationarySize / 2,
+    },
+    {
+      position: stationaryStart + stationarySize - movingSize,
+      guide: stationaryStart + stationarySize,
+    },
+  ];
+  return (
+    candidates.find(
+      (candidate) => Math.abs(candidate.position - movingStart) <= threshold,
+    ) ?? null
+  );
+}
+
+/** Maps a scene-space vertical/horizontal axis to the board overlay's pixel plane. */
+export function sceneAxisToViewport(
+  axis: "x" | "y",
+  value: number,
+  viewportTransform: AffineTransform,
+): number {
+  return axis === "x"
+    ? viewportTransform[0] * value + viewportTransform[4]
+    : viewportTransform[3] * value + viewportTransform[5];
+}
+
 export function calculateCompactLayout(
   items: LayoutItem[],
   maxRowWidth: number,
