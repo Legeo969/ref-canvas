@@ -118,6 +118,77 @@ describe("browser tabs (FND-002 §5.2)", () => {
     expect(listDirectory).toHaveBeenCalledWith("D:\\x", expect.anything());
   });
 
+  it("returns to disk mode when the active directory is clicked from a board", async () => {
+    const listDirectory = installRefCanvas();
+    useAppStore.setState({
+      browserTabs: [],
+      activeTabId: "",
+      directoryPath: null,
+      directoryHistory: [],
+      directoryHistoryIndex: 0,
+      activeCollectionId: null,
+    });
+    await useAppStore.getState().createBrowserTabForPath("D:\\refs");
+    useAppStore.setState({ workspaceMode: "board" });
+
+    await useAppStore.getState().openDirectory("D:\\refs");
+
+    expect(useAppStore.getState().workspaceMode).toBe("directory");
+    expect(useAppStore.getState().directoryPath).toBe("D:\\refs");
+    expect(listDirectory).toHaveBeenCalledWith("D:\\refs", expect.anything());
+  });
+
+  it("loads the active directory tab when its path was cleared by another workspace", async () => {
+    const listDirectory = installRefCanvas();
+    useAppStore.setState({
+      browserTabs: [],
+      activeTabId: "",
+      directoryPath: null,
+      directoryHistory: [],
+      directoryHistoryIndex: 0,
+      activeCollectionId: "collection-1",
+    });
+    await useAppStore.getState().createBrowserTabForPath("D:\\refs");
+    useAppStore.setState({
+      workspaceMode: "board",
+      directoryPath: null,
+      activeCollectionId: "collection-1",
+    });
+
+    await useAppStore.getState().openDirectory("D:\\refs");
+
+    expect(useAppStore.getState().workspaceMode).toBe("directory");
+    expect(useAppStore.getState().activeCollectionId).toBeNull();
+    expect(useAppStore.getState().directoryPath).toBe("D:\\refs");
+    expect(listDirectory).toHaveBeenLastCalledWith("D:\\refs", expect.anything());
+  });
+
+  it("clears a collection when the disk workspace button is clicked", async () => {
+    const listDirectory = installRefCanvas();
+    useAppStore.setState({
+      browserTabs: [],
+      activeTabId: "",
+      directoryPath: null,
+      directoryHistory: [],
+      directoryHistoryIndex: 0,
+      activeCollectionId: null,
+    });
+    await useAppStore.getState().createBrowserTabForPath("D:\\refs");
+    useAppStore.setState({
+      workspaceMode: "board",
+      directoryPath: null,
+      activeCollectionId: "collection-1",
+    });
+
+    useAppStore.getState().showDirectoryWorkspace();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useAppStore.getState().workspaceMode).toBe("directory");
+    expect(useAppStore.getState().activeCollectionId).toBeNull();
+    expect(useAppStore.getState().directoryPath).toBe("D:\\refs");
+    expect(listDirectory).toHaveBeenLastCalledWith("D:\\refs", expect.anything());
+  });
+
   it("leaves a collection when its underlying active directory is clicked", async () => {
     installRefCanvas();
     useAppStore.setState({

@@ -1194,23 +1194,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       workspaceMode: "directory",
       navigationSource: "directory",
       focusMode: false,
+      activeCollectionId: null,
+      selectedDirectoryEntry: null,
     });
 
     // Switching back from a board can leave the renderer with no active path
     // while a directory tab or the previous history still has a usable one.
     // Restore that path so the disk workspace does not unexpectedly render an
     // empty panel after a normal workspace switch.
-    if (state.directoryPath || state.activeCollectionId !== null) return;
     const activeTab = state.browserTabs.find((tab) => tab.id === state.activeTabId);
-    const directoryTab =
-      (activeTab?.kind === "directory" && activeTab.targetId !== "browser://empty"
+    const activeDirectoryTab =
+      activeTab?.kind === "directory" && activeTab.targetId !== "browser://empty"
         ? activeTab
-        : undefined) ??
+        : undefined;
+    if (state.directoryPath && activeDirectoryTab) return;
+    const directoryTab =
+      activeDirectoryTab ??
       state.browserTabs.find(
         (tab) => tab.kind === "directory" && tab.targetId !== "browser://empty",
       );
     const historyPath = state.directoryHistory[state.directoryHistoryIndex];
-    const fallbackPath = directoryTab?.targetId ?? historyPath;
+    const fallbackPath = directoryTab?.targetId ?? state.directoryPath ?? historyPath;
     if (fallbackPath) void get().openDirectory(fallbackPath).catch(() => undefined);
   },
 
@@ -1352,7 +1356,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       // it opened. Clicking that directory again must still leave collection mode.
       if (get().activeCollectionId !== null && existing.id === get().activeTabId) {
         set({ activeCollectionId: null, selectedDirectoryEntry: null });
-        return;
       }
       await get().switchBrowserTab(existing.id);
       return;
@@ -1422,7 +1425,41 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   switchBrowserTab: async (id) => {
     const state = get();
-    if (state.activeTabId === id) return;
+    if (state.activeTabId === id) {
+      const active = state.browserTabs.find((tab) => tab.id === id);
+      // The board workspace keeps the last browser tab selected. Clicking
+      // that same directory in the sidebar must still return to disk mode.
+      if (
+        active?.kind === "directory" &&
+        active.targetId !== "browser://empty"
+      ) {
+        const currentPath = get().directoryPath;
+        if (
+          !currentPath ||
+          normalizeDirectoryPath(currentPath) !== normalizeDirectoryPath(active.targetId)
+        ) {
+          const restoredHistory = [
+            ...active.forwardStack,
+            active.targetId,
+            ...active.backStack,
+          ];
+          await get().loadDirectoryState(
+            active.targetId,
+            restoredHistory.length ? restoredHistory : [active.targetId],
+            active.forwardStack.length,
+          );
+          return;
+        }
+        set({
+          workspaceMode: "directory",
+          navigationSource: "directory",
+          focusMode: false,
+          activeCollectionId: null,
+          selectedDirectoryEntry: null,
+        });
+      }
+      return;
+    }
     // 保存当前标签状态。
     const current = state.directoryPath;
     const history = state.directoryHistory;
