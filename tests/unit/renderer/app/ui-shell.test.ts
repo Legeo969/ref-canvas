@@ -80,11 +80,13 @@ describe("UI shell regressions", () => {
     expect(css).not.toMatch(/\.dir-current-row\s*{/);
   });
 
-  it("registers a picker-selected folder as a mount before browsing it", async () => {
+  it("keeps the disk workspace tab free of folder-picker side effects", async () => {
     const app = await readFile(path.resolve("src/renderer/app/App.tsx"), "utf8");
-    expect(app).toMatch(
-      /const openPickedDirectory = async[\s\S]*?mounts\.add\(directory\)[\s\S]*?openDirectory\(mount\.path\)/,
-    );
+    const diskTab = app.match(
+      /<button[\s\S]*?aria-selected=\{store\.workspaceMode === "directory"\}[\s\S]*?<\/button>/,
+    )?.[0];
+    expect(diskTab).toContain("onClick={store.showDirectoryWorkspace}");
+    expect(diskTab).not.toContain("pickDirectory");
   });
 
   it("keeps narrow asset panel controls inside the panel", async () => {

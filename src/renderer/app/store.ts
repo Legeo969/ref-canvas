@@ -1188,12 +1188,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  showDirectoryWorkspace: () =>
+  showDirectoryWorkspace: () => {
+    const state = get();
     set({
       workspaceMode: "directory",
       navigationSource: "directory",
       focusMode: false,
-    }),
+    });
+
+    // Switching back from a board can leave the renderer with no active path
+    // while a directory tab or the previous history still has a usable one.
+    // Restore that path so the disk workspace does not unexpectedly render an
+    // empty panel after a normal workspace switch.
+    if (state.directoryPath || state.activeCollectionId !== null) return;
+    const activeTab = state.browserTabs.find((tab) => tab.id === state.activeTabId);
+    const directoryTab =
+      (activeTab?.kind === "directory" && activeTab.targetId !== "browser://empty"
+        ? activeTab
+        : undefined) ??
+      state.browserTabs.find(
+        (tab) => tab.kind === "directory" && tab.targetId !== "browser://empty",
+      );
+    const historyPath = state.directoryHistory[state.directoryHistoryIndex];
+    const fallbackPath = directoryTab?.targetId ?? historyPath;
+    if (fallbackPath) void get().openDirectory(fallbackPath).catch(() => undefined);
+  },
 
   toggleFocusMode: () => set((state) => ({ focusMode: !state.focusMode })),
 

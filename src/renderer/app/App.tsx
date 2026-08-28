@@ -641,11 +641,6 @@ function WorkspaceApp() {
     }
   };
 
-  const openPickedDirectory = async (directory: string) => {
-    const mount = await window.refCanvas.mounts.add(directory);
-    await store.openDirectory(mount.path);
-  };
-
   const activePanelIds =
     store.workspaceMode === "directory" ? DIRECTORY_PANEL_IDS : BOARD_PANEL_IDS;
   const effectivePanelLayout = panelLayoutForWindow(
@@ -729,16 +724,7 @@ function WorkspaceApp() {
               role="tab"
               aria-selected={store.workspaceMode === "directory"}
               className={store.workspaceMode === "directory" ? "active" : ""}
-              onClick={async () => {
-                if (store.directoryPath) {
-                  store.showDirectoryWorkspace();
-                  return;
-                }
-                const directory = await window.refCanvas.system.pickDirectory({
-                  title: translate("titlebar.openFolder"),
-                });
-                if (directory) await openPickedDirectory(directory);
-              }}
+              onClick={store.showDirectoryWorkspace}
             >
               <HardDrive size={14} />
               {translate("workspace.disk")}

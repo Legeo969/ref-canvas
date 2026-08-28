@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../../../src/renderer/app/store";
+import { createBrowserTab } from "../../../../src/renderer/app/navigation-v3";
 
 describe("indexed asset navigation", () => {
   afterEach(() => {
@@ -100,6 +101,38 @@ describe("indexed asset navigation", () => {
     useAppStore.getState().showDirectoryWorkspace();
     expect(useAppStore.getState().workspaceMode).toBe("directory");
     expect(useAppStore.getState().navigationSource).toBe("directory");
+  });
+
+  it("restores a usable directory when switching back from a board with no path", async () => {
+    const listDirectory = vi.fn(async () => ({
+      entries: [],
+      total: 0,
+      nextCursor: null,
+      scanState: "complete",
+    }));
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: { listDirectory },
+      },
+    });
+    const emptyTab = createBrowserTab("directory", "browser://empty", "空");
+    const refsTab = createBrowserTab("directory", "D:\\refs", "refs");
+    useAppStore.setState({
+      workspaceMode: "board",
+      directoryPath: null,
+      activeCollectionId: null,
+      activeTabId: emptyTab.id,
+      browserTabs: [emptyTab, refsTab],
+      directoryHistory: [],
+      directoryHistoryIndex: 0,
+    });
+
+    useAppStore.getState().showDirectoryWorkspace();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useAppStore.getState().workspaceMode).toBe("directory");
+    expect(useAppStore.getState().directoryPath).toBe("D:\\refs");
+    expect(listDirectory).toHaveBeenCalledWith("D:\\refs", expect.anything());
   });
 });
 
