@@ -29,6 +29,17 @@ describe("preview session controls", () => {
     );
   });
 
+  it("centers the preview filename independently of right-side metadata", async () => {
+    const css = await readFile(
+      path.resolve("src/renderer/styles/preview-panel.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/\.preview-file-row\s*{[^}]*position:\s*relative;/s);
+    expect(css).toMatch(
+      /\.preview-filename\s*{[^}]*position:\s*absolute;[^}]*inset-inline:\s*72px;[^}]*text-align:\s*center;/s,
+    );
+  });
+
   it("makes focus and fullscreen previews media-first with legible frosted overlay controls", async () => {
     const found = await readFile(path.resolve("src/renderer/styles/preview-panel.css"), "utf8");
     const shell = await readFile(path.resolve("src/renderer/styles/shell.css"), "utf8");

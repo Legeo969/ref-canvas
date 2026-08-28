@@ -680,6 +680,7 @@
 }
 
 .preview-file-row {
+  position: relative;
   display: flex;
   height: 28px;
   min-width: 0;
@@ -704,10 +705,13 @@
 }
 
 .preview-filename {
+  position: absolute;
+  inset-inline: 72px;
   min-width: 0;
   overflow: hidden;
   font-size: 11px;
   font-weight: 600;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
