@@ -15,6 +15,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowDownToLine,
+  ArrowUpDown,
   Check,
   ChevronDown,
   ChevronRight,
@@ -68,7 +69,6 @@ import {
   itemParentLabel,
   sortCollectionItems,
   type CollectionFilterState,
-  type CollectionSearchScope,
   type CollectionSortMode,
   type CollectionVirtualFolder,
 } from "../features/collections/collection-browser-model";
@@ -459,6 +459,11 @@ function CollectionNode({
         }}
         onDragLeave={() => setDraggingOver(false)}
         onDrop={(event) => onDrop(event)}
+        onClick={(event) => {
+          const target = event.target;
+          if (target instanceof Element && target.closest("button")) return;
+          onOpen(collection.id);
+        }}
       >
         <button
           className="collection-tree-chevron"
@@ -1182,7 +1187,7 @@ export function CollectionDetailsPanel() {
   const [history, setHistory] = useState<string[]>([""]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [query, setQuery] = useState("");
-  const [searchScope, setSearchScope] = useState<CollectionSearchScope>("current");
+  const searchScope = "all" as const;
   const [stateFilter, setStateFilter] = useState<CollectionFilterState>("all");
   const [sortMode, setSortMode] = useState<CollectionSortMode>("name");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -1527,27 +1532,20 @@ export function CollectionDetailsPanel() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translate("collections.searchPlaceholder")} aria-label={translate("collections.searchPlaceholder")} />
             {query && <button type="button" className="mini-icon-button" aria-label={translate("collections.clearSearch")} onClick={() => setQuery("")}><X size={13} /></button>}
           </label>
-          <SelectMenu<CollectionSearchScope>
-            className="collection-browser-select"
-            ariaLabel={translate("collections.searchScope")}
-            value={searchScope}
-            options={[
-              { value: "current", label: translate("collections.currentFolder") },
-              { value: "all", label: translate("collections.allItems") },
-            ]}
-            onValueChange={setSearchScope}
-          />
-          <SelectMenu<CollectionSortMode>
-            className="collection-browser-select"
-            ariaLabel={translate("collections.sortBy")}
-            value={sortMode}
-            options={[
-              { value: "name", label: translate("directory.sortName") },
-              { value: "status", label: translate("collections.sortStatus") },
-              { value: "added", label: translate("collections.sortAdded") },
-            ]}
-            onValueChange={setSortMode}
-          />
+          <div className="collection-sort-control">
+            <ArrowUpDown size={14} aria-hidden="true" />
+            <SelectMenu<CollectionSortMode>
+              className="collection-sort-select"
+              ariaLabel={translate("collections.sortBy")}
+              value={sortMode}
+              options={[
+                { value: "name", label: translate("directory.sortName") },
+                { value: "status", label: translate("collections.sortStatus") },
+                { value: "added", label: translate("collections.sortAdded") },
+              ]}
+              onValueChange={setSortMode}
+            />
+          </div>
           <div className="collection-view-mode" role="group" aria-label={translate("directory.viewMode")}>
             <button type="button" className={viewMode === "grid" ? "active" : ""} aria-label={translate("directory.gridView")} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><LayoutGrid size={15} /></button>
             <button type="button" className={viewMode === "list" ? "active" : ""} aria-label={translate("directory.listView")} aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")}><List size={15} /></button>

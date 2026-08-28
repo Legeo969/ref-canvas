@@ -11,9 +11,8 @@
   flex-direction: column;
 }
 
-/* 「默认」tab：图标 + 加粗标题 + 主题色下划线（规格白色下划线 → 主题色）。 */
+/* 集合标题：图标 + 加粗标题。 */
 .collections-tab {
-  position: relative;
   display: inline-flex;
   align-self: stretch;
   align-items: center;
@@ -26,17 +25,6 @@
 
 .collections-tab svg {
   color: #7f8984;
-}
-
-.collections-tab::after {
-  content: "";
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--accent);
 }
 
 .collection-tree {
@@ -713,21 +701,41 @@
 .collection-search-field:focus-within { border-color: rgba(58, 178, 143, 0.55); }
 .collection-search-field input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 11px; }
 
-.collection-browser-tools .collection-browser-select {
-  width: auto;
-  min-width: 116px;
-  max-width: 150px;
+.collection-sort-control {
+  display: flex;
   height: 30px;
-  padding: 0 7px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding-left: 7px;
   border-radius: 7px;
-  background: #202727;
+  color: #7f8984;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+}
+
+.collection-sort-control:hover,
+.collection-sort-control:focus-within {
+  background: rgba(255, 255, 255, 0.04);
+  color: #dbe3df;
+}
+
+.collection-browser-tools .collection-sort-select {
+  width: auto;
+  min-width: 76px;
+  max-width: 112px;
+  height: 30px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
   color: #b4c0ba;
   font: inherit;
   font-size: 10px;
 }
 
-.collection-browser-tools .collection-browser-select > span {
+.collection-browser-tools .collection-sort-select > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -920,9 +928,14 @@
   }
 
   .collection-search-field,
-  .collection-browser-tools .collection-browser-select {
+  .collection-sort-control {
     width: 100%;
     min-width: 0;
+    max-width: none;
+  }
+
+  .collection-browser-tools .collection-sort-select {
+    width: 100%;
     max-width: none;
   }
 
