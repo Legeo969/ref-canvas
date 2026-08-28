@@ -1032,6 +1032,8 @@ export type MessageKey =
   | "collections.webCaptures"
   | "collections.deleteCaptureFile"
   | "collections.deleteCaptureFileDesc"
+  | "collections.deleteFile"
+  | "collections.deleteFileDesc"
   | "collections.adopt"
   | "collections.adoptNone"
   | "collections.adoptPickTitle"

@@ -38,7 +38,6 @@ import {
   Trash2,
   Upload,
   X,
-  ZoomIn,
 } from "lucide-react";
 import {
   type DragEvent,
@@ -572,16 +571,12 @@ function CollectionNode({
 /** 集合条目网格卡片（含右键菜单：重定位/复制路径/移除）。 */
 function CollectionItemCard({
   item,
-  onRelink,
-  onRemove,
   onContextMenu,
   selected = false,
   onSelect,
 }: {
   item: ReferenceCollectionItem;
-  onRelink(item: ReferenceCollectionItem): void;
-  onRemove(item: ReferenceCollectionItem): void;
-  onContextMenu(event: React.MouseEvent, item: ReferenceCollectionItem): void;
+  onContextMenu(event: React.MouseEvent, item: ReferenceCollectionItem, sourceInfo?: { url: string; label: string } | null): void;
   selected?: boolean;
   onSelect?(item: ReferenceCollectionItem, event: React.MouseEvent): void;
 }) {
@@ -693,7 +688,7 @@ function CollectionItemCard({
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        onContextMenu(event, item);
+        onContextMenu(event, item, sourceInfo);
       }}
     >
       <span className="asset-preview">
@@ -718,58 +713,6 @@ function CollectionItemCard({
       </span>
       <span className="collection-item-path" title={item.lastResolvedPath}>
         {itemParentLabel(item)}
-      </span>
-      {sourceInfo && (
-        <span className="asset-source" title={sourceInfo.url}>
-          <Globe size={11} />
-          <span className="asset-source-text">{sourceInfo.label}</span>
-        </span>
-      )}
-      <span className="collection-item-actions">
-        {sourceInfo && (
-          <button
-            className="mini-icon-button"
-            aria-label={`${translate("collections.openSource")} ${displayName}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              void window.refCanvas.system
-                .openUrl(sourceInfo.url)
-                .catch(() => undefined);
-            }}
-          >
-            <Globe size={13} />
-          </button>
-        )}
-        <button
-          className="mini-icon-button"
-          aria-label={`${translate("collections.resolve")} ${displayName}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onRelink(item);
-          }}
-        >
-          <Link2 size={13} />
-        </button>
-        <button
-          className="mini-icon-button"
-          aria-label={`${translate("preview.copyPath")} ${displayName}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            void window.refCanvas.system.writeClipboard(item.lastResolvedPath);
-          }}
-        >
-          <Copy size={13} />
-        </button>
-        <button
-          className="mini-icon-button danger-hover"
-          aria-label={`${translate("collections.removeItem")} ${displayName}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemove(item);
-          }}
-        >
-          <X size={13} />
-        </button>
       </span>
     </div>
   );
@@ -1105,8 +1048,6 @@ export function LegacyCollectionDetailsPanel() {
             <CollectionItemCard
               key={item.id}
               item={item}
-              onRelink={(target) => void relinkItem(target)}
-              onRemove={(target) => void removeItems([target.id])}
               onContextMenu={(event, target) =>
                 setItemMenu({
                   item: target,
@@ -1245,7 +1186,7 @@ export function CollectionDetailsPanel() {
   const [stateFilter, setStateFilter] = useState<CollectionFilterState>("all");
   const [sortMode, setSortMode] = useState<CollectionSortMode>("name");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [cardScale, setCardScale] = useState(1);
+  const cardScale = 1;
   const [resolving, setResolving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [draggingOver, setDraggingOver] = useState(false);
@@ -1253,7 +1194,9 @@ export function CollectionDetailsPanel() {
     item: ReferenceCollectionItem;
     x: number;
     y: number;
+    sourceInfo?: { url: string; label: string } | null;
   } | null>(null);
+  const [capturesRoot, setCapturesRoot] = useState<string | null>(null);
   const selection = useDirectorySelection();
   const selectedIds = selection.state.selectedPaths;
   const clearSelection = selection.clear;
@@ -1289,6 +1232,19 @@ export function CollectionDetailsPanel() {
       window.removeEventListener("keydown", escape);
     };
   }, [itemMenu]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.refCanvas.libraries
+      .capturesDirectory()
+      .then((root) => {
+        if (!cancelled) setCapturesRoot(root);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const counts = useMemo(() => {
     const result: Record<CollectionFilterState, number> = {
@@ -1354,7 +1310,10 @@ export function CollectionDetailsPanel() {
     });
     return hasDirect || folder.childIds.some((childId) => folderMatches(childId));
   };
-  const showFolders = !query.trim() && searchScope === "current";
+  // The collection landing view stays focused on materials. Virtual folders
+  // remain part of the model for path-aware search and future navigation, but
+  // are intentionally not surfaced as large cards in this content pane.
+  const showFolders = false;
   const visibleFolders = showFolders
     ? currentFolder.childIds
       .map((id) => tree.folders.get(id))
@@ -1398,6 +1357,22 @@ export function CollectionDetailsPanel() {
     await window.refCanvas.collections.removeItems(collection.id, selectedItems.map((item) => item.id));
     clearSelection();
     await store.refreshCollections();
+  };
+  const normalizeForPrefix = (value: string) =>
+    value.replaceAll("\\", "/").replace(/\/+$/, "").toLocaleLowerCase("en-US");
+  const isBrowserCapturePath = (value: string): boolean =>
+    capturesRoot !== null &&
+    normalizeForPrefix(value).startsWith(`${normalizeForPrefix(capturesRoot)}/`);
+  const deleteFile = async (item: ReferenceCollectionItem) => {
+    const confirmed = await dialog.requestConfirm({
+      title: translate("collections.deleteFile"),
+      description: translate("collections.deleteFileDesc"),
+      confirmLabel: translate("collections.deleteFile"),
+      danger: true,
+    });
+    if (!confirmed || !(await store.trashEntries([item.lastResolvedPath]))) return;
+    await window.refCanvas.collections.removeItems(collection.id, [item.id]);
+    await Promise.all([store.refreshCollections(), store.reloadAssets()]);
   };
   const addSelectedToBoard = () => {
     if (selectedResolved.length) {
@@ -1563,7 +1538,6 @@ export function CollectionDetailsPanel() {
             <button type="button" className={viewMode === "grid" ? "active" : ""} aria-label={translate("directory.gridView")} aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")}><LayoutGrid size={15} /></button>
             <button type="button" className={viewMode === "list" ? "active" : ""} aria-label={translate("directory.listView")} aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")}><List size={15} /></button>
           </div>
-          {viewMode === "grid" && <label className="collection-zoom" title={translate("directory.zoom")}><ZoomIn size={13} /><input type="range" min={0.8} max={1.35} step={0.05} value={cardScale} aria-label={translate("directory.zoom")} onChange={(event) => setCardScale(Number(event.target.value))} /></label>}
         </div>
       </div>
 
@@ -1599,9 +1573,7 @@ export function CollectionDetailsPanel() {
               item={item}
               selected={selectedIds.has(item.id)}
               onSelect={(target, event) => selection.click(filteredItems.map((candidate) => candidate.id), target.id, event.ctrlKey || event.metaKey, event.shiftKey)}
-              onRelink={(target) => void relinkItem(target)}
-              onRemove={(target) => void window.refCanvas.collections.removeItems(collection.id, [target.id]).then(() => store.refreshCollections())}
-              onContextMenu={(event, target) => setItemMenu({ item: target, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 240)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 240)) })}
+              onContextMenu={(event, target, sourceInfo) => setItemMenu({ item: target, sourceInfo, x: Math.max(8, Math.min(event.clientX, window.innerWidth - 240)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 240)) })}
             />
           )}
         />
@@ -1609,11 +1581,22 @@ export function CollectionDetailsPanel() {
 
       {itemMenu && (
         <div className="asset-context-menu" role="menu" style={{ left: itemMenu.x, top: itemMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+          {itemMenu.sourceInfo && (
+            <button role="menuitem" onClick={() => { const source = itemMenu.sourceInfo; setItemMenu(null); if (source) void window.refCanvas.system.openUrl(source.url).catch(() => undefined); }}><Globe size={16} />{translate("collections.openSource")}</button>
+          )}
           <button role="menuitem" onClick={() => { const item = itemMenu.item; setItemMenu(null); void relinkItem(item); }}><Link2 size={16} />{translate("collections.relink")}</button>
           <button role="menuitem" onClick={() => { const item = itemMenu.item; setItemMenu(null); void window.refCanvas.filesystem.reveal(item.lastResolvedPath); }}><FolderOpen size={16} />{translate("preview.reveal")}</button>
           <button role="menuitem" onClick={() => { void window.refCanvas.system.writeClipboard(itemMenu.item.lastResolvedPath); setItemMenu(null); }}><Copy size={16} />{translate("preview.copyPath")}</button>
           <span className="context-menu-divider" />
           <button role="menuitem" onClick={() => { const item = itemMenu.item; setItemMenu(null); void window.refCanvas.collections.removeItems(collection.id, [item.id]).then(() => store.refreshCollections()); }}><Trash2 size={16} />{translate("collections.removeItem")}</button>
+          {itemMenu.item.state !== "missing" && (
+            <button role="menuitem" onClick={() => { const item = itemMenu.item; setItemMenu(null); void deleteFile(item); }}>
+              <Trash2 size={16} />
+              {isBrowserCapturePath(itemMenu.item.lastResolvedPath)
+                ? translate("collections.deleteCaptureFile")
+                : translate("collections.deleteFile")}
+            </button>
+          )}
         </div>
       )}
     </section>

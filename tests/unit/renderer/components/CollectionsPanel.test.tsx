@@ -738,12 +738,9 @@ describe("CollectionsPanel", () => {
     await act(async () => {
       root.render(<DialogProvider><CollectionDetailsPanel /></DialogProvider>);
     });
-    expect(host.querySelector(".collection-folder-card")).toBeTruthy();
+    expect(host.querySelector(".collection-folder-card")).toBeNull();
     expect(host.textContent).toContain("2 项");
-    await act(async () => host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click());
-    await act(async () => host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click());
-    await act(async () => host.querySelector<HTMLButtonElement>(".collection-folder-card")?.click());
-    expect(host.querySelector(".collection-item-card")).toBeTruthy();
+    expect(host.querySelectorAll(".collection-item-card")).toHaveLength(2);
     await act(async () => host.querySelector<HTMLButtonElement>('.collection-health-chip.state-missing')?.click());
     expect(host.querySelectorAll(".collection-item-card")).toHaveLength(1);
     expect(host.textContent).toContain("b.png");
