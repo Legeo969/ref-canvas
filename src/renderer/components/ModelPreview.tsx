@@ -113,7 +113,7 @@ export function ModelPreview({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1;
     host.replaceChildren(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -123,31 +123,73 @@ export function ModelPreview({
     controls.autoRotate = previewSettings.autoplayModel3d;
     controls.autoRotateSpeed = 1.6;
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x202827, 2.2));
-    const key = new THREE.DirectionalLight(0xffffff, 3.2);
+    scene.add(new THREE.HemisphereLight(0xf2f2f2, 0x2d2d2d, 1.75));
+    const key = new THREE.DirectionalLight(0xffffff, 2.6);
     key.position.set(4, 6, 5);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x9fc8ff, 1.25);
+    const rim = new THREE.DirectionalLight(0xa9bdd4, 1.15);
     rim.position.set(-4, 2, -5);
     scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.65);
+    fill.position.set(0, -2, 4);
+    scene.add(fill);
 
-    const grid = new THREE.GridHelper(2, 40, 0x734848, 0x474b49);
+    const grid = new THREE.GridHelper(2, 40, 0x777777, 0x555555);
     const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
     for (const material of gridMaterials) {
       material.transparent = true;
-      material.opacity = 0.52;
+      material.opacity = 0.62;
     }
-    grid.visible = false;
+    grid.visible = true;
     scene.add(grid);
 
+    const axes = new THREE.Group();
+    axes.renderOrder = 1;
+    const axisParts = {
+      x: new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-1, 0, 0),
+          new THREE.Vector3(1, 0, 0),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0xc85a5a, transparent: true, opacity: 0.9 }),
+      ),
+      y: new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, -1, 0),
+          new THREE.Vector3(0, 1, 0),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0x6fbd69, transparent: true, opacity: 0.9 }),
+      ),
+      z: new THREE.LineSegments(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, -1),
+          new THREE.Vector3(0, 0, 1),
+        ]),
+        new THREE.LineBasicMaterial({ color: 0x5a82c8, transparent: true, opacity: 0.9 }),
+      ),
+    };
+    for (const axis of Object.values(axisParts)) {
+      axis.renderOrder = 1;
+      axes.add(axis);
+    }
+    scene.add(axes);
+
     const uvTexture = createUvCheckerTexture();
-    const wireframeMaterial = new THREE.MeshBasicMaterial({
-      color: 0xe4e8e6,
-      wireframe: true,
+    const solidMaterial = new THREE.MeshStandardMaterial({
+      color: 0x9b9b9b,
+      roughness: 0.82,
+      metalness: 0,
+      side: THREE.DoubleSide,
+    });
+    const wireframeMaterial = new THREE.LineBasicMaterial({
+      color: 0x242625,
+      transparent: true,
+      opacity: 0.8,
     });
     const uvMaterial = new THREE.MeshBasicMaterial({ map: uvTexture });
     const uvMissingMaterial = new THREE.MeshBasicMaterial({ color: 0x515755 });
     const originalMaterials = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    const wireframeOverlays = new Map<THREE.Mesh, THREE.LineSegments>();
     let model: THREE.Object3D | null = null;
     let modelRadius = 1;
     let disposed = false;
@@ -175,9 +217,10 @@ export function ModelPreview({
     controls.addEventListener("end", emitCamera);
 
     const applyDisplayMode = (mode: ModelDisplayMode) => {
-      for (const [mesh, material] of originalMaterials) {
-        if (mode === "solid") mesh.material = material;
-        else if (mode === "wireframe") mesh.material = wireframeMaterial;
+      for (const [mesh] of originalMaterials) {
+        const overlay = wireframeOverlays.get(mesh);
+        if (overlay) overlay.visible = mode === "wireframe";
+        if (mode === "solid" || mode === "wireframe") mesh.material = solidMaterial;
         else mesh.material = mesh.geometry.getAttribute("uv") ? uvMaterial : uvMissingMaterial;
       }
     };
@@ -186,7 +229,11 @@ export function ModelPreview({
       grid.rotation.set(0, 0, 0);
       if (preset === "front") grid.rotation.x = Math.PI / 2;
       if (preset === "left" || preset === "right") grid.rotation.z = Math.PI / 2;
-      grid.visible = preset !== "default";
+      grid.visible = true;
+      axes.visible = true;
+      axisParts.x.visible = preset === "default" || preset === "top" || preset === "front";
+      axisParts.y.visible = preset === "default" || preset === "front" || preset === "left" || preset === "right";
+      axisParts.z.visible = preset === "default" || preset === "top" || preset === "left" || preset === "right";
     };
 
     const applyCameraPreset = (preset: ModelCameraPreset) => {
@@ -218,14 +265,27 @@ export function ModelPreview({
       const center = box.getCenter(new THREE.Vector3());
       object.position.sub(center);
       let hasUv = false;
+      const meshes: THREE.Mesh[] = [];
       object.traverse((node) => {
         if (!(node instanceof THREE.Mesh)) return;
         originalMaterials.set(node, node.material);
+        meshes.push(node);
         if (node.geometry.getAttribute("uv")) hasUv = true;
       });
+      for (const mesh of meshes) {
+        const overlay = new THREE.LineSegments(
+          new THREE.WireframeGeometry(mesh.geometry),
+          wireframeMaterial,
+        );
+        overlay.renderOrder = 2;
+        overlay.visible = false;
+        mesh.add(overlay);
+        wireframeOverlays.set(mesh, overlay);
+      }
       setUvReady(hasUv);
       modelRadius = Math.max(size.x, size.y, size.z, 0.1);
       grid.scale.setScalar(modelRadius * 2);
+      axes.scale.setScalar(modelRadius * 1.8);
       camera.near = Math.max(modelRadius / 1000, 0.001);
       camera.far = modelRadius * 100;
       ready = true;
@@ -233,7 +293,7 @@ export function ModelPreview({
         const restored = sanitizeModelView(initialView);
         camera.position.fromArray(restored.position);
         controls.target.fromArray(restored.target);
-        grid.visible = false;
+        grid.visible = true;
         controls.update();
         trackCamera();
       } else {
@@ -312,12 +372,18 @@ export function ModelPreview({
       model?.traverse((object) => {
         if (object instanceof THREE.Mesh) object.geometry.dispose();
       });
+      for (const overlay of wireframeOverlays.values()) overlay.geometry.dispose();
       for (const material of materials) material.dispose();
       wireframeMaterial.dispose();
+      solidMaterial.dispose();
       uvMaterial.dispose();
       uvMissingMaterial.dispose();
       uvTexture.dispose();
       for (const material of gridMaterials) material.dispose();
+      for (const axis of Object.values(axisParts)) {
+        axis.geometry.dispose();
+        (axis.material as THREE.Material).dispose();
+      }
       renderer.dispose();
       renderer.domElement.remove();
     };
