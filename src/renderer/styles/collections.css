@@ -661,7 +661,7 @@
 }
 
 .collection-browser-tools {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   gap: 6px;
   min-width: 0;
 }
@@ -734,6 +734,9 @@
 }
 
 .collection-view-mode {
+  flex: 0 0 auto;
+  width: 58px;
+  box-sizing: border-box;
   gap: 2px;
   padding: 2px;
   border-radius: 7px;
@@ -742,7 +745,8 @@
 
 .collection-view-mode button {
   display: grid;
-  width: 26px;
+  width: 27px;
+  min-width: 27px;
   height: 26px;
   place-items: center;
   border: 0;
