@@ -35,6 +35,13 @@ export function hdrDisplayPreviewUrl(token: string, size = 1920): string {
   return `refbrowse://thumbnail/${token}?priority=preview&size=${size}`;
 }
 
+export function hdrEnvironmentPreviewUrl(source: string, size = 4096): string {
+  if (/[?&]size=\d+/.test(source)) {
+    return source.replace(/([?&])size=\d+/, `$1size=${size}`);
+  }
+  return appendPreviewParameter(source, "size", String(size));
+}
+
 const toneMappings: Record<ToneMappingName, THREE.ToneMapping> = {
   "linear-srgb": THREE.LinearToneMapping,
   "aces-1.3": THREE.LinearToneMapping,
@@ -275,6 +282,9 @@ export function HdrPreview({
     : transformSource;
   const preview = useRetryingPreviewUrl(colorManagedSource);
   const requestSource = preview.url ?? colorManagedSource;
+  const environmentSource = viewMode === "flat"
+    ? requestSource
+    : hdrEnvironmentPreviewUrl(requestSource);
   const exposure = 2 ** exposureEv;
   // 显式色彩管理（自定义 OCIO / ACES / Raw）走独立缓存变体，解码可能
   // 明显慢于默认变体（大 EXR 序列尤甚）。渐进增强：基础变体先行显示，
@@ -623,7 +633,7 @@ export function HdrPreview({
       style={{ "--hdr-exposure": String(exposure) } as React.CSSProperties}
     >
       {viewMode !== "flat" ? <PanoramaPreview
-        source={requestSource}
+        source={environmentSource}
         alt={translate("hdr.alt").replace("{ext}", extension.toUpperCase())}
         forcedMode={viewMode}
         exposure={exposure}

@@ -25,6 +25,10 @@ export interface PreviewCacheIdentity {
     | "thumbnail-shell-1920x1920-webp"
     | `thumbnail-1920x1920-webp-${string}`
     | `thumbnail-shell-1920x1920-webp-${string}`
+    | "thumbnail-4096x4096-webp"
+    | "thumbnail-shell-4096x4096-webp"
+    | `thumbnail-4096x4096-webp-${string}`
+    | `thumbnail-shell-4096x4096-webp-${string}`
     | "palette-320-webp"
     | "sample-320-webp"
     | `board-${512 | 1024 | 2048}-webp`;

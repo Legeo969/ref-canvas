@@ -527,6 +527,7 @@ export function registerResourcesIpc(
       };
       let sourceWebp: string | null = null;
       const displayVariants = [
+        "thumbnail-4096x4096-webp",
         "thumbnail-1920x1920-webp",
         "thumbnail-960x960-webp",
         "thumbnail-480x480-webp",
@@ -623,6 +624,7 @@ export function registerResourcesIpc(
       if (!info) throw new Error("SAMPLE_SOURCE_UNAVAILABLE");
       const identity = { realPath: resolved, size: info.size, mtimeMs: info.mtimeMs };
       const displayVariants = [
+        "thumbnail-4096x4096-webp",
         "thumbnail-1920x1920-webp",
         "thumbnail-960x960-webp",
         "thumbnail-480x480-webp",

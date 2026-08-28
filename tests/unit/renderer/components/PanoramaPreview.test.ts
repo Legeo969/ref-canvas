@@ -3,6 +3,7 @@ import {
   canRenderEnvironmentPreview,
   createEnvironmentTexture,
   environmentFallbackKind,
+  environmentPreviewInteraction,
   resolveEnvironmentPreviewMode,
 } from "../../../../src/renderer/components/PanoramaPreview";
 
@@ -33,5 +34,11 @@ describe("environment preview mode", () => {
     expect(environmentFallbackKind("reflection")).toBe("reflection-ball");
     expect(environmentFallbackKind("panorama")).toBe("equirectangular");
     expect(environmentFallbackKind("flat")).toBe("flat");
+  });
+
+  it("keeps panorama draggable while locking dolly movement at the sphere center", () => {
+    expect(environmentPreviewInteraction("panorama")).toEqual({ rotate: true, zoom: false });
+    expect(environmentPreviewInteraction("reflection")).toEqual({ rotate: true, zoom: true });
+    expect(environmentPreviewInteraction("flat")).toEqual({ rotate: false, zoom: false });
   });
 });

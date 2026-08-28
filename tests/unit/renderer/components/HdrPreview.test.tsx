@@ -63,6 +63,20 @@ describe("HdrPreview flat view rendering", () => {
     expect(root).not.toBeNull();
     expect((root as HTMLElement).style.getPropertyValue("--hdr-exposure")).toBe("1");
   });
+
+  it("requests a 4096 texture after switching to an environment view", async () => {
+    const host = await renderFlat(
+      "refbrowse://thumbnail/token?priority=preview&size=1920",
+    );
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("refcanvas:hdr-view-mode", {
+        detail: { mode: "panorama" },
+      }));
+    });
+    expect(
+      host.querySelector("img.panorama-media-fallback")?.getAttribute("src"),
+    ).toBe("refbrowse://thumbnail/token?priority=preview&size=4096");
+  });
 });
 
 describe("HdrPreview display-readiness reporting for sequence gating", () => {

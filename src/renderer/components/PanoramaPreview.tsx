@@ -32,6 +32,16 @@ export function environmentFallbackKind(mode: EnvironmentPreviewMode): "flat" | 
   return "flat";
 }
 
+export function environmentPreviewInteraction(mode: EnvironmentPreviewMode): {
+  rotate: boolean;
+  zoom: boolean;
+} {
+  return {
+    rotate: mode !== "flat",
+    zoom: mode === "reflection",
+  };
+}
+
 export function PanoramaPreview({
   source,
   alt,
@@ -90,7 +100,7 @@ export function PanoramaPreview({
     if (!host || !environmentEligible || !environmentImage || effectiveMode === "flat" || panoramaError) return;
     const scene = new THREE.Scene();
     const isReflection = effectiveMode === "reflection";
-    scene.background = new THREE.Color(isReflection ? 0x121617 : 0x101314);
+    scene.background = new THREE.Color(0x101314);
     const camera = new THREE.PerspectiveCamera(
       isReflection ? 44 : 72,
       1,
@@ -110,14 +120,19 @@ export function PanoramaPreview({
     renderer.toneMapping = toneMapping;
     renderer.toneMappingExposure = exposure;
     host.replaceChildren(renderer.domElement);
+    const interaction = environmentPreviewInteraction(effectiveMode);
     const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableRotate = interaction.rotate;
     controls.enablePan = false;
-    controls.enableZoom = true;
+    controls.enableZoom = interaction.zoom;
     controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.55;
+    controls.target.set(0, 0, 0);
     controls.minDistance = effectiveMode === "panorama" ? 0.01 : 2.35;
     controls.maxDistance = effectiveMode === "panorama" ? 0.01 : 6.5;
     const geometry = new THREE.SphereGeometry(
-      effectiveMode === "panorama" ? 10 : 1.1,
+      effectiveMode === "panorama" ? 10 : 0.46,
       64,
       32,
     );
@@ -127,35 +142,11 @@ export function PanoramaPreview({
       : new THREE.MeshStandardMaterial({
           color: 0xffffff,
           metalness: 1,
-          roughness: 0.06,
-          envMapIntensity: 1.15,
+          roughness: 0,
+          envMapIntensity: 1,
         });
     const sphere = new THREE.Mesh(geometry, material);
     scene.add(sphere);
-    // The neutral studio lights keep the ball readable when the source has
-    // little energy in its lower hemisphere; the environment still drives
-    // the visible reflections through scene.environment.
-    let ground: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial> | null = null;
-    if (isReflection) {
-      scene.add(new THREE.HemisphereLight(0xe9efec, 0x1b211f, 0.18));
-      const key = new THREE.DirectionalLight(0xffffff, 0.42);
-      key.position.set(3, 4, 4);
-      scene.add(key);
-      ground = new THREE.Mesh(
-        new THREE.CircleGeometry(1.55, 64),
-        new THREE.MeshBasicMaterial({
-          color: 0x050706,
-          transparent: true,
-          opacity: 0.25,
-          depthWrite: false,
-        }),
-      );
-      // A camera-facing, vertically compressed disc reads as the soft contact
-      // shadow used by studio HDRI viewers without requiring a shadow map.
-      ground.scale.set(1, 0.24, 1);
-      ground.position.set(0, -1.02, -0.28);
-      scene.add(ground);
-    }
     const texture = createEnvironmentTexture(environmentImage);
     let reflectionEnvironment: THREE.Texture | null = null;
     let pmremGenerator: THREE.PMREMGenerator | null = null;
@@ -164,6 +155,9 @@ export function PanoramaPreview({
     } else {
       texture.mapping = THREE.EquirectangularReflectionMapping;
       texture.needsUpdate = true;
+      // Connecter-style reflection view: the same equirectangular source is
+      // both the full-bleed environment background and the chrome-ball map.
+      scene.background = texture;
       try {
         pmremGenerator = new THREE.PMREMGenerator(renderer);
         reflectionEnvironment = pmremGenerator.fromEquirectangular(texture).texture;
@@ -205,10 +199,6 @@ export function PanoramaPreview({
       renderer.setAnimationLoop(null);
       controls.dispose();
       geometry.dispose();
-      if (ground) {
-        ground.geometry.dispose();
-        ground.material.dispose();
-      }
       texture.dispose();
       reflectionEnvironment?.dispose();
       pmremGenerator?.dispose();
@@ -234,7 +224,10 @@ export function PanoramaPreview({
           ref={canvasHostRef}
           data-environment-mode={effectiveMode}
         />
-        {effectiveMode === "reflection" && <span className="panorama-reflection-fallback-shade" aria-hidden="true" />}
+        {effectiveMode === "reflection" && (<>
+          <img className="panorama-reflection-ball-fallback" src={source} alt="" aria-hidden="true" draggable={false} />
+          <span className="panorama-reflection-fallback-shade" aria-hidden="true" />
+        </>)}
       </>) : (
         <img src={source} alt={alt} draggable={false} />
       )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hdrDisplayPreviewUrl,
+  hdrEnvironmentPreviewUrl,
   resolveHdrTransformSource,
 } from "../../../../src/renderer/components/HdrPreview";
 
@@ -14,6 +15,22 @@ describe("HDR display preview source", () => {
   it("accepts a display size for embedded sequence playback", () => {
     expect(hdrDisplayPreviewUrl("session-token", 960)).toBe(
       "refbrowse://thumbnail/session-token?priority=preview&size=960",
+    );
+  });
+
+  it("upgrades only the environment texture request to 4096", () => {
+    expect(hdrEnvironmentPreviewUrl(
+      "refbrowse://thumbnail/session-token?priority=preview&size=1920",
+    )).toBe(
+      "refbrowse://thumbnail/session-token?priority=preview&size=4096",
+    );
+  });
+
+  it("adds the environment texture size when the source has no size parameter", () => {
+    expect(hdrEnvironmentPreviewUrl(
+      "refasset://thumbnail/asset-id?priority=preview",
+    )).toBe(
+      "refasset://thumbnail/asset-id?priority=preview&size=4096",
     );
   });
 });

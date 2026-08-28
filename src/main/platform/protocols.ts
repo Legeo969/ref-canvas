@@ -96,19 +96,19 @@ function boardProxySize(url: URL): 512 | 1024 | 2048 | null {
   return size === 512 || size === 1024 || size === 2048 ? size : null;
 }
 
-function directoryThumbnailSize(url: URL): 480 | 960 | 1920 {
+export function directoryThumbnailSize(url: URL): 480 | 960 | 1920 | 4096 {
   const size = Number(url.searchParams.get("size"));
-  return size === 960 || size === 1920 ? size : 480;
+  return size === 960 || size === 1920 || size === 4096 ? size : 480;
 }
 
 /**
- * refasset://thumbnail 的 ?size= 参数：只接受 480/960/1920，缺省保持传统
+ * refasset://thumbnail 的 ?size= 参数：只接受 480/960/1920/4096，缺省保持传统
  * 480×320 composite 缩略图。预览面板用 1920，避免 provider 扁平化图
- * （PSD/PSB 等）放大显示发糊。
+ * （PSD/PSB 等）放大显示发糊；全景/反射环境贴图使用 4096。
  */
-export function assetPreviewSize(url: URL): 480 | 960 | 1920 | null {
+export function assetPreviewSize(url: URL): 480 | 960 | 1920 | 4096 | null {
   const size = Number(url.searchParams.get("size"));
-  return size === 480 || size === 960 || size === 1920 ? size : null;
+  return size === 480 || size === 960 || size === 1920 || size === 4096 ? size : null;
 }
 
 /**
