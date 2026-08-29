@@ -941,6 +941,27 @@
   backdrop-filter: none;
 }
 
+/* 沉浸模式下 .preview-workspace（含 28px 文件名行）覆盖在画布底部，而
+   3D 模型工具栏仍锚定在画布 bottom:8px，两者重叠会挡住工具栏下半截
+   （回归：聚焦/全屏预览 .obj/.glb 时底部图标被文件名行遮住）。把模型
+   工具栏整体上移到文件名行上方，间距保持 8px。 */
+.preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) :is(
+  .model-preview-toolbar,
+  .model-preview-actions
+) {
+  bottom: 36px;
+}
+
+.preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .model-preview-feedback {
+  bottom: 86px;
+}
+
+@media (max-width: 680px) {
+  .preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) .model-preview-actions {
+    bottom: 84px;
+  }
+}
+
 .preview-panel:is(.preview-session-focused, .preview-session-window-fullscreen) :is(
   .preview-file-row,
   .preview-toolbar,

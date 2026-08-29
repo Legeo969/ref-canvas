@@ -84,6 +84,22 @@ describe("preview session controls", () => {
     expect(directory).toMatch(/\.directory-workbench-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.workbench-header\s*{[^}]*position:\s*static/s);
   });
 
+  it("lifts 3D model toolbars above the immersive filename row", async () => {
+    const css = await readFile(
+      path.resolve("src/renderer/styles/preview-panel.css"),
+      "utf8",
+    );
+    // 沉浸模式下 28px 文件名行覆盖画布底部（z-index:6），模型工具栏
+    // 若仍锚定 bottom:8px 会被挡住下半截（回归：聚焦/全屏预览
+    // .obj/.glb 时底部图标被文件名行遮住），必须整体上移到其上方。
+    expect(css).toMatch(
+      /\.preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) :is\(\s*\.model-preview-toolbar,\s*\.model-preview-actions\s*\)\s*{[^}]*bottom:\s*36px;/s,
+    );
+    expect(css).toMatch(
+      /\.preview-panel:is\(\.preview-session-focused, \.preview-session-window-fullscreen\) \.model-preview-feedback\s*{[^}]*bottom:\s*86px;/s,
+    );
+  });
+
   it("gives fitted images a stable viewport box instead of relying on intrinsic size", async () => {
     const css = await readFile(path.resolve("src/renderer/styles/image-review.css"), "utf8");
     expect(css).toMatch(/\.image-review-img\s*{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*contain;/s);
