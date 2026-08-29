@@ -13,6 +13,18 @@ const signingConfigured = Boolean(
     process.env.REFCANVAS_SIGN_WITH_PARAMS,
 );
 
+// Squirrel releasify 用 TMP/TEMP 解析临时目录；指向服务账户 profile 时
+// WriteZipToSetup 内嵌失败但退出码仍为 0（回归：0.39.3 构建产出 236KB
+// 空壳安装包）。整个发布期间把临时目录固定到用户 profile，子进程继承。
+const userTempDirectory = process.env.USERPROFILE
+  ? path.join(process.env.USERPROFILE, "AppData", "Local", "Temp")
+  : undefined;
+if (userTempDirectory) {
+  fs.mkdirSync(userTempDirectory, { recursive: true });
+  process.env.TMP = userTempDirectory;
+  process.env.TEMP = userTempDirectory;
+}
+
 function run(script) {
   const result = pnpmCli
     ? spawnSync(process.execPath, [pnpmCli, script], {
@@ -60,6 +72,14 @@ if (
   path.basename(setup) !== expectedSetupName
 ) {
   throw new Error("WINDOWS_RELEASE_OUTPUT_OR_VERSION_MISMATCH");
+}
+
+// releasify 内嵌 nupkg 失败时仍以 0 退出，留下约 200KB 的空壳 Setup。
+// Setup 必须内嵌完整包，因此要求其体积严格大于 nupkg 本体。
+if (fs.statSync(setup).size <= fs.statSync(fullPackage).size) {
+  throw new Error(
+    "WINDOWS_RELEASE_SETUP_MISSING_EMBEDDED_PAYLOAD (see node_modules/electron-winstaller/vendor/Squirrel-Releasify.log)",
+  );
 }
 
 fs.mkdirSync(releaseDirectory, { recursive: true });
