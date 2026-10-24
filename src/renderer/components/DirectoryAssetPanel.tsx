@@ -6,27 +6,16 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  Download,
-  Eye,
   File,
-  Film,
   FolderOpen,
   FolderPlus,
   LayoutGrid,
   List,
-  PanelsTopLeft,
   RefreshCw,
-  Scissors,
-  ScanSearch,
   Search,
   Settings2,
-  Shrink,
   SlidersHorizontal,
-  SquareArrowOutUpRight,
   Star,
-  Tags,
-  TerminalSquare,
-  Trash2,
   X,
   ZoomIn,
 } from "lucide-react";
@@ -103,6 +92,14 @@ import {
 } from "../features/directory/directory-preview-coordinator";
 import { resolveDirectorySelectionScope } from "../features/directory/directory-query-model";
 import { DirectoryBatchToolbar } from "./directory/DirectoryBatchToolbar";
+import {
+  DirectoryContextMenu,
+  type DirectoryContextMenuActions,
+  type DirectoryContextMenuFlags,
+  type DirectoryContextMenuState,
+} from "./directory/DirectoryContextMenu";
+import { DirectorySortMenu } from "./directory/DirectorySortMenu";
+import { DirectoryViewOptions } from "./directory/DirectoryViewOptions";
 import { ActionRunDialog } from "./actions/ActionRunDialog";
 
 type DirectoryFormatFilter = "all" | PreviewFormatGroupId | "other";
@@ -594,11 +591,9 @@ export function DirectoryAssetPanel() {
   const [searchComplete, setSearchComplete] = useState(false);
   const [searchSnapshot, setSearchSnapshot] =
     useState<DirectorySearchSnapshot | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
-    entry: DirectoryEntry;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<DirectoryContextMenuState | null>(
+    null,
+  );
   const [actionRunPaths, setActionRunPaths] = useState<string[] | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
@@ -2610,32 +2605,94 @@ export function DirectoryAssetPanel() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // 右键菜单格式条件：Downscale 只在 ffmpeg 可下采样的图片格式上提供
-  // （isDownscalableImageExtension，见 shared/asset-kind.ts）；GIF 工作台保留
-  // 原有视频判定。两者共用分隔线，避免非图片/非视频文件出现悬空分隔线。
-  const menuEntryIsDownscalableImage = isDownscalableImageExtension(
-    contextMenu?.entry.extension ?? "",
-  );
-  const menuEntryIsImage = assetKindForExtension(
-    contextMenu?.entry.extension ?? "",
-  ) === "image";
-  const menuEntryIsVideo = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(
-    contextMenu?.entry.extension ?? "",
-  );
-  // GIF / 导出 MP4：视频直接提供；图片仅在属于已检测序列（合并序列帧）时
-  // 提供——普通单帧图片不参与 GIF/MP4 导出。格式判定独立于 Downscale
-  // （见 features/directory/asset-export-formats）。
-  const menuEntryIsExportableImage = isExportableImageExtension(
-    contextMenu?.entry.extension ?? "",
-  );
-  const menuEntryIsExportableVideo = isExportableVideoExtension(
-    contextMenu?.entry.extension ?? "",
-  );
-  const menuEntryIsSequenceImage =
-    menuEntryIsExportableImage &&
-    Boolean(
-      contextMenu && sequenceIndex.byPath.has(contextMenu.entry.path),
-    );
+  // 右键菜单注入：格式条件在面板计算（Downscale 仅 ffmpeg 可下采样的图片
+  // 格式提供，见 shared/asset-kind.ts；GIF/导出 MP4 视频直接提供，图片仅在
+  // 属于已检测序列时提供，见 features/directory/asset-export-formats），
+  // 行为复用上方各 entry 级函数，DirectoryContextMenu 只做声明式渲染。
+  const contextMenuEntry = contextMenu?.entry;
+  const contextMenuFlags: DirectoryContextMenuFlags | null = contextMenuEntry
+    ? {
+        isDownscalableImage: isDownscalableImageExtension(
+          contextMenuEntry.extension,
+        ),
+        isImage:
+          assetKindForExtension(contextMenuEntry.extension) === "image",
+        isVideo: /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i.test(
+          contextMenuEntry.extension,
+        ),
+        isExportableVideo: isExportableVideoExtension(
+          contextMenuEntry.extension,
+        ),
+        isSequenceImage:
+          isExportableImageExtension(contextMenuEntry.extension) &&
+          sequenceIndex.byPath.has(contextMenuEntry.path),
+        isFavorite: store.quickAccess.some(
+          (item) =>
+            normalizeQuickAccessPath(item.path) ===
+            normalizeQuickAccessPath(contextMenuEntry.path),
+        ),
+        scripts: registeredScripts,
+      }
+    : null;
+  const contextMenuActions: DirectoryContextMenuActions = {
+    openDirectory: (path) => void store.openDirectory(path),
+    openFile: (path) => void window.refCanvas.filesystem.open(path),
+    reveal: (path) => void window.refCanvas.filesystem.reveal(path),
+    addToBoard: (path) => void store.addDirectoryEntriesToBoard([path]),
+    findSimilar: (path) => {
+      window.dispatchEvent(
+        new CustomEvent("refcanvas:find-similar", { detail: { path } }),
+      );
+    },
+    openInNewTab: (entry) => {
+      void store.openDirectoryInNewTab(
+        entry.isDirectory ? entry.path : dirnameOf(entry.path),
+      );
+    },
+    // toggleQuickAccess 在异步完成后、copyOrMove 在开头自行关闭菜单，
+    // 保持原有“不由点击处立即关闭”的语义。
+    toggleQuickAccess,
+    copyPath: (path) => void window.refCanvas.system.writeClipboard(path),
+    cutToClipboard: (entry) => {
+      setDirectoryClipboard({
+        paths: [entry.path],
+        mode: "cut",
+        sourceDirectory: store.directoryPath,
+      });
+    },
+    copyOrMove: (entry, kind) => void copyOrMoveEntry(entry, kind),
+    moveToTrash: trashEntry,
+    setTags: tagEntry,
+    downscale: downscaleEntry,
+    openGifWorkbench: (entry, sequenceGroup) => {
+      store.selectDirectoryEntry(
+        sequenceGroup ? { ...entry, sequenceGroup } : entry,
+      );
+      window.setTimeout(
+        () =>
+          window.dispatchEvent(
+            new CustomEvent("refcanvas:directory-workbench", {
+              detail: { path: entry.path, tool: "gif" },
+            }),
+          ),
+        0,
+      );
+    },
+    exportMp4: exportMp4Entry,
+    exportFrames: (entry) => {
+      store.selectDirectoryEntry(entry);
+      window.setTimeout(
+        () =>
+          window.dispatchEvent(
+            new CustomEvent("refcanvas:directory-workbench", {
+              detail: { path: entry.path, tool: "frames" },
+            }),
+          ),
+        0,
+      );
+    },
+    runScript,
+  };
 
   /**
    * 渲染单个网格单元（文件夹区 / 文件区共用）：loading 占位 / 序列卡 /
@@ -3283,38 +3340,13 @@ export function DirectoryAssetPanel() {
               <ChevronDown size={12} />
             </button>
             {sortOpen && typeof document !== "undefined" && createPortal(
-              <div
-                ref={sortMenuRef}
-                className="dir-sort-popover"
-                role="menu"
-                style={{
-                  left: sortMenuPosition?.left ?? 0,
-                  top: sortMenuPosition?.top ?? 0,
-                  maxHeight: sortMenuPosition?.maxHeight ?? 220,
-                  visibility: sortMenuPosition ? "visible" : "hidden",
-                }}
-              >
-                {(["name", "mtime", "size"] as const).map((mode) => (
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={sortMode === mode}
-                    className={`dir-sort-option ${sortMode === mode ? "active" : ""}`}
-                    key={mode}
-                    data-testid={`directory-sort-${mode}`}
-                    onClick={() => {
-                      setSortMode(mode);
-                      setSortOpen(false);
-                    }}
-                  >
-                    {mode === "mtime"
-                      ? translate("directory.sortModified")
-                      : mode === "size"
-                        ? translate("directory.sortSize")
-                        : translate("directory.sortName")}
-                  </button>
-                ))}
-              </div>,
+              <DirectorySortMenu
+                menuRef={sortMenuRef}
+                position={sortMenuPosition}
+                sortMode={sortMode}
+                onSelect={setSortMode}
+                onClose={() => setSortOpen(false)}
+              />,
               document.body,
             )}
           </div>
@@ -3357,80 +3389,16 @@ export function DirectoryAssetPanel() {
             <SlidersHorizontal size={16} />
           </button>
           {viewOptionsOpen && typeof document !== "undefined" && createPortal(
-            <div
-              ref={viewOptionsMenuRef}
-              className="dir-view-options-popover"
-              role="group"
-              aria-label={translate("directory.viewOptions")}
-              style={{
-                left: viewOptionsPosition?.left ?? 0,
-                top: viewOptionsPosition?.top ?? 0,
-                maxHeight: viewOptionsPosition?.maxHeight ?? 280,
-                visibility: viewOptionsPosition ? "visible" : "hidden",
-              }}
-            >
-              <div className="dir-view-options-section">
-                <span className="dir-view-options-label">
-                  {translate("directory.subdirectories")}
-                </span>
-                <div
-                  className="dir-view-options-depths"
-                  role="radiogroup"
-                  aria-label={translate("directory.subdirectories")}
-                  data-testid="directory-flatten-depth"
-                >
-                  <label className="dir-view-option">
-                    <input
-                      type="radio"
-                      name="directory-flatten-depth"
-                      value={0}
-                      checked={currentFlattenDepth === 0}
-                      onChange={() => void setFlattenDepth(0)}
-                    />
-                    <span>{translate("directory.currentOnly")}</span>
-                  </label>
-                  {[1, 2, 3, 4, 5, 6, 7].map((depth) => (
-                    <label className="dir-view-option" key={depth}>
-                      <input
-                        type="radio"
-                        name="directory-flatten-depth"
-                        value={depth}
-                        checked={currentFlattenDepth === depth}
-                        onChange={() => void setFlattenDepth(depth)}
-                      />
-                      <span>
-                        {translate("directory.includeDepth").replace(
-                          "{depth}",
-                          String(depth),
-                        )}
-                      </span>
-                    </label>
-                  ))}
-                  <label className="dir-view-option">
-                    <input
-                      type="radio"
-                      name="directory-flatten-depth"
-                      value={8}
-                      checked={currentFlattenDepth === 8}
-                      onChange={() => void setFlattenDepth(8)}
-                    />
-                    <span>{translate("directory.includeAllDepths")}</span>
-                  </label>
-                </div>
-              </div>
-              <div className="dir-view-options-divider" />
-              <label className="dir-view-option">
-                <input
-                  type="checkbox"
-                  data-testid="directory-sequence-toggle"
-                  checked={previewSettings.collapseImageSequences}
-                  onChange={(event) =>
-                    void setSequenceCollapsing(event.target.checked)
-                  }
-                />
-                <span>{translate("directory.mergeSequences")}</span>
-              </label>
-            </div>,
+            <DirectoryViewOptions
+              menuRef={viewOptionsMenuRef}
+              position={viewOptionsPosition}
+              flattenDepth={currentFlattenDepth}
+              onFlattenDepth={(depth) => void setFlattenDepth(depth)}
+              collapseImageSequences={previewSettings.collapseImageSequences}
+              onCollapseImageSequences={(collapse) =>
+                void setSequenceCollapsing(collapse)
+              }
+            />,
             document.body,
           )}
         </div>
@@ -3525,263 +3493,14 @@ export function DirectoryAssetPanel() {
         <span>{translate("directory.foldersCount").replace("{count}", String(folderCount))}</span>
       </footer>
 
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="asset-context-menu"
-          role="menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          {contextMenu.entry.isDirectory ? (
-            <button
-              role="menuitem"
-              onClick={() => {
-                setContextMenu(null);
-                void store.openDirectory(contextMenu.entry.path);
-              }}
-            >
-              <FolderOpen size={16} />
-              {translate("directory.openDirectory")}
-            </button>
-          ) : (
-            <>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  void window.refCanvas.filesystem.open(contextMenu.entry.path);
-                  setContextMenu(null);
-                }}
-              >
-                <Eye size={16} />
-                {translate("directory.open")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  void window.refCanvas.filesystem.reveal(contextMenu.entry.path);
-                  setContextMenu(null);
-                }}
-              >
-                <FolderOpen size={16} />
-                {translate("preview.reveal")}
-              </button>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  void store.addDirectoryEntriesToBoard([contextMenu.entry.path]);
-                  setContextMenu(null);
-                }}
-              >
-                <PanelsTopLeft size={16} />
-                {translate("directory.addToBoard")}
-              </button>
-              {menuEntryIsImage && (
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const entry = contextMenu.entry;
-                    setContextMenu(null);
-                    window.dispatchEvent(new CustomEvent("refcanvas:find-similar", {
-                      detail: { path: entry.path },
-                    }));
-                  }}
-                >
-                  <ScanSearch size={16} />
-                  {translate("similar.title")}
-                </button>
-              )}
-            </>
-          )}
-          <button
-            role="menuitem"
-            onClick={() => {
-              const path = contextMenu.entry.path;
-              setContextMenu(null);
-              if (contextMenu.entry.isDirectory) {
-                void store.openDirectoryInNewTab(path);
-              } else {
-                const directory = dirnameOf(path);
-                void store.openDirectoryInNewTab(directory);
-              }
-            }}
-          >
-            <SquareArrowOutUpRight size={16} />
-            {translate("directory.newTab")}
-          </button>
-          {contextMenu.entry.isDirectory && (
-            <button
-              role="menuitem"
-              onClick={() => void toggleQuickAccess(contextMenu.entry)}
-            >
-              <Star
-                size={16}
-                fill={store.quickAccess.some(
-                  (item) => normalizeQuickAccessPath(item.path) === normalizeQuickAccessPath(contextMenu.entry.path),
-                ) ? "currentColor" : "none"}
-              />
-              {store.quickAccess.some(
-                (item) => normalizeQuickAccessPath(item.path) === normalizeQuickAccessPath(contextMenu.entry.path),
-              ) ? translate("directory.unfavorite") : translate("directory.favoriteDir")}
-            </button>
-          )}
-          <button
-            role="menuitem"
-            onClick={() => {
-              void window.refCanvas.system.writeClipboard(contextMenu.entry.path);
-              setContextMenu(null);
-            }}
-          >
-            <Copy size={16} />
-            {translate("preview.copyPath")}
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setDirectoryClipboard({
-                paths: [contextMenu.entry.path],
-                mode: "cut",
-                sourceDirectory: store.directoryPath,
-              });
-              setContextMenu(null);
-            }}
-          >
-            <Scissors size={16} />
-            {translate("directory.cut")}
-          </button>
-          <span className="context-menu-divider" />
-          <button
-            role="menuitem"
-            onClick={() => {
-              void copyOrMoveEntry(contextMenu.entry, "copy");
-            }}
-          >
-            <Copy size={16} />
-            {translate("directory.copyTo")}
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              void copyOrMoveEntry(contextMenu.entry, "move");
-            }}
-          >
-            <FolderOpen size={16} />
-            {translate("directory.moveTo")}
-          </button>
-          <span className="context-menu-divider" />
-          <button
-            role="menuitem"
-            onClick={() => {
-              setContextMenu(null);
-              void trashEntry(contextMenu.entry);
-            }}
-          >
-            <Trash2 size={16} />
-            {translate("preview.moveToTrash")}
-          </button>
-          {!contextMenu.entry.isDirectory && (
-            <>
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setContextMenu(null);
-                  void tagEntry(contextMenu.entry);
-                }}
-              >
-                <Tags size={16} />
-                {translate("preview.setTags")}
-              </button>
-              {(menuEntryIsDownscalableImage || menuEntryIsVideo || menuEntryIsSequenceImage) && (
-                <span className="context-menu-divider" />
-              )}
-              {menuEntryIsDownscalableImage && (
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setContextMenu(null);
-                    void downscaleEntry(contextMenu.entry);
-                  }}
-                >
-                  <Shrink size={16} />
-                  {translate("directory.downscaleEllipsis")}
-                </button>
-              )}
-              {(menuEntryIsExportableVideo || menuEntryIsSequenceImage) && (
-                <>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      const entry = contextMenu.entry;
-                      setContextMenu(null);
-                      // 序列图片带 sequenceGroup 选中，预览面板即以序列模式
-                      // 打开 GIF 工作台；视频沿用原工作台入口。
-                      const sequenceGroup = sequenceIndex.byPath.get(entry.path);
-                      store.selectDirectoryEntry(sequenceGroup ? { ...entry, sequenceGroup } : entry);
-                      window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
-                        detail: { path: entry.path, tool: "gif" },
-                      })), 0);
-                    }}
-                  >
-                    <Film size={16} />
-                    {translate("directory.gifWorkbench")}
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      const entry = contextMenu.entry;
-                      setContextMenu(null);
-                      void exportMp4Entry(entry);
-                    }}
-                  >
-                    <Download size={16} />
-                    {translate("directory.exportMp4")}
-                  </button>
-                  {menuEntryIsExportableVideo && (
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        const entry = contextMenu.entry;
-                        setContextMenu(null);
-                        store.selectDirectoryEntry(entry);
-                        window.setTimeout(() => window.dispatchEvent(new CustomEvent("refcanvas:directory-workbench", {
-                          detail: { path: entry.path, tool: "frames" },
-                        })), 0);
-                      }}
-                    >
-                      <Film size={16} />
-                      {translate("directory.exportFrames")}
-                    </button>
-                  )}
-                </>
-              )}
-              {registeredScripts.length > 0 && (
-                <>
-                  <span className="context-menu-divider" />
-                  <span className="context-menu-label">{translate("directory.runScript")}</span>
-                  {registeredScripts.map((script) => (
-                    <button
-                      role="menuitem"
-                      key={script.id}
-                      onClick={() => {
-                        const entry = contextMenu.entry;
-                        setContextMenu(null);
-                        void runScript(script, entry);
-                      }}
-                    >
-                      <TerminalSquare size={16} />
-                      {script.name}
-                    </button>
-                  ))}
-                </>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      {contextMenu && (
-        <div
-          className="context-menu-dismiss"
-          onClick={() => setContextMenu(null)}
+      {contextMenu && contextMenuFlags && (
+        <DirectoryContextMenu
+          menu={contextMenu}
+          menuRef={contextMenuRef}
+          flags={contextMenuFlags}
+          sequenceGroupFor={(path) => sequenceIndex.byPath.get(path)}
+          actions={contextMenuActions}
+          onClose={() => setContextMenu(null)}
         />
       )}
 
