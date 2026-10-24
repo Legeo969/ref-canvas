@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
   AssetPage,
-  AssetAnnotation,
   AssetRecord,
   AssetSearchInput,
   AssetSearchWindow,
@@ -19,7 +18,6 @@ import type {
   MountRoot,
   PlaybackState,
   ReconcileEntry,
-  SavedView,
   SelectionScope,
   TagGroupRecord,
   TagRecord,
@@ -62,28 +60,10 @@ export type {
   MigrationStep,
 } from "./repositories/migration-repository";
 
-interface AssetAnnotationRow {
-  id: string;
-  asset_id: string;
-  x: number;
-  y: number;
-  text: string;
-  created_at: string;
-  updated_at: string;
-}
-
 interface WatchRootRow {
   id: string;
   path: string;
   created_at: string;
-}
-
-interface SavedViewRow {
-  id: string;
-  title: string;
-  search_json: string;
-  created_at: string;
-  updated_at: string;
 }
 
 interface AutoTagRuleRow {
@@ -156,18 +136,6 @@ function visualSignatureParams(asset: NewAsset): {
     dominant_r: asset.dominantColor?.r ?? null,
     dominant_g: asset.dominantColor?.g ?? null,
     dominant_b: asset.dominantColor?.b ?? null,
-  };
-}
-
-function mapAssetAnnotation(row: AssetAnnotationRow): AssetAnnotation {
-  return {
-    id: row.id,
-    assetId: row.asset_id,
-    x: row.x,
-    y: row.y,
-    text: row.text,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
   };
 }
 
@@ -661,76 +629,6 @@ export class RefCanvasDatabase {
       id,
     );
     return this.getAsset(id)!;
-  }
-
-  listAssetAnnotations(assetId: string): AssetAnnotation[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM asset_annotations
-      WHERE asset_id = ? ORDER BY created_at, id
-    `).all(assetId) as AssetAnnotationRow[];
-    return rows.map(mapAssetAnnotation);
-  }
-
-  createAssetAnnotation(
-    assetId: string,
-    input: { x: number; y: number; text: string },
-  ): AssetAnnotation {
-    if (!this.getAsset(assetId)) throw new Error("ASSET_NOT_FOUND");
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO asset_annotations (
-        id, asset_id, x, y, text, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(id, assetId, input.x, input.y, input.text, now, now);
-    this.db.prepare(
-      "UPDATE assets SET updated_at = ? WHERE id = ?",
-    ).run(now, assetId);
-    return mapAssetAnnotation(
-      this.db.prepare(
-        "SELECT * FROM asset_annotations WHERE id = ?",
-      ).get(id) as AssetAnnotationRow,
-    );
-  }
-
-  updateAssetAnnotation(
-    id: string,
-    patch: { x?: number; y?: number; text?: string },
-  ): AssetAnnotation {
-    const current = this.db.prepare(
-      "SELECT * FROM asset_annotations WHERE id = ?",
-    ).get(id) as AssetAnnotationRow | undefined;
-    if (!current) throw new Error("ANNOTATION_NOT_FOUND");
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      UPDATE asset_annotations SET x = ?, y = ?, text = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      patch.x ?? current.x,
-      patch.y ?? current.y,
-      patch.text ?? current.text,
-      now,
-      id,
-    );
-    this.db.prepare(
-      "UPDATE assets SET updated_at = ? WHERE id = ?",
-    ).run(now, current.asset_id);
-    return mapAssetAnnotation(
-      this.db.prepare(
-        "SELECT * FROM asset_annotations WHERE id = ?",
-      ).get(id) as AssetAnnotationRow,
-    );
-  }
-
-  deleteAssetAnnotation(id: string): void {
-    const current = this.db.prepare(
-      "SELECT asset_id FROM asset_annotations WHERE id = ?",
-    ).get(id) as Pick<AssetAnnotationRow, "asset_id"> | undefined;
-    if (!current) throw new Error("ANNOTATION_NOT_FOUND");
-    this.db.prepare("DELETE FROM asset_annotations WHERE id = ?").run(id);
-    this.db.prepare(
-      "UPDATE assets SET updated_at = ? WHERE id = ?",
-    ).run(new Date().toISOString(), current.asset_id);
   }
 
   // --- Time-point media notes (video/audio) ---
@@ -1347,9 +1245,6 @@ export class RefCanvasDatabase {
         for (const tag of removed.tags) {
           if (!keep.tags.includes(tag)) keep.tags.push(tag);
         }
-        this.db.prepare(
-          "UPDATE asset_annotations SET asset_id = ? WHERE asset_id = ?",
-        ).run(keepId, removeId);
         this.updateAsset(keepId, {
           favorite: keep.favorite || removed.favorite,
           rating: Math.max(keep.rating, removed.rating),
@@ -2051,79 +1946,6 @@ export class RefCanvasDatabase {
       "UPDATE assets SET custom_thumbnail_path = ?, updated_at = ? WHERE id = ?",
     ).run(pathOrNull, new Date().toISOString(), id);
     return this.getAsset(id)!;
-  }
-
-  listSavedViews(): SavedView[] {
-    const rows = this.db.prepare(
-      "SELECT * FROM saved_views ORDER BY updated_at DESC",
-    ).all() as SavedViewRow[];
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      search: JSON.parse(row.search_json) as AssetSearchInput,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
-  }
-
-  saveView(title: string, search: AssetSearchInput): SavedView {
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO saved_views (id, title, search_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, title, JSON.stringify({ ...search, cursor: undefined }), now, now);
-    return { id, title, search: { ...search, cursor: undefined }, createdAt: now, updatedAt: now };
-  }
-
-  deleteSavedView(id: string): void {
-    this.db.prepare("DELETE FROM saved_views WHERE id = ?").run(id);
-  }
-
-  updateSavedView(
-    id: string,
-    patch: { title?: string; search?: AssetSearchInput },
-  ): SavedView {
-    const current = this.listSavedViews().find((view) => view.id === id);
-    if (!current) throw new Error("SAVED_VIEW_NOT_FOUND");
-    const title = patch.title ?? current.title;
-    const search = patch.search ?? current.search;
-    const now = new Date().toISOString();
-    this.db.prepare(`
-      UPDATE saved_views SET title = ?, search_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(title, JSON.stringify({ ...search, cursor: undefined }), now, id);
-    return {
-      id,
-      title,
-      search: { ...search, cursor: undefined },
-      createdAt: current.createdAt,
-      updatedAt: now,
-    };
-  }
-
-  duplicateSavedView(id: string): SavedView {
-    const current = this.listSavedViews().find((view) => view.id === id);
-    if (!current) throw new Error("SAVED_VIEW_NOT_FOUND");
-    const now = new Date().toISOString();
-    const newId = randomUUID();
-    this.db.prepare(`
-      INSERT INTO saved_views (id, title, search_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(
-      newId,
-      `${current.title} 副本`,
-      JSON.stringify({ ...current.search, cursor: undefined }),
-      now,
-      now,
-    );
-    return {
-      id: newId,
-      title: `${current.title} 副本`,
-      search: { ...current.search, cursor: undefined },
-      createdAt: now,
-      updatedAt: now,
-    };
   }
 
   getLibraryStats(): LibraryStats {

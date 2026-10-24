@@ -231,38 +231,6 @@ describe("RefCanvasDatabase", () => {
     expect(database.getAsset(first.id)?.title).toBe("A");
   });
 
-  it("persists spatial image annotations and includes their text in search", () => {
-    database = new RefCanvasDatabase(":memory:");
-    const asset = database.upsertAsset(createAsset()).asset;
-    const annotation = database.createAssetAnnotation(asset.id, {
-      x: 0.25,
-      y: 0.75,
-      text: "屋檐的青色反光",
-    });
-
-    expect(database.listAssetAnnotations(asset.id)).toEqual([annotation]);
-    expect(database.searchAssets({ query: "青色反光" }).items[0]?.id).toBe(
-      asset.id,
-    );
-
-    const updated = database.updateAssetAnnotation(annotation.id, {
-      text: "塔楼需要降低对比度",
-    });
-    expect(updated).toMatchObject({
-      x: 0.25,
-      y: 0.75,
-      text: "塔楼需要降低对比度",
-    });
-    expect(database.searchAssets({ query: "青色反光" }).items).toHaveLength(0);
-    expect(database.searchAssets({ query: "降低对比度" }).items[0]?.id).toBe(
-      asset.id,
-    );
-
-    database.deleteAssetAnnotation(annotation.id);
-    expect(database.listAssetAnnotations(asset.id)).toEqual([]);
-    expect(database.searchAssets({ query: "降低对比度" }).items).toHaveLength(0);
-  });
-
   it("combines file size, dimensions, and media duration filters", () => {
     database = new RefCanvasDatabase(":memory:");
     database.upsertAsset(
@@ -715,16 +683,4 @@ describe("RefCanvasDatabase", () => {
     ]);
   });
 
-  it("persists smart folders", () => {
-    database = new RefCanvasDatabase(":memory:");
-    const view = database.saveView("Large favorites", {
-      favorite: true,
-      minWidth: 2048,
-      sort: "rating",
-    });
-
-    expect(database.listSavedViews()).toEqual([view]);
-    database.deleteSavedView(view.id);
-    expect(database.listSavedViews()).toEqual([]);
-  });
 });

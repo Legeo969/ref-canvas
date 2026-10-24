@@ -8,7 +8,7 @@ import {
   restoreCollectionsV17,
 } from "./collection-restore-migrations";
 
-export const DATABASE_SCHEMA_VERSION = 22;
+export const DATABASE_SCHEMA_VERSION = 23;
 
 /**
  * Ordered migration model.
@@ -300,6 +300,23 @@ export const MIGRATIONS: readonly MigrationStep[] = [
       "Drops ai_jobs: the AI design supervisor was removed from the product, so its job history table is no longer read or written. v17/v21 stay untouched as migration history so existing databases keep advancing monotonically.",
     apply(db) {
       db.exec("DROP TABLE IF EXISTS ai_jobs");
+    },
+  },
+  {
+    version: 23,
+    id: "v23-drop-annotations-saved-views",
+    description:
+      "Drops asset_annotations (plus its FTS index and triggers) and saved_views: both features were removed from the product — the annotation dialog was never mounted and saved searches applied filters no view rendered. Earlier steps stay untouched as migration history so existing databases keep advancing monotonically.",
+    apply(db) {
+      db.exec(`
+        DROP TRIGGER IF EXISTS asset_annotations_ai;
+        DROP TRIGGER IF EXISTS asset_annotations_ad;
+        DROP TRIGGER IF EXISTS asset_annotations_au;
+        DROP TABLE IF EXISTS asset_annotations_fts;
+        DROP TABLE IF EXISTS asset_annotations;
+        DROP TABLE IF EXISTS saved_view_tags;
+        DROP TABLE IF EXISTS saved_views;
+      `);
     },
   },
 ];

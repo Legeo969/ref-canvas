@@ -213,34 +213,12 @@ export class AssetsRepository {
       const tokens = rawTokens
         .map((token) => `"${token.replaceAll('"', '""')}"*`);
       const ftsQuery = tokens.join(" AND ");
-      const annotationFallback = rawTokens
-        .map(
-          () => `EXISTS (
-            SELECT 1 FROM asset_annotations aal
-            WHERE aal.asset_id = a.id
-              AND LOWER(aal.text) LIKE LOWER(?) ESCAPE '\\'
-          )`,
-        )
-        .join(" AND ");
       clauses.push(`(
         a.rowid IN (
           SELECT rowid FROM assets_fts WHERE assets_fts MATCH ?
         )
-        OR a.id IN (
-          SELECT aa.asset_id
-          FROM asset_annotations aa
-          JOIN asset_annotations_fts aaf ON aaf.rowid = aa.rowid
-          WHERE asset_annotations_fts MATCH ?
-        )
-        OR (${annotationFallback})
       )`);
-      params.push(
-        ftsQuery,
-        ftsQuery,
-        ...rawTokens.map(
-          (token) => `%${token.replace(/[\\%_]/g, "\\$&")}%`,
-        ),
-      );
+      params.push(ftsQuery);
     }
     if (input.tag) {
       joins.push("JOIN asset_tags sat ON sat.asset_id = a.id");
@@ -290,9 +268,8 @@ export class AssetsRepository {
       params.push(`%${input.filenameContains.replace(/[\\%_]/g, "\\$&")}%`);
     }
     if (input.notesContains) {
-      clauses.push("(LOWER(a.notes) LIKE LOWER(?) ESCAPE '\\' OR EXISTS (SELECT 1 FROM asset_annotations an WHERE an.asset_id = a.id AND LOWER(an.text) LIKE LOWER(?) ESCAPE '\\') OR EXISTS (SELECT 1 FROM media_notes mn WHERE mn.asset_id = a.id AND LOWER(mn.text) LIKE LOWER(?) ESCAPE '\\'))");
+      clauses.push("(LOWER(a.notes) LIKE LOWER(?) ESCAPE '\\' OR EXISTS (SELECT 1 FROM media_notes mn WHERE mn.asset_id = a.id AND LOWER(mn.text) LIKE LOWER(?) ESCAPE '\\'))");
       params.push(
-        `%${input.notesContains.replace(/[\\%_]/g, "\\$&")}%`,
         `%${input.notesContains.replace(/[\\%_]/g, "\\$&")}%`,
         `%${input.notesContains.replace(/[\\%_]/g, "\\$&")}%`,
       );

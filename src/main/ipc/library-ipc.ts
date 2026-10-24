@@ -12,7 +12,6 @@ import {
   idSchema,
   idsSchema,
   pathsSchema,
-  searchObjectSchema,
   searchSchema,
   searchWindowSchema,
   selectionSchema,
@@ -92,32 +91,6 @@ export function registerLibraryIpc(
       .parse(patch);
     return database().updateAsset(idSchema.parse(id), parsedPatch);
   });
-  ipc.handle("library:list-annotations", (assetId) =>
-    database().listAssetAnnotations(idSchema.parse(assetId)),
-  );
-  ipc.handle("library:create-annotation", (assetId, input) =>
-    database().createAssetAnnotation(
-      idSchema.parse(assetId),
-      z.object({
-        x: z.number().finite().min(0).max(1),
-        y: z.number().finite().min(0).max(1),
-        text: z.string().trim().min(1).max(2_000),
-      }).parse(input),
-    ),
-  );
-  ipc.handle("library:update-annotation", (id, patch) =>
-    database().updateAssetAnnotation(
-      idSchema.parse(id),
-      z.object({
-        x: z.number().finite().min(0).max(1).optional(),
-        y: z.number().finite().min(0).max(1).optional(),
-        text: z.string().trim().min(1).max(2_000).optional(),
-      }).parse(patch),
-    ),
-  );
-  ipc.handle("library:delete-annotation", (id) =>
-    database().deleteAssetAnnotation(idSchema.parse(id)),
-  );
   ipc.handle("library:batch-update", (scope, patch) =>
     database().batchUpdatePaged(
       selectionSchema.parse(scope),
@@ -371,30 +344,6 @@ export function registerLibraryIpc(
   ipc.handle("library:delete-tag", (id) =>
     database().deleteTag(idSchema.parse(id)),
   );
-  ipc.handle("library:list-saved-views", () => database().listSavedViews());
-  ipc.handle("library:save-view", (title, search) =>
-    database().saveView(
-      z.string().trim().min(1).max(120).parse(title),
-      searchObjectSchema.parse(search),
-    ),
-  );
-  ipc.handle("library:update-saved-view", (id, patch) =>
-    database().updateSavedView(
-      idSchema.parse(id),
-      z
-        .object({
-          title: z.string().trim().min(1).max(120).optional(),
-          search: searchObjectSchema.optional(),
-        })
-        .parse(patch),
-    ),
-  );
-  ipc.handle("library:duplicate-saved-view", (id) =>
-    database().duplicateSavedView(idSchema.parse(id)),
-  );
-  ipc.handle("library:delete-saved-view", (id) => {
-    database().deleteSavedView(idSchema.parse(id));
-  });
   ipc.handle("library:list-duplicates", () => library().findDuplicates());
   ipc.handleWithEvent("library:merge-duplicates", async (event, keepId, removeIds) => {
     const parsedRemoveIds = idsSchema.parse(removeIds);

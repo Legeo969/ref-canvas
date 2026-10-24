@@ -65,14 +65,6 @@ const api: RefCanvasApi = {
       files.map((file) => webUtils.getPathForFile(file)).filter(Boolean),
     update: (id, patch) =>
       ipcRenderer.invoke("library:update", id, patch),
-    listAnnotations: (assetId) =>
-      ipcRenderer.invoke("library:list-annotations", assetId),
-    createAnnotation: (assetId, input) =>
-      ipcRenderer.invoke("library:create-annotation", assetId, input),
-    updateAnnotation: (id, patch) =>
-      ipcRenderer.invoke("library:update-annotation", id, patch),
-    deleteAnnotation: (id) =>
-      ipcRenderer.invoke("library:delete-annotation", id),
     batchUpdate: (scope, patch) =>
       ipcRenderer.invoke("library:batch-update", scope, patch),
     batchRename: (scope, pattern) =>
@@ -126,15 +118,6 @@ const api: RefCanvasApi = {
     getPreferences: () => ipcRenderer.invoke("library:get-preferences"),
     setPreferences: (prefs) =>
       ipcRenderer.invoke("library:set-preferences", prefs),
-    listSavedViews: () => ipcRenderer.invoke("library:list-saved-views"),
-    saveView: (title, search) =>
-      ipcRenderer.invoke("library:save-view", title, search),
-    updateSavedView: (id, patch) =>
-      ipcRenderer.invoke("library:update-saved-view", id, patch),
-    duplicateSavedView: (id) =>
-      ipcRenderer.invoke("library:duplicate-saved-view", id),
-    deleteSavedView: (id) =>
-      ipcRenderer.invoke("library:delete-saved-view", id),
     listDuplicates: () => ipcRenderer.invoke("library:list-duplicates"),
     mergeDuplicates: (keepId, removeIds) =>
       ipcRenderer.invoke("library:merge-duplicates", keepId, removeIds),

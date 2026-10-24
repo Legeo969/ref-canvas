@@ -84,16 +84,6 @@ export interface MediaPaletteColor {
   count: number;
 }
 
-export interface AssetAnnotation {
-  id: string;
-  assetId: string;
-  x: number;
-  y: number;
-  text: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface AssetSearchInput {
   query?: string;
   kind?: AssetKind | "all";
@@ -747,14 +737,6 @@ export interface TagGroupRecord {
   title: string;
   sortOrder: number;
   tagCount: number;
-}
-
-export interface SavedView {
-  id: string;
-  title: string;
-  search: AssetSearchInput;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface DuplicateGroup {
@@ -1591,16 +1573,6 @@ export interface RefCanvasApi {
         customFields?: Record<string, string>;
       },
     ): Promise<AssetRecord>;
-    listAnnotations(assetId: string): Promise<AssetAnnotation[]>;
-    createAnnotation(
-      assetId: string,
-      input: { x: number; y: number; text: string },
-    ): Promise<AssetAnnotation>;
-    updateAnnotation(
-      id: string,
-      patch: { x?: number; y?: number; text?: string },
-    ): Promise<AssetAnnotation>;
-    deleteAnnotation(id: string): Promise<void>;
     batchUpdate(scope: SelectionScope, patch: BatchAssetPatch): Promise<number>;
     batchRename(scope: SelectionScope, pattern: string): Promise<number>;
     trash(scope: SelectionScope): Promise<number>;
@@ -1646,14 +1618,6 @@ export interface RefCanvasApi {
     setCustomThumbnail(id: string, path: string | null): Promise<AssetRecord>;
     getPreferences(): Promise<LibraryPreferences>;
     setPreferences(prefs: Partial<LibraryPreferences>): Promise<LibraryPreferences>;
-    listSavedViews(): Promise<SavedView[]>;
-    saveView(title: string, search: AssetSearchInput): Promise<SavedView>;
-    updateSavedView(
-      id: string,
-      patch: { title?: string; search?: AssetSearchInput },
-    ): Promise<SavedView>;
-    duplicateSavedView(id: string): Promise<SavedView>;
-    deleteSavedView(id: string): Promise<void>;
     listDuplicates(): Promise<DuplicateGroup[]>;
     mergeDuplicates(keepId: string, removeIds: string[]): Promise<AssetRecord>;
     findSimilar(

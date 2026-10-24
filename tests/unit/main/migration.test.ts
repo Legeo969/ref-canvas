@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 describe("database migration", () => {
-  it("archives legacy collection data and restores it at schema 17 without losing saved searches", () => {
+  it("archives legacy collection data and restores it at schema 17", () => {
     const database = new Sqlite(":memory:");
     try {
       const v15 = runMigrationSteps(
@@ -38,16 +38,6 @@ describe("database migration", () => {
         MIGRATIONS.filter((step) => step.version <= 15),
       );
       expect(v15).toMatchObject({ completed: true, finalVersion: 15 });
-      database.prepare(`
-        INSERT INTO saved_views(id, title, search_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(
-        "saved-search-1",
-        "五星图片",
-        JSON.stringify({ kind: "image", ratingMin: 5 }),
-        "2026-08-05T00:00:00.000Z",
-        "2026-08-05T00:00:00.000Z",
-      );
       // v15 里放一份真实集合数据（含嵌套与条目），验证归档→恢复闭环。
       database.prepare(`
         INSERT INTO collections (id, title, parent_id, sort_order, lock_hash, created_at)
@@ -134,14 +124,6 @@ describe("database migration", () => {
       expect(
         database.prepare("SELECT COUNT(*) AS count FROM collection_items").get(),
       ).toEqual({ count: 1 });
-      expect(
-        database
-          .prepare("SELECT title, search_json FROM saved_views WHERE id = ?")
-          .get("saved-search-1"),
-      ).toEqual({
-        title: "五星图片",
-        search_json: JSON.stringify({ kind: "image", ratingMin: 5 }),
-      });
     } finally {
       database.close();
     }
@@ -229,12 +211,13 @@ describe("database migration", () => {
           "file_identities",
           "reconcile_queue",
         ]);
-        const annotationColumns = verification.pragma(
-          "table_info(asset_annotations)",
-        ) as Array<{ name: string }>;
-        expect(annotationColumns.map((column) => column.name)).toEqual(
-          expect.arrayContaining(["asset_id", "x", "y", "text"]),
-        );
+        // v23：标注/保存搜索表随功能移除而删除。
+        const droppedTables = verification
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('asset_annotations', 'asset_annotations_fts', 'saved_views', 'saved_view_tags')",
+          )
+          .all() as Array<{ name: string }>;
+        expect(droppedTables).toEqual([]);
       } finally {
         verification.close();
       }
