@@ -157,7 +157,7 @@ function streamInfo(raw: RawStream, index: number): FfprobeStreamInfo {
   };
 }
 
-export function parseFfprobeFullJson(output: string): FfprobeFullMetadata {
+function parseFfprobeFullJson(output: string): FfprobeFullMetadata {
   const document = JSON.parse(output) as RawDocument;
   const streams = (document.streams ?? []).map(streamInfo);
   const video = streams.find((stream) => stream.codecType === "video") ?? null;
@@ -178,6 +178,7 @@ export function parseFfprobeFullJson(output: string): FfprobeFullMetadata {
     formatTags: format.tags ?? {},
   };
 }
+
 
 /**
  * 运行 ffprobe 并返回完整 metadata。

@@ -15,7 +15,7 @@ function thumbnailUrlWithRetry(url: string, nonce: number): string {
  * 生成），避免「只出格式卡片、内容永远不显示」。仍失败则交给调用方保留
  * 可恢复的参考卡片。
  */
-export const BOARD_THUMBNAIL_RETRY_DELAYS_MS = [350, 900, 1800] as const;
+const BOARD_THUMBNAIL_RETRY_DELAYS_MS = [350, 900, 1800] as const;
 export async function loadThumbnailWithRetry<T>(
   thumbnailUrl: string,
   load: (url: string) => Promise<T>,

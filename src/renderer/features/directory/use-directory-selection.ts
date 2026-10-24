@@ -13,7 +13,7 @@ type DirectorySelectionAction =
   | { type: "all-matching" }
   | { type: "loaded"; paths: readonly string[] };
 
-export function directorySelectionReducer(
+function directorySelectionReducer(
   state: DirectorySelectionState,
   action: DirectorySelectionAction,
 ): DirectorySelectionState {

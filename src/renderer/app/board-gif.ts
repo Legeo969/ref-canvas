@@ -11,8 +11,8 @@ export interface GifState {
 }
 
 export const DEFAULT_GIF_STATE: GifState = { playing: true, frame: 0, rate: 1 };
-export const MIN_GIF_RATE = 0.25;
-export const MAX_GIF_RATE = 8;
+const MIN_GIF_RATE = 0.25;
+const MAX_GIF_RATE = 8;
 
 /** 按帧时长推进一帧：未到时间返回 null（停留当前帧），到时间返回下一帧索引（循环）。 */
 export function nextFrameIndex(
@@ -69,9 +69,6 @@ const ImageDecoderCtor = (
   }
 ).ImageDecoder;
 
-export function hasImageDecoder(): boolean {
-  return typeof ImageDecoderCtor === "function";
-}
 
 /**
  * GIF 循环播放器：解码全部帧后按帧时长 rAF 循环，把当前帧绘制到

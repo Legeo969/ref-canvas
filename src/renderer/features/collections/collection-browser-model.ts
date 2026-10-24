@@ -179,15 +179,6 @@ export function sortCollectionItems(
   });
 }
 
-export function folderItems(
-  tree: CollectionVirtualTree,
-  folderId: string,
-  itemsById: ReadonlyMap<string, ReferenceCollectionItem>,
-): ReferenceCollectionItem[] {
-  return (tree.folders.get(folderId)?.itemIds ?? [])
-    .map((id) => itemsById.get(id))
-    .filter((item): item is ReferenceCollectionItem => Boolean(item));
-}
 
 export function itemDisplayName(item: ReferenceCollectionItem): string {
   return itemName(item);
@@ -198,6 +189,3 @@ export function itemParentLabel(item: ReferenceCollectionItem): string {
   return segments.join("\\");
 }
 
-export function isAttentionState(state: CollectionItemState): boolean {
-  return attentionStates.has(state);
-}

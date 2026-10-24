@@ -9,7 +9,7 @@
  *   可靠参与序列导出的格式不列入。
  */
 
-export const EXPORT_VIDEO_EXTENSIONS = new Set([
+const EXPORT_VIDEO_EXTENSIONS = new Set([
   "mp4",
   "mov",
   "mkv",
@@ -22,7 +22,7 @@ export const EXPORT_VIDEO_EXTENSIONS = new Set([
   "mpeg",
 ]);
 
-export const EXPORT_IMAGE_EXTENSIONS = new Set([
+const EXPORT_IMAGE_EXTENSIONS = new Set([
   "png",
   "jpg",
   "jpeg",

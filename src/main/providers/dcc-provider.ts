@@ -36,7 +36,7 @@ const DCC_FORMATS: Record<string, string> = {
   hipnc: "Houdini 二进制：无本地 DCC provider",
 };
 
-export const DCC_PROVIDER_MANIFEST: ResourceProviderManifest = {
+const DCC_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "dcc-provider",
   version: "1.0.0",
   kinds: ["dcc"],

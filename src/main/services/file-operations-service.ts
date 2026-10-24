@@ -40,7 +40,7 @@ async function isSymbolic(filename: string): Promise<boolean> {
  *   防止允许根自身是逃逸链接。
  * - 对目录内每个中间段校验非符号链接（避免逐层逃逸）。
  */
-export async function assertWithinRoots(
+async function assertWithinRoots(
   filename: string,
   allowedRoots: string[],
 ): Promise<string> {

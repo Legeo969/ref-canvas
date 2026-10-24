@@ -1252,22 +1252,6 @@ export function registerResourcesIpc(
 
   // --- providers（计划 §6.1 / §13.4）---
 
-  ipc.handle("providers:list", () =>
-    dependencies.getProviderRegistry().list().map((manifest) => ({
-      id: manifest.id,
-      version: manifest.version,
-      kinds: manifest.kinds,
-      extensions: manifest.extensions,
-      capabilities: manifest.capabilities,
-      priority: manifest.priority,
-      runtime: manifest.runtime,
-    })),
-  );
-  ipc.handle("providers:health", (providerId) =>
-    dependencies
-      .getProviderRegistry()
-      .health(z.string().trim().min(1).max(128).parse(providerId)),
-  );
 }
 
 function thumbnailIdForPath(filename: string): string {

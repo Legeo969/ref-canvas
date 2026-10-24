@@ -2,10 +2,6 @@ import type { AssetKind } from "../../shared/contracts";
 import type {
   ProviderCapability,
   ProviderHealth,
-  ProviderMetadataInput,
-  ProviderMetadataResult,
-  ProviderPreviewInput,
-  ProviderPreviewResult,
   ProviderProbeInput,
   ProviderProbeResult,
   ProviderThumbnailInput,
@@ -203,18 +199,6 @@ export async function invokeProbe(
   return { result: value as ProviderProbeResult, meta };
 }
 
-export async function invokeMetadata(
-  registry: ProviderRegistry,
-  input: ProviderMetadataInput,
-): Promise<{ result: ProviderMetadataResult; meta: ProviderInvocationResult }> {
-  const { value, meta } = await registry.invoke(
-    input.kind,
-    input.extension,
-    "metadata",
-    (provider) => provider.metadata(input),
-  );
-  return { result: value as ProviderMetadataResult, meta };
-}
 
 export async function invokeThumbnail(
   registry: ProviderRegistry,
@@ -242,18 +226,6 @@ export async function invokeWaveform(
   return { result: value as ProviderWaveformResult, meta };
 }
 
-export async function invokePreview(
-  registry: ProviderRegistry,
-  input: ProviderPreviewInput,
-): Promise<{ result: ProviderPreviewResult; meta: ProviderInvocationResult }> {
-  const { value, meta } = await registry.invoke(
-    input.kind,
-    input.extension,
-    "preview",
-    (provider) => provider.preview(input),
-  );
-  return { result: value as ProviderPreviewResult, meta };
-}
 
 export async function invokeConvert(
   registry: ProviderRegistry,

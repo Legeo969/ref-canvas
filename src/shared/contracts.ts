@@ -1546,16 +1546,10 @@ export interface RefCanvasApi {
     revokePairing(id: string): Promise<void>;
   };
   library: {
-    search(input?: AssetSearchInput): Promise<AssetPage>;
     searchWindow(input: AssetSearchWindowInput): Promise<AssetSearchWindow>;
     get(id: string): Promise<AssetRecord | null>;
     getByPath(path: string): Promise<AssetRecord | null>;
-    pickAndImport(mode: "files" | "folder"): Promise<ImportJobSnapshot | null>;
     importPaths(paths: string[]): Promise<ImportJobSnapshot>;
-    startImport(paths: string[]): Promise<ImportJobSnapshot>;
-    getImportJob(id: string): Promise<ImportJobSnapshot | null>;
-    cancelImport(id: string): Promise<boolean>;
-    retryImport(id: string): Promise<ImportJobSnapshot>;
     onImportProgress(
       callback: (snapshot: ImportJobSnapshot) => void,
     ): () => void;
@@ -1573,39 +1567,13 @@ export interface RefCanvasApi {
         customFields?: Record<string, string>;
       },
     ): Promise<AssetRecord>;
-    batchUpdate(scope: SelectionScope, patch: BatchAssetPatch): Promise<number>;
-    batchRename(scope: SelectionScope, pattern: string): Promise<number>;
-    trash(scope: SelectionScope): Promise<number>;
     /**
      * Removes records from the library without touching `linked` source files;
      * managed copies are deleted with their records. Board-referenced assets
      * are kept as purged records so existing canvases keep loading.
      */
-    removeFromLibrary(scope: SelectionScope): Promise<number>;
-    restore(ids: string[]): Promise<number>;
-    purge(ids: string[]): Promise<number>;
     /** 清除回收站记录但保留实际文件。 */
-    forgetTrash(ids: string[]): Promise<number>;
-    listTrash(input?: AssetSearchInput): Promise<AssetPage>;
-    refreshLinks(): Promise<number>;
-    pickAndRelink(id: string): Promise<AssetRecord | null>;
-    searchAndRelink(id: string): Promise<RelinkResult | null>;
-    addWatchFolder(): Promise<WatchRoot | null>;
-    listWatchRoots(): Promise<WatchRoot[]>;
-    removeWatchRoot(id: string): Promise<WatchRoot>;
     setTags(assetId: string, tags: string[]): Promise<AssetRecord>;
-    listTags(): Promise<TagRecord[]>;
-    listTagGroups(): Promise<TagGroupRecord[]>;
-    createTagGroup(title: string): Promise<TagGroupRecord>;
-    renameTagGroup(id: string, title: string): Promise<TagGroupRecord>;
-    deleteTagGroup(id: string): Promise<void>;
-    moveTagToGroup(id: string, groupId: string | null): Promise<TagRecord>;
-    renameTag(id: string, name: string): Promise<TagRecord>;
-    updateTagMeta(
-      id: string,
-      patch: { name?: string; alias?: string | null; shortcutKey?: string | null },
-    ): Promise<TagRecord>;
-    deleteTag(id: string): Promise<void>;
     listAutoTagRules(): Promise<AutoTagRule[]>;
     createAutoTagRule(rule: Omit<AutoTagRule, "id" | "createdAt" | "updatedAt">): Promise<AutoTagRule>;
     updateAutoTagRule(id: string, patch: Partial<Omit<AutoTagRule, "id" | "createdAt" | "updatedAt">>): Promise<AutoTagRule>;
@@ -1615,16 +1583,12 @@ export interface RefCanvasApi {
     ): Promise<AutoTagRulePreview>;
     /** Applies all enabled rules to every active asset; returns tagged count. */
     applyAutoTagRules(): Promise<number>;
-    setCustomThumbnail(id: string, path: string | null): Promise<AssetRecord>;
     getPreferences(): Promise<LibraryPreferences>;
     setPreferences(prefs: Partial<LibraryPreferences>): Promise<LibraryPreferences>;
-    listDuplicates(): Promise<DuplicateGroup[]>;
-    mergeDuplicates(keepId: string, removeIds: string[]): Promise<AssetRecord>;
     findSimilar(
       id: string,
       options?: { limit?: number; minScore?: number },
     ): Promise<SimilarAsset[]>;
-    startSimilarityIndex(): Promise<SimilarityIndexSnapshot>;
     getSimilarityIndex(): Promise<SimilarityIndexSnapshot>;
     cancelSimilarityIndex(): Promise<boolean>;
     onSimilarityProgress(
@@ -1636,8 +1600,6 @@ export interface RefCanvasApi {
     onMediaMetadataProgress(
       callback: (snapshot: MediaMetadataSnapshot) => void,
     ): () => void;
-    references(id: string): Promise<AssetReference[]>;
-    migratePaths(fromRoot: string, toRoot: string): Promise<PathMigrationReport>;
     /**
      * SPEC-2：导出整个库为 `.refcanvas-bundle`（db 快照 + 缩略图 + bundle.json）。
      * 打开目录选择器；取消返回 null。
@@ -1668,7 +1630,6 @@ export interface RefCanvasApi {
       rules: Array<{ from: string; to: string }>;
       requiresRestart: boolean;
     }>;
-    stats(): Promise<LibraryStats>;
   };
   libraries: {
     /** Managed preflight（§13.3）：统计 managed records 与 store 文件。 */
@@ -1822,10 +1783,6 @@ export interface RefCanvasApi {
     /** 图片序列导出循环 GIF。 */
     exportGif(request: ExportGifRequest): Promise<ExportGifResult>;
   };
-  providers: {
-    list(): Promise<ProviderManifestInfo[]>;
-    health(providerId: string): Promise<ProviderHealthInfo>;
-  };
   /** 统一任务中心（FND-007 §8.3）：聚合导入/批处理/转换/导出/归档。 */
   tasks: {
     list(limit?: number): Promise<TaskSnapshot[]>;
@@ -1862,13 +1819,6 @@ export interface RefCanvasApi {
     }): Promise<RegisteredScript>;
     unregister(id: string): Promise<void>;
     run(request: { id: string; cwd: string }): Promise<ScriptRunResult>;
-  };
-  watchRoots: {
-    /** Full reconciliation of watched roots against the identity index. */
-    reconcile(rootId?: string | null): Promise<ReconcileReport>;
-    getReport(): Promise<ReconcileSnapshot>;
-    /** User confirmation for an ambiguous move; relinks the chosen record. */
-    resolveConflict(entryId: string, assetId: string): Promise<AssetRecord>;
   };
   filesystem: {
     /** Windows C:–Z: 根目录；只探测可访问性，不递归扫描。 */

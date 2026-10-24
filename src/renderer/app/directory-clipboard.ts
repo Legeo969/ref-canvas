@@ -38,6 +38,3 @@ export function setDirectoryClipboard(next: DirectoryClipboard | null): void {
   for (const listener of listeners) listener(clipboard);
 }
 
-export function clearDirectoryClipboard(): void {
-  setDirectoryClipboard(null);
-}

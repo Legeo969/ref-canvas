@@ -101,7 +101,7 @@ export const browserImageExtensions = new Set([
  *   加 -compression 参数再放开）；
  * - 不含 tga/heic/heif/jxl/jxr/相机 RAW/psd/dds：打包 ffmpeg 无对应解码/编码器。
  */
-export const downscalableImageExtensions = new Set([
+const downscalableImageExtensions = new Set([
   "jpg",
   "jpeg",
   "png",

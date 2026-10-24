@@ -48,6 +48,7 @@ const EMPTY: GeometryStats = {
   boundingBox: null,
 };
 
+
 function boxFromAccessor(
   accessor: { min?: number[]; max?: number[] } | undefined,
 ): GeometryStats["boundingBox"] {
@@ -141,6 +142,7 @@ export function statsFromGltfJson(
     boundingBox,
   };
 }
+
 
 /** GLB 二进制容器：解析 12 字节头 + JSON chunk。 */
 export async function statsFromGlb(filename: string): Promise<GeometryStats> {

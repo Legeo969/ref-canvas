@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
-import path from "node:path";
+import { existsSync, rmSync } from "node:fs";
 
 /**
  * Result of reconciling a cache database before opening it in-process.
@@ -77,7 +76,3 @@ export function reconcileCacheDatabase(
   }
 }
 
-/** Create the parent directory for a cache database if it does not exist yet. */
-export function ensureCacheDirectory(filename: string): void {
-  mkdirSync(path.dirname(filename), { recursive: true });
-}

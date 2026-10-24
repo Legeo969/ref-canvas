@@ -52,7 +52,7 @@ const OFFICE_EXTENSIONS: Record<string, string> = {
 
 const READABLE_OFFICE_EXTENSIONS = new Set(["docx", "xlsx", "pptx"]);
 
-export const DOCUMENT_PROVIDER_MANIFEST: ResourceProviderManifest = {
+const DOCUMENT_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "document-provider",
   version: "1.0.0",
   kinds: ["generic", "pdf"],
@@ -227,7 +227,7 @@ export class DocumentProvider implements ResourceProvider {
 }
 
 /** 文本卡片 SVG 缩略图：首行 + 行数/字符数。 */
-export function textCardSvg(
+function textCardSvg(
   sample: TextSample | null,
   width: number,
   height: number,

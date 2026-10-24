@@ -250,7 +250,7 @@ export class ImageProvider implements ResourceProvider {
 }
 
 /** 用 sharp 读图片 metadata（失败返回 null）。 */
-export async function readSharpMetadata(
+async function readSharpMetadata(
   filename: string,
 ): Promise<{
   width: number | null;

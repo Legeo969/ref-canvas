@@ -28,7 +28,7 @@ import { parseFontFile } from "../services/media/sfnt";
  * 渲染为 PNG（浏览器样张由 renderer 用 FontFace 加载真实字体）。
  */
 
-export const FONT_PROVIDER_MANIFEST: ResourceProviderManifest = {
+const FONT_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "font-provider",
   version: "1.0.0",
   kinds: ["font"],
@@ -153,7 +153,7 @@ function flavorLabel(flavor: string | null): string {
 }
 
 /** 字体样张 SVG（占位缩略图；真实字形样张在 renderer 用 FontFace）。 */
-export function fontSpecimenSvg(
+function fontSpecimenSvg(
   info: Awaited<ReturnType<typeof parseFontFile>>,
   width: number,
   height: number,

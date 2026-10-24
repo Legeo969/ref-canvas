@@ -22,7 +22,7 @@ import type {
  * 纯 Node 实现，提供基础文件信息（probe/metadata）。不做 thumbnail /
  * preview / convert —— 不支持的能力在 manifest 中缺省，不伪装支持。
  */
-export const GENERIC_PROVIDER_MANIFEST: ResourceProviderManifest = {
+const GENERIC_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "generic-provider",
   version: "1.0.0",
   kinds: ["image", "video", "audio", "pdf", "model3d", "dcc", "font", "generic"],

@@ -25,12 +25,12 @@ export interface InspectorMetrics {
 }
 
 /** 展示/编辑用的像素尺寸下限与透明度范围。 */
-export const MIN_DIMENSION = 0.5;
-export const MAX_DIMENSION = 100_000;
-export const MIN_OPACITY = 0.02;
-export const MAX_OPACITY = 1;
+const MIN_DIMENSION = 0.5;
+const MAX_DIMENSION = 100_000;
+const MIN_OPACITY = 0.02;
+const MAX_OPACITY = 1;
 
-export const roundMetric = (value: number): number =>
+const roundMetric = (value: number): number =>
   Math.round(value * 10) / 10;
 
 /** fabric 对象 → 表单数值（宽高 = 原始尺寸 × 缩放，取一位小数）。 */

@@ -117,7 +117,7 @@ async function walk(root: string, signal?: AbortSignal): Promise<string[]> {
  * character), case-insensitive. Used by offline auto-tag rules against file
  * names. Characters are translated one by one so `*`/`?` are never escaped.
  */
-export function globMatch(pattern: string, value: string): boolean {
+function globMatch(pattern: string, value: string): boolean {
   const source = value.toLocaleLowerCase("en-US");
   let regex = "^";
   for (const character of pattern.toLocaleLowerCase("en-US")) {

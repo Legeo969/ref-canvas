@@ -18,7 +18,7 @@ export interface WaveformData {
 }
 
 /** 渲染端波形图默认点数（宽 1200 的 2x 图）。 */
-export const WAVEFORM_MAX_POINTS = 2400;
+const WAVEFORM_MAX_POINTS = 2400;
 /** 采样率：8kHz（峰值聚合，不需高保真）。 */
 const SAMPLE_RATE = 8000;
 /** 每桶 64ms = 512 样本。 */
@@ -120,7 +120,7 @@ function maxOf(values: number[]): number {
 }
 
 /** 把 N 桶等比归并到最多 maxPoints 桶（取区间峰值）。 */
-export function mergeBuckets(buckets: number[], maxPoints: number): number[] {
+function mergeBuckets(buckets: number[], maxPoints: number): number[] {
   if (buckets.length <= maxPoints) return buckets;
   const factor = buckets.length / maxPoints;
   const merged: number[] = [];

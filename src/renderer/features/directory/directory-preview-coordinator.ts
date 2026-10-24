@@ -76,7 +76,7 @@ export class DirectoryPreviewCoordinator {
   }
 }
 
-export function resolveDirectoryPreview(
+function resolveDirectoryPreview(
   entries: readonly DirectoryEntry[],
   previewPath: string | null,
 ): DirectoryEntry | null {

@@ -23,7 +23,7 @@ export const PANEL_LIMITS: Record<PanelId, { min: number; max: number }> = {
 /** 白板始终至少保留的宽度。 */
 export const BOARD_MIN_WIDTH = 360;
 
-export const PANEL_ID_LIST: readonly PanelId[] = ["sidebar", "asset", "details"];
+const PANEL_ID_LIST: readonly PanelId[] = ["sidebar", "asset", "details"];
 
 export const DIRECTORY_PANEL_IDS: readonly PanelId[] = ["sidebar", "details"];
 export const BOARD_PANEL_IDS: readonly PanelId[] = ["sidebar"];

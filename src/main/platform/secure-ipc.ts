@@ -54,7 +54,7 @@ export class SecureIpcRegistrar {
   }
 }
 
-export function registerSecureHandle<TArgs extends unknown[], TResult>(
+function registerSecureHandle<TArgs extends unknown[], TResult>(
   validateSender: IpcSenderValidator,
   channel: string,
   handler: (...args: TArgs) => TResult | Promise<TResult>,
@@ -67,7 +67,7 @@ export function registerSecureHandle<TArgs extends unknown[], TResult>(
   });
 }
 
-export function registerSecureHandleWithEvent<
+function registerSecureHandleWithEvent<
   TArgs extends unknown[],
   TResult,
 >(

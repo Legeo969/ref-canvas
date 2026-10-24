@@ -29,22 +29,11 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("browser-capture:revoke-pairing", id),
   },
   library: {
-    search: (input) => ipcRenderer.invoke("library:search", input),
     searchWindow: (input) => ipcRenderer.invoke("library:search-window", input),
     get: (id) => ipcRenderer.invoke("library:get", id),
     getByPath: (path) => ipcRenderer.invoke("library:get-by-path", path),
-    pickAndImport: (mode) =>
-      ipcRenderer.invoke("library:pick-import", mode),
     importPaths: (paths) =>
       ipcRenderer.invoke("library:import-paths", paths),
-    startImport: (paths) =>
-      ipcRenderer.invoke("library:start-import", paths),
-    getImportJob: (id) =>
-      ipcRenderer.invoke("library:get-import-job", id),
-    cancelImport: (id) =>
-      ipcRenderer.invoke("library:cancel-import", id),
-    retryImport: (id) =>
-      ipcRenderer.invoke("library:retry-import", id),
     onImportProgress: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
@@ -65,42 +54,8 @@ const api: RefCanvasApi = {
       files.map((file) => webUtils.getPathForFile(file)).filter(Boolean),
     update: (id, patch) =>
       ipcRenderer.invoke("library:update", id, patch),
-    batchUpdate: (scope, patch) =>
-      ipcRenderer.invoke("library:batch-update", scope, patch),
-    batchRename: (scope, pattern) =>
-      ipcRenderer.invoke("library:batch-rename", scope, pattern),
-    trash: (scope) => ipcRenderer.invoke("library:trash", scope),
-    removeFromLibrary: (scope) =>
-      ipcRenderer.invoke("library:remove-from-library", scope),
-    restore: (ids) => ipcRenderer.invoke("library:restore", ids),
-    purge: (ids) => ipcRenderer.invoke("library:purge", ids),
-    forgetTrash: (ids) => ipcRenderer.invoke("library:forget-trash", ids),
-    listTrash: (input) => ipcRenderer.invoke("library:list-trash", input),
-    refreshLinks: () => ipcRenderer.invoke("library:refresh-links"),
-    pickAndRelink: (id) => ipcRenderer.invoke("library:pick-relink", id),
-    searchAndRelink: (id) =>
-      ipcRenderer.invoke("library:search-relink", id),
-    addWatchFolder: () => ipcRenderer.invoke("library:add-watch-folder"),
-    listWatchRoots: () => ipcRenderer.invoke("library:list-watch-roots"),
-    removeWatchRoot: (id) =>
-      ipcRenderer.invoke("library:remove-watch-root", id),
     setTags: (assetId, tags) =>
       ipcRenderer.invoke("library:set-tags", assetId, tags),
-    listTags: () => ipcRenderer.invoke("library:list-tags"),
-    listTagGroups: () => ipcRenderer.invoke("library:list-tag-groups"),
-    createTagGroup: (title) =>
-      ipcRenderer.invoke("library:create-tag-group", title),
-    renameTagGroup: (id, title) =>
-      ipcRenderer.invoke("library:rename-tag-group", id, title),
-    deleteTagGroup: (id) =>
-      ipcRenderer.invoke("library:delete-tag-group", id),
-    moveTagToGroup: (id, groupId) =>
-      ipcRenderer.invoke("library:move-tag-to-group", id, groupId),
-    renameTag: (id, name) =>
-      ipcRenderer.invoke("library:rename-tag", id, name),
-    updateTagMeta: (id, patch) =>
-      ipcRenderer.invoke("library:update-tag-meta", id, patch),
-    deleteTag: (id) => ipcRenderer.invoke("library:delete-tag", id),
     listAutoTagRules: () =>
       ipcRenderer.invoke("library:list-auto-tag-rules"),
     createAutoTagRule: (rule) =>
@@ -113,18 +68,11 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("library:preview-auto-tag-rule", rule),
     applyAutoTagRules: () =>
       ipcRenderer.invoke("library:apply-auto-tag-rules"),
-    setCustomThumbnail: (id, path) =>
-      ipcRenderer.invoke("library:set-custom-thumbnail", id, path),
     getPreferences: () => ipcRenderer.invoke("library:get-preferences"),
     setPreferences: (prefs) =>
       ipcRenderer.invoke("library:set-preferences", prefs),
-    listDuplicates: () => ipcRenderer.invoke("library:list-duplicates"),
-    mergeDuplicates: (keepId, removeIds) =>
-      ipcRenderer.invoke("library:merge-duplicates", keepId, removeIds),
     findSimilar: (id, options) =>
       ipcRenderer.invoke("library:find-similar", id, options),
-    startSimilarityIndex: () =>
-      ipcRenderer.invoke("library:start-similarity-index"),
     getSimilarityIndex: () =>
       ipcRenderer.invoke("library:get-similarity-index"),
     cancelSimilarityIndex: () =>
@@ -152,13 +100,9 @@ const api: RefCanvasApi = {
       return () =>
         ipcRenderer.off("library:media-metadata-progress", listener);
     },
-    references: (id) => ipcRenderer.invoke("library:references", id),
-    migratePaths: (fromRoot, toRoot) =>
-      ipcRenderer.invoke("library:migrate-paths", fromRoot, toRoot),
     exportBundle: () => ipcRenderer.invoke("library:export-bundle"),
     importBundle: (options) =>
       ipcRenderer.invoke("library:import-bundle", options),
-    stats: () => ipcRenderer.invoke("library:stats"),
   },
   libraries: {
     managedPreflight: () => ipcRenderer.invoke("libraries:managed-preflight"),
@@ -272,11 +216,6 @@ const api: RefCanvasApi = {
     exportMp4: (request) => ipcRenderer.invoke("sequences:exportMp4", request),
     exportGif: (request) => ipcRenderer.invoke("sequences:exportGif", request),
   },
-  providers: {
-    list: () => ipcRenderer.invoke("providers:list"),
-    health: (providerId) =>
-      ipcRenderer.invoke("providers:health", providerId),
-  },
   color: {
     getStatus: () => ipcRenderer.invoke("color:get-status"),
     sampleImage: (request: { assetId: string; u: number; v: number }) =>
@@ -288,13 +227,6 @@ const api: RefCanvasApi = {
     register: (request) => ipcRenderer.invoke("scripts:register", request),
     unregister: (id) => ipcRenderer.invoke("scripts:unregister", id),
     run: (request) => ipcRenderer.invoke("scripts:run", request),
-  },
-  watchRoots: {
-    reconcile: (rootId) =>
-      ipcRenderer.invoke("watch-roots:reconcile", rootId),
-    getReport: () => ipcRenderer.invoke("watch-roots:get-report"),
-    resolveConflict: (entryId, assetId) =>
-      ipcRenderer.invoke("watch-roots:resolve-conflict", entryId, assetId),
   },
   filesystem: {
     listRoots: () => ipcRenderer.invoke("filesystem:list-roots"),

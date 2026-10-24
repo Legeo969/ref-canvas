@@ -101,7 +101,7 @@ export async function readMediaMetadata(
  * onset-energy autocorrelation. Compressed formats (and anything unreadable)
  * simply return null — no online analysis is ever used.
  */
-export async function estimateBpm(
+async function estimateBpm(
   filename: string,
 ): Promise<number | null> {
   if (!filename.toLowerCase().endsWith(".wav")) return null;

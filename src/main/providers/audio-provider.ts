@@ -38,7 +38,7 @@ const execFileAsync = promisify(execFile);
  * - waveform：流式峰值（media.waveform，8kHz s16le）。
  */
 
-export const AUDIO_PROVIDER_MANIFEST: ResourceProviderManifest = {
+const AUDIO_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "audio-provider",
   version: "1.0.0",
   kinds: ["audio"],
@@ -192,7 +192,7 @@ export class AudioProvider implements ResourceProvider {
 }
 
 /** 波形 SVG 样张：深色底 + 峰值柱状 + 音频徽标。 */
-export function waveformSvg(
+function waveformSvg(
   peaks: number[],
   width: number,
   height: number,

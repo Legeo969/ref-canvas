@@ -179,7 +179,7 @@ function objectId(object: BoardCanvasObject | undefined): string | null {
   return object?.data?.objectId ?? null;
 }
 
-export function boardDocumentRevision(document: BoardDocumentV3): string {
+function boardDocumentRevision(document: BoardDocumentV3): string {
   return JSON.stringify({
     canvas: document.canvas,
     viewport: document.viewport,
