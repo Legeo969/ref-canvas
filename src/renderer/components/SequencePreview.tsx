@@ -553,7 +553,6 @@ export function SequencePreviewDialog({
     setVolume: () => undefined,
     startScrub: undefined,
     stopScrub: undefined,
-    exportGif: () => void exportGif(),
   });
 
   /** 长按 ←/→ 加速的按住状态（方向 + 起始时刻）；keyup/blur/卸载清除。 */

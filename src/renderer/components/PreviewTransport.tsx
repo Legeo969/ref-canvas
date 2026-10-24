@@ -35,7 +35,6 @@ export interface PreviewTransportActions {
   startScrub?(direction: 1 | -1): void;
   /** 长按扫览：结束并可选定格到最终精确帧。 */
   stopScrub?(finalize: boolean): void;
-  exportGif?(): void;
 }
 
 interface PreviewTransportState {
@@ -143,7 +142,6 @@ export function usePreviewTransportRegistration(
       setVolume: (value) => actionsRef.current.setVolume(value),
       startScrub: (direction) => actionsRef.current.startScrub?.(direction),
       stopScrub: (finalize) => actionsRef.current.stopScrub?.(finalize),
-      exportGif: () => actionsRef.current.exportGif?.(),
     };
   }
   const snapshotKey = previewTransportSnapshotKey(snapshot);

@@ -17,11 +17,6 @@ interface DirectoryQuickPreviewProps {
   files: DirectoryEntry[];
   query: string;
   onNavigate(delta: number): void;
-  onOpen(entry: DirectoryEntry): void;
-  onReveal(entry: DirectoryEntry): void;
-  onCopyPath(entry: DirectoryEntry): void;
-  onTag(entry: DirectoryEntry): void;
-  onTrash(entry: DirectoryEntry): void;
   onClose(): void;
 }
 

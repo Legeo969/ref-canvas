@@ -84,33 +84,6 @@ describe("PreviewPanel smoke", () => {
     });
 
     expect(host.querySelector(".preview-panel")).toBeTruthy();
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')).toBeTruthy();
-  });
-
-  it("renders the Preview tab bar with only the Preview tab", async () => {
-    Object.assign(window, {
-      refCanvas: {
-        metadata: { ensure: vi.fn(async () => ({ asset: null })) },
-        media: { probe: vi.fn() },
-        filesystem: { open: vi.fn(), reveal: vi.fn() },
-        system: { getPreferences: vi.fn(async () => ({ previewSettings: PREVIEW_SETTINGS_DEFAULTS })) },
-      } as unknown as RefCanvasApi,
-    });
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-
-    await act(async () => {
-      root.render(<PreviewPanel entry={entry} />);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    const tabs = host.querySelectorAll('[role="tab"]');
-    // 预览面板旁只保留预览 tab。
-    expect(tabs.length).toBe(1);
-    expect(tabs[0]?.textContent).toContain("预览");
   });
 
   it("shows empty state when no asset is loaded", async () => {
@@ -160,7 +133,6 @@ describe("PreviewPanel smoke", () => {
     });
     const panel = host.querySelector(".preview-panel");
     expect(panel?.classList.contains("preview-session-focused")).toBe(true);
-    expect(panel?.querySelector(".preview-tab-bar [role='tab']")).toBeTruthy();
     expect(panel?.querySelector('[aria-label="退出聚焦预览"]')).toBeTruthy();
   });
 

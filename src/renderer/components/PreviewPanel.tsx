@@ -1,5 +1,4 @@
 import {
-  Eye,
   FolderOpen,
   LoaderCircle,
   ScanSearch,
@@ -42,7 +41,6 @@ import {
 
 type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "rate" | "notes" | "lut";
 type WorkbenchCommand = WorkbenchTool | "color";
-type PreviewTab = "preview";
 
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
 
@@ -58,7 +56,6 @@ const FULLSCREEN_CONTROLS_SELECTOR = ".preview-workspace, .preview-session-foote
 function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const previewSettings = usePreviewSettings();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
-  const [mode, setMode] = useState<PreviewTab>("preview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [tool, setTool] = useState<WorkbenchTool>("preview");
@@ -225,10 +222,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   }, [eyedropActive]);
 
   useEffect(() => {
-    window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
-  }, [mode]);
-
-  useEffect(() => {
     if (!asset || asset.kind !== "video") return;
     let cancelled = false;
     void window.refCanvas.media.probe(asset.path)
@@ -279,7 +272,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const toolbarVariant = previewKind && ["image", "svg", "gif", "video", "sequence"].includes(previewKind)
     ? previewKind as PreviewToolbarVariant
     : null;
-  const isPreview = mode === "preview";
 
   const loadCurrentPalette = async () => {
     if (!asset) return;
@@ -383,22 +375,8 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         elementRef={previewSession.rootRef}
         focused={previewSession.focused}
         fullscreen={previewSession.fullscreen}
-        className={`preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
+        className={`preview-panel details-panel directory-details-panel directory-workbench-panel${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
       >
-        {/* Preview tab bar：素材预览是唯一模式，操作入口在工具栏。 */}
-        <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
-          <button
-            role="tab"
-            aria-selected={isPreview}
-            className={isPreview ? "active" : ""}
-            onClick={() => setMode("preview")}
-          >
-            <Eye size={13} />
-            {translate("preview.tab.preview")}
-          </button>
-          <span className="preview-toolbar-spacer" />
-        </header>
-
         <div className="preview-content">
           <div className="preview-canvas-area">
             <PreviewEmptyState />
@@ -417,19 +395,9 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       elementRef={previewSession.rootRef}
       focused={previewSession.focused}
       fullscreen={previewSession.fullscreen}
-      className={`preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""} mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
+      className={`preview-panel details-panel directory-details-panel directory-workbench-panel ${tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
     >
-      {/* Preview tab bar：此处仅保留预览。 */}
-      <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
-        <button
-          role="tab"
-          aria-selected={isPreview}
-          className={isPreview ? "active" : ""}
-          onClick={() => { setMode("preview"); setTool("preview"); }}
-        >
-          <Eye size={13} />
-          {translate("preview.tab.preview")}
-        </button>
+      <header className="preview-tab-bar" aria-label={translate("preview.panelLabel")}>
         <span className="preview-toolbar-spacer" />
         <div className="workbench-file-actions">
           <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
@@ -443,8 +411,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
 
       {/* Content area */}
       <div className="preview-content">
-        {isPreview && (
-          <>
+        <>
             {/* Loading / error states */}
             {loading && (
               <div className="preview-canvas-area">
@@ -705,9 +672,8 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
               </div>
             )}
           </>
-        )}
       </div>
-      {isPreview && !hasContent && (
+      {!hasContent && (
         <div className="preview-session-footer">
           <PreviewSessionModeButtons
             focused={previewSession.focused}

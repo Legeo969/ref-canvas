@@ -29,10 +29,10 @@ export function PreviewColorTools({ settings }: PreviewColorToolsProps) {
         <span className="lut-radio" aria-hidden="true" />
         {translate("preview.none")}
       </button>
-      {activeLut && <button type="button" className="active current-lut" title={activeLut} onClick={() => undefined}>
+      {activeLut && <span className="active current-lut" title={activeLut}>
         <span className="lut-radio" aria-hidden="true" />
         {activeLut.split(/[\\/]/).pop()}
-      </button>}
+      </span>}
       <button type="button" aria-label={translate("preview.importLut")} onClick={() => void importLut()}>{translate("preview.addLut")}</button>
     </section>
   );

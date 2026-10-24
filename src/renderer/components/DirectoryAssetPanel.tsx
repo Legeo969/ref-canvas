@@ -3791,22 +3791,6 @@ export function DirectoryAssetPanel() {
           files={files}
           query={query}
           onNavigate={navigatePreview}
-          onOpen={(entry) => {
-            void window.refCanvas.filesystem.open(entry.path);
-            closePreview();
-          }}
-          onReveal={(entry) => {
-            void window.refCanvas.filesystem.reveal(entry.path);
-          }}
-          onCopyPath={(entry) => {
-            void window.refCanvas.system.writeClipboard(entry.path);
-          }}
-          onTag={(entry) => {
-            void tagEntry(entry);
-          }}
-          onTrash={(entry) => {
-            void trashEntry(entry);
-          }}
           onClose={closePreview}
         />
       )}

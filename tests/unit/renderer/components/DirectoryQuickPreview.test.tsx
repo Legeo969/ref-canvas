@@ -62,11 +62,6 @@ describe("DirectoryQuickPreview", () => {
           files={handlers.files ?? [entry]}
           query=""
           onNavigate={handlers.onNavigate ?? vi.fn()}
-          onOpen={vi.fn()}
-          onReveal={vi.fn()}
-          onCopyPath={vi.fn()}
-          onTag={vi.fn()}
-          onTrash={vi.fn()}
           onClose={handlers.onClose ?? vi.fn()}
         />,
       );
@@ -112,11 +107,6 @@ describe("DirectoryQuickPreview", () => {
           files={[entry]}
           query=""
           onNavigate={vi.fn()}
-          onOpen={vi.fn()}
-          onReveal={vi.fn()}
-          onCopyPath={vi.fn()}
-          onTag={vi.fn()}
-          onTrash={vi.fn()}
           onClose={vi.fn()}
         />,
       );
