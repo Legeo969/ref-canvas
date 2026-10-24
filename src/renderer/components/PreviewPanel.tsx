@@ -22,7 +22,6 @@ import { PreviewToolbar } from "./PreviewToolbar";
 import { AssetNotesPanel } from "./AssetNotesPanel";
 import { PreviewColorTools } from "./PreviewColorTools";
 import { PreviewEmptyState } from "./PreviewEmptyState";
-import { PreviewLayersPanel } from "./PreviewLayersPanel";
 import { SequencePreviewDialog } from "./SequencePreview";
 import {
   PreviewTransportProvider,
@@ -48,7 +47,7 @@ type PreviewTab = "preview";
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
 
 /** 全屏下指针停在这些控件上时，控制栏不自动隐藏。 */
-const FULLSCREEN_CONTROLS_SELECTOR = ".preview-workspace, .preview-session-footer, .preview-layers-panel, .preview-lut-anchor-menu, .preview-rate-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu";
+const FULLSCREEN_CONTROLS_SELECTOR = ".preview-workspace, .preview-session-footer, .preview-lut-anchor-menu, .preview-rate-anchor-menu, .hdr-exposure-anchor-menu, .hdr-ocio-anchor-menu, .hdr-channel-anchor-menu, .sequence-inline-menu";
 
 /**
  * Preview-style right preview panel — 1:1 spec skeleton (§1 structure).
@@ -470,7 +469,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                   renderer={previewRendererKind(asset)}
                   className="workbench-preview-shell preview-viewport"
                 >
-                  {previewKind === "svg" && <PreviewLayersPanel />}
                   {previewKind === "sequence" && entry.sequenceGroup ? (
                     <SequencePreviewDialog
                       key={entry.sequenceGroup.id}

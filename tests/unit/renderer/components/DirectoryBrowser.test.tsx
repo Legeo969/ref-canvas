@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LibraryChangedEvent } from "../../../../src/shared/contracts";
 import { setLanguage } from "../../../../src/renderer/app/i18n";
 import { useAppStore } from "../../../../src/renderer/app/store";
-import { DirectoryBrowser } from "../../../../src/renderer/components/DirectoryBrowser";
+import { DirectoryTreePane, QuickAccessPane } from "../../../../src/renderer/components/DirectoryBrowser";
 import { DialogProvider } from "../../../../src/renderer/components/DialogProvider";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -54,7 +54,7 @@ describe("DirectoryBrowser", () => {
     await act(async () => {
       root.render(
         <DialogProvider>
-          <DirectoryBrowser />
+          <><QuickAccessPane /><DirectoryTreePane /></>
         </DialogProvider>,
       );
     });
@@ -114,7 +114,7 @@ describe("DirectoryBrowser", () => {
     await act(async () => {
       root.render(
         <DialogProvider>
-          <DirectoryBrowser />
+          <><QuickAccessPane /><DirectoryTreePane /></>
         </DialogProvider>,
       );
     });
@@ -183,7 +183,7 @@ describe("DirectoryBrowser", () => {
     await act(async () => {
       root.render(
         <DialogProvider>
-          <DirectoryBrowser />
+          <><QuickAccessPane /><DirectoryTreePane /></>
         </DialogProvider>,
       );
     });
@@ -239,7 +239,7 @@ describe("DirectoryBrowser", () => {
     await act(async () => {
       root.render(
         <DialogProvider>
-          <DirectoryBrowser />
+          <><QuickAccessPane /><DirectoryTreePane /></>
         </DialogProvider>,
       );
     });
@@ -295,7 +295,7 @@ describe("DirectoryBrowser", () => {
     await act(async () => {
       root.render(
         <DialogProvider>
-          <DirectoryBrowser />
+          <><QuickAccessPane /><DirectoryTreePane /></>
         </DialogProvider>,
       );
     });

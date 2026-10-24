@@ -53,7 +53,6 @@ import { TaskCenter } from "../components/TaskCenter";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
 import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
 import { useDialog } from "../components/DialogProvider";
-import { DuplicatesPanel } from "../components/DuplicatesPanel";
 import { PanelDividers } from "../components/PanelDividers";
 import { SettingsPanel, type SettingsTab } from "../components/SettingsPanel";
 import { InstallCompleteScreen } from "../components/InstallCompleteScreen";
@@ -142,7 +141,6 @@ function WorkspaceApp() {
   const capturePreparingRef = useRef(false);
   const [capturePreparing, setCapturePreparing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [similarSource, setSimilarSource] = useState<AssetRecord | null>(null);
@@ -306,17 +304,14 @@ function WorkspaceApp() {
   }, [uiScale]);
 
   useEffect(() => {
-    const openDuplicates = () => setDuplicatesOpen(true);
     const openSettings = (event: Event) => {
       const detail = (event as CustomEvent<SettingsTab>).detail;
       // 允许任意设置页直达；未知 detail 一律回落到 general。
       setSettingsTab(SETTINGS_TABS.has(detail) ? detail : "general");
       setMaintenanceOpen(true);
     };
-    window.addEventListener("refcanvas:duplicates", openDuplicates);
     window.addEventListener("refcanvas:open-settings", openSettings);
     return () => {
-      window.removeEventListener("refcanvas:duplicates", openDuplicates);
       window.removeEventListener("refcanvas:open-settings", openSettings);
     };
   }, []);
@@ -694,13 +689,6 @@ function WorkspaceApp() {
       } ${hasStartupBanner ? "has-startup-banner" : ""}`}
     >
 
-      {duplicatesOpen && (
-        <DuplicatesPanel
-          groups={store.duplicates}
-          onClose={() => setDuplicatesOpen(false)}
-          onMerge={store.mergeDuplicates}
-        />
-      )}
       {maintenanceOpen && (
         <SettingsPanel
           initialTab={settingsTab}

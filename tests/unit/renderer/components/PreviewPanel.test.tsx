@@ -184,7 +184,6 @@ describe("PreviewPanel smoke", () => {
       root.render(<PreviewPanel entry={svgEntry} />);
       await Promise.resolve(); await Promise.resolve();
     });
-    expect(host.querySelector(".preview-layers-panel")?.textContent).toContain("Layers (0)");
     expect(host.querySelector(".preview-toolbar-svg")).toBeTruthy();
     expect(host.querySelectorAll('[aria-label="资产备注"]')).toHaveLength(1);
     expect(host.querySelector(".preview-toolbar-renderer-controls .image-preview-toolbar")).toBeTruthy();

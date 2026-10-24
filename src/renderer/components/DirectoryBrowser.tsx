@@ -462,16 +462,6 @@ export function DirectoryTreePane({
   );
 }
 
-/** 侧栏本地目录区组合视图（两个面板同屏；Sidebar 用 SplitPanes 分隔）。 */
-export function DirectoryBrowser() {
-  return (
-    <>
-      <QuickAccessPane />
-      <DirectoryTreePane />
-    </>
-  );
-}
-
 function DirectoryContents({
   path,
   depth,
