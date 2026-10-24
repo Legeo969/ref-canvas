@@ -37,50 +37,9 @@
   font-size: 11px;
 }
 
-.folder-crumbs {
-  display: flex;
-  align-items: center;
-  min-height: 34px;
-  gap: 2px;
-  padding: 2px 14px 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.folder-crumb {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.folder-crumb button {
-  padding: 3px 7px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #9aa39f;
-  font-size: 11px;
-  cursor: pointer;
-  transition-property: background-color, color;
-  transition-duration: 120ms;
-  transition-timing-function: ease-out;
-}
-
-.folder-crumb button:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #e8ece9;
-}
-
 .folder-crumb button.current {
   color: #e8ece9;
   font-weight: 600;
-}
-
-.folder-crumb-sep {
-  color: #565e5a;
-  font-size: 11px;
-  user-select: none;
 }
 
 .search-field {
@@ -135,12 +94,6 @@
 .search-cancel:hover {
   background: rgba(255, 255, 255, 0.07);
   color: #dbe0dd;
-}
-
-.suggestions-dismiss {
-  position: fixed;
-  z-index: 89;
-  inset: 0;
 }
 
 .search-suggestions {
@@ -199,31 +152,6 @@
 .suggestion-group button > svg {
   flex: none;
   color: #8b9590;
-}
-
-.suggestion-count {
-  margin-left: auto;
-  color: #6f7874;
-  font-size: 10px;
-}
-
-.suggestion-thumb {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 5px;
-  background: #1a1e1f;
-  color: #6f7874;
-}
-
-.suggestion-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .suggestion-hint {
@@ -364,14 +292,6 @@
   transition-timing-function: ease-out;
 }
 
-.search-filter-popover-label {
-  grid-column: 1 / -1;
-  padding: 3px 7px 2px;
-  color: #737d78;
-  font-size: 9px;
-  font-weight: 650;
-}
-
 .search-filter-popover button:hover,
 .search-filter-popover button.active {
   background: rgba(58, 178, 143, 0.14);
@@ -457,89 +377,14 @@
   font-size: 10px;
 }
 
-.context-menu-chevron {
-  margin-left: auto;
-  color: #79837e;
-}
-
-.asset-folder-submenu {
-  position: absolute;
-  z-index: 121;
-  display: grid;
-  width: 220px;
-  max-height: 380px;
-  gap: 6px;
-  padding: 6px;
-  border-radius: 10px;
-  background: rgba(31, 36, 37, 0.99);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 16px 38px rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(14px);
-}
-
-.folder-menu-search {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 9px;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.04);
-  color: #78827d;
-}
-
-.folder-menu-search:focus-within {
-  box-shadow: inset 0 0 0 1px rgba(58, 178, 143, 0.5);
-  color: #75d2b6;
-}
-
-.folder-menu-search input {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: #dce3df;
-  font-size: 11px;
-  user-select: text;
-}
-
-.folder-menu-list {
-  min-height: 0;
-  overflow-y: auto;
-}
-
 .asset-context-menu .folder-menu-list button {
   justify-content: space-between;
   gap: 8px;
 }
 
-.folder-menu-list button > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .folder-menu-list button.included {
   background: rgba(58, 178, 143, 0.1);
   color: #80d5bb;
-}
-
-.folder-menu-list p {
-  margin: 0;
-  padding: 15px 10px;
-  color: #737d78;
-  font-size: 10px;
-  text-align: center;
-  text-wrap: pretty;
-}
-
-.asset-folder-submenu > small {
-  padding: 6px 8px 4px;
-  color: #68726d;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
 }
 
 .context-menu-divider {
@@ -657,18 +502,6 @@
   color: #6d7672;
   font-size: 10px;
   text-align: center;
-}
-
-.missing-badge {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  padding: 3px 6px;
-  border-radius: 5px;
-  background: rgba(166, 62, 62, 0.84);
-  color: #ffe5e5;
-  font-size: 9px;
-  font-weight: 650;
 }
 
 .empty-state {

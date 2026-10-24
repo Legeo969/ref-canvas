@@ -94,13 +94,7 @@ describe("UI shell regressions", () => {
     expect(css).toMatch(/\.asset-panel\s*{[^}]*overflow: hidden;/s);
     expect(css).toMatch(/\.search-field\s*{[^}]*width: calc\(100% - 24px\);/s);
     expect(css).toMatch(
-      /\.asset-filter-row\s*{[^}]*grid-template-columns:[^}]*40px;/s,
-    );
-    expect(css).toMatch(
       /\.batch-toolbar\s*{[^}]*display: flex;[^}]*height: 44px;[^}]*overflow: hidden;/s,
-    );
-    expect(css).toMatch(
-      /\.batch-actions-popover\s*{[^}]*position: fixed;[^}]*overflow-y: auto;/s,
     );
   });
 

@@ -635,69 +635,6 @@ body.panel-resizing {
   overflow-y: auto;
 }
 
-.saved-view-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 36px;
-  margin: 6px 8px 0;
-  border-top: 1px solid var(--line);
-  color: #717a76;
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.saved-view-heading > span,
-.saved-view-main {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.saved-view-list {
-  display: grid;
-  padding: 0 4px 5px;
-}
-
-.saved-view-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  min-height: 40px;
-  border-radius: 7px;
-}
-
-.saved-view-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.saved-view-main {
-  min-width: 0;
-  min-height: 40px;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  color: #abb3af;
-  text-align: left;
-}
-
-.saved-view-main span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.saved-view-actions {
-  display: flex;
-  opacity: 0;
-  transition: opacity 120ms ease-out;
-}
-
-.saved-view-row:hover .saved-view-actions,
-.saved-view-row:focus-within .saved-view-actions {
-  opacity: 1;
-}
-
 /* 分隔条：4px 深色条 + 中央 40×2 手柄（全部用主题变量，不写死规格色值）。 */
 .sidebar-splitter {
   position: relative;
@@ -874,59 +811,14 @@ button.statusbar-button {
   color: #6cbca4;
 }
 
-.asset-kind-root {
-  display: grid;
-  min-height: 36px;
-  grid-template-columns: 26px minmax(0, 1fr);
-  align-items: center;
-  border-radius: 7px;
-  color: #9ba49f;
-}
-
-.asset-kind-root:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: #dbe3df;
-}
-
 .asset-kind-root.active {
   background: var(--accent-soft);
   color: #8cdec5;
   box-shadow: inset 2px 0 var(--accent);
 }
 
-.asset-kind-toggle,
-.asset-kind-main {
-  height: 36px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.asset-kind-toggle {
-  display: grid;
-  place-items: center;
-}
-
-.asset-kind-main {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: center;
-  text-align: left;
-}
-
-.asset-kind-children {
-  display: grid;
-}
-
 .nav-row.asset-kind-child {
   padding-left: 26px;
-}
-
-.folder-tree-node {
-  min-width: 0;
 }
 
 .folder-row {
@@ -951,75 +843,11 @@ button.statusbar-button {
   box-shadow: inset 2px 0 var(--accent);
 }
 
-.folder-main {
-  display: grid;
-  grid-template-columns: 14px 20px minmax(0, 1fr) auto;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-  min-height: 40px;
-  padding: 0 8px 0 6px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-}
-
-.folder-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.folder-chevron {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 40px;
-  margin-left: -4px;
-}
-
-.folder-actions-menu {
-  position: relative;
-  flex: 0 0 auto;
-  height: 40px;
-}
-
-.folder-actions-trigger {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  margin-right: 2px;
-  padding: 0;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #7f8984;
-  cursor: pointer;
-  opacity: 0;
-  transition-property: background-color, color, opacity;
-  transition-duration: 120ms;
-  transition-timing-function: ease-out;
-}
-
 .folder-row:hover .folder-actions-trigger,
 .folder-row:focus-within .folder-actions-trigger,
 .folder-actions-menu:focus-within .folder-actions-trigger,
 .folder-actions-trigger[aria-expanded="true"] {
   opacity: 1;
-}
-
-.folder-actions-trigger:hover,
-.folder-actions-trigger:focus-visible,
-.folder-actions-trigger[aria-expanded="true"] {
-  background: rgba(255, 255, 255, 0.07);
-  color: #e4eae7;
-  outline: none;
 }
 
 .folder-actions-popover {
@@ -1075,42 +903,6 @@ button.statusbar-button {
   height: 1px;
   margin: 5px 8px;
   background: rgba(255, 255, 255, 0.08);
-}
-
-.folder-move-item {
-  position: relative;
-}
-
-.folder-move-item .asset-folder-submenu {
-  top: -6px;
-  left: calc(100% + 4px);
-}
-
-.folder-move-item .folder-menu-list {
-  display: grid;
-  max-height: 320px;
-  gap: 2px;
-  overflow-y: auto;
-}
-
-.folder-move-item .folder-menu-list button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 0 10px;
-}
-
-.folder-move-item .folder-menu-list span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.folder-move-item .folder-menu-list p {
-  padding: 8px 10px;
-  color: #7f8984;
-  font-size: 12px;
 }
 
 .preview-session-mode-actions {

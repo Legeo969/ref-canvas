@@ -142,14 +142,6 @@
 
 .collection-node-add:active { scale: 0.96; }
 
-.collections-section-hint {
-  margin: 0 16px 7px;
-  color: #69736f;
-  font-size: 10px;
-  line-height: 1.45;
-  text-wrap: pretty;
-}
-
 .collection-row-actions {
   display: grid;
   visibility: hidden;
@@ -347,36 +339,6 @@
   align-items: center;
 }
 
-.collection-export-summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 10px 16px 0;
-  padding: 9px 12px;
-  border-radius: 9px;
-  border: 1px solid rgba(58, 178, 143, 0.4);
-  background: var(--accent-soft);
-  color: #9fd9c4;
-  font-size: 12px;
-}
-
-.collection-export-summary .collection-export-manifest {
-  color: #8cdec5;
-}
-
-.collection-export-error {
-  color: #e08b7a;
-}
-
-.collection-items-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  padding: 16px;
-  overflow-y: auto;
-  align-content: start;
-}
-
 .collection-item-card {
   position: relative;
   display: grid;
@@ -505,13 +467,6 @@
 
 .collection-item-card.state-ambiguous {
   border-color: rgba(158, 118, 210, 0.35);
-}
-
-.collection-item-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 24px);
-  gap: 2px;
-  padding: 2px 6px 0 0;
 }
 
 .collection-item-actions .mini-icon-button {
@@ -766,8 +721,6 @@
 
 .collection-view-mode button.active,
 .collection-view-mode button:hover { background: rgba(58, 178, 143, 0.18); color: #b1f0dc; }
-.collection-zoom { display: flex; min-width: 76px; align-items: center; gap: 4px; color: #82908a; }
-.collection-zoom input { width: 70px; accent-color: var(--accent); }
 
 .collection-batch-toolbar {
   display: flex;
