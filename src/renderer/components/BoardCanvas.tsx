@@ -1,39 +1,9 @@
 import {
-  ArrowUpRight,
-  AlignCenterVertical,
-  AlignStartVertical,
-  Clipboard as ClipboardIcon,
-  CopyPlus,
-  Crop,
-  Circle as CircleIcon,
-  Focus,
-  FolderOpen,
-  GroupIcon,
-  Grid3X3,
-  LayoutGrid,
-  ListTodo,
-  Lock,
-  LockOpen,
-  Maximize,
-  Minus,
-  Palette,
-  Paintbrush,
-  Pause,
   Pencil,
-  Pipette,
-  Play,
   Plus,
-  Redo2,
   RotateCcw,
-  ScanSearch,
   Search,
-  SlidersHorizontal,
-  Square,
-  Link2,
   Trash2,
-  Type,
-  Undo2,
-  X,
 } from "lucide-react";
 import { SelectMenu } from "./SelectMenu";
 import {
@@ -131,6 +101,12 @@ import {
   type BoardToolbarCommand,
 } from "./board/BoardToolbar";
 import {
+  BoardContextMenu,
+  type BoardContextMenuState,
+} from "./board/BoardContextMenu";
+import { BoardToolbarMorePanel } from "./board/BoardToolbarMorePanel";
+import { BoardDrawingPanel } from "./board/BoardDrawingPanel";
+import {
   BoardCommandPalette,
   type BoardCommand,
 } from "./BoardCommandPalette";
@@ -177,6 +153,7 @@ import {
   type BoardTool,
 } from "../features/board/controllers/drawing-controller";
 import { BoardHistoryController } from "../features/board/controllers/history-controller";
+import { buildBoardCommands } from "../features/board/board-command-registry";
 import {
   useBoardShortcuts,
   type BoardShortcutCommand,
@@ -384,18 +361,8 @@ export function BoardCanvas({
   } = controller.gestureResources;
   const [hudMessage, setHudMessage] = useState<string | null>(null);
   const hudTimerRef = useRef<number | null>(null);
-  const [boardContextMenu, setBoardContextMenu] = useState<{
-    x: number;
-    y: number;
-    kind: "object" | "multi" | "image" | "empty";
-    target?: {
-      id: string;
-      isImage: boolean;
-      assetId: string | null;
-      hasGif: boolean;
-      gifPlaying: boolean;
-    };
-  } | null>(null);
+  const [boardContextMenu, setBoardContextMenu] =
+    useState<BoardContextMenuState | null>(null);
   const [toolbarMoreOpen, setToolbarMoreOpen] = useState(false);
   const toolbarMoreButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarMorePanelRef = useRef<HTMLElement | null>(null);
@@ -2869,6 +2836,10 @@ export function BoardCanvas({
   };
 
   /** 统一面积：缩放使所有选中对象的呈现面积（宽×高）相等。 */
+
+  /** 统一缩放：所有选中对象缩放到相同尺寸（宽高取中位数）。 */
+
+  /** 统一面积：缩放使所有选中对象的呈现面积（宽×高）相等。 */
   const uniformArea = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -4749,595 +4720,74 @@ export function BoardCanvas({
   const hasImageSelection = capabilities.hasImage;
   const activeHasComment = capabilities.activeHasComment;
   const hasBoardObjects = boardStructure.boardObjectCount > 0;
-  const boardCommands: BoardCommand[] = [
-    {
-      id: "tool-select",
-      label: translate("board.toolSelect"),
-      group: translate("board.groupTools"),
-      keywords: ["select pointer"],
-      run: () => setTool("select"),
-    },
-    {
-      id: "tool-pencil",
-      label: translate("board.drawingToolPencil"),
-      group: translate("board.groupTools"),
-      keywords: ["draw pencil brush"],
-      run: () => {
-        setLastDrawingTool("pencil");
-        setTool("pencil");
-      },
-    },
-    {
-      id: "tool-line",
-      label: translate("board.drawLine"),
-      group: translate("board.groupTools"),
-      keywords: ["draw line"],
-      run: () => {
-        setLastDrawingTool("line");
-        setTool("line");
-      },
-    },
-    {
-      id: "tool-rectangle",
-      label: translate("board.drawRectangle"),
-      group: translate("board.groupTools"),
-      keywords: ["draw rectangle"],
-      run: () => {
-        setLastDrawingTool("rectangle");
-        setTool("rectangle");
-      },
-    },
-    {
-      id: "tool-ellipse",
-      label: translate("board.drawEllipse"),
-      group: translate("board.groupTools"),
-      keywords: ["draw ellipse circle"],
-      run: () => {
-        setLastDrawingTool("ellipse");
-        setTool("ellipse");
-      },
-    },
-    {
-      id: "drawing-settings",
-      label: translate("board.drawingSettings"),
-      group: translate("board.groupTools"),
-      keywords: ["drawing style color width"],
-      run: () => setDrawingPanelOpen(true),
-    },
-    {
-      id: "add-text",
-      label: translate("board.addText"),
-      group: translate("board.groupInsert"),
-      keywords: ["text"],
-      run: addText,
-    },
-    {
-      id: "add-arrow",
-      label: translate("board.addArrow"),
-      group: translate("board.groupInsert"),
-      keywords: ["arrow"],
-      run: addArrow,
-    },
-    {
-      id: "add-rectangle",
-      label: translate("board.addRectangleObject"),
-      group: translate("board.groupInsert"),
-      keywords: ["rectangle shape"],
-      run: addRectangle,
-    },
-    {
-      id: "add-guide-x",
-      label: translate("board.addGuideX"),
-      group: translate("board.groupInsert"),
-      keywords: ["guide vertical"],
-      run: () => addGuide("x"),
-    },
-    {
-      id: "add-guide-y",
-      label: translate("board.addGuideY"),
-      group: translate("board.groupInsert"),
-      keywords: ["guide horizontal"],
-      run: () => addGuide("y"),
-    },
-    {
-      id: "move-back",
-      label: translate("board.moveBottom"),
-      group: translate("board.groupArrange"),
-      disabled: !hasSelection,
-      keywords: ["send back"],
-      run: () => moveSelection(false),
-    },
-    {
-      id: "move-front",
-      label: translate("board.moveTop"),
-      group: translate("board.groupArrange"),
-      disabled: !hasSelection,
-      keywords: ["bring front"],
-      run: () => moveSelection(true),
-    },
-    {
-      id: "rotate-90",
-      label: translate("board.rotate90"),
-      group: translate("board.groupTransform"),
-      disabled: !hasSelection,
-      keywords: ["rotate"],
-      run: () => transformSelection("rotate"),
-    },
-    {
-      id: "flip-x",
-      label: translate("board.flipH"),
-      group: translate("board.groupTransform"),
-      disabled: !hasSelection,
-      keywords: ["flip horizontal"],
-      run: () => transformSelection("flipX"),
-    },
-    {
-      id: "flip-y",
-      label: translate("board.flipV"),
-      group: translate("board.groupTransform"),
-      disabled: !hasSelection,
-      keywords: ["flip vertical"],
-      run: () => transformSelection("flipY"),
-    },
-    ...([
-      ["align-left", "board.alignLeft", "left"],
-      ["align-center-x", "board.alignCenterX", "centerX"],
-      ["align-right", "board.alignRight", "right"],
-      ["align-top", "board.alignTop", "top"],
-      ["align-center-y", "board.alignCenterY", "centerY"],
-      ["align-bottom", "board.alignBottom", "bottom"],
-    ] as const).map(([id, labelKey, mode]) => ({
-      id,
-      label: translate(labelKey),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 2,
-      keywords: ["align"],
-      run: () => alignSelection(mode),
-    })),
-    {
-      id: "distribute-x",
-      label: translate("board.distributeX"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 3,
-      keywords: ["distribute horizontal"],
-      run: () => distributeSelection("x"),
-    },
-    {
-      id: "distribute-y",
-      label: translate("board.distributeY"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 3,
-      keywords: ["distribute vertical"],
-      run: () => distributeSelection("y"),
-    },
-    {
-      id: "arrange-compact",
-      label: translate("board.arrangeCompact"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["compact layout"],
-      run: arrangeCompact,
-    },
-    {
-      id: "arrange-by-name",
-      label: translate("board.arrangeByName"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["sort by name"],
-      run: () => arrangeBy("name"),
-    },
-    {
-      id: "arrange-by-added",
-      label: translate("board.arrangeByAdded"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["sort by added"],
-      run: () => arrangeBy("added"),
-    },
-    {
-      id: "arrange-by-layer",
-      label: translate("board.arrangeByLayer"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["sort by layer"],
-      run: () => arrangeBy("layer"),
-    },
-    {
-      id: "arrange-by-path",
-      label: translate("board.arrangeByPath"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["sort by path"],
-      run: () => arrangeBy("path"),
-    },
-    {
-      id: "arrange-random",
-      label: translate("board.arrangeRandom"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["shuffle random"],
-      run: () => arrangeBy("random"),
-    },
-    {
-      id: "arrange-stack",
-      label: translate("board.arrangeStack"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount
-        ? selectionCount < 2
-        : !hasBoardObjects,
-      keywords: ["stack"],
-      run: () => arrangeBy("stack"),
-    },
-    {
-      id: "uniform-area",
-      label: translate("board.uniformArea"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 2,
-      keywords: ["same area"],
-      run: () => uniformArea(),
-    },
-    {
-      id: "uniform-scale",
-      label: translate("board.uniformScale"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 2,
-      keywords: ["same scale"],
-      run: () => uniformScale(),
-    },
-    {
-      id: "add-note",
-      label: translate("board.addNote"),
-      group: translate("board.groupInsert"),
-      keywords: ["sticky note checklist"],
-      run: () => void addNote(),
-    },
-    {
-      id: "add-checklist",
-      label: translate("board.addChecklist"),
-      group: translate("board.groupInsert"),
-      keywords: ["todo checklist"],
-      run: () => void addChecklistNote(),
-    },
-    {
-      id: "edit-note",
-      label: translate("board.editNote"),
-      group: translate("board.groupEdit"),
-      disabled: !capabilities.hasNote,
-      keywords: ["edit note"],
-      run: () => void editSelectedNote(),
-    },
-    {
-      id: "normalize-width",
-      label: translate("board.normalizeWidth"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 2,
-      keywords: ["same width"],
-      run: () => normalizeSize("width"),
-    },
-    {
-      id: "normalize-height",
-      label: translate("board.normalizeHeight"),
-      group: translate("board.groupArrange"),
-      disabled: selectionCount < 2,
-      keywords: ["same height"],
-      run: () => normalizeSize("height"),
-    },
-    {
-      id: "reset-transform",
-      label: translate("board.resetTransform"),
-      group: translate("board.groupTransform"),
-      shortcut: shortcutBindings.resetTransform || undefined,
-      disabled: !hasSelection,
-      keywords: ["reset transform"],
-      run: resetSelectionTransform,
-    },
-    {
-      id: "lock",
-      label: translate("board.toggleLock"),
-      group: translate("board.groupObject"),
-      disabled: !hasSelection,
-      keywords: ["lock unlock"],
-      run: toggleLockSelection,
-    },
-    {
-      id: "group",
-      label: translate("board.group"),
-      group: translate("board.groupObject"),
-      shortcut: shortcutBindings.group || undefined,
-      disabled: !capabilities.activeIsMultiSelection,
-      keywords: ["group"],
-      run: groupSelection,
-    },
-    {
-      id: "ungroup",
-      label: translate("board.ungroup"),
-      group: translate("board.groupObject"),
-      shortcut: shortcutBindings.ungroup || undefined,
-      disabled: !capabilities.activeIsGroup,
-      keywords: ["ungroup"],
-      run: ungroupSelection,
-    },
-    {
-      id: "parent",
-      label: translate("board.parent"),
-      group: translate("board.groupObject"),
-      shortcut: shortcutBindings.parent || undefined,
-      disabled: selectionCount < 2,
-      keywords: ["parent hierarchy"],
-      run: parentSelection,
-    },
-    {
-      id: "unparent",
-      label: translate("board.unparent"),
-      group: translate("board.groupObject"),
-      shortcut: shortcutBindings.unparent || undefined,
-      disabled: !capabilities.hasParent,
-      keywords: ["unparent hierarchy"],
-      run: unparentSelection,
-    },
-    {
-      id: "mask-rect",
-      label: translate("board.maskRect"),
-      group: translate("board.groupImage"),
-      disabled: !hasSelection,
-      keywords: ["mask rectangle"],
-      run: () => applyMask("rect"),
-    },
-    {
-      id: "mask-circle",
-      label: translate("board.maskCircle"),
-      group: translate("board.groupImage"),
-      disabled: !hasSelection,
-      keywords: ["mask circle"],
-      run: () => applyMask("circle"),
-    },
-    {
-      id: "crop",
-      label: translate("board.cropImage"),
-      group: translate("board.groupImage"),
-      disabled: !capabilities.activeIsImage,
-      keywords: ["crop"],
-      run: () => {
-        const active = canvasRef.current?.getActiveObject();
-        if (active instanceof FabricImage) openCropDialog(active);
-      },
-    },
-    {
-      id: "reset-crop",
-      label: translate("board.resetCrop"),
-      group: translate("board.groupImage"),
-      disabled: !hasImageSelection,
-      keywords: ["reset crop"],
-      run: resetSelectionCrop,
-    },
-    {
-      id: "grayscale",
-      label: translate("board.toggleGrayscale"),
-      group: translate("board.groupImage"),
-      disabled: !hasImageSelection,
-      keywords: ["black white grayscale"],
-      run: () => setSelectionGrayscale("toggle"),
-    },
-    {
-      id: "restore-color",
-      label: translate("board.restoreColor"),
-      group: translate("board.groupImage"),
-      disabled: !hasImageSelection,
-      keywords: ["restore color"],
-      run: () => setSelectionGrayscale(false),
-    },
-    {
-      id: "opacity",
-      label: translate("board.opacityTitle"),
-      group: translate("board.groupObject"),
-      disabled: !hasSelection,
-      keywords: ["opacity"],
-      run: setSelectionOpacity,
-    },
-    {
-      id: "duplicate",
-      label: translate("board.duplicate"),
-      group: translate("board.groupEdit"),
-      shortcut: shortcutBindings.duplicate || undefined,
-      disabled: !hasSelection,
-      keywords: ["duplicate"],
-      run: duplicateSelection,
-    },
-    {
-      id: "copy",
-      label: translate("board.copyClipboard"),
-      group: translate("board.groupEdit"),
-      shortcut: shortcutBindings.copy || undefined,
-      disabled: !hasSelection,
-      keywords: ["copy"],
-      run: copySelection,
-    },
-    {
-      id: "paste",
-      label: translate("board.pasteObject"),
-      group: translate("board.groupEdit"),
-      shortcut: shortcutBindings.paste || undefined,
-      disabled: boardClipboard.length === 0,
-      keywords: ["paste"],
-      run: pasteSelection,
-    },
-    {
-      id: "comment",
-      label: activeHasComment ? translate("board.commentEdit") : translate("board.commentAdd"),
-      group: translate("board.groupObject"),
-      shortcut: shortcutBindings.comment || undefined,
-      disabled: !boardSnapshot.activeObjectId || capabilities.activeIsMultiSelection,
-      keywords: ["comment note"],
-      run: editObjectComment,
-    },
-    {
-      id: "delete",
-      label: translate("board.delete"),
-      group: translate("board.groupEdit"),
-      shortcut: shortcutBindings.delete || undefined,
-      disabled: !hasSelection,
-      keywords: ["delete remove"],
-      run: deleteSelection,
-    },
-    {
-      id: "undo",
-      label: translate("board.undo"),
-      group: translate("board.groupEdit"),
-      shortcut: shortcutBindings.undo || undefined,
-      disabled: !historyControllerRef.current.canUndo,
-      keywords: ["undo"],
-      run: () => restoreHistory(-1),
-    },
-    {
-      id: "redo",
-      label: translate("board.redo"),
-      group: translate("board.groupEdit"),
-      shortcut: shortcutBindings.redo || undefined,
-      disabled: !historyControllerRef.current.canRedo,
-      keywords: ["redo"],
-      run: () => restoreHistory(1),
-    },
-    {
-      id: "fit-all",
-      label: translate("board.fitAll"),
-      group: translate("board.groupView"),
-      shortcut: shortcutBindings.fitAll || undefined,
-      disabled: !hasBoardObjects,
-      keywords: ["fit all"],
-      run: () => fitObjects(false),
-    },
-    {
-      id: "fit-selection",
-      label: translate("board.fitSelection"),
-      group: translate("board.groupView"),
-      shortcut: shortcutBindings.fitSelection || undefined,
-      disabled: !hasSelection,
-      keywords: ["fit selection"],
-      run: () => fitObjects(true),
-    },
-    {
-      id: "focus",
-      label: focusedObjectId ? translate("board.exitFocus") : translate("board.focusSelection"),
-      group: translate("board.groupView"),
-      shortcut: shortcutBindings.focus || undefined,
-      disabled:
-        !focusedObjectId &&
-        (!canvasRef.current || focusObjects(canvasRef.current).length === 0),
-      keywords: ["focus carousel"],
-      run: toggleObjectFocus,
-    },
-    {
-      id: "layers",
-      label: layersOpen ? translate("board.closeLayers") : translate("board.openLayers"),
-      group: translate("board.groupView"),
-      keywords: ["layers hierarchy"],
-      run: () => setLayersOpen((value) => !value),
-    },
-    {
-      id: "inspector",
-      label: inspectorOpen ? translate("board.closeInspector") : translate("board.openInspector"),
-      group: translate("board.groupView"),
-      keywords: ["inspector", "属性", "数值"],
-      run: () => setInspectorOpen((value) => !value),
-    },
-    {
-      id: "export-png-selection",
-      label: translate("board.exportPngSelection"),
-      group: translate("board.groupExport"),
-      disabled: !hasSelection,
-      keywords: ["export selection", "导出选区"],
-      run: () => {
-        window.dispatchEvent(new Event("refcanvas:export-png-selection"));
-      },
-    },
-    {
-      id: "grid",
-      label: appearance.gridVisible ? translate("board.hideGrid") : translate("board.showGrid"),
-      group: translate("board.groupView"),
-      keywords: ["grid"],
-      run: () =>
-        updateAppearance({
-          ...runtime.appearance,
-          gridVisible: !runtime.appearance.gridVisible,
-        }),
-    },
-    {
-      id: "appearance",
-      label: translate("board.appearanceTitle"),
-      group: translate("board.groupView"),
-      keywords: ["appearance background grid"],
-      run: editBoardAppearance,
-    },
-    {
-      id: "window-normal",
-      label: translate("board.windowNormal"),
-      group: translate("board.groupWindow"),
-      keywords: ["window normal"],
-      run: () => void setWindowMode("normal"),
-    },
-    {
-      id: "window-always-bottom",
-      label: translate("board.windowAlwaysBottom"),
-      group: translate("board.groupWindow"),
-      keywords: ["always on bottom window"],
-      run: () => void setWindowMode("always-on-bottom"),
-    },
-    {
-      id: "window-overlay",
-      label: translate("board.windowOverlay"),
-      group: translate("board.groupWindow"),
-      keywords: ["transparent click through overlay floating"],
-      run: () => void setWindowMode("transparent-overlay"),
-    },
-    {
-      id: "window-locked",
-      label: translate("board.windowLocked"),
-      group: translate("board.groupWindow"),
-      keywords: ["window locked canvas"],
-      run: () => void setWindowMode("locked"),
-    },
-    {
-      id: "shortcut-settings",
-      label: translate("board.shortcutSettingsTitle"),
-      group: translate("board.groupSettings"),
-      keywords: ["keyboard shortcut keybinding hotkey"],
-      run: () => setShortcutSettingsOpen(true),
-    },
-    {
-      id: "new-board",
-      label: translate("boards.new"),
-      group: translate("board.groupBoard"),
-      keywords: ["new board"],
-      run: createBoard,
-    },
-    {
-      id: "rename-board",
-      label: translate("board.renameBoard"),
-      group: translate("board.groupBoard"),
-      keywords: ["rename board"],
-      run: () => onRenameBoard(board),
-    },
-    {
-      id: "delete-board",
-      label: translate("board.deleteBoard"),
-      group: translate("board.groupBoard"),
-      disabled: boards.length <= 1,
-      keywords: ["delete board"],
-      run: () => onDeleteBoard(board),
-    },
-  ];
+  const boardCommands: BoardCommand[] = buildBoardCommands({
+    selectionCount,
+    hasSelection,
+    hasImageSelection,
+    activeHasComment,
+    hasBoardObjects,
+    boards,
+    board,
+    boardSnapshot,
+    runtime,
+    appearance,
+    focusedObjectId,
+    shortcutBindings,
+    inspectorOpen,
+    layersOpen,
+    canvasRef,
+    historyControllerRef,
+    setTool,
+    setLastDrawingTool,
+    setDrawingPanelOpen,
+    setInspectorOpen,
+    setLayersOpen,
+    setShortcutSettingsOpen,
+    addText,
+    addArrow,
+    addRectangle,
+    addGuide,
+    addNote,
+    addChecklistNote,
+    editSelectedNote,
+    moveSelection,
+    transformSelection,
+    alignSelection,
+    distributeSelection,
+    arrangeCompact,
+    arrangeBy,
+    normalizeSize,
+    resetSelectionTransform,
+    toggleLockSelection,
+    groupSelection,
+    parentSelection,
+    unparentSelection,
+    ungroupSelection,
+    applyMask,
+    openCropDialog,
+    resetSelectionCrop,
+    setSelectionGrayscale,
+    setSelectionOpacity,
+    duplicateSelection,
+    editObjectComment,
+    deleteSelection,
+    copySelection,
+    pasteSelection,
+    restoreHistory,
+    fitObjects,
+    focusObjects,
+    toggleObjectFocus,
+    updateAppearance,
+    editBoardAppearance,
+    capabilities,
+    boardClipboard,
+    uniformArea,
+    uniformScale,
+    setWindowMode,
+    createBoard,
+    onRenameBoard,
+    onDeleteBoard,
+  });
   const saveShortcutBindings = (next: BoardShortcutBindings) => {
     setShortcutBindings(next);
     void window.refCanvas.system.setBoardShortcuts(next);
@@ -5660,322 +5110,45 @@ export function BoardCanvas({
           }}
         />
         {toolbarMoreOpen && (
-          <aside
-            ref={toolbarMorePanelRef}
-            className="board-toolbar-more"
-            role="dialog"
-            aria-label={translate("board.moreTools")}
-            style={{
-              left: toolbarMorePosition.x,
-              top: toolbarMorePosition.y,
-              maxHeight: toolbarMorePosition.maxHeight,
+          <BoardToolbarMorePanel
+            position={toolbarMorePosition}
+            panelRef={(element) => { toolbarMorePanelRef.current = element; }}
+            inspectorOpen={inspectorOpen}
+            canvasLocked={canvasLocked}
+            hasSelection={hasSelection}
+            onClose={() => setToolbarMoreOpen(false)}
+            actions={{
+              addText,
+              addChecklist: () => void addChecklistNote(),
+              addArrow,
+              addRectangle,
+              addGuide,
+              editAppearance: () => void editBoardAppearance(),
+              sampleColor: () => void sampleColor(),
+              undo: () => restoreHistory(-1),
+              redo: () => restoreHistory(1),
+              fitAll: () => fitObjects(false),
+              fitSelection: () => fitObjects(true),
+              toggleFocusCarousel: toggleObjectFocus,
+              toggleInspector: () => setInspectorOpen((value) => !value),
+              exportPngSelection: () =>
+                window.dispatchEvent(new Event("refcanvas:export-png-selection")),
+              toggleCanvasLock,
+              toggleCanvasGrayscale: () => void toggleCanvasGrayscale(),
+              cycleGridStyle,
+              openCommandPalette,
             }}
-          >
-            <header>
-              <strong>{translate("board.moreTools")}</strong>
-              <button
-                onClick={() => setToolbarMoreOpen(false)}
-                aria-label={translate("board.closeMoreTools")}
-              >
-                <X size={15} />
-              </button>
-            </header>
-            <div className="board-toolbar-more-actions" role="menu">
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    addText();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Type size={15} />
-                  {translate("board.addText")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void addChecklistNote();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <ListTodo size={15} />
-                  {translate("board.addChecklist")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    addArrow();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <ArrowUpRight size={15} />
-                  {translate("board.addArrow")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    addRectangle();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Square size={15} />
-                  {translate("board.addRectangle")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    addGuide("x");
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <span className="text-tool-icon">│</span>
-                  {translate("board.guideVertical")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    addGuide("y");
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <span className="text-tool-icon">—</span>
-                  {translate("board.guideHorizontal")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void editBoardAppearance();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Palette size={15} />
-                  {translate("board.backgroundGrid")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void sampleColor();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Pipette size={15} />
-                  {translate("board.sampleColor")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    restoreHistory(-1);
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Undo2 size={15} />
-                  {translate("board.undo")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    restoreHistory(1);
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Redo2 size={15} />
-                  {translate("board.redo")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    fitObjects(false);
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Maximize size={15} />
-                  {translate("board.fitAll")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    fitObjects(true);
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Focus size={15} />
-                  {translate("board.fitSelection")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    toggleObjectFocus();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <ScanSearch size={15} />
-                  {translate("board.focusSelection")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setInspectorOpen((value) => !value);
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <SlidersHorizontal size={15} />
-                  {inspectorOpen ? translate("board.closeInspector") : translate("board.inspectorTitle")}
-                </button>
-                <button
-                  role="menuitem"
-                  disabled={!hasSelection}
-                  onClick={() => {
-                    window.dispatchEvent(
-                      new Event("refcanvas:export-png-selection"),
-                    );
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Maximize size={15} />
-                  {translate("board.exportPngSelection")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    toggleCanvasLock();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  {canvasLocked ? <LockOpen size={15} /> : <Lock size={15} />}
-                  {canvasLocked ? translate("board.unlockCanvas") : translate("board.lockCanvas")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void toggleCanvasGrayscale();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <span className="text-tool-icon">{translate("board.grayscaleGlyph")}</span>
-                  {translate("board.canvasGrayscale")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void cycleGridStyle();
-                    setToolbarMoreOpen(false);
-                  }}
-                >
-                  <Grid3X3 size={15} />
-                  {translate("board.gridStyle")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    openCommandPalette();
-                  }}
-                >
-                  <Search size={15} />
-                  {translate("board.commandPaletteTitle")}
-                </button>
-            </div>
-          </aside>
+          />
         )}
         {drawingPanelOpen && (
-          <aside className="draw-settings-panel" aria-label={translate("board.drawingSettings")}>
-            <header>
-              <div>
-                <strong>{translate("board.drawingTools")}</strong>
-                <span>{translate("board.drawingShiftHint")}</span>
-              </div>
-              <button
-                onClick={() => setDrawingPanelOpen(false)}
-                aria-label={translate("board.closeDrawingSettings")}
-              >
-                <X size={15} />
-              </button>
-            </header>
-            <div className="draw-tool-options" role="group" aria-label={translate("board.drawingTypeGroup")}>
-              {([
-                ["pencil", "board.drawingToolPencil" as const, <Paintbrush size={16} />],
-                ["line", "board.drawingToolLine" as const, <Minus size={17} />],
-                ["rectangle", "board.drawingToolRectangle" as const, <Square size={15} />],
-                ["ellipse", "board.drawingToolEllipse" as const, <CircleIcon size={15} />],
-              ] as const).map(([value, labelKey, icon]) => {
-                const label = translate(labelKey);
-                return (
-                  <button
-                    className={tool === value ? "active" : ""}
-                    key={value}
-                    onClick={() => {
-                      setTool(value);
-                      setLastDrawingTool(value);
-                    }}
-                    aria-label={label}
-                  >
-                    {icon}
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="draw-style-row">
-              <label className="draw-color-field">
-                <span>{translate("board.drawingColor")}</span>
-                <input
-                  type="color"
-                  value={drawingStyle.color}
-                  onChange={(event) =>
-                    setDrawingStyle((current) => ({
-                      ...current,
-                      color: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label className="draw-width-field">
-                <span>{translate("board.drawingWidth")}</span>
-                <input
-                  type="range"
-                  min="1"
-                  max="24"
-                  value={drawingStyle.width}
-                  onChange={(event) =>
-                    setDrawingStyle((current) => ({
-                      ...current,
-                      width: Number(event.target.value),
-                    }))
-                  }
-                />
-                <output>{drawingStyle.width}px</output>
-              </label>
-            </div>
-            <div className="draw-line-options" role="group" aria-label={translate("board.drawingLineStyle")}>
-              <button
-                className={drawingStyle.dashed ? "" : "active"}
-                onClick={() =>
-                  setDrawingStyle((current) => ({
-                    ...current,
-                    dashed: false,
-                  }))
-                }
-              >
-                <span className="line-preview solid" />
-                {translate("board.drawingSolid")}
-              </button>
-              <button
-                className={drawingStyle.dashed ? "active" : ""}
-                onClick={() =>
-                  setDrawingStyle((current) => ({
-                    ...current,
-                    dashed: true,
-                  }))
-                }
-              >
-                <span className="line-preview dashed" />
-                {translate("board.drawingDashed")}
-              </button>
-            </div>
-          </aside>
+          <BoardDrawingPanel
+            tool={tool}
+            drawingStyle={drawingStyle}
+            setTool={setTool}
+            setLastDrawingTool={setLastDrawingTool}
+            setDrawingStyle={setDrawingStyle}
+            onClose={() => setDrawingPanelOpen(false)}
+          />
         )}
         {layersOpen && (
           <BoardLayerPanel
@@ -6078,326 +5251,61 @@ export function BoardCanvas({
           />
         )}
         {boardContextMenu && (
-          <div
-            className="asset-context-menu board-context-menu"
-            role="menu"
-            style={{
-              left: boardContextMenu.x,
-              top: boardContextMenu.y,
+          <BoardContextMenu
+            menu={boardContextMenu}
+            locateEnabled={Boolean(eventBindingsRef.current.onLocateAsset)}
+            gridVisible={appearance.gridVisible}
+            onClose={() => setBoardContextMenu(null)}
+            actions={{
+              align: (mode) => alignSelection(mode),
+              distribute: (axis) => distributeSelection(axis),
+              arrangeCompact,
+              normalizeWidth: () => normalizeSize("width"),
+              group: groupSelection,
+              focus: (id) => {
+                const object = objectById(id);
+                if (object) focusBoardObject(object);
+              },
+              crop: (id) => {
+                const object = objectById(id);
+                if (object instanceof FabricImage) openCropDialog(object);
+              },
+              setOpacity: () => void setSelectionOpacity(),
+              toggleLock: toggleLockSelection,
+              duplicate: () => void duplicateSelection(),
+              remove: deleteSelection,
+              toggleGrayscale: () => setSelectionGrayscale("toggle"),
+              toggleGif: (id) => {
+                const object = objectById(id);
+                if (object) toggleGifPlayback(object);
+              },
+              toggleSampling: () => void toggleSampling(),
+              locate: (assetId) => {
+                void window.refCanvas.library
+                  .get(assetId)
+                  .then(async (loaded) => {
+                    if (!loaded) {
+                      showDropNotice(translate("board.locateAssetMissing"));
+                      return;
+                    }
+                    await eventBindingsRef.current.onLocateAsset?.(loaded);
+                  })
+                  .catch(() => showDropNotice(translate("board.locateFailed")));
+              },
+              relink: (assetId) => void relinkBoardReference(assetId),
+              paste: () => {
+                if (boardClipboard.length) void pasteSelection();
+                else void pasteSystemClipboard();
+              },
+              fitAll: () => fitObjects(false),
+              toggleGrid: () =>
+                updateAppearance({
+                  ...runtime.appearance,
+                  gridVisible: !runtime.appearance.gridVisible,
+                }),
+              editAppearance: () => void editBoardAppearance(),
+              openCommandPalette,
             }}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            {boardContextMenu.kind === "multi" && (
-              <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    alignSelection("left");
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <AlignStartVertical size={16} />
-                  {translate("board.alignLeft")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    alignSelection("centerX");
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <AlignCenterVertical size={16} />
-                  {translate("board.alignCenterX")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    distributeSelection("x");
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <LayoutGrid size={16} />
-                  {translate("board.distributeX")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    distributeSelection("y");
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <LayoutGrid size={16} />
-                  {translate("board.distributeY")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    arrangeCompact();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <LayoutGrid size={16} />
-                  {translate("board.arrangeCompact")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    normalizeSize("width");
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <RotateCcw size={16} />
-                  {translate("board.normalizeWidth")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    groupSelection();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <GroupIcon size={16} />
-                  {translate("board.group")}
-                </button>
-              </>
-            )}
-            {boardContextMenu.kind === "object" && boardContextMenu.target && (
-              <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const object = objectById(boardContextMenu.target!.id);
-                    if (object) focusBoardObject(object);
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <ScanSearch size={16} />
-                  {translate("board.focus")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const object = objectById(boardContextMenu.target!.id);
-                    if (object instanceof FabricImage) openCropDialog(object);
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Crop size={16} />
-                  {translate("board.crop")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void setSelectionOpacity();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <span className="text-tool-icon">%</span>
-                  {translate("board.opacity")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    toggleLockSelection();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Lock size={16} />
-                  {translate("board.lockUnlock")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void duplicateSelection();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <CopyPlus size={16} />
-                  {translate("board.duplicate")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button
-                  className="danger"
-                  role="menuitem"
-                  onClick={() => {
-                    deleteSelection();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Trash2 size={16} />
-                  {translate("board.delete")}
-                </button>
-              </>
-            )}
-            {boardContextMenu.kind === "image" && boardContextMenu.target && (
-              <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const object = objectById(boardContextMenu.target!.id);
-                    if (object) focusBoardObject(object);
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <ScanSearch size={16} />
-                  {translate("board.focus")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const object = objectById(boardContextMenu.target!.id);
-                    if (object instanceof FabricImage) openCropDialog(object);
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Crop size={16} />
-                  {translate("board.crop")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setSelectionGrayscale("toggle");
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <span className="text-tool-icon">B/W</span>
-                  {translate("board.toggleGrayscaleShort")}
-                </button>
-                {boardContextMenu.target.hasGif && (
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      const object = objectById(boardContextMenu.target!.id);
-                      if (object) toggleGifPlayback(object);
-                      setBoardContextMenu(null);
-                    }}
-                  >
-                    {boardContextMenu.target.gifPlaying ? (
-                      <Pause size={16} />
-                    ) : (
-                      <Play size={16} />
-                    )}
-                    {boardContextMenu.target.gifPlaying
-                      ? translate("board.gifPause")
-                      : translate("board.gifPlay")}
-                  </button>
-                )}
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    void toggleSampling();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <span className="text-tool-icon">NN</span>
-                  {translate("board.toggleSampling")}
-                </button>
-                {eventBindingsRef.current.onLocateAsset && boardContextMenu.target.assetId && (
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      const assetId = boardContextMenu.target?.assetId;
-                      if (assetId) {
-                        void window.refCanvas.library
-                          .get(assetId)
-                          .then(async (loaded) => {
-                            if (!loaded) {
-                              showDropNotice(translate("board.locateAssetMissing"));
-                              return;
-                            }
-                            await eventBindingsRef.current.onLocateAsset?.(loaded);
-                          })
-                          .catch(() => showDropNotice(translate("board.locateFailed")));
-                      }
-                      setBoardContextMenu(null);
-                    }}
-                  >
-                    <FolderOpen size={16} />
-                    {translate("board.locateInIndex")}
-                  </button>
-                )}
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    const assetId = boardContextMenu.target?.assetId;
-                    setBoardContextMenu(null);
-                    if (assetId) void relinkBoardReference(assetId);
-                  }}
-                  title={translate("board.relinkTitleHint")}
-                >
-                  <Link2 size={16} />
-                  {translate("board.relink")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button
-                  className="danger"
-                  role="menuitem"
-                  onClick={() => {
-                    deleteSelection();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Trash2 size={16} />
-                  {translate("board.delete")}
-                </button>
-              </>
-            )}
-            {boardContextMenu.kind === "empty" && (
-              <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    if (boardClipboard.length) void pasteSelection();
-                    else void pasteSystemClipboard();
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <ClipboardIcon size={16} />
-                  {translate("board.paste")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    fitObjects(false);
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Maximize size={16} />
-                  {translate("board.fitAll")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    updateAppearance({
-                      ...runtime.appearance,
-                      gridVisible: !runtime.appearance.gridVisible,
-                    });
-                    setBoardContextMenu(null);
-                  }}
-                >
-                  <Grid3X3 size={16} />
-                  {appearance.gridVisible ? translate("board.hideGrid") : translate("board.showGrid")}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => void editBoardAppearance()}
-                >
-                  <Palette size={16} />
-                  {translate("board.appearanceTitle")}
-                </button>
-                <div className="folder-menu-separator" />
-                <button role="menuitem" onClick={openCommandPalette}>
-                  <Search size={16} />
-                  {translate("board.commandPaletteTitle")}
-                </button>
-              </>
-            )}
-          </div>
-        )}
-        {boardContextMenu && (
-          <div
-            className="context-menu-dismiss"
-            onClick={() => setBoardContextMenu(null)}
           />
         )}
       </div>
