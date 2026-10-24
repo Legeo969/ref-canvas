@@ -10,53 +10,29 @@ export type MessageKey =
 
   | "common.fileFilterVideos"
 
-  | "annotations.add"
 
-  | "annotations.addDescription"
 
-  | "annotations.addTitle"
 
-  | "annotations.cancelAdd"
 
-  | "annotations.close"
 
-  | "annotations.contentLabel"
 
-  | "annotations.contentPlaceholder"
 
-  | "annotations.count"
 
-  | "annotations.deleteFailed"
 
-  | "annotations.deleteNamed"
 
-  | "annotations.editNamed"
 
-  | "annotations.editTitle"
 
-  | "annotations.emptyHint"
 
-  | "annotations.emptyTitle"
 
-  | "annotations.eyebrow"
 
-  | "annotations.loadFailed"
 
-  | "annotations.loading"
 
-  | "annotations.moveFailed"
 
-  | "annotations.moveHint"
 
-  | "annotations.navigateHint"
 
-  | "annotations.placeHint"
 
-  | "annotations.relocateNamed"
 
-  | "annotations.spaceComments"
 
-  | "annotations.viewNamed"
 
   | "app.createBoardConfirm"
 
@@ -64,7 +40,6 @@ export type MessageKey =
 
   | "app.loadingWorkspace"
 
-  | "app.name"
 
   | "app.newBoardDescription"
 
@@ -76,9 +51,7 @@ export type MessageKey =
 
   | "app.degradedBanner"
 
-  | "app.previousCrash"
 
-  | "app.degradedReadOnly"
 
   | "app.safeModeTitle"
 
@@ -124,7 +97,6 @@ export type MessageKey =
 
   | "audio.metaName"
 
-  | "audio.sampleCount"
 
   | "board.addArrow"
 
@@ -356,29 +328,18 @@ export type MessageKey =
 
   | "board.focus"
 
-  | "board.focusInterval"
 
-  | "board.focusIntervalSeconds"
 
-  | "board.focusNext"
 
-  | "board.focusOrder"
 
-  | "board.focusOrderMode"
 
-  | "board.focusOverlayLabel"
 
-  | "board.focusPause"
 
-  | "board.focusPlay"
 
-  | "board.focusPrevious"
 
-  | "board.focusRandom"
 
   | "board.focusSelection"
 
-  | "board.focusShuffle"
 
   | "board.gifPause"
 
@@ -738,7 +699,6 @@ export type MessageKey =
 
   | "browser.empty"
 
-  | "browser.tab.close"
 
   | "browser.tab.new"
 
@@ -769,7 +729,6 @@ export type MessageKey =
 
   | "collections.addFilesNamed"
 
-  | "collections.cancelExport"
 
   | "collections.childNameLabel"
 
@@ -802,13 +761,11 @@ export type MessageKey =
 
   | "collections.export"
 
-  | "collections.exported"
 
   | "collections.exporting"
 
   | "collections.exportNamed"
 
-  | "collections.exportSummary"
 
   | "collections.exportConflictTitle"
 
@@ -866,7 +823,6 @@ export type MessageKey =
 
   | "collections.skippedDirectories"
 
-  | "collections.sourceLabel"
 
   | "collections.state.ambiguous"
 
@@ -878,7 +834,6 @@ export type MessageKey =
 
   | "collections.webCaptures"
   | "collections.deleteCaptureFile"
-  | "collections.deleteCaptureFileDesc"
   | "collections.deleteFile"
   | "collections.deleteFileDesc"
   | "collections.deleteSelectedFiles"
@@ -892,9 +847,6 @@ export type MessageKey =
   | "collections.statusSummary"
   | "collections.all"
   | "collections.searchPlaceholder"
-  | "collections.searchScope"
-  | "collections.currentFolder"
-  | "collections.allItems"
   | "collections.sortBy"
   | "collections.sortStatus"
   | "collections.sortAdded"
@@ -960,7 +912,6 @@ export type MessageKey =
 
   | "directory.assetMetadata"
 
-  | "directory.assetWorkbench"
 
   | "directory.back"
 
@@ -984,7 +935,6 @@ export type MessageKey =
 
   | "directory.cancelBatch"
 
-  | "directory.cancelSearch"
 
   | "directory.cancelTask"
 
@@ -1103,7 +1053,6 @@ export type MessageKey =
 
   | "directory.fileFallback"
 
-  | "directory.files"
 
   | "directory.filesCount"
 
@@ -1121,11 +1070,8 @@ export type MessageKey =
 
   | "directory.forward"
 
-  | "directory.fpsBaseline"
 
-  | "directory.fpsBaselineHint"
 
-  | "directory.fpsPresetDrawer"
 
   | "directory.generated"
 
@@ -1139,7 +1085,6 @@ export type MessageKey =
 
   | "directory.includeDepth"
 
-  | "directory.includeSubdirectories"
 
   | "directory.itemCount"
 
@@ -1171,7 +1116,6 @@ export type MessageKey =
 
   | "directory.pathInput"
 
-  | "directory.editPath"
 
   | "directory.noActionableAssets"
 
@@ -1185,7 +1129,6 @@ export type MessageKey =
 
   | "directory.openDirectory"
 
-  | "directory.openMultiVideoGifWorkbench"
 
   | "directory.openTasksPanel"
 
@@ -1211,7 +1154,6 @@ export type MessageKey =
 
   | "directory.pickMoveTarget"
 
-  | "directory.preset"
 
   | "directory.previewSettings"
 
@@ -1265,11 +1207,8 @@ export type MessageKey =
 
   | "directory.searchPlaceholder"
 
-  | "directory.searchPlaceholderShort"
 
-  | "directory.selectAssetFirst"
 
-  | "directory.sequenceFrames"
 
   | "directory.skip"
 
@@ -1307,41 +1246,27 @@ export type MessageKey =
 
   | "directory.unfavoriteNamed"
 
-  | "directory.unmount"
 
-  | "directory.unmountDescription"
 
-  | "directory.unmountNamed"
 
   | "directory.untitled"
 
-  | "directory.up"
 
   | "directory.viewMode"
 
   | "directory.viewOptions"
 
-  | "directory.workbenchEmptyHint"
 
-  | "directory.workbenchTabs"
 
   | "directory.zoom"
 
-  | "duplicates.count"
 
-  | "duplicates.empty"
 
-  | "duplicates.emptyHint"
 
-  | "duplicates.keep"
 
-  | "duplicates.merge"
 
-  | "duplicates.mergeConfirm"
 
-  | "duplicates.subtitle"
 
-  | "duplicates.title"
 
   | "font.glyphCount"
 
@@ -1367,7 +1292,6 @@ export type MessageKey =
 
   | "gif.colors"
 
-  | "gif.decodeFailed"
 
   | "gif.dither"
 
@@ -1439,7 +1363,6 @@ export type MessageKey =
 
   | "hdr.channels"
 
-  | "hdr.channelsGroup"
 
   | "hdr.colorManagement"
 
@@ -1455,7 +1378,6 @@ export type MessageKey =
 
   | "hdr.exporting"
 
-  | "hdr.exposure"
 
   | "hdr.exposureValue"
 
@@ -1467,7 +1389,6 @@ export type MessageKey =
 
   | "hdr.layersSelect"
 
-  | "hdr.mapping"
 
   | "hdr.noExtraLayers"
 
@@ -1497,7 +1418,6 @@ export type MessageKey =
 
   | "imageReview.copy"
 
-  | "imageReview.displayColorNote"
 
   | "imageReview.error"
 
@@ -1513,19 +1433,13 @@ export type MessageKey =
 
   | "imageReview.noLayers"
 
-  | "imageReview.original"
 
-  | "imageReview.palette"
 
-  | "imageReview.paletteLabel"
 
   | "imageReview.rotate"
 
-  | "imageReview.zoomIn"
 
-  | "imageReview.zoomOut"
 
-  | "import.indexing"
 
   | "mediaInfo.animationCount"
 
@@ -1637,7 +1551,6 @@ export type MessageKey =
 
   | "model.cameraCount"
 
-  | "model.defaultView"
 
   | "model.displayMode"
 
@@ -1645,7 +1558,6 @@ export type MessageKey =
 
   | "model.resetView"
 
-  | "model.saveCurrentView"
 
   | "model.saved"
 
@@ -1655,19 +1567,15 @@ export type MessageKey =
 
   | "model.saving"
 
-  | "model.setAssetThumbnail"
 
   | "model.setThumbnail"
 
   | "model.settingThumbnail"
 
-  | "model.showUvChecker"
 
-  | "model.showWireframe"
 
   | "model.solid"
 
-  | "model.solidMaterial"
 
   | "model.thumbnailFailed"
 
@@ -1693,7 +1601,6 @@ export type MessageKey =
 
   | "notes.addAtTime"
 
-  | "notes.addLinked"
 
   | "notes.asset"
 
@@ -1721,7 +1628,6 @@ export type MessageKey =
 
   | "preview.addLut"
 
-  | "preview.assetDetails"
 
   | "preview.auto"
 
@@ -1729,13 +1635,10 @@ export type MessageKey =
 
   | "preview.clearSampled"
 
-  | "preview.clickToCopy"
 
-  | "preview.clickToView"
 
   | "preview.close"
 
-  | "preview.closeQuick"
 
   | "preview.closeTool"
 
@@ -1753,7 +1656,6 @@ export type MessageKey =
 
   | "preview.displayModeGroup"
 
-  | "preview.duration"
 
   | "preview.emptyHint"
 
@@ -1791,7 +1693,6 @@ export type MessageKey =
 
   | "preview.importLut"
 
-  | "preview.loading"
 
   | "preview.loop"
 
@@ -1805,7 +1706,6 @@ export type MessageKey =
 
   | "preview.mute"
 
-  | "preview.nextAsset"
 
   | "preview.nextFile"
 
@@ -1831,7 +1731,6 @@ export type MessageKey =
 
   | "preview.notesToggle"
 
-  | "preview.open"
 
   | "preview.openAsset"
 
@@ -1839,7 +1738,6 @@ export type MessageKey =
 
   | "preview.outputDirectory"
 
-  | "preview.palette"
 
   | "preview.paletteCollapse"
 
@@ -1859,7 +1757,6 @@ export type MessageKey =
 
   | "preview.panoramaMode"
 
-  | "preview.path"
 
   | "preview.pause"
 
@@ -1867,13 +1764,11 @@ export type MessageKey =
 
   | "preview.previewNamed"
 
-  | "preview.previousAsset"
 
   | "preview.previousFile"
 
   | "preview.previousFrame"
 
-  | "preview.quickNamed"
 
   | "preview.rateFps"
 
@@ -1883,13 +1778,11 @@ export type MessageKey =
 
   | "preview.reflectionBall"
 
-  | "preview.resolution"
 
   | "preview.reveal"
 
   | "preview.revealInExplorer"
 
-  | "preview.revealShort"
 
   | "preview.sampleColor"
 
@@ -1901,12 +1794,10 @@ export type MessageKey =
 
   | "preview.setTags"
 
-  | "preview.size"
 
 
 
 
-  | "preview.tab.preview"
 
   | "preview.timeline"
 
@@ -1916,7 +1807,6 @@ export type MessageKey =
 
   | "preview.trim"
 
-  | "preview.type"
 
   | "preview.viewColor"
 
@@ -1948,7 +1838,6 @@ export type MessageKey =
 
   | "sequence.exportGif"
 
-  | "sequence.exportGifTitle"
 
   | "sequence.exporting"
 
@@ -1958,9 +1847,7 @@ export type MessageKey =
 
   | "sequence.exportMp4"
 
-  | "sequence.exportMp4Title"
 
-  | "sequence.exportPreset"
 
   | "sequence.exportSelectedFrames"
 
@@ -2018,11 +1905,9 @@ export type MessageKey =
 
   | "sequence.revealGif"
 
-  | "sequence.selectGifRange"
 
   | "sequence.selectGifRangeTitle"
 
-  | "sequence.timeline"
 
   | "settings.about"
 
@@ -2042,7 +1927,6 @@ export type MessageKey =
 
   | "settings.about.platform"
 
-  | "settings.addedAt"
 
   | "settings.automaticBackup"
 
@@ -2126,9 +2010,7 @@ export type MessageKey =
 
   | "settings.maintenance"
 
-  | "settings.maintenanceSubtitle"
 
-  | "settings.maintenanceTitle"
 
   | "settings.manualBackup"
 
@@ -2138,17 +2020,11 @@ export type MessageKey =
 
   | "settings.mediaRebuildSummary"
 
-  | "settings.migrateFromRoot"
 
-  | "settings.migratePaths"
 
-  | "settings.migratePathsDescription"
 
-  | "settings.migrateResult"
 
-  | "settings.migrateToRoot"
 
-  | "settings.noWatchRoots"
 
   | "settings.options"
 
@@ -2404,7 +2280,6 @@ export type MessageKey =
 
   | "settings.preview.sequenceFpsPresetsHint"
 
-  | "settings.preview.setAsDefault"
 
   | "settings.preview.setDefaultPreset"
 
@@ -2436,15 +2311,11 @@ export type MessageKey =
 
   | "settings.restoreBackupTitle"
 
-  | "settings.restoreConfirm"
 
   | "settings.restoreLayout"
 
-  | "settings.startMigration"
 
-  | "settings.stopWatch"
 
-  | "settings.stopWatchConfirm"
 
   | "settings.subtitle"
 
@@ -2462,19 +2333,16 @@ export type MessageKey =
 
   | "settings.uninstallHint"
 
-  | "settings.watchRoots"
 
   | "sidebar.adjustHeight"
 
   | "sidebar.boards"
 
-  | "sidebar.collections"
 
   | "sidebar.collapse"
 
   | "sidebar.directory"
 
-  | "sidebar.drives"
 
   | "sidebar.expand"
 
@@ -2525,7 +2393,6 @@ export type MessageKey =
 
   | "status.importing"
 
-  | "tasks.cancel"
 
   | "tasks.cancelTask"
 
@@ -2543,7 +2410,6 @@ export type MessageKey =
 
   | "tasks.retry"
 
-  | "tasks.retryTask"
 
   | "tasks.state.cancelled"
 
@@ -2565,7 +2431,6 @@ export type MessageKey =
 
   | "text.truncated"
 
-  | "titlebar.clipboard"
 
   | "titlebar.exportPng"
 
@@ -2575,7 +2440,6 @@ export type MessageKey =
 
   | "titlebar.exportedPackageSkipped"
 
-  | "titlebar.exportFailed"
 
   | "titlebar.exportFailedDetail"
 
@@ -2589,13 +2453,11 @@ export type MessageKey =
 
   | "titlebar.openBoardWindow"
 
-  | "titlebar.openFolder"
 
   | "titlebar.pin"
 
   | "titlebar.presentBoard"
 
-  | "titlebar.professionalSettings"
 
   | "titlebar.screenshot"
 
@@ -2609,13 +2471,10 @@ export type MessageKey =
 
   | "video.closeFramesExport"
 
-  | "video.exportedGif"
 
-  | "video.exporting"
 
   | "video.format"
 
-  | "video.fpsPreset"
 
   | "video.fpsPresetTitle"
 

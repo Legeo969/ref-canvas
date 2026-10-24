@@ -258,17 +258,6 @@ export const catalog = {
     "board.hudCropZoomPercent": "Cropped content {percent}%",
 
     // ---- board.* focus overlay ----
-    "board.focusOverlayLabel": "Single-image focus",
-    "board.focusPrevious": "Previous",
-    "board.focusPlay": "Play slideshow",
-    "board.focusPause": "Pause slideshow",
-    "board.focusNext": "Next",
-    "board.focusInterval": "Slideshow interval",
-    "board.focusIntervalSeconds": "{seconds} s",
-    "board.focusOrder": "Slideshow order",
-    "board.focusOrderMode": "In order",
-    "board.focusShuffle": "Shuffle",
-    "board.focusRandom": "Random",
 
     // ---- board.* notes / text ----
     "board.noteNewTitle": "New note",
@@ -599,17 +588,6 @@ export const catalog = {
     "board.hudCropZoomPercent": "裁切内容 {percent}%",
 
     // ---- board.* 单图聚焦 ----
-    "board.focusOverlayLabel": "单图聚焦",
-    "board.focusPrevious": "上一张",
-    "board.focusPlay": "播放幻灯片",
-    "board.focusPause": "暂停幻灯片",
-    "board.focusNext": "下一张",
-    "board.focusInterval": "幻灯片间隔",
-    "board.focusIntervalSeconds": "{seconds} 秒",
-    "board.focusOrder": "幻灯片顺序",
-    "board.focusOrderMode": "顺序",
-    "board.focusShuffle": "洗牌",
-    "board.focusRandom": "随机",
 
     // ---- board.* 便签 / 文字 ----
     "board.noteNewTitle": "新建便签",
