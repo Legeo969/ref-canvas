@@ -42,14 +42,14 @@ describe("TaskCenter (FND-007 §8.3)", () => {
     const tasks = {
       list: vi.fn(async () => [
         task(),
-        task({ id: "t2", kind: "ai", state: "completed", stage: "completed", progress: 1 }),
+        task({ id: "t2", kind: "archive", state: "completed", stage: "completed", progress: 1 }),
         task({ id: "t3", kind: "batch", state: "failed", stage: "failed", errorMessage: "2 项失败" }),
       ]),
       get: vi.fn(async () => null),
       cancel: vi.fn(async () => null),
       onChanged: () => () => undefined,
     };
-    Object.assign(window, { refCanvas: { tasks, ai: { retry: vi.fn(async () => null) } } });
+    Object.assign(window, { refCanvas: { tasks } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -61,7 +61,7 @@ describe("TaskCenter (FND-007 §8.3)", () => {
     });
     expect(host.textContent).toContain("任务中心");
     expect(host.textContent).toContain("导入");
-    expect(host.textContent).toContain("AI");
+    expect(host.textContent).toContain("归档");
     expect(host.textContent).toContain("批处理");
     expect(host.textContent).toContain("50%");
     expect(host.textContent).toContain("2 项失败");
@@ -74,7 +74,7 @@ describe("TaskCenter (FND-007 §8.3)", () => {
       cancel: vi.fn(async () => task({ state: "cancelled", stage: "cancelled" })),
       onChanged: () => () => undefined,
     };
-    Object.assign(window, { refCanvas: { tasks, ai: { retry: vi.fn(async () => null) } } });
+    Object.assign(window, { refCanvas: { tasks } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -101,7 +101,7 @@ describe("TaskCenter (FND-007 §8.3)", () => {
       cancel: vi.fn(async () => null),
       onChanged: () => () => undefined,
     };
-    Object.assign(window, { refCanvas: { tasks, ai: { retry: vi.fn(async () => null) } } });
+    Object.assign(window, { refCanvas: { tasks } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);

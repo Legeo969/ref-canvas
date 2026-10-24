@@ -236,7 +236,7 @@ describe("HDR preview controls", () => {
       const managed = host.querySelector<HTMLImageElement>("img.hdr-preview-managed");
       // managed（覆盖在 fallback 之上的色彩管理变体）必须存在，
       // 且曝光变量仍在容器上——jsdom 无法解析样式表，
-      // 按仓库既有约定（AiDesignSupervisor/CollectionsPanel 测试）断言 CSS 规则文本。
+      // 按仓库既有约定（CollectionsPanel 等测试）断言 CSS 规则文本。
       expect(managed).toBeTruthy();
       expect(container?.style.getPropertyValue("--hdr-exposure")).toBe("1");
 

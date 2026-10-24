@@ -1,70 +1,42 @@
 import { useEffect, useState } from "react";
 import type { CaptureSource } from "../../shared/contracts";
 import { CaptureOverlay } from "./CaptureOverlay";
-import { translate } from "../app/i18n";
 
 /**
  * 独立区域截图覆盖窗口（URL `?capture=1` 时由 App 短路渲染）。
  *
- * 覆盖窗口与主窗口完全解耦：主窗口保持可见，用户不再需要“关掉
- * RefCanvas”才能截图。窗口启动后一次性消费主进程暂存的抓屏快照，
- * 框选完成（保存/取消）后由主进程销毁本窗口。
+ * 窗口由主进程常驻复用：每次截图只把底图推过来（capture:source），不再
+ * 每次新建窗口、也不再跨窗口索取一次快照。底图是 refbrowse:// token，
+ * 由 Chromium 直接读取文件，渲染端不接触图像字节。
+ *
+ * 抓屏失败不会走到这里——主窗口负责提示，覆盖窗口根本不会显示。
  */
 export function CaptureWindow() {
   const [source, setSource] = useState<CaptureSource | null>(null);
-  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const pending = await window.refCanvas.system.getCaptureSource();
-        if (cancelled) return;
-        if (!pending) {
-          setFailed(true);
-          return;
-        }
-        setSource(pending);
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (failed) {
-    return (
-      <div className="capture-overlay">
-        <div className="capture-instructions" data-capture-control>
-          {translate("capture.unavailable")}
-        </div>
-        <div className="capture-actions" data-capture-control>
-          <button
-            type="button"
-            aria-label={translate("capture.cancel")}
-            onClick={() => void window.refCanvas.system.cancelRegionCapture()}
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(
+    () => window.refCanvas.system.onCaptureSource(setSource),
+    [],
+  );
 
   if (!source) {
-    // 快照尚未就绪：维持一个无内容的覆盖背景，避免白屏闪烁。
+    // 底图尚未到达：维持无内容的覆盖背景，避免白屏闪烁。
     return <div className="capture-overlay" />;
   }
 
   return (
+    // key=imageUrl：每次推送新底图都强制重新挂载，清掉上一次残留的选区
+    // state。否则第二次截图打开时旧选区还在，双击空白会误存上一次的框。
     <CaptureOverlay
+      key={source.imageUrl}
       source={source}
-      onComplete={async (dataUrl) => {
-        await window.refCanvas.system.saveRegionCapture(dataUrl);
+      onComplete={async (crop) => {
+        await window.refCanvas.system.saveRegionCapture(crop);
+        // 保存成功后主进程隐藏窗口；清掉底图，下次显示先等新推送。
+        setSource(null);
       }}
       onCancel={() => {
+        setSource(null);
         void window.refCanvas.system.cancelRegionCapture();
       }}
     />

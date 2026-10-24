@@ -163,6 +163,7 @@ interface AppState
   mergeDuplicates(keepId: string, removeIds: string[]): Promise<void>;
   saveBoard(document: BoardDocumentV3, revision: number): Promise<BoardSummary>;
   createBoard(title: string): Promise<void>;
+  refreshBoards(): Promise<void>;
   renameBoard(id: string, title: string): Promise<void>;
   deleteBoard(id: string): Promise<void>;
   switchBoard(id: string): Promise<void>;
@@ -1072,6 +1073,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       selectedAsset: null,
       workspaceMode: "board",
     }));
+  },
+
+  /** 重拉白板列表（项目导入后由 titlebar 调用）。 */
+  refreshBoards: async () => {
+    const boards = await window.refCanvas.boards.list().catch(() => []);
+    set((state) => ({ boards: boards.length ? boards : state.boards }));
   },
 
   renameBoard: async (id, title) => {

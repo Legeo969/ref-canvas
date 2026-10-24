@@ -1798,11 +1798,12 @@
   max-width: min(460px, calc(100vw - 32px));
   padding: 10px 13px;
   border-radius: 9px;
-  background: rgba(48, 31, 31, 0.96);
-  box-shadow:
-    0 0 0 1px rgba(229, 110, 110, 0.3),
-    0 12px 30px rgba(0, 0, 0, 0.34);
-  color: #f0b5b5;
+  /* 用宿主主题变量：toast 承载成功/跳过了 N 个缺失文件等非错误信息，
+     与 shell 的浮层（菜单、面板）保持同一套配色，不用红色报警色。 */
+  background: var(--bg-base);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34);
+  color: var(--text);
   font-size: 11px;
   translate: -50% 0;
   user-select: text;
@@ -1845,15 +1846,29 @@
 .capture-selection {
   position: absolute;
   border: 1px solid #75d2b6;
-  background: rgba(117, 210, 182, 0.08);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.65),
-    0 0 20px rgba(58, 178, 143, 0.22);
+  /* 无背景填充：选区内透出底图原始亮度，所见即所得。
+     遮罩用选区自身的巨型外扩阴影实现：单元素挖洞，不存在多块拼接的
+     z-index/坐标协调问题。阴影从 border-box 外缘起扩，不盖住选区内部。 */
+  box-shadow: 0 0 0 9999px rgba(4, 8, 7, 0.48);
   pointer-events: none;
 }
 
+/* 八向调整手柄：纯视觉，命中由 overlay 统一做几何判定。 */
+.capture-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #e8f2ee;
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+
 .capture-instructions,
-.capture-actions {
+.capture-actions,
+.capture-size {
   position: fixed;
   z-index: 2;
   border-radius: 9px;
@@ -1862,6 +1877,16 @@
     0 0 0 1px rgba(255, 255, 255, 0.13),
     0 10px 28px rgba(0, 0, 0, 0.32);
   backdrop-filter: blur(14px);
+}
+
+/* 拖动中的"宽 × 高"读数：物理像素，与最终保存尺寸同源。 */
+.capture-size {
+  padding: 4px 8px;
+  color: #cfe6de;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .capture-instructions {

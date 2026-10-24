@@ -151,6 +151,7 @@ import {
   loadThumbnailWithRetry,
   type BoardProxySize,
 } from "../app/board-proxy";
+import { loadCleanBoardImageElement } from "../app/board-image-loader";
 import { ModelPreview, type ModelView } from "./ModelPreview";
 import { AssetPreview } from "./AssetPreview";
 import { PreviewToolbar } from "./PreviewToolbar";
@@ -4036,51 +4037,114 @@ export function BoardCanvas({
   );
 
   useEffect(() => {
-    const exportPngFor = (objects: FabricObject[]) => {
+    /**
+     * 导出前把画布里的 <img> 图片对象临时换成 fetch+blob 拿到的
+     * CORS-clean 位图。根因：白板图片经裸 <img> 加载，打包环境里
+     * file:// 页面跨协议请求 refasset:// 无 Referer/Origin，协议策略
+     * 无法签发 CORS 头，画布被污染，toDataURL 直接抛 SecurityError
+     * 且被 void 吞掉（「导出 PNG 没反应」）。取色器已改主进程采样
+     * 绕开（35c7a25）；导出 PNG 无法绕开，只能先换装干净位图。
+     * 只换 _element（同尺寸，不动 width/scale/序列化 src），导出后还原。
+     * GIF 动画对象的当前帧本来就是干净画布，跳过即可。
+     */
+    const swapBoardImagesForExport = async (
+      objects: FabricObject[],
+    ): Promise<() => void> => {
+      const restores: Array<() => void> = [];
+      const swaps: Array<Promise<void>> = [];
+      const collect = (object: FabricObject): void => {
+        if (object instanceof Group) {
+          object.getObjects().forEach(collect);
+          return;
+        }
+        const image = object as FabricObject & {
+          _element?: unknown;
+          getSrc?: () => string;
+        };
+        const element = image._element;
+        if (!(element instanceof HTMLImageElement)) return;
+        const src = typeof image.getSrc === "function" ? image.getSrc() : null;
+        if (!src) return;
+        swaps.push(
+          loadCleanBoardImageElement(src).then((clean) => {
+            if (!clean || image._element !== element) return;
+            image._element = clean as typeof element;
+            restores.push(() => {
+              if (image._element === clean) image._element = element;
+            });
+          }),
+        );
+      };
+      objects.forEach(collect);
+      await Promise.allSettled(swaps);
+      return () => restores.forEach((restore) => restore());
+    };
+    const exportPngFor = async (objects: FabricObject[]) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const previousTransform: TMat2D = canvas.viewportTransform
-        ? ([...canvas.viewportTransform] as TMat2D)
-        : [1, 0, 0, 1, 0, 0];
-      let options: Parameters<FabricCanvas["toDataURL"]>[0] = {
-        format: "png",
-        multiplier: 2,
-        enableRetinaScaling: true,
-      };
-      if (objects.length) {
-        canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-        const bounds = objects.map((object) => object.getBoundingRect());
-        const left = Math.min(...bounds.map((item) => item.left)) - 48;
-        const top = Math.min(...bounds.map((item) => item.top)) - 48;
-        const right = Math.max(
-          ...bounds.map((item) => item.left + item.width),
-        ) + 48;
-        const bottom = Math.max(
-          ...bounds.map((item) => item.top + item.height),
-        ) + 48;
-        options = {
-          ...options,
-          left,
-          top,
-          width: Math.max(1, right - left),
-          height: Math.max(1, bottom - top),
-        };
+      try {
+        const restoreImages = await swapBoardImagesForExport(objects);
+        try {
+          const previousTransform: TMat2D = canvas.viewportTransform
+            ? ([...canvas.viewportTransform] as TMat2D)
+            : [1, 0, 0, 1, 0, 0];
+          let options: Parameters<FabricCanvas["toDataURL"]>[0] = {
+            format: "png",
+            multiplier: 2,
+            enableRetinaScaling: true,
+          };
+          if (objects.length) {
+            canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+            const bounds = objects.map((object) => object.getBoundingRect());
+            const left = Math.min(...bounds.map((item) => item.left)) - 48;
+            const top = Math.min(...bounds.map((item) => item.top)) - 48;
+            const right = Math.max(
+              ...bounds.map((item) => item.left + item.width),
+            ) + 48;
+            const bottom = Math.max(
+              ...bounds.map((item) => item.top + item.height),
+            ) + 48;
+            options = {
+              ...options,
+              left,
+              top,
+              width: Math.max(1, right - left),
+              height: Math.max(1, bottom - top),
+            };
+          }
+          const dataUrl = canvas.toDataURL(options);
+          canvas.setViewportTransform(previousTransform);
+          canvas.requestRenderAll();
+          const exported = await window.refCanvas.boards.exportPng(
+            board.id,
+            dataUrl,
+          );
+          if (exported) {
+            window.dispatchEvent(new CustomEvent("refcanvas:toast", {
+              detail: translate("board.exportPngSaved"),
+            }));
+          }
+        } finally {
+          restoreImages();
+          canvas.requestRenderAll();
+        }
+      } catch (error) {
+        console.error("[board] PNG export failed", error);
+        window.dispatchEvent(new CustomEvent("refcanvas:toast", {
+          detail: translate("board.exportPngFailed"),
+        }));
       }
-      const dataUrl = canvas.toDataURL(options);
-      canvas.setViewportTransform(previousTransform);
-      canvas.requestRenderAll();
-      void window.refCanvas.boards.exportPng(board.id, dataUrl);
     };
     const exportPng = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      exportPngFor(canvas.getObjects());
+      void exportPngFor(canvas.getObjects());
     };
     const exportPngSelection = () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const selection = canvas.getActiveObjects();
-      exportPngFor(selection.length ? selection : canvas.getObjects());
+      void exportPngFor(selection.length ? selection : canvas.getObjects());
     };
     const removeExport = controller.onDom(window, "refcanvas:export-png", exportPng);
     const removeSelection = controller.onDom(window, "refcanvas:export-png-selection", exportPngSelection);

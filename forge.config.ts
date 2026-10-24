@@ -25,6 +25,10 @@ const packagedRuntimePaths = [
   "/node_modules/@img/sharp-libvips-win32-x64",
   "/node_modules/@ffprobe-installer",
   "/node_modules/ffmpeg-static",
+  // 区域截图的原生抓屏后端；平台二进制由 optionalDependencies 落到
+  // node-screenshots-win32-x64-msvc，两条路径都必须进白名单。
+  "/node_modules/node-screenshots",
+  "/node_modules/node-screenshots-win32-x64-msvc",
 ];
 const signingConfigured = Boolean(
   process.env.REFCANVAS_CERTIFICATE_FILE ||
@@ -35,7 +39,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: {
       unpackDir:
-        "{node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static},assets/native/openimageio}",
+        "{node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static,node-screenshots-win32-x64-msvc},assets/native/openimageio}",
     },
     executableName: "RefCanvas",
     icon: "assets/installer/refcanvas.ico",

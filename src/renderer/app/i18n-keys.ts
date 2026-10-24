@@ -4,173 +4,11 @@
  */
 
 export type MessageKey =
-  | "ai.addReference"
+  | "common.fileFilterAll"
 
-  | "ai.addSelected"
+  | "common.fileFilterImages"
 
-  | "ai.cancel"
-
-  | "ai.displayColor"
-
-  | "ai.dropEmpty"
-
-  | "ai.dropHint"
-
-  | "ai.error.outputRequired"
-
-  | "ai.error.promptRequired"
-
-  | "ai.error.sourceRequired"
-
-  | "ai.fileFilterAll"
-
-  | "ai.fileFilterImages"
-
-  | "ai.fileFilterVideos"
-
-  | "ai.folderUnsupported"
-
-  | "ai.original.dropOrPaste"
-
-  | "ai.original.imageUnit"
-
-  | "ai.original.majorChange"
-
-  | "ai.original.placeholder"
-
-  | "ai.original.professionalModify"
-
-  | "ai.generate"
-
-  | "ai.generating"
-
-  | "ai.history"
-
-  | "ai.input"
-
-  | "ai.majorChange"
-
-  | "ai.noJobs"
-
-  | "ai.outputBrowse"
-
-  | "ai.outputCount"
-
-  | "ai.outputCountResult"
-
-  | "ai.outputDirectory"
-
-  | "ai.pickInput"
-
-  | "ai.pickOutput"
-
-  | "ai.pickReference"
-
-  | "ai.pickSource"
-
-  | "ai.prompt"
-
-  | "ai.promptPlaceholder"
-
-  | "ai.provider"
-
-  | "ai.referenceCount"
-
-  | "ai.referenceIndex"
-
-  | "ai.references"
-
-  | "ai.refresh"
-
-  | "ai.removeInput"
-
-  | "ai.removeSource"
-
-  | "ai.retry"
-
-  | "ai.selectMaterialFirst"
-
-  | "ai.source"
-
-  | "ai.state.cancelled"
-
-  | "ai.state.completed"
-
-  | "ai.state.downloading"
-
-  | "ai.state.failed"
-
-  | "ai.state.generating"
-
-  | "ai.state.queued"
-
-  | "ai.state.uploading"
-
-  | "ai.subtitle"
-
-  | "ai.title"
-
-  | "ai.unavailable"
-
-  | "aiSettings.binding"
-
-  | "aiSettings.bindingBatchSize"
-
-  | "aiSettings.bindingInvalid"
-
-  | "aiSettings.bindingOutputs"
-
-  | "aiSettings.bindingPrompt"
-
-  | "aiSettings.bindingReferences"
-
-  | "aiSettings.bindingSource"
-
-  | "aiSettings.clearToken"
-
-  | "aiSettings.comfyuiAddress"
-
-  | "aiSettings.defaultProvider"
-
-  | "aiSettings.enabledProviders"
-
-  | "aiSettings.fileFilterWorkflow"
-
-  | "aiSettings.healthCheck"
-
-  | "aiSettings.healthChecking"
-
-  | "aiSettings.healthy"
-
-  | "aiSettings.imported"
-
-  | "aiSettings.importWorkflow"
-
-  | "aiSettings.noNodes"
-
-  | "aiSettings.notConfigured"
-
-  | "aiSettings.remoteToken"
-
-  | "aiSettings.remoteTokenPlaceholder"
-
-  | "aiSettings.remoteUrl"
-
-  | "aiSettings.saveToken"
-
-  | "aiSettings.title"
-
-  | "aiSettings.tokenConfigured"
-
-  | "aiSettings.tokenUnconfigured"
-
-  | "aiSettings.unhealthy"
-
-  | "aiSettings.urlRejected"
-
-  | "aiSettings.workflowErrors"
-
-  | "aiSettings.workflowFile"
+  | "common.fileFilterVideos"
 
   | "annotations.add"
 
@@ -503,6 +341,10 @@ export type MessageKey =
   | "board.exitFocus"
 
   | "board.exportPngSelection"
+
+  | "board.exportPngSaved"
+
+  | "board.exportPngFailed"
 
   | "board.fitAll"
 
@@ -909,6 +751,7 @@ export type MessageKey =
   | "capture.instructions"
 
   | "capture.save"
+  | "capture.saved"
   | "capture.unavailable"
   | "capture.saving"
 
@@ -1108,8 +951,6 @@ export type MessageKey =
   | "directory.actionWebp"
 
   | "directory.addToBoard"
-
-  | "directory.aiDesignSupervisor"
 
   | "directory.all"
 
@@ -2202,8 +2043,6 @@ export type MessageKey =
 
   | "settings.addedAt"
 
-  | "settings.ai"
-
   | "settings.automaticBackup"
 
   | "settings.backgroundResidency"
@@ -2691,8 +2530,6 @@ export type MessageKey =
 
   | "tasks.empty"
 
-  | "tasks.kind.ai"
-
   | "tasks.kind.archive"
 
   | "tasks.kind.batch"
@@ -2731,13 +2568,23 @@ export type MessageKey =
 
   | "titlebar.clipboard"
 
-  | "titlebar.collectedProject"
-
-  | "titlebar.collectProject"
-
-  | "titlebar.exportJson"
-
   | "titlebar.exportPng"
+
+  | "titlebar.exportPackage"
+
+  | "titlebar.exportedPackage"
+
+  | "titlebar.exportedPackageSkipped"
+
+  | "titlebar.exportFailed"
+
+  | "titlebar.exportFailedDetail"
+
+  | "titlebar.importProject"
+
+  | "titlebar.importedProject"
+
+  | "titlebar.importFailed"
 
   | "titlebar.focusBoard"
 

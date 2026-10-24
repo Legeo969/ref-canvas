@@ -630,10 +630,10 @@ export function GIFPreview({ asset, managed = false, onPaletteChange }: { asset:
       const canvas = canvasRef.current;
       const image = imgRef.current;
       if (canvas && !canvasBroken && canvas.width > 0) {
-        await window.refCanvas.system.saveRegionCapture(canvas.toDataURL("image/png"));
+        await window.refCanvas.system.saveCaptureImage(canvas.toDataURL("image/png"));
       } else if (image) {
         const dataUrl = await renderImageToDataUrl(image);
-        await window.refCanvas.system.saveRegionCapture(dataUrl);
+        await window.refCanvas.system.saveCaptureImage(dataUrl);
       }
     } finally {
       setExporting(false);

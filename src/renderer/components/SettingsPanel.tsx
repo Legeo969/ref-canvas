@@ -10,7 +10,6 @@ import {
   ScanLine,
   Settings2,
   SlidersHorizontal,
-  Sparkles,
   Tags,
   Trash2,
   X,
@@ -34,7 +33,6 @@ import type { AppLanguage } from "../../shared/contracts";
 import { PANEL_DEFAULTS } from "../app/panel-layout";
 import { useAppStore } from "../app/store";
 import { useDialog } from "./DialogProvider";
-import { AiProviderSettings } from "./AiProviderSettings";
 import { SelectMenu } from "./SelectMenu";
 import { AboutSettings } from "./settings/AboutSettings";
 import { MaintenanceSettings } from "./settings/MaintenanceSettings";
@@ -47,7 +45,6 @@ export type SettingsTab =
   | "preview"
   | "capture"
   | "organize"
-  | "ai"
   | "maintenance"
   | "about";
 
@@ -62,7 +59,6 @@ const TABS: Array<{ id: SettingsTab; labelKey: MessageKey; icon: typeof Info }> 
   { id: "preview", labelKey: "settings.options", icon: ScanLine },
   { id: "capture", labelKey: "settings.capture", icon: Link2 },
   { id: "organize", labelKey: "settings.organize", icon: Tags },
-  { id: "ai", labelKey: "settings.ai", icon: Sparkles },
   { id: "maintenance", labelKey: "settings.maintenance", icon: Gauge },
   { id: "about", labelKey: "settings.about", icon: Info },
 ];
@@ -1145,8 +1141,6 @@ export function SettingsPanel({
                 </label>
               </div>
             )}
-
-            {tab === "ai" && <AiProviderSettings />}
 
             {tab === "maintenance" && (
               <MaintenanceSettings

@@ -4,7 +4,6 @@ import {
   FolderOpen,
   Images,
   LoaderCircle,
-  Sparkles,
   SlidersHorizontal,
   SquareArrowOutUpRight,
   X,
@@ -15,7 +14,6 @@ import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
 import { translate } from "../app/i18n";
 import { usePreviewSettings } from "../app/preview-settings";
 import { AssetPreview } from "./AssetPreview";
-import { AiDesignSupervisorPanel } from "./AiDesignSupervisor";
 import { GifExportStudio } from "./GifExportStudio";
 import {
   PreviewSessionModeButtons,
@@ -31,7 +29,7 @@ import {
 
 type WorkbenchTool = "preview" | "gif" | "frames" | "fps";
 type WorkbenchCommand = WorkbenchTool | "color";
-type WorkbenchMode = "preview" | "ai";
+type WorkbenchMode = "preview";
 
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
 
@@ -104,30 +102,19 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
     return () => window.removeEventListener("refcanvas:directory-workbench", openTool);
   }, [entry?.path]);
 
-  useEffect(() => {
-    const openAi = () => setMode("ai");
-    window.addEventListener("refcanvas:open-ai-workbench", openAi);
-    return () => window.removeEventListener("refcanvas:open-ai-workbench", openAi);
-  }, []);
-
   if (!entry || entry.isDirectory) {
     return (
       <aside className={`details-panel directory-details-panel directory-workbench-panel mode-${mode}`}>
         <header className="panel-header workbench-header">
           <div className="workbench-mode-tabs" role="tablist" aria-label={translate("directory.workbenchTabs")}>
             <button className={mode === "preview" ? "active" : ""} role="tab" aria-selected={mode === "preview"} onClick={() => setMode("preview")}><Eye size={14} />{translate("preview.tab.preview")}</button>
-            <button className={mode === "ai" ? "active" : ""} role="tab" aria-selected={mode === "ai"} onClick={() => setMode("ai")}><Sparkles size={14} />{translate("directory.aiDesignSupervisor")}</button>
           </div>
         </header>
-        {mode === "ai" ? (
-          <AiDesignSupervisorPanel variant="embedded" initialSourcePath={null} />
-        ) : (
-          <div className="details-empty workbench-empty-state">
-            <SlidersHorizontal size={20} />
-            <strong>{translate("directory.assetWorkbench")}</strong>
-            <span>{entry?.isDirectory ? translate("directory.selectAssetFirst") : translate("directory.workbenchEmptyHint")}</span>
-          </div>
-        )}
+        <div className="details-empty workbench-empty-state">
+          <SlidersHorizontal size={20} />
+          <strong>{translate("directory.assetWorkbench")}</strong>
+          <span>{entry?.isDirectory ? translate("directory.selectAssetFirst") : translate("directory.workbenchEmptyHint")}</span>
+        </div>
       </aside>
     );
   }
@@ -146,7 +133,6 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
       <header className="panel-header workbench-header">
         <div className="workbench-mode-tabs" role="tablist" aria-label={translate("directory.workbenchTabs")}>
           <button className={mode === "preview" ? "active" : ""} role="tab" aria-selected={mode === "preview"} onClick={() => { setMode("preview"); setTool("preview"); }}><Eye size={14} />{translate("preview.tab.preview")}</button>
-          <button className={mode === "ai" ? "active" : ""} role="tab" aria-selected={mode === "ai"} onClick={() => setMode("ai")}><Sparkles size={14} />{translate("directory.aiDesignSupervisor")}</button>
         </div>
         <div className="workbench-file-actions">
           {mode === "preview" && (
@@ -168,12 +154,6 @@ export function DirectoryDetailsPanel({ entry }: { entry: DirectoryEntry | null 
 
       {mode === "preview" && loading && <div className="workbench-status"><LoaderCircle className="spin" size={18} />{translate("preview.panelLoading")}</div>}
       {mode === "preview" && error && <div className="workbench-status error">{translate("preview.panelError")}</div>}
-      {mode === "ai" && (
-        <AiDesignSupervisorPanel
-          variant="embedded"
-          initialSourcePath={entry.path}
-        />
-      )}
       {mode === "preview" && asset && (
         <>
           <PreviewSurface

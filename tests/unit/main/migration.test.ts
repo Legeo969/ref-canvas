@@ -368,8 +368,8 @@ describe("database migration", () => {
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('collections', 'collection_items', 'ai_jobs')",
           )
           .all() as Array<{ name: string }>;
+        // v22 删除 ai_jobs（AI 设计总监功能已移除）。
         expect(v17Tables.map((item) => item.name).sort()).toEqual([
-          "ai_jobs",
           "collection_items",
           "collections",
         ]);
@@ -408,4 +408,43 @@ describe("database migration", () => {
     }
   });
 
+  it("keeps ai_jobs at v21 but drops it at v22", () => {
+    const database = new Sqlite(":memory:");
+    try {
+      // 历史迁移保持原样：已有库能单调前进到 21。
+      const v21 = runMigrationSteps(
+        database,
+        MIGRATIONS.filter((step) => step.version <= 21),
+      );
+      expect(v21).toMatchObject({ completed: true, finalVersion: 21 });
+      const atV21 = (database.pragma("table_info(ai_jobs)") as Array<{ name: string }>).map(
+        (column) => column.name,
+      );
+      expect(atV21).toContain("recovery_json");
+      expect(atV21).toContain("request_full_json");
+
+      // 最新版本：AI 功能已移除，任务历史表随之删除。
+      const result = runMigrationSteps(database, MIGRATIONS);
+      expect(result.finalVersion).toBe(DATABASE_SCHEMA_VERSION);
+      expect(DATABASE_SCHEMA_VERSION).toBeGreaterThanOrEqual(22);
+      const tables = database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ai_jobs'")
+        .all();
+      expect(tables).toHaveLength(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("drops ai_jobs idempotently when the v22 step is replayed", () => {
+    const database = new Sqlite(":memory:");
+    try {
+      runMigrationSteps(database, MIGRATIONS);
+      const step = MIGRATIONS.find((item) => item.version === 22)!;
+      // 表已不存在时重放不得抛错。
+      expect(() => step.apply(database, {})).not.toThrow();
+    } finally {
+      database.close();
+    }
+  });
 });

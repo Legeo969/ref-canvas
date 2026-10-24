@@ -51,6 +51,9 @@ if (fs.existsSync(asar)) {
     "node_modules/@ffprobe-installer/win32-x64/ffprobe.exe",
     "node_modules/@img/sharp-win32-x64/package.json",
     "node_modules/better-sqlite3/prebuilds/win32-x64.node",
+    // 区域截图的原生抓屏后端。缺失不会报错——运行时会静默回退到
+    // desktopCapturer，只是从 100ms 退回 500ms，所以这里必须硬检查。
+    "node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node",
     "assets/native/openimageio/win32-x64/oiiotool.exe",
     "assets/native/openimageio/win32-x64/OpenImageIO.dll",
     "assets/native/openimageio/win32-x64/OpenEXR_v_3_3_5_OpenImageIO_v3_1.dll",

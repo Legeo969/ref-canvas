@@ -1,13 +1,12 @@
 /**
  * 统一任务中心（FND-007 §8.3）。
  *
- * 聚合导入/批处理/转换/导出/归档/AI 任务为统一的 TaskSnapshot，并对外
+ * 聚合导入/批处理/转换/导出/归档任务为统一的 TaskSnapshot，并对外
  * 提供 list/get/cancel 与变更订阅。任务源各自维护内部状态；本服务只做
  * 只读聚合与取消转发（取消幂等，终态任务再次取消返回当前快照）。
  */
 import { EventEmitter } from "node:events";
 import type {
-  AiJobSnapshot,
   DirectoryBatchSnapshot,
   ImportJobSnapshot,
   TaskKind,
@@ -17,12 +16,10 @@ import type {
 export interface TaskSources {
   listImports(): ImportJobSnapshot[];
   listBatches(): DirectoryBatchSnapshot[];
-  listAiJobs(): AiJobSnapshot[];
   /** 媒体导出/转换任务（GIF/MP4/帧/通道/降采样等）统一快照。 */
   listMediaJobs(): TaskSnapshot[];
   cancelImport(id: string): Promise<boolean>;
   cancelBatch(id: string): Promise<boolean>;
-  cancelAi(id: string): Promise<boolean>;
   cancelMedia(id: string): Promise<boolean>;
 }
 
@@ -50,7 +47,6 @@ export class TaskCenterService {
     const collected: TaskSnapshot[] = [
       ...this.sources.listImports().map((job) => importToTask(job)),
       ...this.sources.listBatches().map((batch) => batchToTask(batch)),
-      ...this.sources.listAiJobs().map((job) => aiToTask(job)),
       ...this.sources.listMediaJobs(),
     ];
     collected.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -70,8 +66,6 @@ export class TaskCenterService {
       cancelled = await this.sources.cancelImport(id);
     } else if (task.kind === "batch") {
       cancelled = await this.sources.cancelBatch(id);
-    } else if (task.kind === "ai") {
-      cancelled = await this.sources.cancelAi(id);
     } else if (task.kind === "convert" || task.kind === "export") {
       cancelled = await this.sources.cancelMedia(id);
     }
@@ -126,29 +120,4 @@ function batchToTask(batch: DirectoryBatchSnapshot): TaskSnapshot {
     createdAt: batch.createdAt,
     updatedAt: batch.updatedAt,
   };
-}
-
-function aiToTask(job: AiJobSnapshot): TaskSnapshot {
-  return {
-    id: job.id,
-    kind: "ai",
-    state: aiStateToTask(job.state),
-    stage: job.stage,
-    progress: job.progress ?? null,
-    output: job.outputs[0] ?? null,
-    errorCode: job.errorCode,
-    errorMessage: job.errorMessage,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
-  };
-}
-
-function aiStateToTask(
-  state: AiJobSnapshot["state"],
-): "queued" | "running" | "completed" | "failed" | "cancelled" {
-  if (state === "completed") return "completed";
-  if (state === "failed") return "failed";
-  if (state === "cancelled") return "cancelled";
-  if (state === "queued") return "queued";
-  return "running";
 }

@@ -76,8 +76,8 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('collections', 'collection_items', 'ai_jobs')",
           )
           .all() as Array<{ name: string }>;
+        // v22 删除了 ai_jobs（AI 设计总监功能已移除），只剩 collections 模型。
         expect(tables.map((item) => item.name).sort()).toEqual([
-          "ai_jobs",
           "collection_items",
           "collections",
         ]);
@@ -369,7 +369,7 @@ describe("schema 17 collection restore（FND-001 §6.4）", () => {
     expect(attempt.pragma("user_version", { simple: true })).toBe(16);
     const tableNames = attempt
       .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'ai_jobs'",
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'collections'",
       )
       .all();
     expect(tableNames).toHaveLength(0);

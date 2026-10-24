@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
-import type { BrowserCapturePayload, RefCanvasApi } from "../shared/contracts";
+import type {
+  BrowserCapturePayload,
+  CaptureSource,
+  RefCanvasApi,
+} from "../shared/contracts";
 
 ipcRenderer.on("boards:flush-request", () => {
   const event = new Event("refcanvas:board-flush-request", { cancelable: true });
@@ -166,8 +170,6 @@ const api: RefCanvasApi = {
         ipcRenderer.off("library:media-metadata-progress", listener);
     },
     references: (id) => ipcRenderer.invoke("library:references", id),
-    collectProject: (boardId) =>
-      ipcRenderer.invoke("library:collect-project", boardId),
     migratePaths: (fromRoot, toRoot) =>
       ipcRenderer.invoke("library:migrate-paths", fromRoot, toRoot),
     exportBundle: () => ipcRenderer.invoke("library:export-bundle"),
@@ -234,32 +236,6 @@ const api: RefCanvasApi = {
       const listener = () => callback();
       ipcRenderer.on("collections:changed", listener);
       return () => ipcRenderer.off("collections:changed", listener);
-    },
-  },
-  ai: {
-    listProviders: () => ipcRenderer.invoke("ai:list-providers"),
-    listJobs: (limit) => ipcRenderer.invoke("ai:list-jobs", { limit }),
-    getJob: (id) => ipcRenderer.invoke("ai:get", id),
-    start: (provider, request) =>
-      ipcRenderer.invoke("ai:start", { provider, request }),
-    cancel: (id) => ipcRenderer.invoke("ai:cancel", id),
-    retry: (id) => ipcRenderer.invoke("ai:retry", id),
-    getSettings: () => ipcRenderer.invoke("ai:get-settings"),
-    setSettings: (patch) =>
-      ipcRenderer.invoke("ai:set-settings", patch),
-    health: (kind) => ipcRenderer.invoke("ai:health", kind),
-    secretStatus: () => ipcRenderer.invoke("ai:secret-status"),
-    saveSecret: (token) => ipcRenderer.invoke("ai:save-secret", { token }),
-    clearSecret: () => ipcRenderer.invoke("ai:clear-secret"),
-    importComfyuiWorkflow: (path) =>
-      ipcRenderer.invoke("ai:import-comfyui-workflow", { path }),
-    onChanged: (callback) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        snapshot: Parameters<typeof callback>[0],
-      ) => callback(snapshot);
-      ipcRenderer.on("ai:changed", listener);
-      return () => ipcRenderer.off("ai:changed", listener);
     },
   },
   tasks: {
@@ -434,11 +410,11 @@ const api: RefCanvasApi = {
     load: (id) => ipcRenderer.invoke("boards:load", id),
     save: (id, document, revision) =>
       ipcRenderer.invoke("boards:save", id, document, revision),
-    exportJson: (id) => ipcRenderer.invoke("boards:export-json", id),
     exportPng: (id, dataUrl) =>
       ipcRenderer.invoke("boards:export-png", id, dataUrl),
     exportPackage: (id, options) =>
       ipcRenderer.invoke("boards:export-package", id, options),
+    importProject: () => ipcRenderer.invoke("boards:import-project"),
     recent: () => ipcRenderer.invoke("boards:recent"),
     touch: (id) => ipcRenderer.invoke("boards:touch", id),
     openWindow: (id) => ipcRenderer.invoke("boards:open-window", id),
@@ -551,10 +527,23 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:capture-clipboard"),
     prepareRegionCapture: () =>
       ipcRenderer.invoke("system:prepare-region-capture"),
-    getCaptureSource: () =>
-      ipcRenderer.invoke("system:get-capture-source"),
-    saveRegionCapture: (dataUrl) =>
-      ipcRenderer.invoke("system:save-region-capture", dataUrl),
+    onCaptureSource: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        source: CaptureSource,
+      ) => callback(source);
+      ipcRenderer.on("capture:source", listener);
+      return () => ipcRenderer.off("capture:source", listener);
+    },
+    onCaptureSaved: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on("capture:saved", listener);
+      return () => ipcRenderer.off("capture:saved", listener);
+    },
+    saveRegionCapture: (crop) =>
+      ipcRenderer.invoke("system:save-region-capture", crop),
+    saveCaptureImage: (dataUrl) =>
+      ipcRenderer.invoke("system:save-capture-image", dataUrl),
     cancelRegionCapture: () =>
       ipcRenderer.invoke("system:cancel-region-capture"),
     rebuildThumbnailCache: () =>

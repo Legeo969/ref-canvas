@@ -1,6 +1,5 @@
 {
   "components/ActionsPanel.tsx": 5,
-  "components/AiDesignSupervisor.tsx": 1,
   "components/BoardCanvas.tsx": 1,
   "components/directory/DirectoryBatchToolbar.tsx": 8,
   "components/DirectoryAssetPanel.tsx": 7,

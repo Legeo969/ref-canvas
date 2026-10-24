@@ -78,6 +78,11 @@ import { DocumentProvider } from "./providers/document-provider";
 import { DccProvider } from "./providers/dcc-provider";
 import { registerProtocols } from "./platform/protocols";
 import { createCaptureServer } from "./platform/browser-capture-server";
+import {
+  captureCacheDirectory,
+  captureDisplay,
+  discardCapture,
+} from "./platform/screen-capture";
 import { BrowserCapturePairingService } from "./services/browser-capture-pairing-service";
 import { ActionPresetService } from "./services/action-preset-service";
 import { pruneOrphanedCaptures } from "./services/browser-capture-maintenance";
@@ -105,27 +110,11 @@ import { registerLibraryManagementIpc } from "./ipc/library-management-ipc";
 import { registerMediaNotesIpc } from "./ipc/media-notes-ipc";
 import { registerResourcesIpc } from "./ipc/resources-ipc";
 import { registerSystemIpc } from "./ipc/system-ipc";
-import { registerAiIpc, readAiSettings } from "./ipc/ai-ipc";
 import { registerTaskCenterIpc } from "./ipc/task-center-ipc";
 import { registerBrowserCaptureIpc } from "./ipc/browser-capture-ipc";
-import { AiJobService } from "./services/ai/ai-job-service";
-import type { AiProvider } from "./services/ai/ai-provider";
-import type { AiProviderKind } from "../shared/contracts";
 import type { BoardDocument } from "../shared/contracts";
+import type { CaptureSource } from "../shared/contracts";
 import { readPreviewSettings } from "./ipc/preview-settings";
-import { MockAiProvider } from "./services/ai/mock-ai-provider";
-import { ComfyUiProvider } from "./services/ai/comfyui-provider";
-import { RemoteRestProvider } from "./services/ai/remote-ai-provider";
-import {
-  HttpComfyTransport,
-  HttpRemoteTransport,
-} from "./services/ai/http-transports";
-import { AiSecretStore } from "./services/ai/ai-secret-store";
-import {
-  inspectBinding,
-  parseWorkflow,
-  type ComfyWorkflowBinding,
-} from "./services/ai/comfyui-workflow";
 import { TaskCenterService } from "./services/task-center-service";
 import { MediaJobRegistry } from "./services/media-job-registry";
 import { ZipArchiveService } from "./services/zip-archive-service";
@@ -196,13 +185,11 @@ let fileOperations: FileOperationsService;
 let mountService: MountService;
 let scriptsService: ScriptsService;
 let boardReferences: BoardReferenceService;
-let aiJobService: AiJobService;
-let aiSecretStore: AiSecretStore;
 let taskCenter: TaskCenterService;
 let mediaJobRegistry: MediaJobRegistry;
 let zipArchiveService: ZipArchiveService;
-let captureWasFullScreen = false;
-let pendingCaptureSource: import("./ipc/system-ipc").SystemIpcState["pendingCaptureSource"] = null;
+let pendingCaptureFile: string | null = null;
+let pendingCaptureSize: { width: number; height: number } | null = null;
 let captureWindow: Electron.BrowserWindow | null = null;
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
@@ -216,40 +203,6 @@ let quitting = false;
 let shutdownComplete = false;
 let shutdownPromise: Promise<void> | null = null;
 
-async function buildAiProviders(): Promise<Map<AiProviderKind, AiProvider>> {
-  const providers = new Map<AiProviderKind, AiProvider>();
-  if (mockAiAllowed()) providers.set("mock", new MockAiProvider());
-  const settings = readAiSettings(database);
-  if (settings.comfyuiWorkflowPath && settings.comfyuiBinding) {
-    try {
-      const workflowText = await readFile(settings.comfyuiWorkflowPath, "utf8");
-      const workflow = parseWorkflow(workflowText);
-      const binding = settings.comfyuiBinding as ComfyWorkflowBinding;
-      if (workflow && inspectBinding(workflow, binding).valid) {
-        providers.set(
-          "comfyui",
-          new ComfyUiProvider({
-            address: settings.comfyuiAddress,
-            workflow,
-            binding,
-            transport: new HttpComfyTransport(settings.comfyuiAddress),
-          }),
-        );
-      }
-    } catch {
-      // workflow 文件缺失/损坏：不注册，health 呈现不可用。
-    }
-  }
-  if (settings.remoteBaseUrl) {
-    const remoteProvider = new RemoteRestProvider({
-      baseUrl: settings.remoteBaseUrl,
-      transport: new HttpRemoteTransport(),
-    });
-    remoteProvider.setTokenProvider(() => aiSecretStore.read());
-    providers.set("remote-rest", remoteProvider);
-  }
-  return providers;
-}
 /** FPS 采集模式：给渲染层加载 URL 追加 ?fps=1，暴露测试钩子。 */
 const fpsCheckMode = process.argv.includes("--fps-check");
 /** 会话级 refbrowse 预览 token 注册表（URL 永不含绝对路径）。 */
@@ -312,24 +265,20 @@ async function saveCapture(
   return filename;
 }
 
-function restoreCaptureWindow(): void {
-  if (!mainWindow) return;
-  mainWindow.setFullScreen(captureWasFullScreen);
-  mainWindow.show();
-  mainWindow.focus();
-}
-
-/** 打开独立全屏区域截图覆盖窗口；主窗口保持可见，无需“关掉 RefCanvas”。 */
-function openCaptureWindow(display: Electron.Display): void {
-  if (captureWindow && !captureWindow.isDestroyed()) {
-    captureWindow.focus();
-    return;
-  }
+/**
+ * 截图覆盖窗口（常驻复用）。
+ *
+ * 旧实现每次截图都新建 BrowserWindow 并加载整个渲染包（1.9MB JS + 247KB
+ * CSS，含 three/fabric），冷启动本身就是几百毫秒——electron-screenshots 的
+ * singleWindow 选项解决的正是这个问题。这里改为建一次、之后只 show/hide，
+ * 并在空闲时预热。
+ *
+ * 代价是常驻隐藏窗口会让 window-all-closed 不再触发：退出路径必须显式
+ * destroyCaptureWindow，否则进程退不掉。
+ */
+function ensureCaptureWindow(): Electron.BrowserWindow {
+  if (captureWindow && !captureWindow.isDestroyed()) return captureWindow;
   const window = new BrowserWindow({
-    x: display.bounds.x,
-    y: display.bounds.y,
-    width: display.bounds.width,
-    height: display.bounds.height,
     frame: false,
     transparent: false,
     resizable: false,
@@ -346,12 +295,10 @@ function openCaptureWindow(display: Electron.Display): void {
   captureWindow = window;
   trustedWindows.register(window);
   hardenWindowNavigation(window.webContents);
-  window.once("ready-to-show", () => {
-    if (captureWindow === window && !window.isDestroyed()) {
-      window.show();
-      window.focus();
-    }
-  });
+  // 隐藏期间 Chromium 会把 IPC 与 rAF 节流到 0：覆盖窗口必须在隐藏时也能
+  // 收到底图并完成首帧绘制，否则显示瞬间仍是空白。走 webContents 而不是
+  // webPreferences 覆盖项，保持"每个窗口都用统一安全策略"的架构约束。
+  window.webContents.setBackgroundThrottling(false);
   window.on("closed", () => {
     if (captureWindow === window) captureWindow = null;
   });
@@ -363,12 +310,54 @@ function openCaptureWindow(display: Electron.Display): void {
       { query: { capture: "1" } },
     );
   }
+  return window;
+}
+
+function discardPendingCapture(): Promise<void> {
+  const file = pendingCaptureFile;
+  pendingCaptureFile = null;
+  pendingCaptureSize = null;
+  return discardCapture(file);
+}
+
+function captureScreen(display: Electron.Display) {
+  return captureDisplay(captureCacheDirectory(app.getPath("userData")), display);
+}
+
+/** 把底图推给覆盖窗口。窗口跨次复用，所以是 push 而不是一次性索取。 */
+function showCaptureWindow(display: Electron.Display, source: CaptureSource): void {
+  const window = ensureCaptureWindow();
+  window.setBounds(display.bounds);
+  window.showInactive();
+  window.focus();
+  if (window.webContents.isLoading()) {
+    window.webContents.once("did-finish-load", () => {
+      window.webContents.send("capture:source", source);
+    });
+  } else {
+    window.webContents.send("capture:source", source);
+  }
 }
 
 function closeCaptureWindow(): void {
   const window = captureWindow;
+  if (!window || window.isDestroyed()) return;
+  window.hide();
+}
+
+/** 退出路径必须真正销毁，否则隐藏窗口拖住 window-all-closed。 */
+function destroyCaptureWindow(): void {
+  const window = captureWindow;
   captureWindow = null;
   if (window && !window.isDestroyed()) window.destroy();
+}
+
+/** 预热：主窗口就绪后空闲时静默建好覆盖窗口，首次点击不再冷启动。 */
+function prewarmCaptureWindow(): void {
+  const timer = setTimeout(() => {
+    if (!quitting && !captureWindow) ensureCaptureWindow();
+  }, 1500);
+  timer.unref();
 }
 
 function safeFilename(value: string): string {
@@ -377,17 +366,27 @@ function safeFilename(value: string): string {
   return value.replaceAll(/[<>:"/\\|?*\u0000-\u001F]/g, "_").slice(0, 120);
 }
 
+/**
+ * 把白板引用的一份源文件复制进打包目录。源文件已离线/被删时返回 null
+ * 而不是抛错：一个缺失素材不该让整包导出失败（导出端会统计跳过数量
+ * 并在 UI 上提示，白板文档里的引用保持原样，导入后仍可由断链定位修复）。
+ */
 async function copyProjectAsset(
   assetId: string,
   destination: string,
-): Promise<{ id: string; source: string; relativePath: string }> {
+): Promise<{ id: string; source: string; relativePath: string } | null> {
   const asset = database.getAsset(assetId);
   const source = database.getAssetPath(assetId);
-  if (!asset || !source) throw new Error("ASSET_FILE_NOT_FOUND");
+  if (!asset || !source) return null;
   const assetDirectory = path.join(destination, "assets", assetId);
   await mkdir(assetDirectory, { recursive: true });
   const relativePath = path.join("assets", assetId, path.basename(source));
-  await copyFile(source, path.join(destination, relativePath));
+  try {
+    await copyFile(source, path.join(destination, relativePath));
+  } catch {
+    // 索引有记录但磁盘已不可读（移动/删除/离线挂载）：按缺失处理。
+    return null;
+  }
   if (asset.extension === "gltf") {
     try {
       const gltf = JSON.parse(await readFile(source, "utf8")) as {
@@ -1022,28 +1021,15 @@ async function reopenLibrary(
   mountService = new MountService(database);
   scriptsService = new ScriptsService(database);
   boardReferences = new BoardReferenceService(database);
-  // AI Design Supervisor（FND-008 §9）：Mock 仅在开发/测试构建注册；
-  // ComfyUI 与 Remote REST 按持久化配置注册真实 Provider（FND-009/010）。
-  aiSecretStore = new AiSecretStore({
-    filePath: path.join(app.getPath("userData"), "ai-secret.bin"),
-  });
-  aiJobService = new AiJobService(database.aiJobs(), await buildAiProviders());
-  // 重启恢复：对非终态 job 尝试 Provider.recover，不支持则标记 failed。
-  void aiJobService.recoverInterrupted();
-  // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/AI/媒体导出任务。
+  // 统一任务中心（FND-007 §8.3）：聚合导入/批处理/媒体导出任务。
   mediaJobRegistry = new MediaJobRegistry();
   zipArchiveService = new ZipArchiveService();
   taskCenter = new TaskCenterService({
     listImports: () => library.listImportJobs(),
     listBatches: () => directoryBatches.list(),
-    listAiJobs: () => aiJobService.list(100),
     listMediaJobs: () => mediaJobRegistry.list(200),
     cancelImport: async (id) => library.cancelImport(id),
     cancelBatch: async (id) => directoryBatches.cancel(id),
-    cancelAi: async (id) => {
-      await aiJobService.cancel(id);
-      return true;
-    },
     cancelMedia: async (id) => mediaJobRegistry.cancel(id),
   });
   library.onImportProgress((snapshot) => {
@@ -1088,11 +1074,6 @@ async function reopenLibrary(
     broadcastAll("actions:progress", snapshot);
   });
   if (rendererInteractive) scheduleBackgroundServices();
-}
-
-/** Mock Provider 仅在开发/测试构建允许（§9.4；正式打包隐藏）。 */
-function mockAiAllowed(): boolean {
-  return !app.isPackaged;
 }
 
 function scheduleBackgroundServices(): void {
@@ -1147,8 +1128,7 @@ function registerIpc(): void {
   registerBrowserCaptureIpc(ipc, () => browserCapturePairings);
 
   registerLibraryIpc(ipc, {
-    copyProjectAsset,
-    getDatabase: () => database,
+      getDatabase: () => database,
     getLibrary: () => library,
     getLibraryManager: () => libraryManager,
     getThumbnailCacheDirectory: () => thumbnailCacheDirectory,
@@ -1166,18 +1146,6 @@ function registerIpc(): void {
   registerCollectionsIpc(ipc, {
     getDatabase: () => database,
     notifyCollectionsChanged: () => broadcastAll("collections:changed"),
-    windowForSender,
-    writeAccess,
-  });
-  registerAiIpc(ipc, {
-    getDatabase: () => database,
-    getAiJobService: () => aiJobService,
-    isMockAllowed: () => mockAiAllowed(),
-    getSecretStore: () => aiSecretStore,
-    reloadProviders: async () => {
-      aiJobService.replaceProviders(await buildAiProviders());
-    },
-    notifyAiChanged: (snapshot) => broadcastAll("ai:changed", snapshot),
     windowForSender,
     writeAccess,
   });
@@ -1206,6 +1174,7 @@ function registerIpc(): void {
   });
   registerBoardIpc(ipc, {
     copyProjectAsset,
+    materializePath: (filename) => library.materializePath(filename),
     getBoardReferences: () => boardReferences,
     getDatabase: () => database,
     getMainWindow: () => mainWindow,
@@ -1257,11 +1226,17 @@ function registerIpc(): void {
     recoverNewDatabase,
     getMainWindow: () => mainWindow,
     closeCaptureWindow,
-    openCaptureWindow,
+    captureScreen,
+    notifyCaptureSaved: () => {
+      // 覆盖窗口保存后立即关闭，toast 打在主窗口上。
+      mainWindow?.webContents.send("capture:saved");
+    },
+    showCaptureWindow,
+    discardPendingCapture,
+    previewTokens,
     overlayExitAccelerator,
     pngDataUrlToBuffer,
     registerOverlayEmergencyShortcut,
-    restoreCaptureWindow,
     saveCapture,
     scheduleBackgroundServices,
     state: {
@@ -1271,17 +1246,17 @@ function registerIpc(): void {
       set alwaysOnBottom(value) {
         alwaysOnBottom = value;
       },
-      get captureWasFullScreen() {
-        return captureWasFullScreen;
+      get pendingCaptureFile() {
+        return pendingCaptureFile;
       },
-      set captureWasFullScreen(value) {
-        captureWasFullScreen = value;
+      set pendingCaptureFile(value) {
+        pendingCaptureFile = value;
       },
-      get pendingCaptureSource() {
-        return pendingCaptureSource;
+      get pendingCaptureSize() {
+        return pendingCaptureSize;
       },
-      set pendingCaptureSource(value) {
-        pendingCaptureSource = value;
+      set pendingCaptureSize(value) {
+        pendingCaptureSize = value;
       },
       get clickThrough() {
         return clickThrough;
@@ -1852,6 +1827,7 @@ void app.whenReady().then(async () => {
     await importCommandLineEntries(commandLineFiles);
   }
   createWindow();
+  prewarmCaptureWindow();
 
   // Browser extension capture server (127.0.0.1:17530).
   // Lets the Chrome/Edge extension send images from web pages into RefCanvas.
@@ -1960,6 +1936,9 @@ async function shutdownServices(): Promise<void> {
   database?.setSetting("cleanShutdown", true);
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();
+  // 常驻复用的截图窗口是隐藏而非关闭：不显式销毁会拖住 window-all-closed。
+  destroyCaptureWindow();
+  await discardPendingCapture();
   mainWindow?.destroy();
   cancelBackgroundServicesStart();
   globalShortcut.unregisterAll();

@@ -1342,7 +1342,7 @@ export function CollectionDetailsPanel() {
     const picked = await window.refCanvas.system.pickFile({
       title: translate("collections.pickFiles"),
       multiSelections: true,
-      filters: [{ name: translate("ai.fileFilterAll"), extensions: ["*"] }],
+      filters: [{ name: translate("common.fileFilterAll"), extensions: ["*"] }],
     });
     if (!picked.length) return;
     const result = await window.refCanvas.collections.addPaths(collection.id, picked);
@@ -1686,9 +1686,9 @@ export function CollectionsPanel({
       title: translate("collections.create"),
       multiSelections: true,
       filters: [
-        { name: translate("ai.fileFilterAll"), extensions: ["*"] },
-        { name: translate("ai.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
-        { name: translate("ai.fileFilterVideos"), extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
+        { name: translate("common.fileFilterAll"), extensions: ["*"] },
+        { name: translate("common.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
+        { name: translate("common.fileFilterVideos"), extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
       ],
     });
     if (!picked.length) return;
@@ -1722,9 +1722,9 @@ export function CollectionsPanel({
       title: translate("collections.pickFiles"),
       multiSelections: true,
       filters: [
-        { name: translate("ai.fileFilterAll"), extensions: ["*"] },
-        { name: translate("ai.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
-        { name: translate("ai.fileFilterVideos"), extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
+        { name: translate("common.fileFilterAll"), extensions: ["*"] },
+        { name: translate("common.fileFilterImages"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "exr", "hdr", "avif", "heic", "psd"] },
+        { name: translate("common.fileFilterVideos"), extensions: ["mp4", "mov", "mkv", "avi", "webm", "m4v"] },
       ],
     });
     if (!picked.length) return;

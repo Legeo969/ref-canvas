@@ -1,6 +1,6 @@
 # RefCanvas Third-Party Notices
 
-生成时间：2026-08-19T14:17:45.208Z（应用版本 0.38.5）
+生成时间：2026-10-24T16:10:20.882Z（应用版本 0.39.3）
 
 本清单覆盖生产依赖及其传递依赖。GPL/AGPL 强传染许可的依赖不会进入发布包。
 
@@ -12,7 +12,7 @@
 - **OpenImageIO 3.1.16.0 / OpenEXR 3.3.5**：Apache-2.0 / BSD-3-Clause 等（官方 Windows x64 wheel 的独立 sidecar；每个动态依赖的许可文本位于 `assets/native/openimageio/licenses/`，文件哈希见 `RUNTIME-MANIFEST.json`）
 - **Microsoft Visual C++ 2022 x64 Runtime 14.44.35112**：按 Visual Studio Build Tools 可再发行代码条款随 sidecar 分发，确保全新 Windows 系统无需另行安装解码器运行库
 
-## Dependencies（31）
+## Dependencies（32）
 
 ### @derhuerst/http-basic@8.2.4
 
@@ -711,6 +711,32 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+### node-screenshots@0.2.8
+
+许可：Apache-2.0
+
+MIT License
+
+Copyright (c) 2020 N-API for Rust
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ### parse-cache-control@1.0.1
 

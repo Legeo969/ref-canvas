@@ -985,10 +985,27 @@ export interface PathMigrationReport {
   skipped: number;
 }
 
+/**
+ * 区域截图覆盖窗口的底图。
+ *
+ * imageUrl 是 refbrowse://preview/<token>，由主进程按临时 PNG 路径签发：
+ * 图不走 IPC（旧实现把全屏 PNG 序列化成十几 MB 的 data URL 每次传输）。
+ */
 export interface CaptureSource {
-  dataUrl: string;
+  imageUrl: string;
+  /** 物理像素尺寸（= 显示逻辑尺寸 × scaleFactor）。 */
   width: number;
   height: number;
+}
+
+/** 框选区域换算到源图像素坐标后的裁剪矩形。 */
+export interface CaptureCrop {
+  sourceLeft: number;
+  sourceTop: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  outputWidth: number;
+  outputHeight: number;
 }
 
 /** 浏览器扩展捕获的投递载荷（主进程确认制投递 → 渲染端导入+回执）。 */
@@ -1507,12 +1524,11 @@ export type TaskKind =
   | "batch"
   | "convert"
   | "export"
-  | "archive"
-  | "ai";
+  | "archive";
 
 export type TaskState = "queued" | "running" | "completed" | "failed" | "cancelled";
 
-/** 统一任务中心快照：聚合导入/批处理/转换/导出/归档/AI 任务。 */
+/** 统一任务中心快照：聚合导入/批处理/转换/导出/归档任务。 */
 export interface TaskSnapshot {
   id: string;
   kind: TaskKind;
@@ -1540,65 +1556,6 @@ export interface ArchiveSnapshot {
   bytesWritten: number;
   errorCode: string | null;
   errorMessage: string | null;
-}
-
-// --- AI Design Supervisor（§9） ---
-
-export type AiProviderKind = "remote-rest" | "comfyui" | "mock";
-
-export type AiJobState =
-  | "queued"
-  | "uploading"
-  | "generating"
-  | "downloading"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export interface AiDesignRequest {
-  sourcePath: string;
-  referencePaths: string[]; // 0..6
-  prompt: string;
-  majorChange: boolean;
-  outputCount: number; // 1..4，默认 2
-  outputDirectory: string;
-}
-
-export interface AiJobSnapshot {
-  id: string;
-  provider: AiProviderKind;
-  state: AiJobState;
-  stage: string;
-  progress: number | null; // 0..1；未知时为 null
-  outputs: string[];
-  errorCode: string | null;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AiProviderSummary {
-  kind: AiProviderKind;
-  label: string;
-  available: boolean;
-  detail: string | null;
-}
-
-export interface AiProviderHealth {
-  kind: AiProviderKind;
-  ok: boolean;
-  detail: string;
-  latencyMs: number | null;
-}
-
-export interface AiSettings {
-  comfyuiAddress: string;
-  comfyuiWorkflowPath: string | null;
-  comfyuiBinding: unknown | null;
-  remoteBaseUrl: string | null;
-  remoteConfigured: boolean;
-  defaultProvider: AiProviderKind;
-  enabledProviders: AiProviderKind[];
 }
 
 export interface RefCanvasApi {
@@ -1717,7 +1674,6 @@ export interface RefCanvasApi {
       callback: (snapshot: MediaMetadataSnapshot) => void,
     ): () => void;
     references(id: string): Promise<AssetReference[]>;
-    collectProject(boardId: string): Promise<string | null>;
     migratePaths(fromRoot: string, toRoot: string): Promise<PathMigrationReport>;
     /**
      * SPEC-2：导出整个库为 `.refcanvas-bundle`（db 快照 + 缩略图 + bundle.json）。
@@ -1907,53 +1863,12 @@ export interface RefCanvasApi {
     list(): Promise<ProviderManifestInfo[]>;
     health(providerId: string): Promise<ProviderHealthInfo>;
   };
-  /** 统一任务中心（FND-007 §8.3）：聚合导入/批处理/转换/导出/归档/AI。 */
+  /** 统一任务中心（FND-007 §8.3）：聚合导入/批处理/转换/导出/归档。 */
   tasks: {
     list(limit?: number): Promise<TaskSnapshot[]>;
     get(id: string): Promise<TaskSnapshot | null>;
     cancel(id: string): Promise<TaskSnapshot | null>;
     onChanged(callback: (snapshot: TaskSnapshot) => void): () => void;
-  };
-  /** AI Design Supervisor（FND-008 §9；Mock 仅开发/测试构建可见）。 */
-  ai: {
-    listProviders(): Promise<AiProviderSummary[]>;
-    listJobs(limit?: number): Promise<AiJobSnapshot[]>;
-    getJob(id: string): Promise<AiJobSnapshot | null>;
-    start(
-      provider: AiProviderKind,
-      request: AiDesignRequest,
-    ): Promise<AiJobSnapshot>;
-    cancel(id: string): Promise<AiJobSnapshot>;
-    retry(id: string): Promise<AiJobSnapshot>;
-    getSettings(): Promise<AiSettings>;
-    setSettings(patch: Partial<AiSettings>): Promise<AiSettings>;
-    health(kind: AiProviderKind): Promise<AiProviderHealth>;
-    /** Bearer token 状态（Renderer 只读 configured）。 */
-    secretStatus(): Promise<{
-      configured: boolean;
-      source: "safe-storage" | "test";
-    }>;
-    /** 保存 Bearer token（safeStorage 加密）。 */
-    saveSecret(token: string): Promise<{
-      configured: boolean;
-      source: "safe-storage" | "test";
-    }>;
-    /** 清除 Bearer token。 */
-    clearSecret(): Promise<{
-      configured: boolean;
-      source: "safe-storage" | "test";
-    }>;
-    /** 导入 API-format workflow 并返回绑定元数据。 */
-    importComfyuiWorkflow(path: string): Promise<{
-      valid: boolean;
-      errors: string[];
-      nodeCount: number;
-      outputNodeIds: string[];
-      imageInputNodes: Array<{ nodeId: string; type: string }>;
-      nodes: Array<{ nodeId: string; type: string; inputNames: string[] }>;
-      workflowPath: string;
-    }>;
-    onChanged(callback: (snapshot: AiJobSnapshot | null) => void): () => void;
   };
   color: {
     /** 色彩管理状态（$OCIO 检测 + LUT）。 */
@@ -2127,8 +2042,7 @@ export interface RefCanvasApi {
       document: BoardDocument,
       revision: number,
     ): Promise<BoardSummary>;
-    exportJson(id: string): Promise<string | null>;
-    exportPng(id: string, dataUrl: string): Promise<string | null>;
+      exportPng(id: string, dataUrl: string): Promise<string | null>;
     /**
      * Exports a self-contained `.refcanvas` package (board.json + embedded
      * asset copies when embedAssets is true). Returns the written path.
@@ -2136,7 +2050,17 @@ export interface RefCanvasApi {
     exportPackage(
       id: string,
       options: { embedAssets: boolean },
-    ): Promise<string | null>;
+    ): Promise<{ path: string; skippedAssets: number } | null>;
+    /**
+     * 导入 RefCanvas 项目（应用内入口）：自包含 .refcanvas 包、纯 JSON
+     * 文档或 .refcanvas-project 目录三种输入统一处理。主进程负责选文件
+     * 对话框；取消返回 null。
+     */
+    importProject(): Promise<{
+      boardId: string;
+      title: string;
+      assetsImported: number;
+    } | null>;
     /** Last-opened boards, most recent first (local workflow). */
     recent(): Promise<BoardSummary[]>;
     /** Tracks that a board was opened (for the recent list). */
@@ -2242,10 +2166,16 @@ export interface RefCanvasApi {
      */
     ackBrowserCapture(captureId: string): void;
     captureClipboard(): Promise<AssetRecord | null>;
-    prepareRegionCapture(): Promise<CaptureSource | null>;
-    /** 独立覆盖窗口启动后一次性消费抓屏快照（?capture=1 模式）。 */
-    getCaptureSource(): Promise<CaptureSource | null>;
-    saveRegionCapture(dataUrl: string): Promise<AssetRecord | null>;
+    /** 抓屏并显示覆盖窗口；底图经 onCaptureSource 推送，不在此返回。 */
+    prepareRegionCapture(): Promise<void>;
+    /** 覆盖窗口（常驻复用）收到的抓屏底图。 */
+    onCaptureSource(callback: (source: CaptureSource) => void): () => void;
+    /** 区域截图保存成功后主窗口收到通知（用于 toast 反馈）。 */
+    onCaptureSaved(callback: () => void): () => void;
+    /** 在主进程里按物理像素裁剪并保存，避免渲染端再导一次 base64。 */
+    saveRegionCapture(crop: CaptureCrop): Promise<AssetRecord | null>;
+    /** 保存渲染端已生成的 PNG（GIF 导出当前帧等）；不走区域截图链路。 */
+    saveCaptureImage(dataUrl: string): Promise<AssetRecord | null>;
     cancelRegionCapture(): Promise<void>;
     rebuildThumbnailCache(): Promise<void>;
     exportDiagnostics(): Promise<string | null>;

@@ -1,6 +1,4 @@
 import { dialog, type BrowserWindow, type IpcMainInvokeEvent } from "electron";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import { assetColorLabels } from "../../shared/contracts";
 import type { RefCanvasDatabase } from "../persistence/database";
@@ -21,7 +19,6 @@ import {
 } from "./schemas";
 
 interface LibraryIpcDependencies {
-  copyProjectAsset(assetId: string, destination: string): Promise<unknown>;
   getDatabase(): RefCanvasDatabase;
   getLibrary(): LibraryService;
   getLibraryManager(): LibraryManager;
@@ -455,54 +452,7 @@ export function registerLibraryIpc(
       z.string().min(1).max(32_768).parse(toRoot),
     ),
   );
-  ipc.handleWithEvent("library:collect-project", async (event, boardId) => {
-    const parsedId = idSchema.parse(boardId);
-    const board = database().loadBoard(parsedId);
-    if (!board) throw new Error("BOARD_NOT_FOUND");
-    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
-      title: "选择项目收集目录",
-      properties: ["openDirectory", "createDirectory"],
-    });
-    if (result.canceled || !result.filePaths[0]) return null;
-    const requestedDestination = path.join(
-      result.filePaths[0],
-      `${dependencies.safeFilename(board.summary.title)}.refcanvas-project`,
-    );
-    await dependencies.writeAccess.authorizePickerSelection([
-      { path: result.filePaths[0], mode: "destination" },
-    ]);
-    const [destination] = await dependencies.writeAccess.authorize(
-      dependencies.windowForSender(event), "export", [
-        { path: requestedDestination, mode: "destination" },
-      ],
-    );
-    await mkdir(destination, { recursive: true });
-    const assets = [];
-    for (const assetId of database().getBoardAssetIds(parsedId)) {
-      assets.push(await dependencies.copyProjectAsset(assetId, destination));
-    }
-    await writeFile(
-      path.join(destination, "board.json"),
-      JSON.stringify(board.document, null, 2),
-      "utf8",
-    );
-    await writeFile(
-      path.join(destination, "manifest.json"),
-      JSON.stringify(
-        {
-          format: "refcanvas-project",
-          version: 1,
-          board: board.summary,
-          assets,
-          collectedAt: new Date().toISOString(),
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-    return destination;
-  });
+  // library:collect-project 已移除：导出统一为 boards:export-package 自包含单文件包
   ipc.handle("library:stats", () => database().getLibraryStats());
 
   // SPEC-2：库可移植性 —— 整机库打包导出 / 导入。

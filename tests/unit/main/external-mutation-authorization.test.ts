@@ -20,7 +20,6 @@ describe("external mutation authorization inventory", () => {
         "media:exportGif", "media:exportFrames", "media:exportDisplayChannel",
         "sequences:exportMp4", "sequences:exportGif", "media:downscale",
       ]],
-      ["src/main/ipc/ai-ipc.ts", ["ai:start", "ai:retry"]],
       ["src/main/ipc/library-ipc.ts", [
         "library:trash", "library:restore", "library:purge", "library:merge-duplicates",
       ]],

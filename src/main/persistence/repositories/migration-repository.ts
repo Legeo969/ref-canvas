@@ -8,7 +8,7 @@ import {
   restoreCollectionsV17,
 } from "./collection-restore-migrations";
 
-export const DATABASE_SCHEMA_VERSION = 20;
+export const DATABASE_SCHEMA_VERSION = 22;
 
 /**
  * Ordered migration model.
@@ -272,6 +272,34 @@ export const MIGRATIONS: readonly MigrationStep[] = [
         CREATE INDEX IF NOT EXISTS collection_items_collection
           ON collection_items(collection_id, sort_order, created_at, id);
       `);
+    },
+  },
+  {
+    version: 21,
+    id: "v21-ai-job-recovery-and-full-request",
+    description:
+      "Adds ai_jobs.recovery_json (provider recovery payload for restart resume) and ai_jobs.request_full_json (full local request so retry survives a restart). Neither column leaves the main process.",
+    apply(db) {
+      const columns = new Set(
+        (db.pragma("table_info(ai_jobs)") as Array<{ name: string }>).map(
+          (column) => column.name,
+        ),
+      );
+      if (!columns.has("recovery_json")) {
+        db.exec("ALTER TABLE ai_jobs ADD COLUMN recovery_json TEXT");
+      }
+      if (!columns.has("request_full_json")) {
+        db.exec("ALTER TABLE ai_jobs ADD COLUMN request_full_json TEXT");
+      }
+    },
+  },
+  {
+    version: 22,
+    id: "v22-drop-ai-jobs",
+    description:
+      "Drops ai_jobs: the AI design supervisor was removed from the product, so its job history table is no longer read or written. v17/v21 stay untouched as migration history so existing databases keep advancing monotonically.",
+    apply(db) {
+      db.exec("DROP TABLE IF EXISTS ai_jobs");
     },
   },
 ];

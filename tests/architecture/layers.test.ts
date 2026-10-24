@@ -467,12 +467,11 @@ describe("physical module boundaries", () => {
       '@import "./board.css";',
       '@import "./dialogs.css";',
       '@import "./collections.css";',
-      '@import "./ai.css";',
       '@import "./image-review.css";',
       '@import "./preview-panel.css";',
     ]);
     await Promise.all(
-      ["shell", "select-menu", "directory", "library", "board", "dialogs", "collections", "ai", "image-review", "preview-panel"].map((name) =>
+      ["shell", "select-menu", "directory", "library", "board", "dialogs", "collections", "image-review", "preview-panel"].map((name) =>
         readFile(path.join(rendererRoot, "styles", `${name}.css`), "utf8"),
       ),
     );
@@ -640,7 +639,6 @@ describe("physical module boundaries", () => {
       "board",
       "collections",
       "preview-media",
-      "ai",
       "settings",
       "common",
     ]) {

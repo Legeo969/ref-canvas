@@ -2,6 +2,7 @@ import {
   Camera,
   Expand,
   FileJson,
+  FolderInput,
   HardDrive,
   ImageDown,
   MonitorPlay,
@@ -9,9 +10,7 @@ import {
   PanelsTopLeft,
   Pin,
   PinOff,
-  PackageOpen,
   Settings,
-  Sparkles,
   SquareArrowOutUpRight,
   ListTodo,
 } from "lucide-react";
@@ -46,7 +45,6 @@ import { parseBoardWindowParams } from "./board-window";
 import { usePreviewSettings } from "./preview-settings";
 import { translate, useAppLanguage } from "./i18n";
 import { ActionsPanel } from "../components/ActionsPanel";
-import { AiDesignSupervisorPanel } from "../components/AiDesignSupervisor";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { BrowserTabBar } from "../components/BrowserTabBar";
@@ -57,12 +55,23 @@ import { DirectoryAssetPanel } from "../components/DirectoryAssetPanel";
 import { useDialog } from "../components/DialogProvider";
 import { DuplicatesPanel } from "../components/DuplicatesPanel";
 import { PanelDividers } from "../components/PanelDividers";
-import { SettingsPanel } from "../components/SettingsPanel";
+import { SettingsPanel, type SettingsTab } from "../components/SettingsPanel";
 import { InstallCompleteScreen } from "../components/InstallCompleteScreen";
 import { SimilarPanel } from "../components/SimilarPanel";
 import { Sidebar } from "../components/Sidebar";
 import { PreviewPanel } from "../components/PreviewPanel";
 import { useAppStore } from "./store";
+
+/** 设置面板可直达的页签；其他 detail 一律回落到 general。 */
+const SETTINGS_TABS = new Set<SettingsTab>([
+  "general",
+  "board",
+  "preview",
+  "capture",
+  "organize",
+  "maintenance",
+  "about",
+]);
 
 /**
  * Window router. Keep auxiliary windows outside WorkspaceApp so they never
@@ -134,7 +143,6 @@ function WorkspaceApp() {
   const [notice, setNotice] = useState<string | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [similarSource, setSimilarSource] = useState<AssetRecord | null>(null);
   const [similarResults, setSimilarResults] = useState<SimilarAsset[]>([]);
@@ -147,7 +155,7 @@ function WorkspaceApp() {
   });
   const [similarLoading, setSimilarLoading] = useState(false);
   const [similarMinScore, setSimilarMinScore] = useState(70);
-  const [settingsTab, setSettingsTab] = useState<"general" | "preview">("general");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
   const [panelLayout, setPanelLayout] = useState(PANEL_DEFAULTS);
   const [presentationMode, setPresentationModeState] = useState(false);
@@ -159,8 +167,8 @@ function WorkspaceApp() {
     capturePreparingRef.current = true;
     setCapturePreparing(true);
     try {
-      // 主进程抓屏后打开独立覆盖窗口（?capture=1），框选在覆盖窗口内完成，
-      // 主窗口保持可见。返回值仅供确认成功，不再在主窗口渲染覆盖层。
+      // 主进程抓屏后把底图推给常驻的覆盖窗口（?capture=1），框选在覆盖
+      // 窗口内完成，主窗口保持可见。这里只等"抓屏成功"这一件事。
       await window.refCanvas.system.prepareRegionCapture();
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "";
@@ -175,6 +183,17 @@ function WorkspaceApp() {
       setCapturePreparing(false);
     }
   }, []);
+
+  // 截图保存成功：覆盖窗口已关闭，toast 落在主窗口上告诉用户
+  // 图已入库并进了剪贴板，否则整个保存动作没有任何可见反馈。
+  useEffect(
+    () =>
+      window.refCanvas.system.onCaptureSaved(() => {
+        setNotice(translate("capture.saved"));
+        window.setTimeout(() => setNotice(null), 4200);
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (recoveryMode) {
@@ -276,8 +295,10 @@ function WorkspaceApp() {
   useEffect(() => {
     const openDuplicates = () => setDuplicatesOpen(true);
     const openSettings = (event: Event) => {
-      const detail = (event as CustomEvent<"general" | "preview">).detail;
-      setSettingsTab(detail === "preview" ? "preview" : "general");
+      const detail = (event as CustomEvent<SettingsTab>).detail;
+      // 允许任意设置页直达（AI Provider 面板的"去设置"按钮依赖它）；
+      // 未知 detail 一律回落到 general。
+      setSettingsTab(SETTINGS_TABS.has(detail) ? detail : "general");
       setMaintenanceOpen(true);
     };
     window.addEventListener("refcanvas:duplicates", openDuplicates);
@@ -678,9 +699,6 @@ function WorkspaceApp() {
           onClose={() => setMaintenanceOpen(false)}
         />
       )}
-      {aiPanelOpen && store.workspaceMode === "board" && (
-        <AiDesignSupervisorPanel onClose={() => setAiPanelOpen(false)} />
-      )}
       {taskCenterOpen && <TaskCenter onClose={() => setTaskCenterOpen(false)} />}
       {similarSource && (
         <SimilarPanel
@@ -760,23 +778,67 @@ function WorkspaceApp() {
               <span className="titlebar-separator" />
               <button
                 className="icon-button"
-                onClick={() => {
-                  if (store.activeBoard) {
-                    void window.refCanvas.boards.exportJson(store.activeBoard.id);
-                  }
-                }}
-                aria-label={translate("titlebar.exportJson")}
-              >
-                <FileJson size={16} />
-              </button>
-              <button
-                className="icon-button"
                 onClick={() =>
                   window.dispatchEvent(new Event("refcanvas:export-png"))
                 }
                 aria-label={translate("titlebar.exportPng")}
               >
                 <ImageDown size={16} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={async () => {
+                  if (!store.activeBoard) return;
+                  try {
+                    const exported = await window.refCanvas.boards.exportPackage(
+                      store.activeBoard.id,
+                      { embedAssets: true },
+                    );
+                    if (!exported) return;
+                    const message = exported.skippedAssets > 0
+                      ? translate("titlebar.exportedPackageSkipped")
+                          .replace("{path}", exported.path)
+                          .replace("{count}", String(exported.skippedAssets))
+                      : translate("titlebar.exportedPackage")
+                          .replace("{path}", exported.path);
+                    setNotice(message);
+                    window.setTimeout(() => setNotice(null), 5200);
+                  } catch (error) {
+                    // 透出主进程的真实原因（EXPORT_PACKAGE_FAILED: xxx），
+                    // 便于直接定位是哪个环节失败。
+                    const detail = error instanceof Error ? error.message : String(error);
+                    setNotice(
+                      translate("titlebar.exportFailedDetail").replace("{detail}", detail),
+                    );
+                    window.setTimeout(() => setNotice(null), 8000);
+                  }
+                }}
+                aria-label={translate("titlebar.exportPackage")}
+              >
+                <FileJson size={16} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={async () => {
+                  try {
+                    const imported = await window.refCanvas.boards.importProject();
+                    if (!imported) return;
+                    setNotice(
+                      translate("titlebar.importedProject").replace(
+                        "{title}",
+                        imported.title,
+                      ),
+                    );
+                    window.setTimeout(() => setNotice(null), 4200);
+                    store.refreshBoards();
+                  } catch {
+                    setNotice(translate("titlebar.importFailed"));
+                    window.setTimeout(() => setNotice(null), 4200);
+                  }
+                }}
+                aria-label={translate("titlebar.importProject")}
+              >
+                <FolderInput size={16} />
               </button>
               <button
                 className="icon-button"
@@ -788,21 +850,6 @@ function WorkspaceApp() {
                 aria-label={translate("titlebar.openBoardWindow")}
               >
                 <SquareArrowOutUpRight size={16} />
-              </button>
-              <button
-                className="icon-button"
-                onClick={async () => {
-                  if (!store.activeBoard) return;
-                  const destination = await window.refCanvas.library.collectProject(
-                    store.activeBoard.id,
-                  );
-                  if (!destination) return;
-                  setNotice(translate("titlebar.collectedProject").replace("{path}", destination));
-                  window.setTimeout(() => setNotice(null), 4200);
-                }}
-                aria-label={translate("titlebar.collectProject")}
-              >
-                <PackageOpen size={16} />
               </button>
             </>
           )}
@@ -843,21 +890,6 @@ function WorkspaceApp() {
               </button>
             </>
           )}
-          <button
-            className={`icon-button${aiPanelOpen ? " active" : ""}`}
-            onClick={() => {
-              if (store.workspaceMode === "directory") {
-                setAiPanelOpen(false);
-                window.dispatchEvent(new Event("refcanvas:open-ai-workbench"));
-              } else {
-                setAiPanelOpen((value) => !value);
-              }
-            }}
-            aria-label={translate("directory.aiDesignSupervisor")}
-            aria-pressed={aiPanelOpen}
-          >
-            <Sparkles size={16} />
-          </button>
           <button
             className="icon-button"
             onClick={() => {

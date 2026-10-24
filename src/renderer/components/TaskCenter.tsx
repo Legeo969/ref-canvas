@@ -1,8 +1,8 @@
 /**
  * 统一任务中心面板（FND-007 §8.3）。
  *
- * 聚合导入/批处理/AI 任务，展示阶段、进度、输出、失败原因，支持取消
- * 与重试（AI）。关闭面板只是隐藏；取消幂等，终态任务再次取消返回当前快照。
+ * 聚合导入/批处理/媒体导出任务，展示阶段、进度、输出与失败原因，支持取消。
+ * 关闭面板只是隐藏；取消幂等，终态任务再次取消返回当前快照。
  */
 import {
   AlertTriangle,
@@ -12,8 +12,6 @@ import {
   Database,
   FolderOpen,
   Loader2,
-  RotateCcw,
-  Sparkles,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -31,7 +29,6 @@ const kindKeys: Record<TaskKind, MessageKey> = {
   convert: "tasks.kind.convert",
   export: "tasks.kind.export",
   archive: "tasks.kind.archive",
-  ai: "tasks.kind.ai",
 };
 
 const kindIcons: Record<TaskKind, typeof Clock> = {
@@ -40,7 +37,6 @@ const kindIcons: Record<TaskKind, typeof Clock> = {
   convert: FolderOpen,
   export: Archive,
   archive: Archive,
-  ai: Sparkles,
 };
 
 const stateKeys: Record<TaskSnapshot["state"], MessageKey> = {
@@ -62,11 +58,9 @@ function formatTime(iso: string): string {
 function TaskRow({
   task,
   onCancel,
-  onRetry,
 }: {
   task: TaskSnapshot;
   onCancel(id: string): void;
-  onRetry(id: string): void;
 }) {
   const Icon = kindIcons[task.kind];
   const running = task.state === "running" || task.state === "queued";
@@ -124,15 +118,6 @@ function TaskRow({
             <X size={13} />
           </button>
         )}
-        {task.state === "failed" && task.kind === "ai" && (
-          <button
-            className="mini-icon-button"
-            aria-label={translate("tasks.retryTask").replace("{id}", task.id)}
-            onClick={() => onRetry(task.id)}
-          >
-            <RotateCcw size={13} />
-          </button>
-        )}
       </div>
     </li>
   );
@@ -167,10 +152,6 @@ export function TaskCenter({ onClose }: TaskCenterProps) {
     });
   };
 
-  const retry = (id: string) => {
-    void window.refCanvas.ai.retry(id).then(() => refresh());
-  };
-
   return (
     <div className="task-center-backdrop" onMouseDown={onClose}>
       <aside
@@ -202,7 +183,6 @@ export function TaskCenter({ onClose }: TaskCenterProps) {
                   key={task.id}
                   task={task}
                   onCancel={(id) => cancel(id)}
-                  onRetry={(id) => retry(id)}
                 />
               ))}
             </ul>

@@ -10,10 +10,15 @@ import { assertAbsoluteLocalPath } from "../platform/local-path-security";
 import type { WriteAccessController } from "../platform/write-access-controller";
 import type { BoardReferenceService } from "../services/board-reference-service";
 import { boardDocumentSchema } from "./board-schema";
+import { importBoardPackage } from "../services/board-import-service";
 import { idSchema, pathSchema } from "./schemas";
 
 interface BoardIpcDependencies {
-  copyProjectAsset(assetId: string, destination: string): Promise<unknown>;
+  copyProjectAsset(
+    assetId: string,
+    destination: string,
+  ): Promise<{ id: string; source: string; relativePath: string } | null>;
+  materializePath(filename: string): Promise<{ asset: { id: string } }>;
   getBoardReferences(): BoardReferenceService;
   getDatabase(): RefCanvasDatabase;
   getMainWindow(): BrowserWindow | null;
@@ -100,7 +105,11 @@ export function registerBoardIpc(
       state: asset.linkState === "online" ? ("online" as const) : ("missing" as const),
     };
   });
-  ipc.handleWithEvent("boards:export-package", async (event, id, options) => {
+  const exportBoardPackage = async (
+    event: Parameters<Parameters<SecureIpcRegistrar["handleWithEvent"]>[1]>[0],
+    id: string,
+    options: unknown,
+  ): Promise<{ path: string; skippedAssets: number } | null> => {
     const parsedId = idSchema.parse(id);
     const loaded = database().loadBoard(parsedId);
     if (!loaded) throw new Error("BOARD_NOT_FOUND");
@@ -125,24 +134,28 @@ export function registerBoardIpc(
         JSON.stringify(loaded.document, null, 2),
         "utf8",
       );
-      return destination;
+      return { path: destination, skippedAssets: 0 };
     }
     const bundleDirectory = await mkdtemp(
       path.join(os.tmpdir(), "refcanvas-board-package-"),
     );
+    let skippedAssets = 0;
     try {
-      const assets = [];
+      const assets: Array<{ id: string; source: string; relativePath: string }> = [];
       for (const assetId of database().getBoardAssetIds(parsedId)) {
-        assets.push(await dependencies.copyProjectAsset(assetId, bundleDirectory));
+        const copied = await dependencies.copyProjectAsset(assetId, bundleDirectory);
+        if (copied) assets.push(copied);
+        else skippedAssets += 1;
       }
       const files: Array<{ relativePath: string; dataBase64: string }> = [];
       const pending = [bundleDirectory];
       while (pending.length) {
         const directory = pending.pop()!;
         for (const entry of await readdir(directory, { withFileTypes: true })) {
-          // 遍历的是本应用 mkdtemp 创建的打包临时目录；用 resolve + 根边界
-          // 校验，确保任何条目都不会越出 bundleDirectory。
-          const filename = path.resolve(bundleDirectory, entry.name);
+          // 基准必须是「当前遍历的目录」而不是打包根：资产落在
+          // assets/<assetId>/ 子目录里，用根目录拼会得到不存在的路径
+          // （ENOENT scandir → 整个导出失败）。
+          const filename = path.resolve(directory, entry.name);
           const relative = path.relative(bundleDirectory, filename);
           if (
             relative === ".." ||
@@ -178,31 +191,43 @@ export function registerBoardIpc(
         "utf8",
       );
     } finally {
-      await rm(bundleDirectory, { recursive: true, force: true });
+      // 临时目录清理失败（Windows 上文件句柄延迟释放导致 EBUSY 很常见）
+      // 绝不能覆盖已经成功的导出结果。
+      await rm(bundleDirectory, { recursive: true, force: true }).catch(() => undefined);
     }
-    return destination;
+    return { path: destination, skippedAssets };
+  };
+  ipc.handleWithEvent("boards:export-package", async (event, id, options) => {
+    try {
+      return await exportBoardPackage(event, z.string().parse(id), options);
+    } catch (error) {
+      // 把真实原因抛给渲染进程：UI 直接显示可诊断的文案，
+      // 不再是一句无从排查的「导出失败」。
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[board] export-package failed", error);
+      throw new Error(`EXPORT_PACKAGE_FAILED: ${message}`, { cause: error });
+    }
   });
-  ipc.handleWithEvent("boards:export-json", async (event, id) => {
-    const loaded = database().loadBoard(idSchema.parse(id));
-    if (!loaded) throw new Error("BOARD_NOT_FOUND");
-    const result = await dialog.showSaveDialog(dependencies.windowForSender(event), {
-      title: "导出白板 JSON",
-      defaultPath: path.join(
-        app.getPath("documents"),
-        `${loaded.summary.title}.refcanvas`,
-      ),
-      filters: [{ name: "RefCanvas 项目", extensions: ["refcanvas"] }],
+  // boards:export-json 已并入 boards:export-package（embedAssets:false 轻量档，产出同构）。
+  ipc.handleWithEvent("boards:import-project", async (event) => {
+    const result = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: "导入 RefCanvas 项目",
+      properties: ["openFile"],
+      filters: [
+        { name: "RefCanvas 项目", extensions: ["refcanvas"] },
+        { name: "所有文件", extensions: ["*"] },
+      ],
     });
-    if (result.canceled || !result.filePath) return null;
-    const [destination] = await dependencies.writeAccess.authorizePickerSelection([
-      { path: result.filePath, mode: "destination" },
-    ]);
-    await writeFile(
-      destination,
-      JSON.stringify(loaded.document, null, 2),
-      "utf8",
-    );
-    return destination;
+    if (result.canceled || !result.filePaths[0]) return null;
+    const imported = await importBoardPackage(result.filePaths[0], {
+      getDatabase: database,
+      materializePath: dependencies.materializePath,
+    });
+    return {
+      boardId: imported.boardId,
+      title: imported.title,
+      assetsImported: imported.assetsImported,
+    };
   });
   ipc.handleWithEvent("boards:export-png", async (event, id, dataUrl) => {
     const loaded = database().loadBoard(idSchema.parse(id));

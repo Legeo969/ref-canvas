@@ -12,7 +12,6 @@ import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
 import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { AssetPreview } from "./AssetPreview";
-import { AiDesignSupervisorPanel } from "./AiDesignSupervisor";
 import { GifExportStudio } from "./GifExportStudio";
 import {
   PreviewSessionModeButtons,
@@ -44,7 +43,7 @@ import {
 
 type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "rate" | "notes" | "lut";
 type WorkbenchCommand = WorkbenchTool | "color";
-type PreviewTab = "preview" | "ai";
+type PreviewTab = "preview";
 
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
 
@@ -272,12 +271,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
     return () => window.removeEventListener("refcanvas:directory-workbench", openTool);
   }, [entry?.path]);
 
-  useEffect(() => {
-    const openAi = () => setMode("ai");
-    window.addEventListener("refcanvas:open-ai-workbench", openAi);
-    return () => window.removeEventListener("refcanvas:open-ai-workbench", openAi);
-  }, []);
-
   const isVideo = entry ? videoPattern.test(entry.extension) : false;
   const mediaExtension = (entry?.sequenceGroup?.extension ?? entry?.extension ?? "").toLowerCase();
   const isHdrImage = /^(exr|hdr)$/i.test(mediaExtension);
@@ -393,8 +386,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
         fullscreen={previewSession.fullscreen}
         className={`preview-panel details-panel directory-details-panel directory-workbench-panel mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
       >
-        {/* Preview tab bar：AI 设计总监入口由顶部功能图标承担
-            （refcanvas:open-ai-workbench 事件切模式），旁侧不再放 tab。 */}
+        {/* Preview tab bar：素材预览是唯一模式，操作入口在工具栏。 */}
         <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
           <button
             role="tab"
@@ -408,15 +400,11 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
           <span className="preview-toolbar-spacer" />
         </header>
 
-        {mode === "ai" ? (
-          <AiDesignSupervisorPanel variant="embedded" initialSourcePath={null} />
-        ) : (
-          <div className="preview-content">
-            <div className="preview-canvas-area">
-              <PreviewEmptyState />
-            </div>
+        <div className="preview-content">
+          <div className="preview-canvas-area">
+            <PreviewEmptyState />
           </div>
-        )}
+        </div>
         {/* 无素材时不提供聚焦/全屏入口：对空面板做沉浸模式没有意义，
             也避免空状态下孤零零两个按钮的奇怪排布。 */}
       </PreviewSessionShell>
@@ -456,7 +444,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
 
       {/* Content area */}
       <div className="preview-content">
-        {isPreview ? (
+        {isPreview && (
           <>
             {/* Loading / error states */}
             {loading && (
@@ -719,12 +707,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
               </div>
             )}
           </>
-        ) : (
-          /* AI Design Supervisor tab */
-          <AiDesignSupervisorPanel
-            variant="embedded"
-            initialSourcePath={entry.path}
-          />
         )}
       </div>
       {isPreview && !hasContent && (

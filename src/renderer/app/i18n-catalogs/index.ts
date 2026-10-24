@@ -5,12 +5,11 @@ import { catalog as directoryCatalog } from "./directory";
 import { catalog as boardCatalog } from "./board";
 import { catalog as collectionsCatalog } from "./collections";
 import { catalog as previewMediaCatalog } from "./preview-media";
-import { catalog as aiCatalog } from "./ai";
 import { catalog as settingsCatalog } from "./settings";
 import { catalog as commonCatalog } from "./common";
 
 type Catalog = Record<MessageKey, string>;
-const fragments = [shellCatalog, directoryCatalog, boardCatalog, collectionsCatalog, previewMediaCatalog, aiCatalog, settingsCatalog, commonCatalog] as const;
+const fragments = [shellCatalog, directoryCatalog, boardCatalog, collectionsCatalog, previewMediaCatalog, settingsCatalog, commonCatalog] as const;
 type FragmentLanguage = "en" | "zhCN";
 const merge = (language: FragmentLanguage): Partial<Catalog> =>
   Object.assign({}, ...fragments.map((fragment) => fragment[language]));

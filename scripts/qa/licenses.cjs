@@ -62,6 +62,7 @@ const productionNames = new Set([
   "@ffprobe-installer",
   "ffmpeg-static",
   "@img",
+  "node-screenshots",
 ]);
 const topNodeModules = path.join(root, "node_modules");
 const queue = [...productionNames];

@@ -7,6 +7,12 @@ import {
   CaptureOverlay,
 } from "../../../../src/renderer/components/CaptureOverlay";
 
+// 解耦 i18n 目录聚合：这个组件只需要 translate 返回文本，不需要拉进整个
+// catalog（目录聚合是全局的，别的链路加 key 时测试不该被连坐）。
+vi.mock("../../../../src/renderer/app/i18n", () => ({
+  translate: (key: string) => key,
+}));
+
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 // jsdom 缺 PointerEvent 构造器；给 window 补一个最小实现，供 CaptureOverlay
@@ -46,6 +52,27 @@ describe("region capture crop", () => {
     });
   });
 
+  it("clamps a selection that runs past the captured screen edge", () => {
+    // 覆盖窗口与显示器之间可能有 1–2px 偏差（尤其混合 DPI）：框选贴边时
+    // 结果必须夹回源图范围内，否则主进程的 sharp.extract 直接报错。
+    expect(
+      calculateCaptureCrop(
+        { left: 900, top: 500, width: 100, height: 100 },
+        960,
+        540,
+        1920,
+        1080,
+      ),
+    ).toEqual({
+      sourceLeft: 1800,
+      sourceTop: 1000,
+      sourceWidth: 120,
+      sourceHeight: 80,
+      outputWidth: 200,
+      outputHeight: 200,
+    });
+  });
+
   it("rejects accidental clicks and invalid viewport dimensions", () => {
     expect(
       calculateCaptureCrop(
@@ -68,8 +95,13 @@ describe("region capture crop", () => {
   });
 });
 
-describe("CaptureOverlay keyboard isolation", () => {
-  const source = { dataUrl: "data:image/png;base64,iVBORw0KGgo=", width: 960, height: 540 };
+describe("CaptureOverlay interactions", () => {
+  // 源图 1920×1080、视口 960×540 = 2 倍 DPI：读数与裁剪都必须乘 2。
+  const source = {
+    imageUrl: "refbrowse://preview/11111111-1111-4111-8111-111111111111",
+    width: 1920,
+    height: 1080,
+  };
   const roots: Array<ReturnType<typeof createRoot>> = [];
 
   beforeEach(() => {
@@ -77,18 +109,6 @@ describe("CaptureOverlay keyboard isolation", () => {
     Object.defineProperty(HTMLImageElement.prototype, "decode", {
       configurable: true,
       value: vi.fn(async () => undefined),
-    });
-    // jsdom 的 HTMLCanvasElement 没有 getContext()/toDataURL()；
-    // saveSelection 里需要画布导出 data URL。
-    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
-      configurable: true,
-      value: vi.fn(() => ({
-        drawImage: vi.fn(),
-      })),
-    });
-    Object.defineProperty(HTMLCanvasElement.prototype, "toDataURL", {
-      configurable: true,
-      value: vi.fn(() => "data:image/png;base64,iVBORw0KGgo="),
     });
   });
 
@@ -100,9 +120,7 @@ describe("CaptureOverlay keyboard isolation", () => {
     document.body.replaceChildren();
   });
 
-  it("prevents the Enter default so the save key cannot leak to the titlebar", async () => {
-    const onComplete = vi.fn(async () => undefined);
-    const onCancel = vi.fn();
+  async function mount(onComplete = vi.fn(async () => undefined), onCancel = vi.fn()) {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -112,25 +130,40 @@ describe("CaptureOverlay keyboard isolation", () => {
         <CaptureOverlay source={source} onComplete={onComplete} onCancel={onCancel} />,
       );
     });
-
-    // 模拟框选出一个有效选区。
     const overlay = host.querySelector<HTMLElement>(".capture-overlay")!;
-    // jsdom 中 getBoundingClientRect 全 0，导致 crop 计算为 null 而提前 return；
-    // 补一个虚拟视口尺寸让保存流程走通。
+    // jsdom 中 getBoundingClientRect 全 0，导致 crop 计算为 null；
+    // 补一个虚拟视口尺寸让保存与读数流程走通。
     Object.defineProperty(overlay, "getBoundingClientRect", {
       configurable: true,
       value: () => ({ left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, x: 0, y: 0 }),
     });
+    // 视口尺寸在挂载后的 effect 里量过一次（jsdom 当时是 0），补一次 resize
+    // 让读数换算拿到真实视口。
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    return { overlay, onComplete, onCancel, root };
+  }
+
+  async function drag(overlay: HTMLElement, from: [number, number], to: [number, number]) {
     await act(async () => {
       overlay.dispatchEvent(
-        new window.PointerEvent("pointerdown", { bubbles: true, clientX: 100, clientY: 100 }),
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: from[0], clientY: from[1] }),
       );
     });
     await act(async () => {
       overlay.dispatchEvent(
-        new window.PointerEvent("pointermove", { bubbles: true, clientX: 300, clientY: 300 }),
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: to[0], clientY: to[1] }),
       );
     });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+  }
+
+  it("prevents the Enter default so the save key cannot leak to the titlebar", async () => {
+    const { overlay, onComplete } = await mount();
+    await drag(overlay, [100, 100], [300, 300]);
 
     // Enter 保存：必须阻止默认行为（否则窗口恢复焦点后焦点若落在标题栏
     // 按钮上，会意外 dispatch refcanvas:open-ai-workbench 打开 AI 面板）。
@@ -151,24 +184,13 @@ describe("CaptureOverlay keyboard isolation", () => {
       window.dispatchEvent(enter);
       await Promise.resolve();
     });
-    // 核心断言：Enter 保存必须 preventDefault + stopPropagation，防止焦点
-    // 落在标题栏按钮时默认行为泄漏成点击（dispatch refcanvas:open-ai-workbench）。
     expect(prevented).toBe(true);
     expect(stopped).toBe(true);
     expect(onComplete).toHaveBeenCalled();
   });
 
   it("prevents the Escape default when cancelling", async () => {
-    const onCancel = vi.fn();
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
-    await act(async () => {
-      root.render(
-        <CaptureOverlay source={source} onComplete={async () => undefined} onCancel={onCancel} />,
-      );
-    });
+    const { onCancel } = await mount();
     let prevented = false;
     const esc = new window.KeyboardEvent("keydown", {
       key: "Escape",
@@ -183,5 +205,162 @@ describe("CaptureOverlay keyboard isolation", () => {
     });
     expect(prevented).toBe(true);
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it("cancels on right click, like the QQ muscle memory", async () => {
+    const { overlay, onCancel, onComplete } = await mount();
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 2, clientX: 50, clientY: 50 }),
+      );
+    });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("saves on double click when a selection exists", async () => {
+    const { overlay, onComplete } = await mount();
+    await drag(overlay, [100, 100], [320, 260]);
+    await act(async () => {
+      overlay.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceLeft: 200, sourceTop: 200, sourceWidth: 440, sourceHeight: 320 }),
+    );
+  });
+
+  it("captures the full screen on double click without a selection", async () => {
+    const { overlay, onComplete } = await mount();
+    await act(async () => {
+      overlay.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+      await Promise.resolve();
+    });
+    // QQ 行为：双击空白 = 全屏截图。crop 覆盖整个视口。
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceLeft: 0,
+        sourceTop: 0,
+        sourceWidth: 1920,
+        sourceHeight: 1080,
+      }),
+    );
+  });
+
+  it("moves the selection when dragging inside it", async () => {
+    const { overlay } = await mount();
+    await drag(overlay, [100, 100], [400, 300]);
+    const before = overlay.querySelector<HTMLElement>(".capture-selection")!;
+    expect([before.style.left, before.style.top]).toEqual(["100px", "100px"]);
+
+    // 在选区内部按下并拖动：整体移动，而不是重画新选区。
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 250, clientY: 200 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 350, clientY: 260 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+
+    const after = overlay.querySelector<HTMLElement>(".capture-selection")!;
+    // 向右移了 100、向下移了 60；尺寸不变。
+    expect([after.style.left, after.style.top, after.style.width, after.style.height]).toEqual(
+      ["200px", "160px", "300px", "200px"],
+    );
+  });
+
+  it("resizes the selection when dragging a corner handle", async () => {
+    const { overlay } = await mount();
+    await drag(overlay, [100, 100], [400, 300]);
+
+    // 拖右下角手柄（se）：选区左上角不动，宽高跟着变。
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 400, clientY: 300 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 500, clientY: 360 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+
+    const sel = overlay.querySelector<HTMLElement>(".capture-selection")!;
+    expect([sel.style.left, sel.style.top, sel.style.width, sel.style.height]).toEqual(
+      ["100px", "100px", "400px", "260px"],
+    );
+  });
+
+  it("keeps the selection bright by punching the shade around it", async () => {
+    const { overlay } = await mount();
+    // 无选区：整屏一块遮罩提示截图模式。
+    expect(overlay.querySelectorAll(".capture-shade")).toHaveLength(1);
+
+    await drag(overlay, [100, 100], [400, 300]);
+    // 有选区：整屏遮罩撤掉，改由选区元素的 9999px 外扩阴影把选区挖空
+    // （选区内透出底图原始亮度）。
+    expect(overlay.querySelectorAll(".capture-shade")).toHaveLength(0);
+    const sel = overlay.querySelector<HTMLElement>(".capture-selection")!;
+    expect(sel.className).toBe("capture-selection");
+  });
+
+  it("follows the selection with the action toolbar", async () => {
+    const { overlay } = await mount();
+    const actions = overlay.querySelector<HTMLElement>(".capture-actions")!;
+    // 无选区：固定右下角（无内联定位）。
+    expect(actions.style.left).toBe("");
+
+    await drag(overlay, [100, 100], [400, 300]);
+    // 有选区：工具条贴到选区右下角（内联 left/top 覆盖 CSS 默认）。
+    expect(actions.style.left).not.toBe("");
+    expect(actions.style.top).not.toBe("");
+    const left = parseFloat(actions.style.left);
+    const top = parseFloat(actions.style.top);
+    // 右对齐选区右缘（向左收回工具条宽度），位于选区下缘下方。
+    expect(left).toBeGreaterThan(250);
+    expect(left).toBeLessThanOrEqual(400);
+    expect(top).toBeGreaterThanOrEqual(300);
+  });
+
+  it("shows the physical-pixel readout while dragging and matches the saved size", async () => {
+    const { overlay, onComplete } = await mount();
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 100 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 320, clientY: 260 }),
+      );
+    });
+
+    const badge = overlay.querySelector(".capture-size");
+    expect(badge).not.toBeNull();
+    // 960×540 视口对应 1920×1080 源图：选区 220×160 CSS 像素 → 440×320 物理像素。
+    expect(badge!.textContent).toBe("440 × 320");
+
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+      await Promise.resolve();
+    });
+    // 读数与真正交给主进程的裁剪尺寸必须一致，否则用户看到的是假数字。
+    expect(onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ outputWidth: 440, outputHeight: 320 }),
+    );
   });
 });
