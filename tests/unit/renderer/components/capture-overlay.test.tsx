@@ -6,6 +6,7 @@ import {
   calculateCaptureCrop,
   CaptureOverlay,
 } from "../../../../src/renderer/components/CaptureOverlay";
+import type { CaptureCrop } from "../../../../src/shared/contracts";
 
 // 解耦 i18n 目录聚合：这个组件只需要 translate 返回文本，不需要拉进整个
 // catalog（目录聚合是全局的，别的链路加 key 时测试不该被连坐）。
@@ -36,6 +37,7 @@ describe("region capture crop", () => {
   it("maps CSS-pixel selections to the physical screenshot resolution", () => {
     expect(
       calculateCaptureCrop(
+        7,
         { left: 100, top: 50, width: 320, height: 180 },
         960,
         540,
@@ -43,6 +45,7 @@ describe("region capture crop", () => {
         1080,
       ),
     ).toEqual({
+      displayId: 7,
       sourceLeft: 200,
       sourceTop: 100,
       sourceWidth: 640,
@@ -57,6 +60,7 @@ describe("region capture crop", () => {
     // 结果必须夹回源图范围内，否则主进程的 sharp.extract 直接报错。
     expect(
       calculateCaptureCrop(
+        7,
         { left: 900, top: 500, width: 100, height: 100 },
         960,
         540,
@@ -64,6 +68,7 @@ describe("region capture crop", () => {
         1080,
       ),
     ).toEqual({
+      displayId: 7,
       sourceLeft: 1800,
       sourceTop: 1000,
       sourceWidth: 120,
@@ -76,6 +81,7 @@ describe("region capture crop", () => {
   it("rejects accidental clicks and invalid viewport dimensions", () => {
     expect(
       calculateCaptureCrop(
+        7,
         { left: 10, top: 10, width: 1, height: 1 },
         960,
         540,
@@ -85,6 +91,7 @@ describe("region capture crop", () => {
     ).toBeNull();
     expect(
       calculateCaptureCrop(
+        7,
         { left: 10, top: 10, width: 100, height: 100 },
         0,
         540,
@@ -98,6 +105,7 @@ describe("region capture crop", () => {
 describe("CaptureOverlay interactions", () => {
   // 源图 1920×1080、视口 960×540 = 2 倍 DPI：读数与裁剪都必须乘 2。
   const source = {
+    displayId: 7,
     imageUrl: "refbrowse://preview/11111111-1111-4111-8111-111111111111",
     width: 1920,
     height: 1080,
@@ -120,14 +128,27 @@ describe("CaptureOverlay interactions", () => {
     document.body.replaceChildren();
   });
 
-  async function mount(onComplete = vi.fn(async () => undefined), onCancel = vi.fn()) {
+  async function mount(
+    onComplete = vi.fn(async () => undefined),
+    onCancel = vi.fn(),
+    extraProps: {
+      passive?: boolean;
+      onSelectionActivity?: (active: boolean) => void;
+    } = {},
+  ) {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
     await act(async () => {
       root.render(
-        <CaptureOverlay source={source} onComplete={onComplete} onCancel={onCancel} />,
+        <CaptureOverlay
+          source={source}
+          passive={extraProps.passive}
+          onSelectionActivity={extraProps.onSelectionActivity}
+          onComplete={onComplete}
+          onCancel={onCancel}
+        />,
       );
     });
     const overlay = host.querySelector<HTMLElement>(".capture-overlay")!;
@@ -166,7 +187,7 @@ describe("CaptureOverlay interactions", () => {
     await drag(overlay, [100, 100], [300, 300]);
 
     // Enter 保存：必须阻止默认行为（否则窗口恢复焦点后焦点若落在标题栏
-    // 按钮上，会意外 dispatch refcanvas:open-ai-workbench 打开 AI 面板）。
+    // 按钮上，会泄漏成意外点击）。
     let prevented = false;
     let stopped = false;
     const enter = new window.KeyboardEvent("keydown", {
@@ -362,5 +383,164 @@ describe("CaptureOverlay interactions", () => {
     expect(onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ outputWidth: 440, outputHeight: 320 }),
     );
+  });
+});
+
+describe("CaptureOverlay cross-screen arbitration", () => {
+  const source = {
+    displayId: 7,
+    imageUrl: "refbrowse://preview/11111111-1111-4111-8111-111111111111",
+    width: 1920,
+    height: 1080,
+  };
+  const roots: Array<ReturnType<typeof createRoot>> = [];
+
+  beforeEach(() => {
+    Object.defineProperty(HTMLImageElement.prototype, "decode", {
+      configurable: true,
+      value: vi.fn(async () => undefined),
+    });
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      for (const root of roots.splice(0)) root.unmount();
+    });
+    vi.restoreAllMocks();
+    document.body.replaceChildren();
+  });
+
+  async function mount(extraProps: {
+    passive?: boolean;
+    onSelectionActivity?: (active: boolean) => void;
+    onComplete?: (crop: CaptureCrop) => Promise<void>;
+    onCancel?: () => void;
+  } = {}) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    const onComplete = extraProps.onComplete ?? vi.fn(async () => undefined);
+    const onCancel = extraProps.onCancel ?? vi.fn();
+    const render = (passive: boolean) =>
+      act(async () => {
+        root.render(
+          <CaptureOverlay
+            source={source}
+            passive={passive}
+            onSelectionActivity={extraProps.onSelectionActivity}
+            onComplete={onComplete}
+            onCancel={onCancel}
+          />,
+        );
+      });
+    await render(extraProps.passive ?? false);
+    const overlay = host.querySelector<HTMLElement>(".capture-overlay")!;
+    Object.defineProperty(overlay, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, x: 0, y: 0 }),
+    });
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    return { overlay, root, render, onComplete, onCancel };
+  }
+
+  it("ignores all pointer input while another screen is selecting", async () => {
+    const onSelectionActivity = vi.fn();
+    const { overlay, onComplete } = await mount({
+      passive: true,
+      onSelectionActivity,
+    });
+
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 100 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 300, clientY: 300 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+    // passive 屏是冻结画面的纯遮罩：不框选、不广播、不保存。
+    expect(overlay.querySelectorAll(".capture-selection")).toHaveLength(0);
+    expect(onSelectionActivity).not.toHaveBeenCalled();
+
+    // 双击空白 = 全屏截图也不允许从 passive 屏触发。
+    await act(async () => {
+      overlay.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("keeps Escape as the global way out of a passive screen", async () => {
+    const { onCancel } = await mount({ passive: true });
+    await act(async () => {
+      window.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports selection activity so other screens can follow", async () => {
+    const onSelectionActivity = vi.fn();
+    const { overlay } = await mount({ onSelectionActivity });
+
+    // 从无到有开始框选：其余屏应转纯遮罩。
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 100 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 300, clientY: 300 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+    expect(onSelectionActivity).toHaveBeenCalledWith(true);
+
+    // 误点清框（选区太小）：其余屏应恢复可框选。
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 500, clientY: 400 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+    expect(onSelectionActivity).toHaveBeenCalledWith(false);
+    expect(onSelectionActivity).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops its own selection the moment it becomes passive", async () => {
+    const { overlay, render } = await mount();
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100, clientY: 100 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(
+        new window.PointerEvent("pointermove", { bubbles: true, clientX: 300, clientY: 300 }),
+      );
+    });
+    await act(async () => {
+      overlay.dispatchEvent(new window.PointerEvent("pointerup", { bubbles: true }));
+    });
+    expect(overlay.querySelectorAll(".capture-selection")).toHaveLength(1);
+
+    // 他屏开始框选：本屏选区必须消失，全局任一时刻只有一个选区。
+    await render(true);
+    expect(overlay.querySelectorAll(".capture-selection")).toHaveLength(0);
+    expect(overlay.querySelectorAll(".capture-shade")).toHaveLength(1);
   });
 });

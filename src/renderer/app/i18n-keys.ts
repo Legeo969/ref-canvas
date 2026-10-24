@@ -750,6 +750,10 @@ export type MessageKey =
 
   | "capture.instructions"
 
+  | "capture.loading"
+
+  | "capture.passiveHint"
+
   | "capture.save"
   | "capture.saved"
   | "capture.unavailable"
@@ -1902,9 +1906,6 @@ export type MessageKey =
 
 
 
-
-  | "preview.tab.ai"
-
   | "preview.tab.preview"
 
   | "preview.timeline"
@@ -2563,8 +2564,6 @@ export type MessageKey =
   | "text.readFailed"
 
   | "text.truncated"
-
-  | "titlebar.ai"
 
   | "titlebar.clipboard"
 

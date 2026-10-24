@@ -87,6 +87,7 @@ import { BrowserCapturePairingService } from "./services/browser-capture-pairing
 import { ActionPresetService } from "./services/action-preset-service";
 import { pruneOrphanedCaptures } from "./services/browser-capture-maintenance";
 import { CaptureDeliveryService, type CaptureDeliveryTarget } from "./services/capture-delivery";
+import { createCaptureSession } from "./services/capture-session";
 import { registerSecureListener } from "./platform/secure-ipc";
 import {
   registerWindowsProjectFormat,
@@ -188,9 +189,26 @@ let boardReferences: BoardReferenceService;
 let taskCenter: TaskCenterService;
 let mediaJobRegistry: MediaJobRegistry;
 let zipArchiveService: ZipArchiveService;
-let pendingCaptureFile: string | null = null;
-let pendingCaptureSize: { width: number; height: number } | null = null;
-let captureWindow: Electron.BrowserWindow | null = null;
+/**
+ * 当前截图会话各屏的临时底图（displayId → 文件与物理尺寸）。
+ * 空 Map = 无会话；save/cancel 后清空并删文件。
+ */
+const pendingCaptures = new Map<
+  number,
+  { filePath: string; width: number; height: number }
+>();
+/** 会话中持有键盘焦点的覆盖窗所在屏（= 按下时光标所在屏）。 */
+let captureFocusDisplayId: number | null = null;
+/** 常驻复用的覆盖窗所在屏（主窗口所在屏，随会话更新）；其余屏用完即销毁。 */
+let residentCaptureDisplayId: number | null = null;
+/** displayId → 覆盖窗口。多屏截图 = 每屏一个覆盖窗。 */
+const captureWindows = new Map<number, Electron.BrowserWindow>();
+/**
+ * 当前会话各屏已推送的底图。did-finish-load 的推送与渲染端 React 挂载
+ * 存在竞态（事件在 onCaptureSource 订阅前发出即丢失，覆盖窗黑屏），
+ * 渲染端就绪后会用 capture:renderer-ready 来拉一次，这里按屏重推。
+ */
+const captureSourcesByDisplay = new Map<number, CaptureSource>();
 let thumbnailCacheDirectory = "";
 let databaseFilename = "";
 let alwaysOnBottom = false;
@@ -266,18 +284,19 @@ async function saveCapture(
 }
 
 /**
- * 截图覆盖窗口（常驻复用）。
+ * 截图覆盖窗口（每显示器一个：常驻屏复用，其余屏会话内按需创建）。
  *
  * 旧实现每次截图都新建 BrowserWindow 并加载整个渲染包（1.9MB JS + 247KB
- * CSS，含 three/fabric），冷启动本身就是几百毫秒——electron-screenshots 的
- * singleWindow 选项解决的正是这个问题。这里改为建一次、之后只 show/hide，
- * 并在空闲时预热。
+ * CSS，含 three/fabric），冷启动本身就是几百毫秒。这里改为常驻屏建一次、
+ * 之后只 show/hide 并空闲预热；多屏会话时其余屏现建现销毁——建窗加载期
+ * 宿主已被会话锁定，不存在裸奔窗口，加载完再 show 也无白闪。
  *
  * 代价是常驻隐藏窗口会让 window-all-closed 不再触发：退出路径必须显式
- * destroyCaptureWindow，否则进程退不掉。
+ * destroyCaptureWindows，否则进程退不掉。
  */
-function ensureCaptureWindow(): Electron.BrowserWindow {
-  if (captureWindow && !captureWindow.isDestroyed()) return captureWindow;
+function ensureCaptureWindowFor(display: Electron.Display): Electron.BrowserWindow {
+  const existing = captureWindows.get(display.id);
+  if (existing && !existing.isDestroyed()) return existing;
   const window = new BrowserWindow({
     frame: false,
     transparent: false,
@@ -292,7 +311,7 @@ function ensureCaptureWindow(): Electron.BrowserWindow {
     show: false,
     webPreferences: secureWebPreferences(path.join(__dirname, "preload.js")),
   });
-  captureWindow = window;
+  captureWindows.set(display.id, window);
   trustedWindows.register(window);
   hardenWindowNavigation(window.webContents);
   // 隐藏期间 Chromium 会把 IPC 与 rAF 节流到 0：覆盖窗口必须在隐藏时也能
@@ -300,7 +319,10 @@ function ensureCaptureWindow(): Electron.BrowserWindow {
   // webPreferences 覆盖项，保持"每个窗口都用统一安全策略"的架构约束。
   window.webContents.setBackgroundThrottling(false);
   window.on("closed", () => {
-    if (captureWindow === window) captureWindow = null;
+    captureWindows.delete(display.id);
+    // 覆盖窗被外部强关（任务管理器等）：宿主不能就此锁死，强制收会话。
+    // 正常收会话先摘 isActive 再销毁窗口，不会在这里递归。
+    if (captureSession.isActive()) endCaptureSession("forced");
   });
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     void window.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}?capture=1`);
@@ -313,23 +335,69 @@ function ensureCaptureWindow(): Electron.BrowserWindow {
   return window;
 }
 
-function discardPendingCapture(): Promise<void> {
-  const file = pendingCaptureFile;
-  pendingCaptureFile = null;
-  pendingCaptureSize = null;
-  return discardCapture(file);
+/**
+ * 截图会话：会话期间锁定宿主全部窗口（主窗口 + 白板窗口）——不可激活、
+ * 不可拖——并把任何落在宿主上的键盘焦点钳回覆盖窗。这是"截图时宿主还能
+ * 被任务栏/Alt+Tab/Win+方向键拖走"的根治：此前只靠覆盖窗盖住，宿主置顶
+ * 时 z 序随时可能反超。
+ */
+const captureSession = createCaptureSession(
+  {
+    getHostWindows: () =>
+      [mainWindow, ...boardWindows.values()].filter(
+        (window): window is Electron.BrowserWindow => !!window,
+      ),
+    getFocusOverlay: () => {
+      const preferred =
+        captureFocusDisplayId != null
+          ? captureWindows.get(captureFocusDisplayId)
+          : undefined;
+      if (preferred && !preferred.isDestroyed()) return preferred;
+      for (const window of captureWindows.values()) {
+        if (!window.isDestroyed()) return window;
+      }
+      return null;
+    },
+  },
+  {
+    onWindowFocus: (listen) => {
+      const handler = (_event: Electron.Event, window: Electron.BrowserWindow) =>
+        listen(window);
+      app.on("browser-window-focus", handler);
+      return () => {
+        app.off("browser-window-focus", handler);
+      };
+    },
+  },
+);
+
+async function discardPendingCaptures(): Promise<void> {
+  const files = [...pendingCaptures.values()].map((entry) => entry.filePath);
+  pendingCaptures.clear();
+  await Promise.all(files.map((file) => discardCapture(file)));
 }
 
 function captureScreen(display: Electron.Display) {
   return captureDisplay(captureCacheDirectory(app.getPath("userData")), display);
 }
 
-/** 把底图推给覆盖窗口。窗口跨次复用，所以是 push 而不是一次性索取。 */
-function showCaptureWindow(display: Electron.Display, source: CaptureSource): void {
-  const window = ensureCaptureWindow();
+/** 把底图推给某屏的覆盖窗口。窗口跨次复用，所以是 push 而不是一次性索取。 */
+function showCaptureWindow(
+  display: Electron.Display,
+  source: CaptureSource,
+  options: { focus: boolean },
+): void {
+  const window = ensureCaptureWindowFor(display);
+  // 缓存底图：渲染端就绪信号（capture:renderer-ready）到达时按屏重推，
+  // 消灭 did-finish-load 与 React 挂载之间的竞态（事件早于订阅即丢失，
+  // 覆盖窗黑屏、要点两次截图才能成功）。
+  captureSourcesByDisplay.set(display.id, source);
   window.setBounds(display.bounds);
+  // screen-saver 是 Electron 置顶序列的最高级：宿主即使用户手动置顶
+  // （floating 级）也压不过它，任务栏点击/Alt+Tab 都抬不上来。
+  window.setAlwaysOnTop(true, "screen-saver");
   window.showInactive();
-  window.focus();
+  if (options.focus) window.focus();
   if (window.webContents.isLoading()) {
     window.webContents.once("did-finish-load", () => {
       window.webContents.send("capture:source", source);
@@ -339,23 +407,169 @@ function showCaptureWindow(display: Electron.Display, source: CaptureSource): vo
   }
 }
 
-function closeCaptureWindow(): void {
-  const window = captureWindow;
-  if (!window || window.isDestroyed()) return;
-  window.hide();
+function focusActiveCaptureWindow(): void {
+  const window =
+    captureFocusDisplayId != null
+      ? captureWindows.get(captureFocusDisplayId)
+      : null;
+  if (window && !window.isDestroyed()) window.focus();
+}
+
+/**
+ * 结束截图会话的统一出口：恢复宿主锁定、收起/销毁覆盖窗、按需回焦。
+ * 幂等；所有退出路径（保存、取消、失败、覆盖窗被强关、quit）都必须到达。
+ * 宿主全程原样（QQ 式所见即所得，不隐藏不弹出），这里只处理焦点与反馈。
+ */
+function endCaptureSession(
+  reason: "saved" | "cancelled" | "error" | "forced",
+): void {
+  const host = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  captureSession.end();
+  captureSourcesByDisplay.clear();
+  for (const [displayId, window] of captureWindows) {
+    if (window.isDestroyed()) {
+      captureWindows.delete(displayId);
+      continue;
+    }
+    // 常驻屏只 hide 供下次复用；其余屏销毁，不为偶发的多屏截图常驻
+    // 渲染进程内存。
+    if (displayId === residentCaptureDisplayId) {
+      window.hide();
+    } else {
+      captureWindows.delete(displayId);
+      window.destroy();
+    }
+  }
+  if (!host) return;
+  const hostVisible = host.isVisible() && !host.isMinimized();
+  if (reason === "saved") {
+    if (hostVisible) {
+      // 用户本来就在看着应用：回焦展示"已入库并复制"的 toast。
+      host.focus();
+    } else {
+      // 最小化/藏托盘发起的截图：托盘气泡告知结果，绝不为反馈弹窗。
+      showTrayNotification("RefCanvas", "截图已保存并复制到剪贴板。");
+    }
+  } else if (hostVisible) {
+    host.focus();
+  }
 }
 
 /** 退出路径必须真正销毁，否则隐藏窗口拖住 window-all-closed。 */
-function destroyCaptureWindow(): void {
-  const window = captureWindow;
-  captureWindow = null;
-  if (window && !window.isDestroyed()) window.destroy();
+function destroyCaptureWindows(): void {
+  for (const [displayId, window] of captureWindows) {
+    captureWindows.delete(displayId);
+    if (!window.isDestroyed()) window.destroy();
+  }
 }
 
-/** 预热：主窗口就绪后空闲时静默建好覆盖窗口，首次点击不再冷启动。 */
+/**
+ * 区域截图会话入口：主进程直连（全局快捷键）与渲染端（标题栏按钮）共用。
+ * 冻结全部显示器 → 锁定宿主 → 每屏覆盖窗接管框选；键盘焦点落在光标屏。
+ *
+ * QQ 式所见即所得：直接抓「用户此刻看到的画面」——宿主可见就在画面里
+ * （不隐藏、不闪烁，用户偶尔要截画板上的内容也成立）；宿主最小化/藏托盘
+ * 时它本就不在屏幕上，画面里自然没有它，也绝不为截图把它弹出。宿主的
+ * "不可拖动"由会话锁定保证，与画面呈现无关。
+ */
+async function runRegionCapture(): Promise<void> {
+  if (captureSession.isActive()) {
+    focusActiveCaptureWindow();
+    return;
+  }
+  const host = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  // 常驻覆盖窗跟随可见的主窗口所在屏；宿主隐藏（热键路径）时保持上次。
+  if (host && host.isVisible() && !host.isMinimized()) {
+    residentCaptureDisplayId = screen.getDisplayMatching(host.getBounds()).id;
+  }
+  captureSession.begin();
+  const captures = new Map<
+    number,
+    { filePath: string; width: number; height: number }
+  >();
+  try {
+    const displays = screen.getAllDisplays();
+    captureFocusDisplayId = screen.getDisplayNearestPoint(
+      screen.getCursorScreenPoint(),
+    ).id;
+    // 原生抓屏是同步 napi 调用（每屏 ~25ms），串行即可，避免 native 并发。
+    // 单屏失败只放弃那一屏（那块屏不接管、不进会话），别让一块故障屏
+    // 炸掉整个会话——整体失败走热键路径时会把宿主弹回前台，观感就是
+    // "一按截图窗口又跳出来"。
+    for (const display of displays) {
+      try {
+        const capture = await captureScreen(display);
+        captures.set(display.id, {
+          filePath: capture.filePath,
+          width: capture.width,
+          height: capture.height,
+        });
+      } catch (error) {
+        console.warn(
+          `[capture] display ${display.id} capture failed, skipping:`,
+          error,
+        );
+      }
+    }
+    if (captures.size === 0) {
+      throw new Error("SCREEN_CAPTURE_UNAVAILABLE");
+    }
+    await discardPendingCaptures();
+    for (const [displayId, capture] of captures) {
+      pendingCaptures.set(displayId, capture);
+    }
+    // 光标屏抓取失败时，键盘焦点退给第一块成功冻结的屏。
+    captureFocusDisplayId = captures.has(captureFocusDisplayId)
+      ? captureFocusDisplayId
+      : (captures.keys().next().value ?? null);
+    for (const display of displays) {
+      const capture = captures.get(display.id);
+      if (!capture) continue;
+      showCaptureWindow(
+        display,
+        {
+          imageUrl: `refbrowse://preview/${previewTokens.tokenFor(capture.filePath)}`,
+          width: capture.width,
+          height: capture.height,
+          displayId: display.id,
+        },
+        { focus: display.id === captureFocusDisplayId },
+      );
+    }
+  } catch (error) {
+    endCaptureSession("error");
+    // 会话中途失败：已落盘的屏底图立即回收，不留孤儿临时文件。
+    await Promise.all(
+      [...captures.values()].map((capture) => discardCapture(capture.filePath)),
+    );
+    throw error;
+  }
+}
+
+/** 跨屏选区互斥：一块屏开始框选，其余屏转纯遮罩（active = 允许框选）。 */
+function broadcastOverlayMode(
+  senderId: number,
+  mode: "active" | "passive",
+): void {
+  for (const window of captureWindows.values()) {
+    if (window.isDestroyed() || window.webContents.id === senderId) continue;
+    window.webContents.send("capture:overlay-mode", mode);
+  }
+}
+
+/** 预热：主窗口就绪后空闲时静默建好常驻屏的覆盖窗口，首次点击不再冷启动。 */
 function prewarmCaptureWindow(): void {
   const timer = setTimeout(() => {
-    if (!quitting && !captureWindow) ensureCaptureWindow();
+    if (quitting) return;
+    const host =
+      mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()
+        ? mainWindow
+        : null;
+    const display = host
+      ? screen.getDisplayMatching(host.getBounds())
+      : screen.getPrimaryDisplay();
+    residentCaptureDisplayId = display.id;
+    ensureCaptureWindowFor(display);
   }, 1500);
   timer.unref();
 }
@@ -451,9 +665,28 @@ function configureGlobalShortcuts(enabled: boolean): boolean {
   const focusApp = globalShortcut.register(
     "CommandOrControl+Shift+R",
     () => {
-      mainWindow?.show();
-      mainWindow?.focus();
-      mainWindow?.webContents.send("system:request-region-capture");
+      // 会话中再按热键：只把键盘焦点还给覆盖窗。旧实现 show+focus 主窗口
+      // 会主动打破模态，把宿主抬到覆盖层之上。
+      if (captureSession.isActive()) {
+        focusActiveCaptureWindow();
+        return;
+      }
+      // 热键只冻结"用户此刻看到的画面"：绝不先弹宿主——宿主最小化/藏
+      // 托盘时会被强行弹出并拍进底图，用户框选永远绕不开它。宿主在保存
+      // 成功后才被带回前台。
+      void runRegionCapture().catch(() => {
+        // 失败必须显式提示（不能只闪一下屏），但绝不能把窗口强行弹到
+        // 前台——那正是"一按截图窗口又跳出来"的观感。宿主可见（会话
+        // 失败路径已把它恢复原状）时借主窗口的 notice 提示；不可见时用
+        // 托盘气泡。
+        const host =
+          mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+        if (host && host.isVisible() && !host.isMinimized()) {
+          host.webContents.send("capture:failed");
+          return;
+        }
+        showTrayNotification("RefCanvas", "无法捕获屏幕画面，请重试。");
+      });
     },
   );
   if (!captureClipboard || !focusApp) {
@@ -1125,6 +1358,20 @@ function scheduleWalCheckpoint(delayMs = 3_000): void {
 function registerIpc(): void {
   const ipc = new SecureIpcRegistrar(validateSender, () => scheduleWalCheckpoint());
 
+  // 覆盖窗渲染端就绪信号：did-finish-load 的底图推送可能早于渲染端
+  // React 挂载（onCaptureSource 订阅之前）而丢失——覆盖窗黑屏、用户
+  // 要点第二次截图才成功。渲染端就绪后按屏重推缓存底图，闭环补齐。
+  ipc.on("capture:renderer-ready", (event) => {
+    for (const [displayId, window] of captureWindows) {
+      if (window.isDestroyed() || window.webContents.id !== event.sender.id) {
+        continue;
+      }
+      const source = captureSourcesByDisplay.get(displayId);
+      if (source) window.webContents.send("capture:source", source);
+      return;
+    }
+  });
+
   registerBrowserCaptureIpc(ipc, () => browserCapturePairings);
 
   registerLibraryIpc(ipc, {
@@ -1225,15 +1472,14 @@ function registerIpc(): void {
     recoverRestoreBackup,
     recoverNewDatabase,
     getMainWindow: () => mainWindow,
-    closeCaptureWindow,
-    captureScreen,
+    startRegionCapture: runRegionCapture,
+    endCaptureSession,
+    discardPendingCaptures,
+    broadcastOverlayMode,
     notifyCaptureSaved: () => {
       // 覆盖窗口保存后立即关闭，toast 打在主窗口上。
       mainWindow?.webContents.send("capture:saved");
     },
-    showCaptureWindow,
-    discardPendingCapture,
-    previewTokens,
     overlayExitAccelerator,
     pngDataUrlToBuffer,
     registerOverlayEmergencyShortcut,
@@ -1246,18 +1492,9 @@ function registerIpc(): void {
       set alwaysOnBottom(value) {
         alwaysOnBottom = value;
       },
-      get pendingCaptureFile() {
-        return pendingCaptureFile;
-      },
-      set pendingCaptureFile(value) {
-        pendingCaptureFile = value;
-      },
-      get pendingCaptureSize() {
-        return pendingCaptureSize;
-      },
-      set pendingCaptureSize(value) {
-        pendingCaptureSize = value;
-      },
+      // 引用共享：system-ipc 的 save 按屏读取当前会话底图，写入只发生在
+      // 主进程的 runRegionCapture/endCaptureSession 里。
+      pendingCaptures,
       get clickThrough() {
         return clickThrough;
       },
@@ -1828,6 +2065,20 @@ void app.whenReady().then(async () => {
   }
   createWindow();
   prewarmCaptureWindow();
+  // 显示器拔出：清掉那块屏的覆盖窗；截图会话进行中则立即收会话——
+  // 冻结画面缺了一块已无意义，宿主必须马上恢复可交互。
+  screen.on("display-removed", (_event, oldDisplay) => {
+    residentCaptureDisplayId =
+      residentCaptureDisplayId === oldDisplay.id ? null : residentCaptureDisplayId;
+    if (captureSession.isActive()) {
+      endCaptureSession("forced");
+      return;
+    }
+    const window = captureWindows.get(oldDisplay.id);
+    if (!window) return;
+    captureWindows.delete(oldDisplay.id);
+    if (!window.isDestroyed()) window.destroy();
+  });
 
   // Browser extension capture server (127.0.0.1:17530).
   // Lets the Chrome/Edge extension send images from web pages into RefCanvas.
@@ -1924,6 +2175,8 @@ app.on("before-quit", () => {
 
 async function shutdownServices(): Promise<void> {
   writeAccess.clear();
+  // 先收截图会话（恢复宿主锁定/焦点），再冲刷渲染端。
+  endCaptureSession("forced");
   saveMainWindowBounds();
   const flushed = await Promise.all([
     ...[...boardWindows.values()].map(flushBoardRenderer),
@@ -1937,8 +2190,8 @@ async function shutdownServices(): Promise<void> {
   for (const window of boardWindows.values()) window.destroy();
   boardWindows.clear();
   // 常驻复用的截图窗口是隐藏而非关闭：不显式销毁会拖住 window-all-closed。
-  destroyCaptureWindow();
-  await discardPendingCapture();
+  destroyCaptureWindows();
+  await discardPendingCaptures();
   mainWindow?.destroy();
   cancelBackgroundServicesStart();
   globalShortcut.unregisterAll();

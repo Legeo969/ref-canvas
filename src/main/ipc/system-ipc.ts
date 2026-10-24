@@ -4,10 +4,8 @@ import {
   dialog,
   globalShortcut,
   nativeImage,
-  screen,
   shell,
   type BrowserWindow,
-  type Display,
   type IpcMainInvokeEvent,
 } from "electron";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -18,7 +16,6 @@ import type {
   AppLanguage,
   AppPreferences,
   BoardSettings,
-  CaptureSource,
   SidebarLayoutPreference,
 } from "../../shared/contracts";
 import { SIDEBAR_LAYOUT_DEFAULTS } from "../../shared/contracts";
@@ -26,7 +23,6 @@ import { mergePreviewSettings, readPreviewSettings } from "./preview-settings";
 import type { RefCanvasDatabase } from "../persistence/database";
 import type { LibraryManager } from "../services/library-manager";
 import type { LibraryService } from "../services/library-service";
-import type { DisplayCapture } from "../platform/screen-capture";
 import { resolveNativeDragAssets } from "../platform/native-drag";
 import { resolveNativeDragIcon } from "../platform/native-drag-icon";
 import { assertAbsoluteLocalPath } from "../platform/local-path-security";
@@ -44,10 +40,11 @@ import { nativeDragIdsSchema } from "./schemas";
 
 export interface SystemIpcState {
   alwaysOnBottom: boolean;
-  /** 上次抓屏落盘的临时 PNG；保存/取消后删除。 */
-  pendingCaptureFile: string | null;
-  /** 该临时 PNG 的物理像素尺寸，用于校验框选矩形不越界。 */
-  pendingCaptureSize: { width: number; height: number } | null;
+  /** 当前截图会话各屏的临时底图（displayId → 文件与物理尺寸）；空 = 无会话。 */
+  pendingCaptures: Map<
+    number,
+    { filePath: string; width: number; height: number }
+  >;
   clickThrough: boolean;
   previewCacheIndex: PreviewCacheIndex | null;
   rendererInteractive: boolean;
@@ -81,17 +78,19 @@ interface SystemIpcDependencies {
   /** SPEC-1 安全模式：新建空库（删除损坏主库）并重启。 */
   recoverNewDatabase(): Promise<void>;
   getMainWindow(): BrowserWindow | null;
-  /** 隐藏/销毁截图覆盖窗口（保存或取消后调用）。 */
-  closeCaptureWindow(): void;
-  /** 抓一块屏到临时 PNG（原生后端优先，失败降级 desktopCapturer）。 */
-  captureScreen(display: Display): Promise<DisplayCapture>;
-  /** 显示覆盖窗口并把底图推给它；窗口跨次复用，不重复创建。 */
-  showCaptureWindow(display: Display, source: CaptureSource): void;
-  /** 删除上一次抓屏的临时文件。 */
-  discardPendingCapture(): Promise<void>;
+  /**
+   * 区域截图会话入口（冻结全部显示器 + 锁定宿主 + 每屏覆盖窗接管）。
+   * 渲染端标题栏按钮与全局快捷键共用；会话已激活时静默返回。
+   */
+  startRegionCapture(): Promise<void>;
+  /** 结束会话的统一出口：恢复宿主锁定、收覆盖窗、按 reason 决定是否带回宿主。 */
+  endCaptureSession(reason: "saved" | "cancelled" | "error" | "forced"): void;
+  /** 删除当前会话全部临时底图。 */
+  discardPendingCaptures(): Promise<void>;
+  /** 跨屏选区互斥：向发起者之外的覆盖窗广播框选模式。 */
+  broadcastOverlayMode(senderId: number, mode: "active" | "passive"): void;
   /** 截图保存成功后通知主窗口（用于 toast 反馈）。 */
   notifyCaptureSaved(): void;
-  previewTokens: { tokenFor(filename: string): string };
   overlayExitAccelerator: string;
   pngDataUrlToBuffer(dataUrl: string): Buffer;
   registerOverlayEmergencyShortcut(): boolean;
@@ -414,84 +413,76 @@ export function registerSystemIpc(
     return database().getAssetByPath(filename);
   });
   ipc.handle("system:prepare-region-capture", async () => {
-    const window = mainWindow();
-    if (!window) throw new Error("MAIN_WINDOW_UNAVAILABLE");
-    // 抓取窗口所在显示器的屏幕快照。用独立覆盖窗口承载框选，主窗口无需
-    // 隐藏/全屏切换——这样不再“要关掉 RefCanvas 才能截图”。
-    const display = screen.getDisplayMatching(window.getBounds());
-    // 直接抓「用户此刻看到的画面」——宿主窗口不隐藏、也不做捕获自排除。
-    //
-    // 之前用 setContentProtection(true) + hide() 把 RefCanvas 从捕获结果里
-    // 剔除，宿主非最大化时没问题；但宿主最大化时它盖住了整块屏，剔除之后
-    // 剩下的只有壁纸，冻结预览里什么都看不到。QQ 截图是「所见即所得」，
-    // 用户按下的瞬间屏幕上是什么就该框选什么——包括 RefCanvas 自己。
-    //
-    // 覆盖窗口随后铺满整屏盖住宿主，所以不会出现「底图里的 RefCanvas 和
-    // 下面真正的 RefCanvas 重影」。
-    const capture = await dependencies.captureScreen(display);
-    await dependencies.discardPendingCapture();
-    state.pendingCaptureFile = capture.filePath;
-    state.pendingCaptureSize = {
-      width: capture.width,
-      height: capture.height,
-    };
-    // 覆盖窗口常驻复用：这里只推底图，不再创建新窗口、不再跨窗口取图。
-    dependencies.showCaptureWindow(display, {
-      imageUrl: `refbrowse://preview/${dependencies.previewTokens.tokenFor(capture.filePath)}`,
-      width: capture.width,
-      height: capture.height,
-    });
+    // 会话编排（冻结全部显示器、锁定宿主、每屏覆盖窗接管框选）在主进程
+    // 入口 startRegionCapture；这里只是渲染端（标题栏按钮）的入口与错误
+    // 通道。全局快捷键不经渲染端中转，由主进程直连调用。
+    await dependencies.startRegionCapture();
   });
   ipc.handleWithEvent("system:save-region-capture", async (event, crop) => {
     const parsed = z
       .object({
+        /** 框选发生在哪块屏的冻结底图上（多屏会话每屏一张）。 */
+        displayId: z.number().int(),
         sourceLeft: z.number().int().min(0),
         sourceTop: z.number().int().min(0),
         sourceWidth: z.number().int().min(1),
         sourceHeight: z.number().int().min(1),
       })
       .parse(crop);
-    const captureFile = state.pendingCaptureFile;
+    const captureFile = state.pendingCaptures.get(parsed.displayId);
     if (!captureFile) throw new Error("CAPTURE_SOURCE_MISSING");
-    const bounds = state.pendingCaptureSize;
     if (
-      bounds &&
-      (parsed.sourceLeft + parsed.sourceWidth > bounds.width ||
-        parsed.sourceTop + parsed.sourceHeight > bounds.height)
+      parsed.sourceLeft + parsed.sourceWidth > captureFile.width ||
+      parsed.sourceTop + parsed.sourceHeight > captureFile.height
     ) {
       throw new Error("CAPTURE_CROP_OUT_OF_RANGE");
     }
-    try {
-      const [captureDirectory] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
+    const [captureDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "export",
+      [
         { path: path.join(app.getPath("pictures"), "RefCanvas Captures"), mode: "destination" },
-      ]);
-      // 在主进程裁剪：渲染端不再把整屏 PNG 编码成 base64 再穿一次 IPC。
-      const png = await sharp(captureFile)
-        .extract({
-          left: parsed.sourceLeft,
-          top: parsed.sourceTop,
-          width: parsed.sourceWidth,
-          height: parsed.sourceHeight,
-        })
-        .png()
-        .toBuffer();
-      const filename = await dependencies.saveCapture(png, captureDirectory);
-      // 截图同时写入系统剪贴板：这样在参考版（或任何应用）里 Ctrl+V
-      // 就能直接粘贴刚截的图，无需先去文件管理器复制。
-      clipboard.writeImage(nativeImage.createFromBuffer(png));
-      await library().importPaths([filename]);
-      // 覆盖窗口随即关闭，toast 必须打在主窗口上，否则用户不知道存没存上。
-      dependencies.notifyCaptureSaved();
-      return database().getAssetByPath(filename);
-    } finally {
-      await dependencies.discardPendingCapture();
-      dependencies.closeCaptureWindow();
-    }
+      ],
+    );
+    // 在主进程裁剪：渲染端不再把整屏 PNG 编码成 base64 再穿一次 IPC。
+    const png = await sharp(captureFile.filePath)
+      .extract({
+        left: parsed.sourceLeft,
+        top: parsed.sourceTop,
+        width: parsed.sourceWidth,
+        height: parsed.sourceHeight,
+      })
+      .png()
+      .toBuffer();
+    const filename = await dependencies.saveCapture(png, captureDirectory);
+    // 截图同时写入系统剪贴板：这样在参考版（或任何应用）里 Ctrl+V
+    // 就能直接粘贴刚截的图，无需先去文件管理器复制。
+    clipboard.writeImage(nativeImage.createFromBuffer(png));
+    await library().importPaths([filename]);
+    // 覆盖窗口随即关闭，toast 必须打在主窗口上，否则用户不知道存没存上。
+    dependencies.notifyCaptureSaved();
+    // 只有保存成功才收会话/删底图。失败时覆盖窗保持打开、错误可见，
+    // 底图留给重试；用户随后要么再试要么 Esc 取消（那条路径再清理）。
+    await dependencies.discardPendingCaptures();
+    dependencies.endCaptureSession("saved");
+    return database().getAssetByPath(filename);
   });
   ipc.handle("system:cancel-region-capture", async () => {
-    await dependencies.discardPendingCapture();
-    dependencies.closeCaptureWindow();
+    await dependencies.discardPendingCaptures();
+    // "cancelled"：宿主保持会话前的原状（隐藏的保持隐藏），只是拿回控制权。
+    dependencies.endCaptureSession("cancelled");
   });
+  ipc.on<[boolean]>(
+    "capture:selection-active",
+    (event, active) => {
+      // 跨屏选区互斥：一块屏开始框选时其余屏转纯遮罩，选区清空时恢复，
+      // 否则两块屏各留一个选区、只有一个能保存，另一个成了陷阱。
+      dependencies.broadcastOverlayMode(
+        event.sender.id,
+        active ? "passive" : "active",
+      );
+    },
+  );
   ipc.handleWithEvent("system:save-capture-image", async (event, dataUrl) => {
     const [captureDirectory] = await dependencies.writeAccess.authorize(dependencies.windowForSender(event), "export", [
       { path: path.join(app.getPath("pictures"), "RefCanvas Captures"), mode: "destination" },

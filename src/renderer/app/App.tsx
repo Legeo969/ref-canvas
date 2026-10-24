@@ -84,7 +84,8 @@ export function App() {
     return <BoardWindow boardId={boardWindowParams.boardId} />;
   }
 
-  // 独立区域截图覆盖窗口（?capture=1）：主窗口保持可见，无需隐藏/关窗。
+  // 独立区域截图覆盖窗口（?capture=1）：截图会话由主进程接管（锁定宿主
+  // + 冻结全部显示器，QQ 式所见即所得），框选在覆盖窗口内完成。
   if (new URLSearchParams(window.location.search).get("capture") === "1") {
     return <CaptureWindow />;
   }
@@ -167,8 +168,9 @@ function WorkspaceApp() {
     capturePreparingRef.current = true;
     setCapturePreparing(true);
     try {
-      // 主进程抓屏后把底图推给常驻的覆盖窗口（?capture=1），框选在覆盖
-      // 窗口内完成，主窗口保持可见。这里只等"抓屏成功"这一件事。
+      // 主进程冻结全部显示器（QQ 式所见即所得：宿主可见就在画面里，
+      // 最小化则不弹出）并把各屏底图推给对应的覆盖窗口（?capture=1）。
+      // 这里只等"会话启动成功"这一件事。
       await window.refCanvas.system.prepareRegionCapture();
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "";
@@ -190,6 +192,17 @@ function WorkspaceApp() {
     () =>
       window.refCanvas.system.onCaptureSaved(() => {
         setNotice(translate("capture.saved"));
+        window.setTimeout(() => setNotice(null), 4200);
+      }),
+    [],
+  );
+
+  // 全局快捷键发起的截图失败：该路径没有渲染端调用方，主进程把宿主带回
+  // 前台后发 capture:failed，这里补上与标题栏按钮路径一致的错误提示。
+  useEffect(
+    () =>
+      window.refCanvas.system.onCaptureFailed(() => {
+        setNotice(translate("capture.unavailable"));
         window.setTimeout(() => setNotice(null), 4200);
       }),
     [],
@@ -296,22 +309,17 @@ function WorkspaceApp() {
     const openDuplicates = () => setDuplicatesOpen(true);
     const openSettings = (event: Event) => {
       const detail = (event as CustomEvent<SettingsTab>).detail;
-      // 允许任意设置页直达（AI Provider 面板的"去设置"按钮依赖它）；
-      // 未知 detail 一律回落到 general。
+      // 允许任意设置页直达；未知 detail 一律回落到 general。
       setSettingsTab(SETTINGS_TABS.has(detail) ? detail : "general");
       setMaintenanceOpen(true);
     };
     window.addEventListener("refcanvas:duplicates", openDuplicates);
     window.addEventListener("refcanvas:open-settings", openSettings);
-    const unsubscribe = window.refCanvas.system.onRegionCaptureRequest(() => {
-      void prepareRegionCapture();
-    });
     return () => {
       window.removeEventListener("refcanvas:duplicates", openDuplicates);
       window.removeEventListener("refcanvas:open-settings", openSettings);
-      unsubscribe();
     };
-  }, [prepareRegionCapture]);
+  }, []);
 
   // Browser extension capture: main process writes the image to a temp file,
   // then notifies the renderer to import it into the active board.

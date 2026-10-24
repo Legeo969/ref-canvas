@@ -992,6 +992,8 @@ export interface PathMigrationReport {
  * 图不走 IPC（旧实现把全屏 PNG 序列化成十几 MB 的 data URL 每次传输）。
  */
 export interface CaptureSource {
+  /** 底图属于哪块显示器（多屏会话每屏一张，保存时按屏取图）。 */
+  displayId: number;
   imageUrl: string;
   /** 物理像素尺寸（= 显示逻辑尺寸 × scaleFactor）。 */
   width: number;
@@ -1000,6 +1002,8 @@ export interface CaptureSource {
 
 /** 框选区域换算到源图像素坐标后的裁剪矩形。 */
 export interface CaptureCrop {
+  /** 框选发生在哪块屏的冻结底图上；主进程据此取对应的临时 PNG。 */
+  displayId: number;
   sourceLeft: number;
   sourceTop: number;
   sourceWidth: number;
@@ -2168,15 +2172,31 @@ export interface RefCanvasApi {
     captureClipboard(): Promise<AssetRecord | null>;
     /** 抓屏并显示覆盖窗口；底图经 onCaptureSource 推送，不在此返回。 */
     prepareRegionCapture(): Promise<void>;
-    /** 覆盖窗口（常驻复用）收到的抓屏底图。 */
+    /**
+     * 覆盖窗渲染端就绪信号：现场新建的覆盖窗上，主进程 did-finish-load
+     * 的底图推送可能早于渲染端订阅而丢失（覆盖窗黑屏），就绪后重推一次。
+     */
+    captureReady(): void;
+    /** 覆盖窗口（常驻复用）收到的抓屏底图；多屏会话每屏各收一份。 */
     onCaptureSource(callback: (source: CaptureSource) => void): () => void;
     /** 区域截图保存成功后主窗口收到通知（用于 toast 反馈）。 */
     onCaptureSaved(callback: () => void): () => void;
+    /** 全局快捷键发起的截图失败：主窗口收到后弹 notice（渲染端无调用方可报错）。 */
+    onCaptureFailed(callback: () => void): () => void;
     /** 在主进程里按物理像素裁剪并保存，避免渲染端再导一次 base64。 */
     saveRegionCapture(crop: CaptureCrop): Promise<AssetRecord | null>;
     /** 保存渲染端已生成的 PNG（GIF 导出当前帧等）；不走区域截图链路。 */
     saveCaptureImage(dataUrl: string): Promise<AssetRecord | null>;
     cancelRegionCapture(): Promise<void>;
+    /**
+     * 跨屏选区互斥：本屏开始框选时上报 true（其余屏转纯遮罩），选区清空
+     * 时上报 false（其余屏恢复可框选）。
+     */
+    notifySelectionActive(active: boolean): void;
+    /** 收到其余屏的框选状态：passive = 本屏暂不可框选。 */
+    onOverlayMode(
+      callback: (mode: "active" | "passive") => void,
+    ): () => void;
     rebuildThumbnailCache(): Promise<void>;
     exportDiagnostics(): Promise<string | null>;
     setGlobalShortcuts(enabled: boolean): Promise<boolean>;
@@ -2217,7 +2237,6 @@ export interface RefCanvasApi {
     getBoardShortcuts(): Promise<Record<string, string> | null>;
     setBoardShortcuts(value: Record<string, string>): Promise<void>;
     startNativeDrag(assetIds: string[]): void;
-    onRegionCaptureRequest(callback: () => void): () => void;
   };
 }
 

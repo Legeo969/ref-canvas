@@ -1790,6 +1790,11 @@
   user-select: none;
 }
 
+/* 跨屏互斥：他屏正在框选时本屏只是冻结画面的纯遮罩，不是框选面。 */
+.capture-overlay-passive {
+  cursor: default;
+}
+
 .app-toast {
   position: fixed;
   z-index: 1200;

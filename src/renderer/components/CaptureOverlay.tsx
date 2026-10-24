@@ -7,6 +7,10 @@ export type { CaptureCrop } from "../../shared/contracts";
 
 interface CaptureOverlayProps {
   source: CaptureSource;
+  /** 跨屏互斥：其余屏正在框选时本屏转纯遮罩，不可框选（Esc 仍可取消会话）。 */
+  passive?: boolean;
+  /** 本屏选区状态变化（开始框选 / 选区清空）时上报，主进程转发其余屏。 */
+  onSelectionActivity?(active: boolean): void;
   onComplete(crop: CaptureCrop): Promise<void>;
   onCancel(): void;
 }
@@ -50,6 +54,7 @@ export function captureScale(
 }
 
 export function calculateCaptureCrop(
+  displayId: number,
   selection: Selection,
   viewportWidth: number,
   viewportHeight: number,
@@ -83,6 +88,8 @@ export function calculateCaptureCrop(
     Math.max(0, Math.round(sourceHeight) - 1),
   );
   return {
+    // 多屏会话每屏一张底图：主进程按 displayId 取对应屏的临时 PNG。
+    displayId,
     sourceLeft: left,
     sourceTop: top,
     sourceWidth: Math.min(
@@ -249,6 +256,8 @@ export function captureToolbarPosition(
 
 export function CaptureOverlay({
   source,
+  passive = false,
+  onSelectionActivity,
   onComplete,
   onCancel,
 }: CaptureOverlayProps) {
@@ -262,6 +271,13 @@ export function CaptureOverlay({
   const [viewport, setViewport] = useState<{ width: number; height: number } | null>(
     null,
   );
+
+  // 本屏转 passive（他屏开始框选）：清掉本屏选区。全局任一时刻只有一个
+  // 选区，Enter 保存的永远是"眼前这一个"，不会出现两屏各留一个框、
+  // 只有一个能保存的陷阱。
+  useEffect(() => {
+    if (passive) setSelection(null);
+  }, [passive]);
 
   const pointFromEvent = (event: React.PointerEvent) => {
     const bounds = hostRef.current!.getBoundingClientRect();
@@ -311,6 +327,7 @@ export function CaptureOverlay({
       // 只把物理像素矩形交给主进程去裁：渲染端不再画 canvas、不再导出
       // base64——那一步要把整块框选区域重新编码一次并跨 IPC 复制。
       return calculateCaptureCrop(
+        source.displayId,
         region,
         bounds.width,
         bounds.height,
@@ -318,7 +335,7 @@ export function CaptureOverlay({
         image.naturalHeight || source.height,
       );
     },
-    [source.height, source.width],
+    [source.displayId, source.height, source.width],
   );
 
   const saveSelection = useCallback(async () => {
@@ -350,8 +367,7 @@ export function CaptureOverlay({
       }
       if (event.key === "Enter" && selection && !saving) {
         // Enter 保存绝不能触发默认行为：窗口恢复焦点后焦点可能落在
-        // 标题栏按钮（如 AI 设计入口），Enter 的默认“激活聚焦元素”会
-        // 泄漏成点击，意外 dispatch refcanvas:open-ai-workbench 打开面板。
+        // 标题栏按钮上，Enter 的默认“激活聚焦元素”会泄漏成意外点击。
         event.preventDefault();
         event.stopPropagation();
         void saveSelection();
@@ -388,10 +404,13 @@ export function CaptureOverlay({
 
   return (
     <div
-      className="capture-overlay"
+      className={`capture-overlay${passive ? " capture-overlay-passive" : ""}`}
       ref={hostRef}
-      style={{ cursor }}
+      style={{ cursor: passive ? "default" : cursor }}
       onPointerDown={(event) => {
+        // passive 屏（他屏正在框选）：本屏只展示冻结画面，任何指针交互
+        // （含右键取消）都不响应；取消整个会话走 Esc。
+        if (passive) return;
         if (saving) return;
         // 右键 = 取消：QQ 截图的肌肉记忆，给 Esc 之外的第二只手。
         if (event.button === 2) {
@@ -419,6 +438,8 @@ export function CaptureOverlay({
         } else {
           dragRef.current = { mode: "draw", start: point };
           setSelection({ left: point.x, top: point.y, width: 0, height: 0 });
+          // 从无到有开始新框选：其余屏转纯遮罩（跨屏选区互斥）。
+          if (!selection) onSelectionActivity?.(true);
         }
         event.currentTarget.setPointerCapture?.(event.pointerId);
       }}
@@ -476,16 +497,17 @@ export function CaptureOverlay({
       onPointerUp={() => {
         dragRef.current = null;
         // 松手时如果选区太小（比如只是单击了一下），直接清掉，
-        // 不留一个看不见的 0x0 残框。
-        setSelection((current) =>
-          current && current.width < 4 && current.height < 4 ? null : current,
-        );
+        // 不留一个看不见的 0x0 残框；同时告诉其余屏可以恢复框选。
+        if (selection && selection.width < 4 && selection.height < 4) {
+          setSelection(null);
+          onSelectionActivity?.(false);
+        }
       }}
       onPointerCancel={() => {
         dragRef.current = null;
       }}
       onDoubleClick={() => {
-        if (saving) return;
+        if (saving || passive) return;
         // 有选区时双击 = 保存选区；没选区时双击 = 截全屏。
         if (selection && selection.width >= 4 && selection.height >= 4) {
           void saveSelection();
@@ -535,31 +557,39 @@ export function CaptureOverlay({
         </div>
       )}
       <div className="capture-instructions" data-capture-control>
-        {saving ? translate("capture.saving") : translate("capture.instructions")}
+        {saving
+          ? translate("capture.saving")
+          : passive
+            ? translate("capture.passiveHint")
+            : translate("capture.instructions")}
       </div>
       {error && <div className="capture-error" data-capture-control>{error}</div>}
-      <div
-        className="capture-actions"
-        data-capture-control
-        style={toolbar ? { left: toolbar.left, top: toolbar.top, right: "auto", bottom: "auto" } : undefined}
-      >
-        <button onClick={onCancel} disabled={saving} aria-label={translate("capture.cancel")}>
-          <X size={17} />
-        </button>
-        <button
-          className="confirm"
-          onClick={() => void saveSelection()}
-          disabled={
-            !selection ||
-            selection.width < 4 ||
-            selection.height < 4 ||
-            saving
-          }
-          aria-label={translate("capture.save")}
+      {/* passive 屏不提供确认/取消按钮：整个会话的保存与取消由正在框选的
+          那块屏（或任意屏的 Esc）统一决定。 */}
+      {!passive && (
+        <div
+          className="capture-actions"
+          data-capture-control
+          style={toolbar ? { left: toolbar.left, top: toolbar.top, right: "auto", bottom: "auto" } : undefined}
         >
-          <Check size={17} />
-        </button>
-      </div>
+          <button onClick={onCancel} disabled={saving} aria-label={translate("capture.cancel")}>
+            <X size={17} />
+          </button>
+          <button
+            className="confirm"
+            onClick={() => void saveSelection()}
+            disabled={
+              !selection ||
+              selection.width < 4 ||
+              selection.height < 4 ||
+              saving
+            }
+            aria-label={translate("capture.save")}
+          >
+            <Check size={17} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

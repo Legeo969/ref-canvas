@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const screenMock = vi.hoisted(() => ({
-  getDisplayMatching: vi.fn(),
-}));
 const clipboardMock = vi.hoisted(() => ({
   writeImage: vi.fn(),
 }));
@@ -22,7 +19,6 @@ vi.mock("electron", () => ({
   dialog: {},
   globalShortcut: {},
   nativeImage: nativeImageMock,
-  screen: screenMock,
   shell: {},
 }));
 
@@ -33,54 +29,43 @@ import type { SecureIpcRegistrar } from "../../../src/main/platform/secure-ipc";
 
 interface Harness {
   handlers: Map<string, (...args: unknown[]) => unknown>;
+  listeners: Map<string, (...args: unknown[]) => void>;
   state: {
-    pendingCaptureFile: string | null;
-    pendingCaptureSize: { width: number; height: number } | null;
+    pendingCaptures: Map<
+      number,
+      { filePath: string; width: number; height: number }
+    >;
   };
-  closeCaptureWindow: ReturnType<typeof vi.fn>;
-  discardPendingCapture: ReturnType<typeof vi.fn>;
-  showCaptureWindow: ReturnType<typeof vi.fn>;
-  captureScreen: ReturnType<typeof vi.fn>;
+  startRegionCapture: ReturnType<typeof vi.fn>;
+  endCaptureSession: ReturnType<typeof vi.fn>;
+  discardPendingCaptures: ReturnType<typeof vi.fn>;
+  broadcastOverlayMode: ReturnType<typeof vi.fn>;
   notifyCaptureSaved: ReturnType<typeof vi.fn>;
 }
 
 function registerCaptureIpc(overrides: {
-  getMainWindow?: () => unknown;
-  captureScreen?: () => Promise<unknown>;
-  showCaptureWindow?: () => void;
-  closeCaptureWindow?: () => void;
-  discardPendingCapture?: () => Promise<void>;
+  startRegionCapture?: () => Promise<void>;
 } = {}): Harness {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
+  const listeners = new Map<string, (...args: unknown[]) => void>();
   const ipc = {
     handle: (channel: string, handler: (...args: unknown[]) => unknown) =>
       handlers.set(channel, handler),
     handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) =>
       handlers.set(channel, handler),
-    on: vi.fn(),
+    on: (channel: string, listener: (...args: unknown[]) => void) =>
+      listeners.set(channel, listener),
   } as unknown as SecureIpcRegistrar;
-  const state: Harness["state"] = {
-    pendingCaptureFile: null,
-    pendingCaptureSize: null,
-  };
-  const closeCaptureWindow = vi.fn(overrides.closeCaptureWindow);
-  const discardPendingCapture = vi.fn(
-    overrides.discardPendingCapture ?? (async () => {
-      state.pendingCaptureFile = null;
-      state.pendingCaptureSize = null;
-    }),
+  const state: Harness["state"] = { pendingCaptures: new Map() };
+  const startRegionCapture = vi.fn(
+    overrides.startRegionCapture ?? (async () => undefined),
   );
-  const showCaptureWindow = vi.fn(overrides.showCaptureWindow);
+  const endCaptureSession = vi.fn();
+  const discardPendingCaptures = vi.fn(async () => {
+    state.pendingCaptures.clear();
+  });
+  const broadcastOverlayMode = vi.fn();
   const notifyCaptureSaved = vi.fn();
-  const captureScreen = vi.fn(
-    overrides.captureScreen ??
-      (async () => ({
-        filePath: "C:\\RefCanvas\\capture-cache\\current-1.png",
-        width: 1920,
-        height: 1080,
-        backend: "native" as const,
-      })),
-  );
   registerSystemIpc(ipc, {
     state,
     getDatabase: () => ({
@@ -90,12 +75,12 @@ function registerCaptureIpc(overrides: {
     }),
     getLibrary: () => ({ importPaths: vi.fn(async () => []) }),
     getLibraryManager: () => ({}),
-    getMainWindow: () => overrides.getMainWindow?.() ?? null,
-    closeCaptureWindow,
-    captureScreen,
-    showCaptureWindow,
-    discardPendingCapture,
-    previewTokens: { tokenFor: () => "11111111-1111-4111-8111-111111111111" },
+    getMainWindow: () => ({}),
+    startRegionCapture,
+    endCaptureSession,
+    discardPendingCaptures,
+    broadcastOverlayMode,
+    notifyCaptureSaved,
     windowForSender: vi.fn(() => ({})),
     writeAccess: {
       authorize: async (
@@ -106,15 +91,15 @@ function registerCaptureIpc(overrides: {
     },
     pngDataUrlToBuffer: (dataUrl: string) => Buffer.from(dataUrl),
     saveCapture: vi.fn(async () => "C:\\Pictures\\cap-1.png"),
-    notifyCaptureSaved,
   } as unknown as Parameters<typeof registerSystemIpc>[1]);
   return {
     handlers,
+    listeners,
     state,
-    closeCaptureWindow,
-    discardPendingCapture,
-    showCaptureWindow,
-    captureScreen,
+    startRegionCapture,
+    endCaptureSession,
+    discardPendingCaptures,
+    broadcastOverlayMode,
     notifyCaptureSaved,
   };
 }
@@ -133,93 +118,57 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// 抓屏走"所见即所得"，主窗口在整条链路里只被读几何：hide/show/
-// setContentProtection 一旦被调用就是回归，所以桩上都留成可断言的 spy。
-function mainWindowStub() {
-  return {
-    getBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }),
-    hide: vi.fn(),
-    show: vi.fn(),
-    focus: vi.fn(),
-    isDestroyed: () => false,
-    setContentProtection: vi.fn(),
-  };
-}
-
 describe("system prepare-region-capture", () => {
-  it("captures the screen as-is and pushes a refbrowse url", async () => {
-    const window = mainWindowStub();
-    const harness = registerCaptureIpc({ getMainWindow: () => window });
-    screenMock.getDisplayMatching.mockReturnValue({
-      id: 42,
-      bounds: { x: 0, y: 0, width: 1920, height: 1080 },
-      size: { width: 1920, height: 1080 },
-      scaleFactor: 1,
-    });
-
+  it("delegates to the main-process capture session entry", async () => {
+    // 编排（冻结全部显示器、锁定宿主、每屏覆盖窗）已移入主进程入口，
+    // 渲染端标题栏按钮只是触发器——全局快捷键走同一条直连路径。
+    const harness = registerCaptureIpc();
     await harness.handlers.get("system:prepare-region-capture")!();
-
-    // 所见即所得：宿主不隐藏、不自排除。
-    //
-    // 之前用 setContentProtection + hide 把 RefCanvas 从捕获结果里剔掉，
-    // 宿主最大化时会把整块屏挖空，冻结预览里只剩壁纸。QQ 截图拍的是按下
-    // 瞬间的真实画面，所以这两步都不能有。
-    expect(window.hide).not.toHaveBeenCalled();
-    expect(window.setContentProtection).not.toHaveBeenCalled();
-    expect(harness.captureScreen).toHaveBeenCalled();
-    // 底图经 push 推出，且不携带任何图像字节。
-    expect(harness.showCaptureWindow).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 42 }),
-      {
-        imageUrl: "refbrowse://preview/11111111-1111-4111-8111-111111111111",
-        width: 1920,
-        height: 1080,
-      },
-    );
-    expect(harness.state.pendingCaptureFile).toBe(
-      "C:\\RefCanvas\\capture-cache\\current-1.png",
-    );
-    expect(harness.state.pendingCaptureSize).toEqual({ width: 1920, height: 1080 });
+    expect(harness.startRegionCapture).toHaveBeenCalledTimes(1);
   });
 
-  it("rethrows when capture fails without touching the window", async () => {
-    const window = mainWindowStub();
+  it("rethrows so the renderer can show why the screen was not frozen", async () => {
+    // 失败必须显式抛错：静默返回会让用户只看到屏幕闪一下。
     const harness = registerCaptureIpc({
-      getMainWindow: () => window,
-      captureScreen: async () => {
+      startRegionCapture: async () => {
         throw new Error("SCREEN_CAPTURE_UNAVAILABLE");
       },
     });
-    screenMock.getDisplayMatching.mockReturnValue({
-      id: 42,
-      bounds: { x: 0, y: 0, width: 1920, height: 1080 },
-      size: { width: 1920, height: 1080 },
-      scaleFactor: 1,
-    });
-
-    // 失败必须显式抛错：静默返回会让用户只看到窗口闪一下。
     await expect(
       Promise.resolve(harness.handlers.get("system:prepare-region-capture")!()),
     ).rejects.toThrow("SCREEN_CAPTURE_UNAVAILABLE");
-    // 窗口全程没被动过，所以也没有需要"还原"的状态。
-    expect(window.hide).not.toHaveBeenCalled();
-    expect(window.show).not.toHaveBeenCalled();
-    expect(harness.showCaptureWindow).not.toHaveBeenCalled();
+    expect(harness.endCaptureSession).not.toHaveBeenCalled();
   });
 });
 
 describe("system save-region-capture", () => {
-  it("crops in the main process, writes to clipboard, and closes the overlay", async () => {
-    const harness = registerCaptureIpc({});
-    harness.state.pendingCaptureFile = "C:\\RefCanvas\\capture-cache\\current-1.png";
-    harness.state.pendingCaptureSize = { width: 1920, height: 1080 };
+  function seedSession(harness: Harness): void {
+    // 多屏会话：屏 7 与屏 9 各有一张冻结底图。
+    harness.state.pendingCaptures.set(7, {
+      filePath: "C:\\RefCanvas\\capture-cache\\current-1.png",
+      width: 1920,
+      height: 1080,
+    });
+    harness.state.pendingCaptures.set(9, {
+      filePath: "C:\\RefCanvas\\capture-cache\\current-2.png",
+      width: 2560,
+      height: 1440,
+    });
+  }
+
+  it("crops the frozen frame of the display that was selected", async () => {
+    const harness = registerCaptureIpc();
+    seedSession(harness);
 
     const result = await harness.handlers.get("system:save-region-capture")!(
       {},
-      { sourceLeft: 100, sourceTop: 50, sourceWidth: 640, sourceHeight: 360 },
+      { displayId: 9, sourceLeft: 100, sourceTop: 50, sourceWidth: 640, sourceHeight: 360 },
     );
 
-    // 主进程裁剪，渲染端不再导 base64。
+    // 主进程裁剪，且取的是屏 9 的底图（displayId 路由，不碰别的屏）。
+    expect(sharpMock.factory).toHaveBeenCalledWith(
+      "C:\\RefCanvas\\capture-cache\\current-2.png",
+    );
     expect(sharpMock.extract).toHaveBeenCalledWith({
       left: 100,
       top: 50,
@@ -228,48 +177,95 @@ describe("system save-region-capture", () => {
     });
     expect(nativeImageMock.createFromBuffer).toHaveBeenCalled();
     expect(clipboardMock.writeImage).toHaveBeenCalled();
-    expect(harness.closeCaptureWindow).toHaveBeenCalled();
-    expect(harness.discardPendingCapture).toHaveBeenCalled();
     // 覆盖窗口随即关闭，保存成功的反馈必须通知主窗口去弹 toast。
     expect(harness.notifyCaptureSaved).toHaveBeenCalled();
+    expect(harness.discardPendingCaptures).toHaveBeenCalled();
+    expect(harness.endCaptureSession).toHaveBeenCalledWith("saved");
     // 数据库返回 null（测试桩），保存流程本身不抛错。
     expect(result).toBeNull();
   });
 
-  it("rejects a crop that falls outside the captured screen", async () => {
-    const harness = registerCaptureIpc({});
-    harness.state.pendingCaptureFile = "C:\\RefCanvas\\capture-cache\\current-1.png";
-    harness.state.pendingCaptureSize = { width: 1920, height: 1080 };
-
+  it("fails loudly when the display has no frozen frame", async () => {
+    const harness = registerCaptureIpc();
+    seedSession(harness);
     await expect(
       Promise.resolve(
         harness.handlers.get("system:save-region-capture")!(
           {},
-          { sourceLeft: 1900, sourceTop: 0, sourceWidth: 200, sourceHeight: 100 },
-        ),
-      ),
-    ).rejects.toThrow("CAPTURE_CROP_OUT_OF_RANGE");
-    expect(sharpMock.extract).not.toHaveBeenCalled();
-  });
-
-  it("fails loudly when no capture is pending", async () => {
-    const harness = registerCaptureIpc({});
-    await expect(
-      Promise.resolve(
-        harness.handlers.get("system:save-region-capture")!(
-          {},
-          { sourceLeft: 0, sourceTop: 0, sourceWidth: 10, sourceHeight: 10 },
+          { displayId: 123, sourceLeft: 0, sourceTop: 0, sourceWidth: 10, sourceHeight: 10 },
         ),
       ),
     ).rejects.toThrow("CAPTURE_SOURCE_MISSING");
+    // 校验失败不收会话：覆盖窗保持打开，用户还能重选或 Esc 取消。
+    expect(harness.endCaptureSession).not.toHaveBeenCalled();
+    expect(harness.discardPendingCaptures).not.toHaveBeenCalled();
+  });
+
+  it("rejects a crop that falls outside that display's frozen frame", async () => {
+    const harness = registerCaptureIpc();
+    seedSession(harness);
+    await expect(
+      Promise.resolve(
+        harness.handlers.get("system:save-region-capture")!(
+          {},
+          { displayId: 7, sourceLeft: 1900, sourceTop: 0, sourceWidth: 200, sourceHeight: 100 },
+        ),
+      ),
+    ).rejects.toThrow("CAPTURE_CROP_OUT_OF_RANGE");
+    expect(sharpMock.factory).not.toHaveBeenCalled();
+    expect(harness.endCaptureSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session alive when saving throws so the error stays visible", async () => {
+    // 保存失败（如写盘被拒）时不能立刻关窗收会话——那样覆盖窗上的报错
+    // 一闪而过、底图被删，用户既看不到原因也无法重试。
+    const harness = registerCaptureIpc();
+    seedSession(harness);
+    const { factory } = sharpMock;
+    factory.mockImplementationOnce(() => {
+      throw new Error("WRITE_DENIED");
+    });
+
+    await expect(
+      Promise.resolve(
+        harness.handlers.get("system:save-region-capture")!(
+          {},
+          { displayId: 7, sourceLeft: 0, sourceTop: 0, sourceWidth: 100, sourceHeight: 100 },
+        ),
+      ),
+    ).rejects.toThrow("WRITE_DENIED");
+    expect(harness.notifyCaptureSaved).not.toHaveBeenCalled();
+    expect(harness.discardPendingCaptures).not.toHaveBeenCalled();
+    expect(harness.endCaptureSession).not.toHaveBeenCalled();
+    // 底图保留，重试仍可用。
+    expect(harness.state.pendingCaptures.size).toBe(2);
   });
 });
 
 describe("system cancel-region-capture", () => {
-  it("drops the temp file and hides the overlay", async () => {
-    const harness = registerCaptureIpc({});
+  it("drops temp frames and ends the session without touching the host", async () => {
+    const harness = registerCaptureIpc();
+    harness.state.pendingCaptures.set(7, {
+      filePath: "C:\\RefCanvas\\capture-cache\\current-1.png",
+      width: 1920,
+      height: 1080,
+    });
     await Promise.resolve(harness.handlers.get("system:cancel-region-capture")!());
-    expect(harness.discardPendingCapture).toHaveBeenCalled();
-    expect(harness.closeCaptureWindow).toHaveBeenCalled();
+    expect(harness.discardPendingCaptures).toHaveBeenCalled();
+    // "cancelled"：宿主保持会话前的原状（热键路径下隐藏的保持隐藏）。
+    expect(harness.endCaptureSession).toHaveBeenCalledWith("cancelled");
+  });
+});
+
+describe("capture:selection-active", () => {
+  it("broadcasts passive to the other overlays when a screen starts selecting", () => {
+    const harness = registerCaptureIpc();
+    const listener = harness.listeners.get("capture:selection-active")!;
+
+    listener({ sender: { id: 12 } }, true);
+    expect(harness.broadcastOverlayMode).toHaveBeenCalledWith(12, "passive");
+
+    listener({ sender: { id: 12 } }, false);
+    expect(harness.broadcastOverlayMode).toHaveBeenCalledWith(12, "active");
   });
 });

@@ -527,6 +527,7 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:capture-clipboard"),
     prepareRegionCapture: () =>
       ipcRenderer.invoke("system:prepare-region-capture"),
+    captureReady: () => ipcRenderer.send("capture:renderer-ready"),
     onCaptureSource: (callback) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
@@ -540,12 +541,29 @@ const api: RefCanvasApi = {
       ipcRenderer.on("capture:saved", listener);
       return () => ipcRenderer.off("capture:saved", listener);
     },
+    onCaptureFailed: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on("capture:failed", listener);
+      return () => ipcRenderer.off("capture:failed", listener);
+    },
     saveRegionCapture: (crop) =>
       ipcRenderer.invoke("system:save-region-capture", crop),
     saveCaptureImage: (dataUrl) =>
       ipcRenderer.invoke("system:save-capture-image", dataUrl),
     cancelRegionCapture: () =>
       ipcRenderer.invoke("system:cancel-region-capture"),
+    notifySelectionActive: (active: boolean) =>
+      ipcRenderer.send("capture:selection-active", active),
+    onOverlayMode: (
+      callback: (mode: "active" | "passive") => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        mode: "active" | "passive",
+      ) => callback(mode);
+      ipcRenderer.on("capture:overlay-mode", listener);
+      return () => ipcRenderer.off("capture:overlay-mode", listener);
+    },
     rebuildThumbnailCache: () =>
       ipcRenderer.invoke("system:rebuild-thumbnail-cache"),
     exportDiagnostics: () =>
@@ -585,11 +603,6 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:set-board-shortcuts", value),
     startNativeDrag: (assetIds) =>
       ipcRenderer.send("system:start-native-drag", assetIds),
-    onRegionCaptureRequest: (callback) => {
-      const listener = () => callback();
-      ipcRenderer.on("system:request-region-capture", listener);
-      return () => ipcRenderer.off("system:request-region-capture", listener);
-    },
   },
 };
 
