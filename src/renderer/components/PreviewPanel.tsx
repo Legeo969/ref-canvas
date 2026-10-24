@@ -420,7 +420,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       fullscreen={previewSession.fullscreen}
       className={`preview-panel details-panel directory-details-panel directory-workbench-panel ${mode === "preview" && tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""} mode-${mode}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
     >
-      {/* Preview tab bar：AI 入口由顶部功能图标承担，此处仅保留预览。 */}
+      {/* Preview tab bar：此处仅保留预览。 */}
       <header className="preview-tab-bar" role="tablist" aria-label={translate("preview.panelLabel")}>
         <button
           role="tab"

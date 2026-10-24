@@ -33,7 +33,7 @@ export const catalog = {
     "text.meta": "{lines} lines · {bytes} bytes · {encoding}",
     "text.truncated": "(truncated)",
     "tasks.title": "Task Center",
-    "tasks.subtitle": "Unified progress for imports, batches and AI.",
+    "tasks.subtitle": "Unified progress for imports, batches and exports.",
     "tasks.empty": "No tasks yet.",
     "tasks.cancel": "Cancel",
     "tasks.retry": "Retry",
@@ -50,7 +50,6 @@ export const catalog = {
     "tasks.state.cancelled": "Cancelled",
 
     "preview.tab.preview": "Preview",
-    "preview.tab.ai": "AI Design Director",
     "preview.panelLoading": "Preparing preview…",
     "preview.panelError": "Unable to read this asset.",
     "preview.emptyHint": "Select an asset in the browser to preview",
@@ -131,7 +130,7 @@ export const catalog = {
     "text.meta": "{lines} 行 · {bytes} 字节 · {encoding}",
     "text.truncated": "（预览截断）",
     "tasks.title": "任务中心",
-    "tasks.subtitle": "导入、批处理与 AI 任务统一进度。",
+    "tasks.subtitle": "导入、批处理与导出任务统一进度。",
     "tasks.empty": "暂无任务。",
     "tasks.cancel": "取消",
     "tasks.retry": "重试",
@@ -148,7 +147,6 @@ export const catalog = {
     "tasks.state.cancelled": "已取消",
 
     "preview.tab.preview": "预览",
-    "preview.tab.ai": "AI 设计总监",
     "preview.panelLoading": "正在准备预览…",
     "preview.panelError": "无法读取这个素材。",
     "preview.emptyHint": "请在浏览区选择资产",

@@ -87,7 +87,7 @@ describe("PreviewPanel smoke", () => {
     expect(host.querySelector('[role="tab"][aria-selected="true"]')).toBeTruthy();
   });
 
-  it("renders the Preview tab bar with Preview and AI tabs", async () => {
+  it("renders the Preview tab bar with only the Preview tab", async () => {
     Object.assign(window, {
       refCanvas: {
         metadata: { ensure: vi.fn(async () => ({ asset: null })) },
@@ -108,8 +108,7 @@ describe("PreviewPanel smoke", () => {
     });
 
     const tabs = host.querySelectorAll('[role="tab"]');
-    // AI 设计总监入口由顶部功能图标承担（事件联动切模式），
-    // 预览面板旁不再放 AI tab。
+    // 预览面板旁只保留预览 tab。
     expect(tabs.length).toBe(1);
     expect(tabs[0]?.textContent).toContain("预览");
   });
