@@ -14,6 +14,19 @@ const {
 } = require("../../tests/runtime/scenarios/packaged-smoke.cjs");
 
 const root = path.resolve(__dirname, "../..");
+// 打分产物是 CJS，不能 require TypeScript 迁移模块；读源码里的目标版本，
+// 避免每次 schema 迁移后这里再写死一个会过期的数字。
+const expectedSchemaVersion = Number(
+  /export const DATABASE_SCHEMA_VERSION = (\d+);/.exec(
+    fs.readFileSync(
+      path.join(
+        root,
+        "src/main/persistence/repositories/migration-repository.ts",
+      ),
+      "utf8",
+    ),
+  )?.[1],
+);
 const executable = process.argv[2] ?? path.join(
   root,
   "out",
@@ -247,7 +260,7 @@ async function main() {
   }
   const freshProfile = await launchOnce("fresh-profile-root-browse");
   downgradeFixtureToV12();
-  const migrated = await launchOnce("schema-12-to-20");
+  const migrated = await launchOnce(`schema-12-to-${expectedSchemaVersion}`);
   const verification = new Sqlite(path.join(profile, "refcanvas.db"), {
     readonly: true,
   });
@@ -256,7 +269,7 @@ async function main() {
   const boardColumns = verification.pragma("table_info(boards)").map((row) => row.name);
   verification.close();
   if (
-    schemaVersion !== 20 ||
+    schemaVersion !== expectedSchemaVersion ||
     !assetColumns.includes("metadata_status") ||
     !boardColumns.includes("revision")
   ) {

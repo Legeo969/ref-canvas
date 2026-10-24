@@ -2,6 +2,19 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { delay, evaluate, waitFor } = require("../harness/cdp-client.cjs");
 const { version: expectedVersion } = require("../../../package.json");
+// 打包产物跑的是 CJS，不能直接 require TypeScript 的迁移模块；这里读源码里的
+// DATABASE_SCHEMA_VERSION，让断言跟着 schema 走而不是写死数字。
+const expectedSchemaVersion = Number(
+  /export const DATABASE_SCHEMA_VERSION = (\d+);/.exec(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        "../../../src/main/persistence/repositories/migration-repository.ts",
+      ),
+      "utf8",
+    ),
+  )?.[1],
+);
 
 async function captureScreenshot(client, screenshotRoot, name) {
   const result = await client.send("Page.captureScreenshot", { format: "png" });
@@ -153,11 +166,14 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
           detailsWidth: 1000,
         },
       });
-      // AI 设计总监入口已由详情面板内的 tab 移到顶部功能图标
-      // （refcanvas:open-ai-workbench 事件切换详情面板到 AI 模式）。
-      window.dispatchEvent(new Event("refcanvas:open-ai-workbench"));
-      const embeddedAi = await waitForSelector(".directory-details-panel .ai-panel.embedded");
+      // AI 设计总监已从产品中移除（v22 迁移删除 ai_jobs），入口、面板与
+      // detached 浮层都应不存在；残留 DOM 会说明清理没做干净。
       const detachedAi = document.querySelector(".ai-panel-backdrop:not(.embedded)");
+      const aiLeftoverVisible = Boolean(
+        document.querySelector(
+          ".directory-details-panel .ai-panel.embedded, [class*='ai-panel'], [class*='ai-workbench']",
+        ),
+      );
       // 标题栏专业预览设置按钮已由 427b655 移除；入口改为目录面板头部的
       // directory.previewSettings 按钮（打开预览设置页），断言跟随新入口。
       const professionalSettingsVisible = Boolean(
@@ -175,7 +191,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         defaultWorkspaceMode,
         boardVisibleByDefault,
         inspectorTitle,
-        embeddedAiVisible: Boolean(embeddedAi),
+        aiLeftoverVisible,
         detachedAiVisible: Boolean(detachedAi),
         activeWorkspaceMode,
         firstSidebarSection:
@@ -1243,7 +1259,7 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   if (result.appVersion !== expectedVersion) {
     throw new Error(`APP_VERSION_MISMATCH:${result.appVersion}`);
   }
-  if (result.databaseSchemaVersion !== 20) {
+  if (result.databaseSchemaVersion !== expectedSchemaVersion) {
     throw new Error(`SCHEMA_VERSION_MISMATCH:${result.databaseSchemaVersion}`);
   }
   if (result.activeWorkspaceMode !== "磁盘") {
@@ -1258,8 +1274,8 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
   if (result.inspectorTitle !== "runtime-smoke.txt") {
     throw new Error(`DIRECTORY_INSPECTOR_MISMATCH:${result.inspectorTitle}`);
   }
-  if (!result.embeddedAiVisible || result.detachedAiVisible) {
-    throw new Error(`AI_WORKBENCH_MISMATCH:${JSON.stringify({ embedded: result.embeddedAiVisible, detached: result.detachedAiVisible })}`);
+  if (result.aiLeftoverVisible || result.detachedAiVisible) {
+    throw new Error(`AI_WORKBENCH_MISMATCH:${JSON.stringify({ leftover: result.aiLeftoverVisible, detached: result.detachedAiVisible })}`);
   }
   if (!result.boardWorkspaceVisible) {
     throw new Error("BOARD_WORKSPACE_NOT_VISIBLE");
