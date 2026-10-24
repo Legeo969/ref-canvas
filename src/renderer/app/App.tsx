@@ -94,14 +94,7 @@ export function App() {
 
 function WorkspaceApp() {
   const store = useAppStore(
-    useShallow(({
-      selectedAsset: _selectedAsset,
-      selectedIds: _selectedIds,
-      allMatchingSelected: _allMatchingSelected,
-      excludedIds: _excludedIds,
-      selectionAnchorId: _selectionAnchorId,
-      ...state
-    }) => state),
+    useShallow(({ selectedAsset: _selectedAsset, ...state }) => state),
   );
   const dialog = useDialog();
   const uiScale = usePreviewSettings().uiScale;

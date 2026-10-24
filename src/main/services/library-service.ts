@@ -308,10 +308,6 @@ export class LibraryService {
   }
 
   private static readonly defaultPreferences: LibraryPreferences = {
-    layoutMode: "grid",
-    cardSize: "medium",
-    thumbnailBackground: "checker",
-    includeSubfolderAssets: true,
     panelLayout: {
       sidebarWidth: 180,
       assetWidth: 280,
@@ -321,36 +317,15 @@ export class LibraryService {
   };
 
   getPreferences(): LibraryPreferences {
-    const stored = this.database.getSetting<
-      | (Partial<LibraryPreferences> & {
-          __preferencesVersion?: number;
-        })
-      | null
-    >("libraryPreferences", null);
-    const preferences = {
-      layoutMode: stored?.layoutMode ?? "grid",
-      cardSize: stored?.cardSize ?? "medium",
-      thumbnailBackground: stored?.thumbnailBackground ?? "checker",
-      includeSubfolderAssets: stored?.includeSubfolderAssets ?? true,
+    const stored = this.database.getSetting<Partial<LibraryPreferences> | null>(
+      "libraryPreferences",
+      null,
+    );
+    return {
       panelLayout: stored?.panelLayout ?? {
         ...LibraryService.defaultPreferences.panelLayout,
       },
     };
-    // 0.33 → 0.34 一次性偏好迁移：includeSubfolderAssets 默认改为 true。
-    // 该字段在 0.33 从未参与查询，不存在用户预期损失。
-    if (
-      stored &&
-      stored.__preferencesVersion !== 2 &&
-      stored.includeSubfolderAssets === false
-    ) {
-      preferences.includeSubfolderAssets = true;
-      this.database.setSetting("libraryPreferences", {
-        ...stored,
-        ...preferences,
-        __preferencesVersion: 2,
-      });
-    }
-    return preferences;
   }
 
   setPreferences(prefs: Partial<LibraryPreferences>): LibraryPreferences {

@@ -11,10 +11,6 @@ export function createPreferencesSliceState(): PreferencesSliceState {
     currentLibraryRoot: null,
     currentLibraryName: null,
     preferences: {
-      layoutMode: "grid",
-      cardSize: "medium",
-      thumbnailBackground: "checker",
-      includeSubfolderAssets: true,
       panelLayout: {
         sidebarWidth: 180,
         assetWidth: 280,

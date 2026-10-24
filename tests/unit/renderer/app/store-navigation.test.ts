@@ -14,24 +14,6 @@ describe("indexed asset navigation", () => {
       refCanvas: {
         library: {
           searchWindow: vi.fn(async () => ({ items: [], total: 0 })),
-          stats: vi.fn(async () => ({
-            total: 0,
-            missing: 0,
-            trashed: 0,
-            favorites: 0,
-            duplicates: 0,
-            trashBytes: 0,
-            byKind: {
-              image: 0,
-              video: 0,
-              audio: 0,
-              pdf: 0,
-              model3d: 0,
-              dcc: 0,
-              font: 0,
-              generic: 0,
-            },
-          })),
         },
       },
     });
@@ -41,57 +23,8 @@ describe("indexed asset navigation", () => {
     useAppStore.setState({
       workspaceMode: "directory",
       navigationSource: "directory",
-      kindFilter: "all",
     });
   };
-
-  it("setKindFilter keeps the disk workspace and queries the index", async () => {
-    mockLibrary();
-    enterDirectoryMode();
-    expect(useAppStore.getState().navigationSource).toBe("directory");
-    await useAppStore.getState().setKindFilter("image");
-    expect(useAppStore.getState().workspaceMode).toBe("directory");
-    expect(useAppStore.getState().navigationSource).toBe("library");
-    expect(useAppStore.getState().kindFilter).toBe("image");
-  });
-
-  it("setTagFilter queries the index without changing the workspace", async () => {
-    mockLibrary();
-    enterDirectoryMode();
-    await useAppStore.getState().setTagFilter("构图");
-    expect(useAppStore.getState().workspaceMode).toBe("directory");
-    expect(useAppStore.getState().navigationSource).toBe("library");
-    expect(useAppStore.getState().query).toBe("#构图");
-  });
-
-  it("showTrash and showFavorites query the index in the disk workspace", async () => {
-    mockLibrary();
-    enterDirectoryMode();
-    await useAppStore.getState().showTrash();
-    expect(useAppStore.getState().workspaceMode).toBe("directory");
-    expect(useAppStore.getState().navigationSource).toBe("library");
-    expect(useAppStore.getState().lifecycleFilter).toBe("trashed");
-
-    enterDirectoryMode();
-    await useAppStore.getState().showFavorites();
-    expect(useAppStore.getState().workspaceMode).toBe("directory");
-    expect(useAppStore.getState().navigationSource).toBe("library");
-    expect(useAppStore.getState().favoriteFilter).toBe(true);
-  });
-
-  it("setSort and setAdvancedFilters keep the disk workspace", async () => {
-    mockLibrary();
-    enterDirectoryMode();
-    await useAppStore.getState().setSort("title", "asc");
-    expect(useAppStore.getState().workspaceMode).toBe("directory");
-    expect(useAppStore.getState().navigationSource).toBe("library");
-
-    enterDirectoryMode();
-    await useAppStore.getState().setAdvancedFilters({ minWidth: 100 });
-    expect(useAppStore.getState().workspaceMode).toBe("directory");
-    expect(useAppStore.getState().navigationSource).toBe("library");
-    expect(useAppStore.getState().minWidth).toBe(100);
-  });
 
   it("returns indexed navigation to direct disk browsing", () => {
     mockLibrary();
@@ -150,9 +83,9 @@ describe("directory navigation request ordering", () => {
       refCanvas: {
         filesystem: {
           setObservedDirectory: vi.fn(async () => undefined),
-          listDirectory: vi.fn(async (directory: string) => {
+          listDirectory: vi.fn((directory: string) => {
             if (directory === "A") return firstPage;
-            return { entries: [{ path: "B\\new.png" }], total: 1 };
+            return Promise.resolve({ entries: [{ path: "B\\new.png" }], total: 1 });
           }),
         },
       },

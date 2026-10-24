@@ -354,10 +354,6 @@ export function registerLibraryIpc(
     library().setPreferences(
       z
         .object({
-          layoutMode: z.enum(["grid", "waterfall", "detail", "random"]).optional(),
-          cardSize: z.enum(["small", "medium", "large"]).optional(),
-          thumbnailBackground: z.enum(["checker", "black", "white", "auto"]).optional(),
-          includeSubfolderAssets: z.boolean().optional(),
           panelLayout: z
             .object({
               sidebarWidth: z.number().min(180).max(480),

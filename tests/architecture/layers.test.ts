@@ -620,7 +620,6 @@ describe("physical module boundaries", () => {
     expect(settings).toContain('./settings/MaintenanceSettings');
 
     const store = await readFile(path.join(rendererRoot, "app", "store.ts"), "utf8");
-    expect(store).toContain('../features/library/selection-model');
     expect(store).toContain('../features/library/import-job-model');
     expect(store).toContain('../features/board/board-state-model');
 

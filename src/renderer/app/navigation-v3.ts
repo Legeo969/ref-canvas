@@ -153,7 +153,6 @@ export function migrateV2ToV3(v2: NavigationStateV2): NavigationStateV3 {
   const tabs = directoryTab ? [directoryTab] : [fallbackTab];
   const active = tabs[0];
   if (targetId !== "" && directoryTab) {
-    directoryTab.query = v2.query;
     directoryTab.flattenDepth = 0;
     directoryTab.scrollOffset = Math.round(v2.scrollTop ?? 0);
   }

@@ -68,8 +68,6 @@ describe("Sidebar workspaces", () => {
         },
       ],
       activeBoard: null,
-      tags: [],
-      tagGroups: [],
     });
     window.localStorage.clear();
 
@@ -118,8 +116,6 @@ describe("Sidebar workspaces", () => {
         },
       ],
       activeBoard: null,
-      tags: [],
-      tagGroups: [],
       switchBoard,
     });
     window.localStorage.clear();
@@ -164,8 +160,6 @@ describe("Sidebar workspaces", () => {
       workspaceMode: "directory",
       boards: [],
       activeBoard: null,
-      tags: [],
-      tagGroups: [],
     });
     window.localStorage.clear();
 
@@ -205,8 +199,6 @@ describe("Sidebar workspaces", () => {
       workspaceMode: "directory",
       boards: [],
       activeBoard: null,
-      tags: [],
-      tagGroups: [],
     });
     window.localStorage.clear();
 
@@ -237,8 +229,6 @@ describe("Sidebar workspaces", () => {
       workspaceMode: "directory",
       boards: [],
       activeBoard: null,
-      tags: [],
-      tagGroups: [],
     });
     window.localStorage.clear();
     const heightSpy = vi

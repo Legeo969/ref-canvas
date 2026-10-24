@@ -1,52 +1,18 @@
-import {
-  assetColorLabels,
-  assetKinds,
-  assetSortKeys,
-  type AssetColorLabel,
-  type AssetKind,
-  type AssetSortKey,
-  type LinkState,
-  type SortDirection,
-} from "../../shared/contracts";
-
 const STORAGE_KEY = "refcanvas.navigation.v2";
 const LEGACY_STORAGE_KEY = "refcanvas.navigation.v1";
 
 export type NavigationSource = "library" | "directory";
 
+/**
+ * V2 导航状态：V3 多标签（navigation-v3）成为主数据源后，V2 仅承载
+ * 目录路径/历史与滚动位置（V2→V3 迁移用）。旧库筛选字段已随筛选 UI 一并移除，
+ * 读取时静默忽略存量 JSON 中的未知键。
+ */
 export interface NavigationStateV2 {
   version: 2;
   updatedAt: number;
   /** 当前数据来源：本地索引或目录浏览。 */
   navigationSource: NavigationSource;
-  query: string;
-  kindFilter: AssetKind | "all";
-  linkStateFilter: LinkState | "all";
-  lifecycleFilter: "active" | "trashed";
-  favoriteFilter?: boolean;
-  ratingFilter: number;
-  colorFilter: AssetColorLabel;
-  visualColor: string | null;
-  visualColorTolerance: number;
-  minWidth?: number;
-  maxWidth?: number;
-  minHeight?: number;
-  maxHeight?: number;
-  minSize?: number;
-  maxSize?: number;
-  minDuration?: number;
-  maxDuration?: number;
-  extension?: string;
-  orientation?: "landscape" | "portrait" | "square";
-  createdAfter?: string;
-  createdBefore?: string;
-  modifiedAfter?: string;
-  modifiedBefore?: string;
-  sort: AssetSortKey;
-  direction: SortDirection;
-  collapsedTagGroupIds: string[];
-  assetKindsExpanded: boolean;
-  showAllTags: boolean;
   scrollTop: number;
   /** 本地目录浏览的当前目录路径。 */
   directoryPath: string | null;
@@ -58,45 +24,13 @@ export interface NavigationStateV2 {
 
 type LegacyNavigationStateV1 = Omit<
   NavigationStateV2,
-  | "version"
-  | "navigationSource"
-  | "directoryPath"
-  | "directoryHistory"
-  | "assetKindsExpanded"
+  "version" | "navigationSource" | "directoryPath" | "directoryHistory"
 > & { version: 1 };
 
 const defaults: NavigationStateV2 = {
   version: 2,
   updatedAt: 0,
   navigationSource: "directory",
-  query: "",
-  kindFilter: "all",
-  linkStateFilter: "all",
-  lifecycleFilter: "active",
-  favoriteFilter: undefined,
-  ratingFilter: 0,
-  colorFilter: "none",
-  visualColor: null,
-  visualColorTolerance: 25,
-  minWidth: undefined,
-  maxWidth: undefined,
-  minHeight: undefined,
-  maxHeight: undefined,
-  minSize: undefined,
-  maxSize: undefined,
-  minDuration: undefined,
-  maxDuration: undefined,
-  extension: undefined,
-  orientation: undefined,
-  createdAfter: undefined,
-  createdBefore: undefined,
-  modifiedAfter: undefined,
-  modifiedBefore: undefined,
-  sort: "createdAt",
-  direction: "desc",
-  collapsedTagGroupIds: [],
-  assetKindsExpanded: false,
-  showAllTags: false,
   scrollTop: 0,
   directoryPath: null,
   directoryHistory: [],
@@ -115,16 +49,6 @@ const finiteNumber = (
     ? value
     : undefined;
 
-const stringList = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value
-        .filter(
-          (item): item is string =>
-            typeof item === "string" && item.length > 0 && item.length <= 128,
-        )
-        .slice(0, 10_000)
-    : [];
-
 const pathList = (value: unknown): string[] =>
   Array.isArray(value)
     ? value
@@ -142,89 +66,8 @@ function parseSharedFields(
   NavigationStateV2,
   "version" | "navigationSource" | "directoryPath" | "directoryHistory"
 > {
-  const kindFilter = [...assetKinds, "all"].includes(
-    value.kindFilter as AssetKind | "all",
-  )
-    ? (value.kindFilter as AssetKind | "all")
-    : defaults.kindFilter;
-  const linkStateFilter = [
-    "all",
-    "online",
-    "missing",
-    "searching",
-    "ambiguous",
-  ].includes(String(value.linkStateFilter))
-    ? (value.linkStateFilter as LinkState | "all")
-    : defaults.linkStateFilter;
-  const lifecycleFilter =
-    value.lifecycleFilter === "trashed" ? "trashed" : "active";
-  const colorFilter = assetColorLabels.includes(
-    value.colorFilter as AssetColorLabel,
-  )
-    ? (value.colorFilter as AssetColorLabel)
-    : defaults.colorFilter;
-  const sort = assetSortKeys.includes(value.sort as AssetSortKey)
-    ? (value.sort as AssetSortKey)
-    : defaults.sort;
-  const direction: SortDirection =
-    value.direction === "asc" ? "asc" : "desc";
-  const visualColor =
-    typeof value.visualColor === "string" &&
-    /^#[0-9a-f]{6}$/i.test(value.visualColor)
-      ? value.visualColor
-      : null;
   return {
     updatedAt: finiteNumber(value.updatedAt, 0, 1_000_000_000_000_000) ?? 0,
-    query:
-      typeof value.query === "string" ? value.query.slice(0, 1_000) : "",
-    kindFilter,
-    linkStateFilter,
-    lifecycleFilter,
-    favoriteFilter: value.favoriteFilter === true ? true : undefined,
-    ratingFilter: finiteNumber(value.ratingFilter, 0, 5) ?? 0,
-    colorFilter,
-    visualColor,
-    visualColorTolerance:
-      finiteNumber(value.visualColorTolerance, 1, 100) ?? 25,
-    minWidth: finiteNumber(value.minWidth, 0, 1_000_000),
-    maxWidth: finiteNumber(value.maxWidth, 0, 1_000_000),
-    minHeight: finiteNumber(value.minHeight, 0, 1_000_000),
-    maxHeight: finiteNumber(value.maxHeight, 0, 1_000_000),
-    minSize: finiteNumber(value.minSize, 0, 1_000_000_000_000_000),
-    maxSize: finiteNumber(value.maxSize, 0, 1_000_000_000_000_000),
-    minDuration: finiteNumber(value.minDuration, 0, 315_360_000),
-    maxDuration: finiteNumber(value.maxDuration, 0, 315_360_000),
-    extension:
-      typeof value.extension === "string" &&
-      /^[a-z0-9]{1,16}$/i.test(value.extension)
-        ? value.extension.toLowerCase()
-        : undefined,
-    orientation: ["landscape", "portrait", "square"].includes(
-      String(value.orientation),
-    )
-      ? (value.orientation as "landscape" | "portrait" | "square")
-      : undefined,
-    createdAfter:
-      typeof value.createdAfter === "string"
-        ? value.createdAfter.slice(0, 64)
-        : undefined,
-    createdBefore:
-      typeof value.createdBefore === "string"
-        ? value.createdBefore.slice(0, 64)
-        : undefined,
-    modifiedAfter:
-      typeof value.modifiedAfter === "string"
-        ? value.modifiedAfter.slice(0, 64)
-        : undefined,
-    modifiedBefore:
-      typeof value.modifiedBefore === "string"
-        ? value.modifiedBefore.slice(0, 64)
-        : undefined,
-    sort,
-    direction,
-    collapsedTagGroupIds: stringList(value.collapsedTagGroupIds),
-    assetKindsExpanded: value.assetKindsExpanded === true,
-    showAllTags: value.showAllTags === true,
     scrollTop: finiteNumber(value.scrollTop, 0, 10_000_000) ?? 0,
   };
 }
@@ -240,7 +83,6 @@ export function migrateNavigationState(
     directoryPath: null,
     directoryHistory: [],
     directoryHistoryIndex: 0,
-    assetKindsExpanded: false,
   };
 }
 

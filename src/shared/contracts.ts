@@ -286,11 +286,6 @@ export interface AutoTagRulePreview {
 }
 
 export interface LibraryPreferences {
-  layoutMode: "grid" | "waterfall" | "detail" | "random";
-  cardSize: "small" | "medium" | "large";
-  thumbnailBackground: "checker" | "black" | "white" | "auto";
-  /** 查询文件夹时是否默认包含子文件夹素材。 */
-  includeSubfolderAssets: boolean;
   /** 每个资料库独立保存的工作区面板宽度与折叠状态。 */
   panelLayout: {
     sidebarWidth: number;

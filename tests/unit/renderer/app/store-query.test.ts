@@ -1,24 +1,10 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AssetPage, AssetRecord, AssetSearchWindowInput, LibraryPreferences, LibraryStats, RefCanvasApi } from "../../../../src/shared/contracts";
-import { MAX_RESIDENT_ASSET_PAGES, ASSET_PAGE_SIZE, useAppStore } from "../../../../src/renderer/app/store";
-
-const stats: LibraryStats = {
-  total: 0,
-  missing: 0,
-  trashed: 0,
-  favorites: 0,
-  duplicates: 0,
-  trashBytes: 0,
-  byKind: { image: 0, video: 0, audio: 0, pdf: 0, model3d: 0, dcc: 0, font: 0, generic: 0 },
-};
+import type { AssetPage, AssetRecord, LibraryPreferences, RefCanvasApi } from "../../../../src/shared/contracts";
+import { useAppStore } from "../../../../src/renderer/app/store";
 
 const preferences: LibraryPreferences = {
-  layoutMode: "grid",
-  cardSize: "medium",
-  thumbnailBackground: "checker",
-  includeSubfolderAssets: true,
   panelLayout: { sidebarWidth: 220, assetWidth: 420, detailsWidth: 320, collapsed: [] },
 };
 
@@ -31,12 +17,7 @@ function deferred<T>() {
 beforeEach(() => {
   useAppStore.setState({
     assets: [],
-    totalAssets: 0,
-    nextCursor: null,
     preferences,
-    selectedIds: new Set(),
-    excludedIds: new Set(),
-    allMatchingSelected: false,
   });
 });
 
@@ -52,7 +33,7 @@ describe("asset query revisions", () => {
     });
     Object.assign(window, {
       refCanvas: {
-        library: { searchWindow, stats: vi.fn(async () => stats) },
+        library: { searchWindow },
       } as unknown as RefCanvasApi,
     });
 
@@ -62,38 +43,7 @@ describe("asset query revisions", () => {
     first.resolve({ items: [], total: 1, nextCursor: null });
     await oldReload;
 
-    expect(useAppStore.getState().totalAssets).toBe(2);
-  });
-
-  it("keeps at most twelve 200-item pages while navigating by absolute index", async () => {
-    const total = 500_000;
-    const searchWindow = vi.fn(async (input: AssetSearchWindowInput) => ({
-      items: Array.from(
-        { length: Math.min(input.pageSize, total - input.offset) },
-        (_, index) => ({ id: `asset-${input.offset + index}` }) as AssetRecord,
-      ),
-      total: input.includeTotal ? total : null,
-    }));
-    Object.assign(window, {
-      refCanvas: {
-        library: { searchWindow, stats: vi.fn(async () => stats) },
-      } as unknown as RefCanvasApi,
-    });
-
-    await useAppStore.getState().reloadAssets();
-    for (let page = 1; page <= 15; page += 1) {
-      const start = page * ASSET_PAGE_SIZE;
-      await useAppStore.getState().ensureAssetRange(start, start);
-      expect(useAppStore.getState().assets.length).toBeLessThanOrEqual(
-        MAX_RESIDENT_ASSET_PAGES * ASSET_PAGE_SIZE,
-      );
-    }
-
-    const state = useAppStore.getState();
-    expect(state.assets).toHaveLength(2_400);
-    expect(state.assetAt(3_000)?.id).toBe("asset-3000");
-    expect(searchWindow.mock.calls[0][0].includeTotal).toBe(true);
-    expect(searchWindow.mock.calls.slice(1).every(([input]) => !input.includeTotal)).toBe(true);
+    expect(useAppStore.getState().assets).toHaveLength(0);
   });
 
   it("opens the asset directory and emits a reveal request for the directory panel", async () => {

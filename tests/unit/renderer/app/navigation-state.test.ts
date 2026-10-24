@@ -15,36 +15,14 @@ describe("navigation state", () => {
     Reflect.deleteProperty(window, "refCanvas");
   });
 
-  it("round-trips the last indexed search and tag tree state", () => {
-    updateNavigationState({
-      query: "#构图",
-      kindFilter: "image",
-      collapsedTagGroupIds: ["lighting"],
-      assetKindsExpanded: true,
-      showAllTags: true,
-      scrollTop: 840,
-      minDuration: 2.5,
-      maxSize: 20 * 1024 * 1024,
-      extension: "png",
-      orientation: "portrait",
-      modifiedAfter: "2026-01-01T00:00:00.000Z",
-    });
+  it("round-trips the scroll offset and ignores legacy filter keys", () => {
+    updateNavigationState({ scrollTop: 840 });
 
     expect(readNavigationState()).toMatchObject({
       version: 2,
       navigationSource: "directory",
       directoryPath: null,
-      query: "#构图",
-      kindFilter: "image",
-      collapsedTagGroupIds: ["lighting"],
-      assetKindsExpanded: true,
-      showAllTags: true,
       scrollTop: 840,
-      minDuration: 2.5,
-      maxSize: 20 * 1024 * 1024,
-      extension: "png",
-      orientation: "portrait",
-      modifiedAfter: "2026-01-01T00:00:00.000Z",
     });
   });
 
@@ -118,10 +96,7 @@ describe("navigation state", () => {
       JSON.stringify({
         version: 1,
         updatedAt: 123,
-        query: "mesh",
-        kindFilter: "image",
         scrollTop: 40,
-        sort: "title",
       }),
     );
 
@@ -130,10 +105,7 @@ describe("navigation state", () => {
       navigationSource: "directory",
       directoryPath: null,
       directoryHistory: [],
-      assetKindsExpanded: false,
-      query: "mesh",
       scrollTop: 40,
-      sort: "title",
     });
   });
 
@@ -141,30 +113,12 @@ describe("navigation state", () => {
     const upgraded = migrateNavigationState({
       version: 1,
       updatedAt: 5,
-      query: "",
-      kindFilter: "all",
-      linkStateFilter: "all",
-      lifecycleFilter: "active",
-      ratingFilter: 0,
-      colorFilter: "none",
-      visualColor: null,
-      visualColorTolerance: 25,
-      sort: "createdAt",
-      direction: "desc",
-      collapsedTagGroupIds: [],
-      showAllTags: false,
       scrollTop: 0,
     });
     expect(upgraded.version).toBe(2);
     expect(upgraded.navigationSource).toBe("directory");
     expect(upgraded.directoryPath).toBeNull();
     expect(upgraded.directoryHistory).toEqual([]);
-    expect(upgraded.assetKindsExpanded).toBe(false);
-  });
-
-  it("defaults a v2 state without assetKindsExpanded to collapsed", () => {
-    const parsed = parseNavigationState(JSON.stringify({ version: 2 }));
-    expect(parsed?.assetKindsExpanded).toBe(false);
   });
 
   it("ignores corrupt and unsupported versions", () => {
@@ -172,35 +126,25 @@ describe("navigation state", () => {
     expect(parseNavigationState(JSON.stringify({ version: 99 }))).toBeNull();
   });
 
-  it("sanitizes invalid enums and unsafe numeric values", () => {
+  it("sanitizes unsafe numeric values", () => {
     const state = parseNavigationState(
       JSON.stringify({
         version: 2,
-        kindFilter: "script",
-        colorFilter: "neon",
-        sort: "unknown",
-        ratingFilter: 99,
         scrollTop: -20,
-        visualColor: "red",
       }),
     );
 
     expect(state).toMatchObject({
-      kindFilter: "all",
-      colorFilter: "none",
-      sort: "createdAt",
-      ratingFilter: 0,
       scrollTop: 0,
-      visualColor: null,
     });
   });
 
   it("restores a newer durable SQLite state when local storage is stale", async () => {
-    updateNavigationState({ kindFilter: "image" });
+    updateNavigationState({ scrollTop: 100 });
     const durable = {
       ...readNavigationState(),
       updatedAt: Date.now() + 10_000,
-      kindFilter: "video" as const,
+      scrollTop: 900,
     };
     Object.defineProperty(window, "refCanvas", {
       configurable: true,
@@ -213,9 +157,9 @@ describe("navigation state", () => {
     });
 
     await expect(readDurableNavigationState()).resolves.toMatchObject({
-      kindFilter: "video",
+      scrollTop: 900,
       updatedAt: durable.updatedAt,
     });
-    expect(readNavigationState().kindFilter).toBe("video");
+    expect(readNavigationState().scrollTop).toBe(900);
   });
 });

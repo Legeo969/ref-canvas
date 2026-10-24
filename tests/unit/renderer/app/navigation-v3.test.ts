@@ -17,19 +17,19 @@ const v2Fixture: NavigationStateV2 = {
   version: 2,
   updatedAt: 1,
   navigationSource: "directory",
-  query: "#构图",
-  kindFilter: "image",
-  linkStateFilter: "all",
-  lifecycleFilter: "active",
-  ratingFilter: 0,
-  colorFilter: "none",
-  visualColor: null,
-  visualColorTolerance: 25,
-  sort: "createdAt",
-  direction: "desc",
-  collapsedTagGroupIds: [],
-  assetKindsExpanded: false,
-  showAllTags: false,
+
+
+
+
+
+
+
+
+
+
+
+
+
   scrollTop: 840,
   directoryPath: "D:\\refs\\art",
   directoryHistory: ["D:\\refs\\art"],
@@ -53,7 +53,7 @@ describe("navigation v3", () => {
     Reflect.deleteProperty(window, "refCanvas");
   });
 
-  it("migrates V2 to a single directory tab preserving query and scroll", () => {
+  it("migrates V2 to a single directory tab preserving scroll", () => {
     const v3 = migrateV2ToV3(v2Fixture);
     expect(v3.schemaVersion).toBe(3);
     expect(v3.activeWorkspace).toBe("browser");
@@ -61,7 +61,6 @@ describe("navigation v3", () => {
     expect(v3.tabs[0]).toMatchObject({
       kind: "directory",
       targetId: "D:\\refs\\art",
-      query: "#构图",
       scrollOffset: 840,
     });
   });
