@@ -82,11 +82,21 @@ describe("UI shell regressions", () => {
 
   it("keeps the disk workspace tab free of folder-picker side effects", async () => {
     const app = await readFile(path.resolve("src/renderer/app/App.tsx"), "utf8");
-    const diskTab = app.match(
-      /<button[\s\S]*?aria-selected=\{store\.workspaceMode === "directory"\}[\s\S]*?<\/button>/,
+    const titlebar = await readFile(
+      path.resolve("src/renderer/components/AppTitleBar.tsx"),
+      "utf8",
+    );
+    // 标签按钮在 AppTitleBar 中，触发的动作由 App 接线——两端都要验证：
+    // 切换动作是纯工作区切换，且接线路径与按钮本身都不碰目录选择器。
+    expect(app).toContain(
+      "onShowDirectoryWorkspace={store.showDirectoryWorkspace}",
+    );
+    const diskTab = titlebar.match(
+      /<button[\s\S]*?aria-selected=\{workspaceMode === "directory"\}[\s\S]*?<\/button>/,
     )?.[0];
-    expect(diskTab).toContain("onClick={store.showDirectoryWorkspace}");
+    expect(diskTab).toContain("onClick={onShowDirectoryWorkspace}");
     expect(diskTab).not.toContain("pickDirectory");
+    expect(app).not.toContain("pickDirectory");
   });
 
   it("keeps narrow asset panel controls inside the panel", async () => {

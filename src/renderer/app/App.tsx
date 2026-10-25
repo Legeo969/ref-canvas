@@ -1,19 +1,4 @@
-import {
-  Camera,
-  Expand,
-  FileJson,
-  FolderInput,
-  HardDrive,
-  ImageDown,
-  MonitorPlay,
-  PanelLeftClose,
-  PanelsTopLeft,
-  Pin,
-  PinOff,
-  Settings,
-  SquareArrowOutUpRight,
-  ListTodo,
-} from "lucide-react";
+import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type {
@@ -21,6 +6,7 @@ import type {
   BoardSettings,
   BoardSummary,
   BrowserCapturePayload,
+  MigrationRecoveryInfo,
   SimilarAsset,
   SimilarityIndexSnapshot,
 } from "../../shared/contracts";
@@ -45,6 +31,12 @@ import { parseBoardWindowParams } from "./board-window";
 import { usePreviewSettings } from "./preview-settings";
 import { translate, useAppLanguage } from "./i18n";
 import { ActionsPanel } from "../components/ActionsPanel";
+import { AppTitleBar } from "../components/AppTitleBar";
+import {
+  RecoveryScreen,
+  StartupLoadingScreen,
+  type StartupHealth,
+} from "../components/StartupScreens";
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { BrowserTabBar } from "../components/BrowserTabBar";
@@ -125,12 +117,11 @@ function WorkspaceApp() {
     setInstallCompleteOpen(false);
     window.focus();
   }, []);
-  const [migrationFailure, setMigrationFailure] = useState<Awaited<
-    ReturnType<typeof window.refCanvas.system.getMigrationFailure>
-  > | null>(null);
-  const [startupHealth, setStartupHealth] = useState<Awaited<
-    ReturnType<typeof window.refCanvas.system.getStartupHealth>
-  > | null>(null);
+  const [migrationFailure, setMigrationFailure] =
+    useState<MigrationRecoveryInfo | null>(null);
+  const [startupHealth, setStartupHealth] = useState<StartupHealth | null>(
+    null,
+  );
   const capturePreparingRef = useRef(false);
   const [capturePreparing, setCapturePreparing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -502,109 +493,17 @@ function WorkspaceApp() {
   }, []);
 
   if (recoveryMode) {
-    const isSafe = startupHealth?.mode === "safe";
-    const isTooNew = startupHealth?.mode === "too-new";
     return (
-      <div className="recovery-screen">
-        <div className="recovery-card">
-          <span className="brand-mark">R</span>
-          <h1>
-            {isTooNew
-              ? translate("app.schemaTooNewTitle")
-              : isSafe
-                ? translate("app.safeModeTitle")
-                : translate("app.recoveryTitle")}
-          </h1>
-          <p>
-            {isTooNew
-              ? translate("app.schemaTooNewDescription")
-              : isSafe
-                ? translate("app.safeModeDescription")
-                : translate("app.recoveryDescription")}
-          </p>
-          <dl>
-            <div>
-              <dt>{translate("app.recoveryDatabaseFile")}</dt>
-              <dd>{startupHealth?.databasePath ?? migrationFailure?.databasePath ?? "…"}</dd>
-            </div>
-            <div>
-              <dt>{translate("app.recoveryBackupDirectory")}</dt>
-              <dd>{migrationFailure?.backupDirectory ?? "…"}</dd>
-            </div>
-          </dl>
-          {migrationFailure?.entries.map((entry) => (
-            <div key={entry.stepId} className="recovery-entry">
-              <code>{entry.stepId}</code>
-              <span>
-                v{entry.fromVersion} → v{entry.toVersion}
-              </span>
-              <pre>{entry.error}</pre>
-            </div>
-          ))}
-          <div className="recovery-actions">
-            {isSafe && (
-              <>
-                <button
-                  className="secondary-button"
-                  onClick={() => {
-                    void window.refCanvas.system.recoverNewDatabase();
-                  }}
-                >
-                  {translate("app.safeModeNewDatabase")}
-                </button>
-                <button
-                  className="secondary-button"
-                  onClick={async () => {
-                    const backups = await window.refCanvas.system.recoverListBackups();
-                    if (!backups.length) {
-                      setNotice(translate("app.safeModeNoBackups"));
-                      window.setTimeout(() => setNotice(null), 4200);
-                      return;
-                    }
-                    const backup = backups[0]; // 最近备份
-                    void window.refCanvas.system.recoverRestoreBackup(backup.filename);
-                  }}
-                >
-                  {translate("app.safeModeRestore")}
-                </button>
-              </>
-            )}
-            <button
-              className="secondary-button"
-              onClick={() => {
-                if (migrationFailure?.backupDirectory) {
-                  void window.refCanvas.system.openExternal(
-                    migrationFailure.backupDirectory,
-                  );
-                }
-              }}
-            >
-              {translate("app.openBackupDirectory")}
-            </button>
-            <button className="primary-button" onClick={() => window.close()}>
-              {translate("app.quit")}
-            </button>
-          </div>
-        </div>
-      </div>
+      <RecoveryScreen
+        startupHealth={startupHealth}
+        migrationFailure={migrationFailure}
+        onNotice={setNotice}
+      />
     );
   }
 
   if (store.loading) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-titlebar">
-          <span className="brand-mark">R</span>
-          <span>{translate("app.loadingWorkspace")}</span>
-        </div>
-        <div className="loading-sidebar" aria-hidden="true">
-          {Array.from({ length: 8 }, (_, index) => <span key={index} />)}
-        </div>
-        <div className="loading-workspace" aria-hidden="true">
-          {Array.from({ length: 12 }, (_, index) => <span key={index} />)}
-        </div>
-      </div>
-    );
+    return <StartupLoadingScreen />;
   }
 
   const createBoard = async () => {
@@ -655,6 +554,51 @@ function WorkspaceApp() {
       window.confirm(translate("app.deleteBoardConfirm").replace("{name}", board.title))
     ) {
       await store.deleteBoard(board.id);
+    }
+  };
+
+  const exportBoardPackage = async () => {
+    if (!store.activeBoard) return;
+    try {
+      const exported = await window.refCanvas.boards.exportPackage(
+        store.activeBoard.id,
+        { embedAssets: true },
+      );
+      if (!exported) return;
+      const message = exported.skippedAssets > 0
+        ? translate("titlebar.exportedPackageSkipped")
+            .replace("{path}", exported.path)
+            .replace("{count}", String(exported.skippedAssets))
+        : translate("titlebar.exportedPackage")
+            .replace("{path}", exported.path);
+      setNotice(message);
+      window.setTimeout(() => setNotice(null), 5200);
+    } catch (error) {
+      // 透出主进程的真实原因（EXPORT_PACKAGE_FAILED: xxx），
+      // 便于直接定位是哪个环节失败。
+      const detail = error instanceof Error ? error.message : String(error);
+      setNotice(
+        translate("titlebar.exportFailedDetail").replace("{detail}", detail),
+      );
+      window.setTimeout(() => setNotice(null), 8000);
+    }
+  };
+
+  const importBoardProject = async () => {
+    try {
+      const imported = await window.refCanvas.boards.importProject();
+      if (!imported) return;
+      setNotice(
+        translate("titlebar.importedProject").replace(
+          "{title}",
+          imported.title,
+        ),
+      );
+      window.setTimeout(() => setNotice(null), 4200);
+      store.refreshBoards();
+    } catch {
+      setNotice(translate("titlebar.importFailed"));
+      window.setTimeout(() => setNotice(null), 4200);
     }
   };
 
@@ -720,177 +664,39 @@ function WorkspaceApp() {
           )}
         </div>
       )}
-      <header className="titlebar">
-        <div className="titlebar-left">
-          <div className="brand">
-            <span className="brand-mark">R</span>
-            <span>RefCanvas</span>
-          </div>
-          <div className="workspace-mode-switch" role="tablist" aria-label={translate("titlebar.workspace")}>
-            <button
-              role="tab"
-              aria-selected={store.workspaceMode === "directory"}
-              className={store.workspaceMode === "directory" ? "active" : ""}
-              onClick={store.showDirectoryWorkspace}
-            >
-              <HardDrive size={14} />
-              {translate("workspace.disk")}
-            </button>
-            <button
-              role="tab"
-              aria-selected={store.workspaceMode === "board"}
-              className={store.workspaceMode === "board" ? "active" : ""}
-              onClick={() => {
-                if (store.activeBoard) {
-                  void store.switchBoard(store.activeBoard.id);
-                } else {
-                  void createBoard();
-                }
-              }}
-            >
-              <PanelsTopLeft size={14} />
-              {translate("workspace.board")}
-            </button>
-          </div>
-        </div>
-        <div className="titlebar-actions">
-          <button
-            className="titlebar-button"
-            onClick={() => void prepareRegionCapture()}
-            disabled={capturePreparing}
-          >
-            <Camera size={15} />
-            {translate("titlebar.screenshot")}
-          </button>
-          {store.workspaceMode === "board" && (
-            <>
-              <span className="titlebar-separator" />
-              <button
-                className="icon-button"
-                onClick={() =>
-                  window.dispatchEvent(new Event("refcanvas:export-png"))
-                }
-                aria-label={translate("titlebar.exportPng")}
-              >
-                <ImageDown size={16} />
-              </button>
-              <button
-                className="icon-button"
-                onClick={async () => {
-                  if (!store.activeBoard) return;
-                  try {
-                    const exported = await window.refCanvas.boards.exportPackage(
-                      store.activeBoard.id,
-                      { embedAssets: true },
-                    );
-                    if (!exported) return;
-                    const message = exported.skippedAssets > 0
-                      ? translate("titlebar.exportedPackageSkipped")
-                          .replace("{path}", exported.path)
-                          .replace("{count}", String(exported.skippedAssets))
-                      : translate("titlebar.exportedPackage")
-                          .replace("{path}", exported.path);
-                    setNotice(message);
-                    window.setTimeout(() => setNotice(null), 5200);
-                  } catch (error) {
-                    // 透出主进程的真实原因（EXPORT_PACKAGE_FAILED: xxx），
-                    // 便于直接定位是哪个环节失败。
-                    const detail = error instanceof Error ? error.message : String(error);
-                    setNotice(
-                      translate("titlebar.exportFailedDetail").replace("{detail}", detail),
-                    );
-                    window.setTimeout(() => setNotice(null), 8000);
-                  }
-                }}
-                aria-label={translate("titlebar.exportPackage")}
-              >
-                <FileJson size={16} />
-              </button>
-              <button
-                className="icon-button"
-                onClick={async () => {
-                  try {
-                    const imported = await window.refCanvas.boards.importProject();
-                    if (!imported) return;
-                    setNotice(
-                      translate("titlebar.importedProject").replace(
-                        "{title}",
-                        imported.title,
-                      ),
-                    );
-                    window.setTimeout(() => setNotice(null), 4200);
-                    store.refreshBoards();
-                  } catch {
-                    setNotice(translate("titlebar.importFailed"));
-                    window.setTimeout(() => setNotice(null), 4200);
-                  }
-                }}
-                aria-label={translate("titlebar.importProject")}
-              >
-                <FolderInput size={16} />
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => {
-                  if (store.activeBoard) {
-                    void window.refCanvas.boards.openWindow(store.activeBoard.id);
-                  }
-                }}
-                aria-label={translate("titlebar.openBoardWindow")}
-              >
-                <SquareArrowOutUpRight size={16} />
-              </button>
-            </>
-          )}
-          <span className="titlebar-separator" />
-          <button
-            className={`icon-button pin-toggle${alwaysOnTop ? " active" : ""}`}
-            onClick={() => void toggleAlwaysOnTop()}
-            aria-label={translate(alwaysOnTop ? "titlebar.unpin" : "titlebar.pin")}
-            aria-pressed={alwaysOnTop}
-            disabled={pinPending}
-          >
-            <span className="pin-icon-stack" aria-hidden="true">
-              <Pin className="pin-icon-rest" size={16} />
-              <PinOff className="pin-icon-active" size={16} />
-            </span>
-          </button>
-          {store.workspaceMode === "board" && (
-            <>
-              <button
-                className="icon-button"
-                onClick={store.toggleFocusMode}
-                aria-label={translate("titlebar.focusBoard")}
-                data-shortcut="Tab"
-              >
-                {store.focusMode ? (
-                  <PanelLeftClose size={16} />
-                ) : (
-                  <Expand size={16} />
-                )}
-              </button>
-              <button
-                className="icon-button"
-                onClick={() => void setPresentationMode(true)}
-                aria-label={translate("titlebar.presentBoard")}
-                data-shortcut="F11"
-              >
-                <MonitorPlay size={16} />
-              </button>
-            </>
-          )}
-          <button
-            className="icon-button"
-            onClick={() => {
-              setSettingsTab("general");
-              setMaintenanceOpen(true);
-            }}
-            aria-label={translate("titlebar.settings")}
-          >
-            <Settings size={16} />
-          </button>
-        </div>
-      </header>
+      <AppTitleBar
+        workspaceMode={store.workspaceMode}
+        focusMode={store.focusMode}
+        capturePreparing={capturePreparing}
+        alwaysOnTop={alwaysOnTop}
+        pinPending={pinPending}
+        onShowDirectoryWorkspace={store.showDirectoryWorkspace}
+        onShowBoardWorkspace={() => {
+          if (store.activeBoard) {
+            void store.switchBoard(store.activeBoard.id);
+          } else {
+            void createBoard();
+          }
+        }}
+        onPrepareRegionCapture={() => void prepareRegionCapture()}
+        onExportPng={() =>
+          window.dispatchEvent(new Event("refcanvas:export-png"))
+        }
+        onExportPackage={() => void exportBoardPackage()}
+        onImportProject={() => void importBoardProject()}
+        onOpenBoardWindow={() => {
+          if (store.activeBoard) {
+            void window.refCanvas.boards.openWindow(store.activeBoard.id);
+          }
+        }}
+        onToggleAlwaysOnTop={() => void toggleAlwaysOnTop()}
+        onToggleFocusMode={store.toggleFocusMode}
+        onStartPresentation={() => void setPresentationMode(true)}
+        onOpenSettings={() => {
+          setSettingsTab("general");
+          setMaintenanceOpen(true);
+        }}
+      />
 
       <div className={`workspace ${store.workspaceMode}-workspace`}>
         <Sidebar />
