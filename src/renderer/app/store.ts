@@ -59,7 +59,7 @@ function prependRecentBoard(
   ].slice(0, 10);
 }
 
-interface AppState
+export interface AppState
   extends LibraryQuerySliceState,
     DirectorySliceState,
     BoardSliceState,

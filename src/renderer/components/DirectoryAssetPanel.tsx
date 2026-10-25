@@ -22,11 +22,9 @@ import {
 import { memo, useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type {
-  DirectoryBatchAction,
   DirectoryBatchSnapshot,
   DirectoryEntry,
   DirectoryPage,
-  DirectorySearchSnapshot,
   PreviewFormatGroupId,
   RegisteredScript,
   SearchScope,
@@ -37,8 +35,6 @@ import { LruCache } from "../../shared/lru-cache";
 import {
   isExportableImageExtension,
   isExportableVideoExtension,
-  pathNameOf,
-  pathStemOf,
 } from "../features/directory/asset-export-formats";
 import {
   assetGridNavigationTarget,
@@ -59,7 +55,6 @@ import {
 import { useAppStore } from "../app/store";
 import { translate } from "../app/i18n";
 import { placeTriggerMenu } from "../app/menu-position";
-import { runWithDirectoryWriteAccess } from "../app/directory-write-access";
 import { useStableCallback } from "../app/use-stable-callback";
 import { useDialog } from "./DialogProvider";
 import { SelectMenu } from "./SelectMenu";
@@ -91,6 +86,18 @@ import {
   DirectoryPreviewCoordinator,
 } from "../features/directory/directory-preview-coordinator";
 import { resolveDirectorySelectionScope } from "../features/directory/directory-query-model";
+import { useDirectorySearch } from "../features/directory/use-directory-search";
+import { useDirectoryBatchActions } from "../features/directory/use-directory-batch-actions";
+import {
+  copyOrMoveEntryAction,
+  dirnameOf,
+  downscaleEntryAction,
+  type DirectoryEntryActionDeps,
+  exportMp4EntryAction,
+  runScriptAction,
+  tagEntryAction,
+  trashEntryAction,
+} from "../features/directory/directory-entry-actions";
 import { DirectoryBatchToolbar } from "./directory/DirectoryBatchToolbar";
 import {
   DirectoryContextMenu,
@@ -107,13 +114,9 @@ type DirectoryFormatFilter = "all" | PreviewFormatGroupId | "other";
 /** 目录条目拖拽 MIME：携带 {path, isDirectory}，由 Sidebar 文件夹行消费。 */
 export const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
 
-/** 文件所在目录（renderer 不依赖 node:path）。 */
-function dirnameOf(filename: string): string {
-  const index = filename.lastIndexOf("\\");
-  const alt = filename.lastIndexOf("/");
-  const cut = Math.max(index, alt);
-  return cut <= 0 ? filename : filename.slice(0, cut);
-}
+// 批量选中作用域解析已随批量操作移入 use-directory-batch-actions；面板
+// 继续 re-export，保持本模块对 directory-query-model 的既有依赖面。
+export { resolveDirectorySelectionScope };
 
 function normalizeQuickAccessPath(value: string): string {
   return value.replace(/[\\/]+/g, "\\").replace(/\\$/, "").toLowerCase();
@@ -572,25 +575,12 @@ export function DirectoryAssetPanel() {
       }),
     );
   };
-  const [query, setQuery] = useState("");
-  const [searchScope, setSearchScope] = useState<SearchScope>("current-directory");
-  const [searchSuggestionsOpen, setSearchSuggestionsOpen] = useState(false);
   const [pathEditing, setPathEditing] = useState(false);
   const [pathDraft, setPathDraft] = useState("");
   const [formatFilter, setFormatFilter] = useState<DirectoryFormatFilter>("all");
   const [formatMenuOpen, setFormatMenuOpen] = useState(false);
   const formatMenuRef = useRef<HTMLDivElement>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [searchId, setSearchId] = useState<string | null>(null);
-  const activeSearchIdRef = useRef<string | null>(null);
-  const [searchPages, setSearchPages] = useState<Map<number, DirectoryEntry[]>>(
-    () => new Map(),
-  );
-  const [searchTotal, setSearchTotal] = useState(0);
-  const [searchRevision, setSearchRevision] = useState("");
-  const [searchComplete, setSearchComplete] = useState(false);
-  const [searchSnapshot, setSearchSnapshot] =
-    useState<DirectorySearchSnapshot | null>(null);
   const [contextMenu, setContextMenu] = useState<DirectoryContextMenuState | null>(
     null,
   );
@@ -620,7 +610,9 @@ export function DirectoryAssetPanel() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [viewport, setViewport] = useState({ width: 340, height: 600, top: 0 });
   const viewportRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<number | null>(null);
+  // 搜索分页缓存修剪需要「当前视口顶部索引」：布局计算在本组件后段，
+  // 用 ref 把每渲染最新的取值函数递给搜索 hook。
+  const viewportIndexRef = useRef<() => number>(() => 0);
   const [directoryPages, setDirectoryPages] = useState<Map<number, DirectoryEntry[]>>(
     () => new Map(),
   );
@@ -628,7 +620,6 @@ export function DirectoryAssetPanel() {
   const pageRequestsRef = useRef(
     new Map<number, Promise<DirectoryPage | undefined>>(),
   );
-  const searchPageRequestsRef = useRef(new Set<number>());
   const directoryRevealInFlightRef = useRef<number | null>(null);
   const directoryRevealMountedRef = useRef(true);
   const indexedEntriesRef = useRef(new Map<number, DirectoryEntry>());
@@ -659,6 +650,13 @@ export function DirectoryAssetPanel() {
   );
   const previewPath = previewSnapshot.path;
   useEffect(() => () => previewCoordinator.dispose(), [previewCoordinator]);
+
+  const closePreview = () => previewCoordinator.close();
+
+  const clearSelection = () => {
+    directorySelection.clear();
+    store.selectDirectoryEntry(null);
+  };
   useEffect(() => {
     directoryRevealMountedRef.current = true;
     return () => {
@@ -692,6 +690,40 @@ export function DirectoryAssetPanel() {
     if (formatFilter === "other") return previewSettings.formatWhitelist;
     return previewSettings.formatGroups.find((group) => group.id === formatFilter)?.extensions ?? [];
   }, [formatFilter, previewSettings.formatGroups, previewSettings.formatWhitelist]);
+
+  // 搜索接缝（use-directory-search）：查询/作用域/建议、流式搜索状态、
+  // runSearch/cancelSearch/locatePathInput 与每标签查询/滚动持久化都在
+  // hook 内；面板保留搜索栏 JSX 与目录分页（loadDirectoryPage）。
+  const {
+    query,
+    searchScope,
+    setSearchScope,
+    searchSuggestionsOpen,
+    setSearchSuggestionsOpen,
+    searchId,
+    searchPages,
+    setSearchPages,
+    searchTotal,
+    searchRevision,
+    searchComplete,
+    searchSnapshot,
+    runSearch,
+    onQueryChange,
+    applySearchSuggestion,
+    cancelSearch,
+    locatePathInput,
+    loadSearchPage,
+  } = useDirectorySearch({
+    store,
+    formatFilterExtensions,
+    favoritesOnly,
+    collapseImageSequences: previewSettings.collapseImageSequences,
+    selection: directorySelection,
+    viewportRef,
+    pendingScrollTopRef,
+    setLoadingMore,
+    currentViewportIndex: () => viewportIndexRef.current(),
+  });
 
   const updateEntryTags = (paths: string[], tags: string[]) => {
     const pathSet = new Set(paths);
@@ -993,164 +1025,11 @@ export function DirectoryAssetPanel() {
     store.directoryTotal,
   ]);
 
-  // 搜索进度订阅：子目录结果流式追加。
-  useEffect(() => {
-    return window.refCanvas.filesystem.onSearchProgress((snapshot) => {
-      setSearchSnapshot(snapshot);
-      if (snapshot.id === searchId) {
-        setSearchTotal(snapshot.totalFiles ?? snapshot.entries.length);
-        setSearchRevision(snapshot.revision ?? "");
-        setSearchComplete(snapshot.state === "completed");
-        if (snapshot.state === "completed") {
-          setSearchPages(new Map());
-          searchPageRequestsRef.current.clear();
-          void loadSearchPage(snapshot.id, 0);
-        } else if (snapshot.entries.length) {
-          setSearchPages((current) => {
-            const next = new Map(current);
-            next.set(0, snapshot.entries);
-            return next;
-          });
-        }
-      }
-    });
-  }, [searchId]);
-
   useEffect(() => {
     return window.refCanvas.filesystem.onBatchProgress?.((snapshot) => {
       if (batchJob?.id === snapshot.id) setBatchJob(snapshot);
     });
   }, [batchJob?.id]);
-
-  const runSearch = (
-    value: string,
-    favoritesFlag: boolean = favoritesOnly,
-    scope: SearchScope = searchScope,
-  ) => {
-    directorySelection.clear();
-    if (searchId) {
-      void window.refCanvas.filesystem.cancelSearch(searchId);
-      setSearchId(null);
-      setSearchPages(new Map());
-      setSearchSnapshot(null);
-    }
-    if (!value.trim() || !store.directoryPath) return;
-    void window.refCanvas.filesystem
-      .startSearch(store.directoryPath, value.trim(), {
-        ...(scope === "current-directory" ? {} : { scope }),
-        collapseSequences: previewSettings.collapseImageSequences,
-        extensions: formatFilterExtensions,
-        favoritesOnly: favoritesFlag,
-      })
-      .then(async (id) => {
-        activeSearchIdRef.current = id;
-        setSearchId(id);
-        const snapshot = await window.refCanvas.filesystem.getSearch(id);
-        if (!snapshot) return;
-        setSearchSnapshot(snapshot);
-        setSearchTotal(snapshot.totalFiles ?? snapshot.entries.length);
-        setSearchRevision(snapshot.revision ?? "");
-        setSearchComplete(snapshot.state === "completed");
-        setSearchPages(snapshot.entries.length ? new Map([[0, snapshot.entries]]) : new Map());
-        void loadSearchPage(id, 0);
-      });
-  };
-
-  /**
-   * 查找输入支持直接定位：粘贴（或回车提交）一个绝对路径
-   * （D:\work\refs 或 UNC）时打开该目录，而不是把它当作搜索关键词。
-   * 粘贴的是文件路径时，打开所在目录并选中该文件（在目录首批条目中
-   * 找得到才动作，避免无效路径误开目录）。
-   * 路径无效（不存在）时静默放行，落回原有关键词搜索。
-   */
-  const locatePathInput = (raw: string): boolean => {
-    const trimmed = raw.trim();
-    if (!/^[A-Za-z]:[\\/]/.test(trimmed) && !/^\\\\[^\\]/.test(trimmed)) {
-      return false;
-    }
-    // 去掉尾部分隔符；盘符根（D:\）保留一个分隔符。
-    let target = trimmed.replace(/[\\/]+$/, "");
-    if (/^[A-Za-z]:$/.test(target)) target += "\\";
-    const pathKey = (candidate: string) =>
-      candidate.replace(/\//g, "\\").replace(/\\\\+/g, "\\").toLowerCase();
-    // 先用轻量 pathType 探测身份：目录直接打开；文件/不存在再按文件路径
-    // 处理（探测所在目录并选中）。避免拿 listDirectory 探测文件路径而
-    // 在主进程打出 ENOTDIR 错误日志。
-    const resolveAsFile = () => {
-      const lastSeparator = Math.max(
-        target.lastIndexOf("\\"),
-        target.lastIndexOf("/"),
-      );
-      if (lastSeparator < 0) return;
-      let parent = target.slice(0, lastSeparator);
-      if (/^[A-Za-z]:$/.test(parent)) parent += "\\";
-      const wanted = pathKey(target);
-      void window.refCanvas.filesystem
-        .listDirectory(parent, { pageSize: 512 })
-        .then((page) => {
-          const match = page.entries.find(
-            (entry) =>
-              !entry.isDirectory && pathKey(entry.path) === wanted,
-          );
-          // 文件不在首批（超大目录）或不存在：不误开目录，落回搜索。
-          if (!match) return;
-          cancelSearch();
-          void store.openDirectory(parent).then(() => {
-            const loaded = useAppStore
-              .getState()
-              .directoryEntries.find(
-                (entry) => pathKey(entry.path) === wanted,
-              );
-            const entry = loaded ?? match;
-            store.selectDirectoryEntry(entry);
-            directorySelection.selectOnly(entry.path);
-          });
-        })
-        .catch(() => undefined);
-    };
-    void window.refCanvas.filesystem
-      .pathType(target)
-      .then((kind) => {
-        if (kind === "directory") {
-          cancelSearch();
-          void store.openDirectory(target);
-          return;
-        }
-        resolveAsFile();
-      })
-      .catch(() => {
-        // pathType 查询失败（权限等）视作非目录，沿用原文件探测逻辑。
-        resolveAsFile();
-      });
-    return true;
-  };
-
-  const onQueryChange = (value: string, inputType?: string) => {
-    setQuery(value);
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    if (inputType === "insertFromPaste" && locatePathInput(value)) return;
-    debounceRef.current = window.setTimeout(() => runSearch(value), 160);
-  };
-
-  const applySearchSuggestion = (value: string) => {
-    setSearchSuggestionsOpen(false);
-    onQueryChange(value);
-  };
-
-  const cancelSearch = () => {
-    if (searchId) {
-      void window.refCanvas.filesystem.cancelSearch(searchId);
-    }
-    setSearchId(null);
-    activeSearchIdRef.current = null;
-    setSearchPages(new Map());
-    setSearchTotal(0);
-    setSearchRevision("");
-    setSearchComplete(false);
-    setSearchSnapshot(null);
-    setQuery("");
-    directorySelection.clear();
-  };
 
   const startPathEdit = () => {
     setPathDraft(store.directoryPath ?? "");
@@ -1181,72 +1060,6 @@ export function DirectoryAssetPanel() {
       void runSearch(query, next);
     }
   };
-
-  // FND-002 §5.2：每标签独立保存查询与滚动位置。
-  // 切换标签/目录时从 BrowserTabState 恢复；变更时写回（滚动节流）。
-  const activeTab = store.browserTabs.find((tab) => tab.id === store.activeTabId);
-
-  useEffect(() => {
-    if (!activeTab || activeTab.kind !== "directory") return;
-    // A board-to-directory reveal owns the initial scroll position. Restoring
-    // the tab's previous offset (including the delayed 60 ms retry) would move
-    // the newly selected target back out of view.
-    if (store.directoryRevealRequest) return;
-    if (activeTab.query) {
-      setQuery(activeTab.query);
-      void window.refCanvas.filesystem
-        .startSearch(store.directoryPath ?? "", activeTab.query, {
-          ...(searchScope === "current-directory" ? {} : { scope: searchScope }),
-          collapseSequences: previewSettings.collapseImageSequences,
-          extensions: formatFilterExtensions,
-          favoritesOnly,
-        })
-        .then((id) => {
-          activeSearchIdRef.current = id;
-          setSearchId(id);
-        })
-        .catch(() => undefined);
-    }
-    const restoreScroll = () => {
-      const node = viewportRef.current;
-      if (node && activeTab.scrollOffset > 0) {
-        node.scrollTop = activeTab.scrollOffset;
-        pendingScrollTopRef.current = activeTab.scrollOffset;
-      }
-    };
-    restoreScroll();
-    const timer = window.setTimeout(restoreScroll, 60);
-    return () => window.clearTimeout(timer);
-  }, [store.activeTabId, store.directoryPath]);
-
-  useEffect(() => {
-    if (!activeTab || activeTab.kind !== "directory") return;
-    if (activeTab.query === query) return;
-    store.updateActiveBrowserTab({ query });
-  }, [query]);
-
-  // 滚动写回：rAF 节流到标签状态（避免每次 scroll 都触发 store 更新）。
-  useEffect(() => {
-    if (!activeTab || activeTab.kind !== "directory") return;
-    const node = viewportRef.current;
-    if (!node) return;
-    let frame: number | null = null;
-    const write = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = null;
-        const top = Math.round(node.scrollTop);
-        if (Math.abs(top - (activeTab.scrollOffset ?? 0)) >= 8) {
-          store.updateActiveBrowserTab({ scrollOffset: top });
-        }
-      });
-    };
-    node.addEventListener("scroll", write, { passive: true });
-    return () => {
-      node.removeEventListener("scroll", write);
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
-  }, [store.activeTabId, store.directoryPath]);
 
   const directoryEntries = useMemo(
     () => [...directoryPages.entries()]
@@ -1517,6 +1330,63 @@ export function DirectoryAssetPanel() {
       ) * columns
     );
   };
+  viewportIndexRef.current = currentViewportIndex;
+
+  // 批量操作接缝（use-directory-batch-actions）：选中路径派生、键盘选中/
+  // 元数据快捷键、拖出、全结果批处理与目录剪贴板都在 hook 内；面板传入
+  // 选择状态、目录/搜索扫描快照与网格布局。
+  const {
+    focusedFile,
+    selectFileFromKeyboard,
+    updateFocusedMetadata,
+    dragOutEntry,
+    askConflictStrategy,
+    addSelectedToBoard,
+    copySelectedPaths,
+    batchTag,
+    batchTrash,
+    batchCopyMove,
+    clipboardSelection,
+    pasteClipboard,
+  } = useDirectoryBatchActions({
+    dialog,
+    store,
+    files,
+    gridEntries,
+    selectedPaths,
+    allMatchingSelected,
+    excludedPaths,
+    selectionAnchor,
+    previewPath,
+    searchId,
+    searchComplete,
+    searchRevision,
+    directoryScanComplete,
+    directoryRevision,
+    formatFilterExtensions,
+    favoritesOnly,
+    selectedCount,
+    setBatchJob,
+    selectOnly: directorySelection.selectOnly,
+    clearSelection,
+    showNotice: showShortcutNotice,
+    updateEntryMetadata,
+    updateEntryTags,
+    closePreview,
+    viewportRef,
+    layout: {
+      folderCount,
+      folderHeaderHeight,
+      folderColumns,
+      folderRowHeight,
+      fileRegionTop,
+      columns,
+      effectiveRowHeight,
+    },
+  });
+
+  const batchCopyTo = () => batchCopyMove("copy");
+  const batchMoveTo = () => batchCopyMove("move");
 
   useEffect(() => {
     const request = store.directoryRevealRequest;
@@ -1904,576 +1774,34 @@ export function DirectoryAssetPanel() {
     if (entry) store.selectDirectoryEntry(entry);
   };
 
-  const tagEntry = async (entry: DirectoryEntry) => {
-    const indexed = await window.refCanvas.library.getByPath(entry.path);
-    const values = await dialog.requestForm({
-      title: translate("preview.setTags"),
-      description: translate("directory.tagDescription"),
-      confirmLabel: translate("collections.save"),
-      fields: [
-        {
-          name: "tags",
-          label: translate("directory.tagsLabel"),
-          initialValue: indexed?.tags.join(", ") ?? "",
-          maxLength: 500,
-        },
-      ],
-      onSubmit: () => undefined,
-    });
-    if (!values) return;
-    const tags = values.tags
-      .split(/[,，]/)
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    const { asset } = await window.refCanvas.filesystem.materialize(entry.path);
-    await store.setTags(asset.id, tags);
-    updateEntryTags([entry.path], tags);
+  // 单条目动作接缝（directory-entry-actions）：面板组装 deps、包薄包装，
+  // 行为与原内联实现一致（右键菜单直接消费这些包装）。
+  const entryActionDeps: DirectoryEntryActionDeps = {
+    dialog,
+    store,
+    previewSettings,
+    showNotice: showShortcutNotice,
+    updateEntryTags,
+    sequenceByPath: sequenceIndex.byPath,
+    closePreview,
+    clearSelection,
+    closeContextMenu: () => setContextMenu(null),
+    directoryScanComplete,
+    directoryRevision,
+    askConflictStrategy,
   };
+  const tagEntry = (entry: DirectoryEntry) => tagEntryAction(entryActionDeps, entry);
 
-  // 阶段 5 §10.4：Downscale naming（suffix/子目录/备份原文件三种模式）。
-  const downscaleEntry = async (entry: DirectoryEntry) => {
-    if (entry.isDirectory) return;
-    const values = await dialog.requestForm({
-      title: translate("directory.downscale"),
-      description: `${translate("directory.downscaleMode")}${previewSettings.downscaleMode === "suffix"
-        ? translate("directory.downscaleModeSuffix").replace("{suffix}", previewSettings.downscaleSuffix || "2k")
-        : previewSettings.downscaleMode === "subdirectory"
-          ? translate("directory.downscaleModeSubdirectory").replace("{directory}", previewSettings.downscaleSubdirectory || "downscaled")
-          : translate("directory.downscaleModeBackup")}`,
-      confirmLabel: translate("directory.start"),
-      fields: [
-        {
-          name: "maxDimension",
-          label: translate("directory.maxDimensionLabel"),
-          required: true,
-          maxLength: 6,
-        },
-      ],
-      onSubmit: () => undefined,
-    });
-    if (!values) return;
-    const maxDimension = Math.max(
-      64,
-      Math.min(16_384, Number(values.maxDimension) || 2048),
-    );
-    if (previewSettings.downscaleMode === "backup") {
-      // §10.4：backup 模式修改原路径，执行前展示源/备份/输出。
-      const backupPath = `${entry.path.slice(0, -(entry.extension.length + 1))}.bak.${entry.extension}`;
-      const confirmed = await dialog.requestConfirm({
-        title: translate("directory.backupOverwriteTitle"),
-        description: translate("directory.backupOverwriteDescription")
-          .replace("{source}", entry.path)
-          .replace("{backup}", backupPath)
-          .replace("{output}", entry.path),
-        confirmLabel: translate("directory.backupAndDownscale"),
-        danger: true,
-      });
-      if (!confirmed) return;
-    }
-    await window.refCanvas.media.downscale({
-      paths: [entry.path],
-      maxDimension,
-      mode: previewSettings.downscaleMode,
-    });
-    await store.reloadDirectory();
-  };
-
-  // 右键菜单「导出 MP4」：视频走 media:exportMp4（ffmpeg 转码）；
-  // 图片仅在属于已检测序列（合并序列帧）时提供，走 sequences:exportMp4。
-  // 预设复用 PreviewSettings 的 MP4 presets，默认选中 defaultMp4PresetId。
-  const exportMp4Entry = async (entry: DirectoryEntry) => {
-    if (entry.isDirectory) return;
-    const sequenceGroup = sequenceIndex.byPath.get(entry.path);
-    const isVideo = isExportableVideoExtension(entry.extension);
-    if (!isVideo && !sequenceGroup) return;
-    const enabledPresets = previewSettings.mp4Presets.filter((preset) => preset.enabled);
-    const presets = enabledPresets.length
-      ? enabledPresets
-      : previewSettings.mp4Presets.slice(0, 1);
-    if (!presets.length) {
-      await dialog.requestConfirm({
-        title: translate("directory.exportMp4Failed"),
-        description: translate("directory.exportMp4NoPresets"),
-        confirmLabel: translate("collections.acknowledge"),
-      });
-      return;
-    }
-    const defaultPresetId =
-      presets.some((preset) => preset.id === previewSettings.defaultMp4PresetId)
-        ? previewSettings.defaultMp4PresetId
-        : presets[0].id;
-    const frameCount = sequenceGroup?.files.length ?? 1;
-    const fps = sequenceGroup?.fps ?? previewSettings.defaultSequenceFps;
-    const baseName = sequenceGroup?.baseName ?? pathStemOf(entry.path);
-    const defaultDirectory = sequenceGroup?.directory ?? dirnameOf(entry.path);
-    const description = isVideo
-      ? translate("directory.transcodeToMp4").replace("{name}", pathNameOf(entry.path))
-      : translate("directory.exportSequenceToMp4")
-          .replace("{name}", baseName)
-          .replace("{count}", String(frameCount))
-          .replace("{fps}", String(fps));
-    await dialog.requestForm({
-      title: translate("directory.exportMp4"),
-      description,
-      confirmLabel: translate("directory.export"),
-      fields: [
-        {
-          name: "preset",
-          label: translate("directory.convertPreset"),
-          type: "select",
-          options: presets.map((preset) => ({
-            value: preset.id,
-            label: preset.label,
-          })),
-          initialValue: defaultPresetId,
-        },
-        {
-          name: "outputDirectory",
-          label: translate("directory.outputDirectory"),
-          type: "directory",
-          required: true,
-          initialValue: defaultDirectory,
-        },
-      ],
-      onSubmit: (values) => {
-        // 后台静默导出：点击后立即关闭对话框，导出转后台执行（进度见任务
-        // 中心），完成后底部提示，避免长时间占用工作界面。
-        const outputDirectory = values.outputDirectory;
-        const presetId = values.preset;
-        void (async () => {
-          try {
-            if (isVideo) {
-              const result = await window.refCanvas.media.exportMp4({
-                inputPath: entry.path,
-                outputDirectory,
-                baseName,
-                presetId,
-              });
-              showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
-            } else {
-              const result = await window.refCanvas.sequences.exportMp4({
-                files: sequenceGroup ? sequenceGroup.files : [entry.path],
-                fps,
-                presetId,
-                outputDirectory,
-                baseName,
-              });
-              showShortcutNotice(translate("directory.mp4Exported").replace("{path}", pathNameOf(result.outputPath)));
-            }
-          } catch (error) {
-            showShortcutNotice(
-              error instanceof Error
-                ? error.message
-                : translate("directory.exportMp4Failed"),
-            );
-          }
-        })();
-      },
-    });
-  };
-
-  // 阶段 5 §10.5：运行脚本（cwd = 条目所在目录；hash 变更由主进程拒绝）。
-  const runScript = async (
-    script: RegisteredScript,
-    entry: DirectoryEntry,
-  ) => {
-    try {
-      const result = await window.refCanvas.scripts.run({
-        id: script.id,
-        cwd: entry.isDirectory ? entry.path : dirnameOf(entry.path),
-      });
-      const summary = result.timedOut
-        ? translate("directory.scriptTimedOut").replace("{name}", script.name)
-        : translate("directory.scriptExitCode")
-            .replace("{name}", script.name)
-            .replace("{code}", String(result.exitCode ?? "?"))
-            .replace("{duration}", String(result.durationMs));
-      await dialog.requestConfirm({
-        title: summary,
-        description:
-          result.output.trim().slice(0, 4000) || translate("directory.scriptNoOutput"),
-        confirmLabel: translate("preview.close"),
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : translate("directory.scriptRunFailed");
-      if (message === "SCRIPT_HASH_CHANGED") {
-        await dialog.requestConfirm({
-          title: translate("directory.scriptHashChanged"),
-          description: translate("directory.scriptHashChangedDescription"),
-          confirmLabel: translate("collections.acknowledge"),
-        });
-      } else {
-        await dialog.requestConfirm({
-          title: translate("directory.scriptRunFailedTitle"),
-          description: message,
-          confirmLabel: translate("preview.close"),
-        });
-      }
-    }
-  };
-
-  const trashEntry = async (entry: DirectoryEntry) => {
-    const confirmed = await dialog.requestConfirm({
-      title: translate("directory.deleteNamed").replace("{name}", entry.name),
-      description: translate("directory.trashDescription"),
-      confirmLabel: translate("preview.moveToTrash"),
-      danger: true,
-    });
-    if (!confirmed) return;
-    const operation = () => window.refCanvas.filesystem.trash(
-      [entry.path],
-      directoryScanComplete && directoryRevision && store.directoryPath
-        ? {
-            revision: directoryRevision,
-            directoryPath: store.directoryPath,
-          }
-        : undefined,
-    );
-    const result = store.directoryPath
-      ? await runWithDirectoryWriteAccess(store.directoryPath, operation)
-      : { completed: true, value: await operation() };
-    if (!result.completed) return;
-    await store.reloadDirectory();
-    previewCoordinator.close();
-    directorySelection.clear();
-  };
-
-  /** 复制/移动到目标目录（冲突先询问策略，传当前目录 revision）。 */
-  const copyOrMoveEntry = async (
-    entry: DirectoryEntry,
-    kind: "copy" | "move",
-  ) => {
-    setContextMenu(null);
-    const target = await window.refCanvas.system.pickDirectory({
-      title: kind === "copy" ? translate("directory.pickCopyTarget") : translate("directory.pickMoveTarget"),
-      defaultPath: store.directoryPath ?? undefined,
-    });
-    if (!target) return;
-    const conflictAction = await askConflictStrategy();
-    if (!conflictAction) return;
-    const revisionOptions = {
-      conflictAction,
-      revision: directoryRevision || undefined,
-      directoryPath: store.directoryPath ?? undefined,
-    };
-    const report = await (kind === "copy"
-      ? window.refCanvas.filesystem.copy([entry.path], target, revisionOptions)
-      : window.refCanvas.filesystem.move([entry.path], target, revisionOptions));
-    await store.reloadDirectory();
-    const failed = report.failed[0];
-    if (failed) {
-      window.alert(
-        (kind === "copy" ? translate("directory.copyFailed") : translate("directory.moveFailed"))
-          .replace("{reason}", failed.reason),
-      );
-    }
-  };
-
-  const closePreview = () => previewCoordinator.close();
-
-  // ===== 批量操作（选中文件集合） =====
-  const selectedFilePaths = () =>
-    files
-      .map((entry) => entry.path)
-      .filter((path) => selectedPaths.has(path));
-
-  const focusedFile = () => {
-    const focusedPath = previewPath ?? selectionAnchor ?? store.selectedDirectoryEntry?.path;
-    return files.find((entry) => entry.path === focusedPath) ?? files[0] ?? null;
-  };
-
-  const selectFileFromKeyboard = (entry: DirectoryEntry) => {
-    directorySelection.selectOnly(entry.path);
-    store.selectDirectoryEntry(entry);
-
-    // 用网格索引空间定位（分组头偏移感知，两区各自行高/列数），与虚拟
-    // 网格渲染位置一致。
-    const gridIndex = gridEntries.findIndex(
-      (candidate) => candidate.path === entry.path,
-    );
-    const node = viewportRef.current;
-    if (gridIndex < 0 || !node) return;
-    const top =
-      gridIndex < folderCount
-        ? folderHeaderHeight +
-          Math.floor(gridIndex / folderColumns) * folderRowHeight
-        : fileRegionTop +
-          Math.floor((gridIndex - folderCount) / columns) * effectiveRowHeight;
-    if (top < node.scrollTop) node.scrollTop = top;
-    else if (top + effectiveRowHeight > node.scrollTop + node.clientHeight) {
-      node.scrollTop = Math.max(0, top + effectiveRowHeight - node.clientHeight);
-    }
-  };
-
-  const updateFocusedMetadata = async (
-    action: "favorite" | "rating",
-    rating?: number,
-  ) => {
-    const entry = focusedFile();
-    if (!entry) {
-      showShortcutNotice(translate("directory.noActionableAssets"));
-      return;
-    }
-    try {
-      const { asset } = await window.refCanvas.filesystem.materialize(entry.path);
-      const patch =
-        action === "favorite"
-          ? { favorite: !asset.favorite }
-          : { rating: Math.max(0, Math.min(5, rating ?? 0)) };
-      const updated = await window.refCanvas.library.update(asset.id, patch);
-      updateEntryMetadata(entry.path, {
-        favorite: updated.favorite,
-        rating: updated.rating,
-      });
-      showShortcutNotice(
-        action === "favorite"
-          ? updated.favorite
-            ? translate("directory.favoritedNamed").replace("{name}", entry.name)
-            : translate("directory.unfavoritedNamed").replace("{name}", entry.name)
-          : updated.rating
-            ? translate("directory.ratedNamed")
-                .replace("{name}", entry.name)
-                .replace("{rating}", String(updated.rating))
-            : translate("directory.ratingClearedNamed").replace("{name}", entry.name),
-      );
-    } catch (error) {
-      showShortcutNotice(
-        translate("directory.operationFailed").replace(
-          "{reason}",
-          error instanceof Error ? error.message : translate("directory.failedToUpdateAsset"),
-        ),
-      );
-    }
-  };
-
-  const dragOutEntry = (entry: DirectoryEntry) => {
-    const paths = allMatchingSelected
-      ? files
-          .filter((item) => !excludedPaths.has(item.path))
-          .map((item) => item.path)
-      : selectedPaths.has(entry.path)
-        ? selectedFilePaths()
-        : [entry.path];
-    window.refCanvas.filesystem.dragOut(paths.length ? paths : [entry.path]);
-  };
-
-  const clearSelection = () => {
-    directorySelection.clear();
-    store.selectDirectoryEntry(null);
-  };
-
-  const startAllBatch = async (action: DirectoryBatchAction): Promise<boolean> => {
-    if (
-      !allMatchingSelected ||
-      !window.refCanvas.filesystem.startBatch
-    ) return false;
-    const selection = resolveDirectorySelectionScope({
-      allMatchingSelected,
-      searchId,
-      searchComplete,
-      searchRevision,
-      directoryPath: store.directoryPath,
-      directoryScanComplete,
-      directoryRevision,
-      excludedPaths,
-      extensions: formatFilterExtensions,
-      favoritesOnly,
-    });
-    if (!selection) return false;
-    const start = () => window.refCanvas.filesystem.startBatch(selection, action);
-    const result = action.type === "trash" && store.directoryPath
-      ? await runWithDirectoryWriteAccess(store.directoryPath, start)
-      : { completed: true, value: await start() };
-    if (!result.completed || !result.value) return true;
-    const snapshot = result.value;
-    setBatchJob(snapshot);
-    clearSelection();
-    return true;
-  };
-
-  const copySelectedPaths = async () => {
-    if (allMatchingSelected) {
-      const selection = resolveDirectorySelectionScope({
-        allMatchingSelected,
-        searchId,
-        searchComplete,
-        searchRevision,
-        directoryPath: store.directoryPath,
-        directoryScanComplete,
-        directoryRevision,
-        excludedPaths,
-        extensions: formatFilterExtensions,
-        favoritesOnly,
-      });
-      if (!selection) return;
-      const snapshot = await window.refCanvas.filesystem.exportPaths(selection);
-      if (snapshot) {
-        setBatchJob(snapshot);
-        clearSelection();
-      }
-      return;
-    }
-    void window.refCanvas.system.writeClipboard(
-      selectedFilePaths().join("\n"),
-    );
-  };
-
-  const batchTag = async () => {
-    const values = await dialog.requestForm({
-      title: translate("preview.setTags"),
-      description: translate("directory.batchTagDescription").replace("{count}", String(selectedCount)),
-      confirmLabel: translate("collections.save"),
-      fields: [
-        {
-          name: "tags",
-          label: translate("directory.tagsLabel"),
-          required: true,
-          maxLength: 500,
-        },
-      ],
-      onSubmit: () => undefined,
-    });
-    if (!values) return;
-    const tags = values.tags
-      .split(/[,，]/)
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    if (await startAllBatch({ type: "tag", tags })) return;
-    const paths = selectedFilePaths();
-    if (!paths.length) return;
-    await store.materializeEntriesWithTags(
-      paths,
-      tags,
-    );
-    updateEntryTags(paths, tags);
-    clearSelection();
-  };
-
-  const addSelectedToBoard = async () => {
-    const paths = selectedFilePaths();
-    if (!paths.length) return;
-    await store.addDirectoryEntriesToBoard(paths);
-    clearSelection();
-  };
-
-  const batchTrash = async () => {
-    const confirmed = await dialog.requestConfirm({
-      title: translate("directory.deleteSelectedCount").replace("{count}", String(selectedCount)),
-      description: translate("directory.trashBatchDescription"),
-      confirmLabel: translate("preview.moveToTrash"),
-      danger: true,
-    });
-    if (!confirmed) return;
-    if (await startAllBatch({ type: "trash" })) return;
-    const paths = selectedFilePaths();
-    if (!paths.length) return;
-    if (!(await store.trashEntries(paths))) return;
-    previewCoordinator.close();
-    clearSelection();
-  };
-
-  /** 询问冲突处理策略（apply-to-all：一次选择应用于全部冲突）。 */
-  const askConflictStrategy = async (): Promise<
-    "skip" | "rename" | "replace" | null
-  > => {
-    const values = await dialog.requestForm({
-      title: translate("directory.conflictTitle"),
-      description: translate("directory.conflictDescription"),
-      confirmLabel: translate("directory.continue"),
-      fields: [
-        {
-          name: "strategy",
-          label: translate("directory.conflictStrategy"),
-          type: "select",
-          initialValue: "rename",
-          options: [
-            { value: "rename", label: translate("directory.conflictRename") },
-            { value: "replace", label: translate("directory.conflictReplace") },
-            { value: "skip", label: translate("directory.conflictSkip") },
-          ],
-        },
-      ],
-      onSubmit: () => undefined,
-    });
-    if (!values) return null;
-    return String(values.strategy) as "skip" | "rename" | "replace";
-  };
-
-  /** 批量复制/移动到目标目录（冲突策略先询问，应用到全部）。 */
-  const batchCopyMove = async (kind: "copy" | "move") => {
-    const paths = selectedFilePaths();
-    if (!paths.length) return;
-    const target = await window.refCanvas.system.pickDirectory({
-      title: kind === "copy" ? translate("directory.pickCopyTarget") : translate("directory.pickMoveTarget"),
-      defaultPath: store.directoryPath ?? undefined,
-    });
-    if (!target) return;
-    const conflictAction = await askConflictStrategy();
-    if (!conflictAction) return;
-    const revisionOptions = {
-      conflictAction,
-      revision: directoryRevision || undefined,
-      directoryPath: store.directoryPath ?? undefined,
-    };
-    const report = await (kind === "copy"
-      ? window.refCanvas.filesystem.copy(paths, target, revisionOptions)
-      : window.refCanvas.filesystem.move(paths, target, revisionOptions));
-    await store.reloadDirectory();
-    clearSelection();
-    if (report.failed.length) {
-      window.alert(
-        (kind === "copy" ? translate("directory.copyFailedCount") : translate("directory.moveFailedCount"))
-          .replace("{count}", String(report.failed.length))
-          .replace("{reason}", report.failed[0].reason),
-      );
-    }
-  };
-
-  const batchCopyTo = () => batchCopyMove("copy");
-  const batchMoveTo = () => batchCopyMove("move");
-
-  /** 剪切/复制到剪贴板。 */
-  const clipboardSelection = (mode: "copy" | "cut") => {
-    const paths = selectedFilePaths();
-    if (!paths.length) return;
-    setDirectoryClipboard({
-      paths,
-      mode,
-      sourceDirectory: store.directoryPath,
-    });
-  };
-
-  /** 粘贴剪贴板内容到当前目录。 */
-  const pasteClipboard = async () => {
-    const clipboard = getDirectoryClipboard();
-    if (!clipboard || !clipboard.paths.length || !store.directoryPath) return;
-    const target = store.directoryPath;
-    const conflictAction = await askConflictStrategy();
-    if (!conflictAction) return;
-    const revisionOptions = {
-      conflictAction,
-      revision: directoryRevision || undefined,
-      directoryPath: store.directoryPath,
-    };
-    const report = await (clipboard.mode === "copy"
-      ? window.refCanvas.filesystem.copy(clipboard.paths, target, revisionOptions)
-      : window.refCanvas.filesystem.move(clipboard.paths, target, revisionOptions));
-    if (clipboard.mode === "cut") {
-      setDirectoryClipboard(null);
-      if (store.directoryPath === clipboard.sourceDirectory) {
-        await store.reloadDirectory();
-      }
-    }
-    await store.reloadDirectory();
-    clearSelection();
-    if (report.failed.length) {
-      window.alert(
-        translate("directory.pasteFailedCount")
-          .replace("{count}", String(report.failed.length))
-          .replace("{reason}", report.failed[0].reason),
-      );
-    }
-  };
+  const downscaleEntry = (entry: DirectoryEntry) =>
+    downscaleEntryAction(entryActionDeps, entry);
+  const exportMp4Entry = (entry: DirectoryEntry) =>
+    exportMp4EntryAction(entryActionDeps, entry);
+  const runScript = (script: RegisteredScript, entry: DirectoryEntry) =>
+    runScriptAction(entryActionDeps, script, entry);
+  const trashEntry = (entry: DirectoryEntry) =>
+    trashEntryAction(entryActionDeps, entry);
+  const copyOrMoveEntry = (entry: DirectoryEntry, kind: "copy" | "move") =>
+    copyOrMoveEntryAction(entryActionDeps, entry, kind);
 
   const shortcutHandlerRef = useRef<(event: KeyboardEvent) => void>(
     () => undefined,
@@ -3585,35 +2913,5 @@ export function DirectoryAssetPanel() {
       },
     );
     return request;
-  }
-
-  async function loadSearchPage(id: string, offset: number) {
-    if (
-      !window.refCanvas.filesystem.getSearchPage ||
-      searchPageRequestsRef.current.has(offset)
-    ) return;
-    searchPageRequestsRef.current.add(offset);
-    setLoadingMore(true);
-    try {
-      const page = await window.refCanvas.filesystem.getSearchPage(id, {
-        pageSize: directoryPageSize,
-        offset,
-      });
-      if (activeSearchIdRef.current !== id) return;
-      setSearchTotal(page.totalFiles ?? page.total);
-      setSearchRevision(page.revision ?? "");
-      setSearchComplete(page.scanState === "complete");
-      setSearchPages((current) => {
-        const next = new Map(current);
-        next.set(offset, page.entries);
-        const currentOffset = Math.floor(
-          currentViewportIndex() / directoryPageSize,
-        ) * directoryPageSize;
-        return trimDirectoryPageCache(next, currentOffset, maximumCachedPages);
-      });
-    } finally {
-      searchPageRequestsRef.current.delete(offset);
-      setLoadingMore(false);
-    }
   }
 }
