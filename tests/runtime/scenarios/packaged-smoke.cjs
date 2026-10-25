@@ -220,9 +220,6 @@ async function runPackagedSmoke(client, browseRoot, screenshotRoot, runLabel) {
         .find((item) => item.textContent?.includes("runtime-preview.mp4"));
       if (!videoCard) throw new Error("VIDEO_CARD_NOT_FOUND");
       videoCard.click();
-      const previewTab = document.querySelector('.directory-details-panel [role="tab"]');
-      if (!previewTab) throw new Error("PREVIEW_TAB_NOT_FOUND");
-      previewTab.click();
       const toolbar = await waitForSelector(".directory-details-panel .preview-toolbar-video", 30000);
       const viewport = await waitForSelector(".directory-details-panel .preview-viewport", 30000);
       const video = await waitForSelector(".directory-details-panel .preview-viewport video", 30000);
