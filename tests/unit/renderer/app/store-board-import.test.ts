@@ -28,7 +28,6 @@ const document: BoardDocumentV3 = {
   appearance: { backgroundColor: "#202426", gridVisible: true, gridSize: 24 },
   windowMode: "normal",
   canvasMode: { locked: false, grayscale: false, gridStyle: "line" },
-  sampling: "bilinear",
   exportSettings: { format: "png", embedAssets: false },
 };
 

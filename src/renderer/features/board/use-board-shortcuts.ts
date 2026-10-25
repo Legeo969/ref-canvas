@@ -23,9 +23,7 @@ export interface BoardShortcutActions {
   readonly resetCrop: () => void;
   readonly flipX: () => void;
   readonly flipY: () => void;
-  readonly toggleSelectionGrayscale: () => void;
   readonly toggleCanvasGrayscale: () => void;
-  readonly toggleSampling: () => void;
   readonly toggleLock: () => void;
   readonly exitFocus: () => void;
   readonly fitAll: () => void;
@@ -106,9 +104,7 @@ export function useBoardShortcuts(
         if (event.ctrlKey && event.shiftKey && !event.altKey && key === "c") { event.preventDefault(); dispatch("resetCrop"); return; }
         if (event.altKey && event.shiftKey && !event.ctrlKey && key === "h") { event.preventDefault(); dispatch("flipX"); return; }
         if (event.altKey && event.shiftKey && !event.ctrlKey && key === "v") { event.preventDefault(); dispatch("flipY"); return; }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "g") { event.preventDefault(); dispatch("toggleSelectionGrayscale"); return; }
         if (event.ctrlKey && event.altKey && !event.shiftKey && key === "g") { event.preventDefault(); dispatch("toggleCanvasGrayscale"); return; }
-        if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "t") { event.preventDefault(); dispatch("toggleSampling"); return; }
         if (event.altKey && !event.ctrlKey && !event.shiftKey && key === "l") { event.preventDefault(); dispatch("toggleLock"); return; }
         if (event.ctrlKey && event.shiftKey && !event.altKey && key === "z") { event.preventDefault(); dispatch("redo"); return; }
       }
@@ -116,7 +112,9 @@ export function useBoardShortcuts(
       if (!isEditing && event.ctrlKey && !event.altKey && event.key === " ") { event.preventDefault(); dispatch("fitAll"); return; }
       if (!isEditing && event.ctrlKey && !event.altKey && event.key === "0") { event.preventDefault(); dispatch("zoom100"); return; }
       if (!isEditing && event.ctrlKey && !event.altKey && key === "a") { event.preventDefault(); dispatch("selectAll"); return; }
-      if (!isEditing && shortcutMatches(event, bindings.focus)) { event.preventDefault(); dispatch("toggleFocus"); return; }
+      // Space 由 BoardCanvas 的空格平移/轻按聚焦专用路径处理，这里排除
+      // 空格避免双触发；focus 重绑到其它键时不受影响。
+      if (!isEditing && event.key !== " " && shortcutMatches(event, bindings.focus)) { event.preventDefault(); dispatch("toggleFocus"); return; }
       if (!isEditing && state.focused && !matchingShortcutId && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
         event.preventDefault(); dispatch("stepFocus", event.key === "ArrowRight" ? 1 : -1); return;
       }
@@ -126,6 +124,10 @@ export function useBoardShortcuts(
       if (!isEditing && state.pureRef && !event.ctrlKey && !event.altKey && !event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
         if (!state.hasSelection) return;
         event.preventDefault(); dispatch("moveLayer", event.key === "ArrowUp"); return;
+      }
+      // Ctrl+[ / Ctrl+]：图层下移/上移一层，两种交互预设通用。
+      if (!isEditing && event.ctrlKey && !event.altKey && (event.key === "[" || event.key === "]")) {
+        event.preventDefault(); dispatch("moveLayer", event.key === "]"); return;
       }
       if (!isEditing && shortcutMatches(event, bindings.delete)) { event.preventDefault(); dispatch("delete"); return; }
       if (!isEditing && !matchingShortcutId && !state.pureRef && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {

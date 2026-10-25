@@ -142,7 +142,6 @@ export interface BoardDocumentLoadContext {
 export interface BoardControllerOperations {
   loadDocument?(document: BoardDocumentV3, context: BoardDocumentLoadContext): Promise<void> | void;
   saveDocument?(): Promise<void> | void;
-  importAssetIds?(ids: string[], point?: { x: number; y: number }): Promise<void> | void;
   refreshProxies?(): Promise<void> | void;
   handleShortcut?(event: KeyboardEvent): boolean;
 }
@@ -185,7 +184,6 @@ function boardDocumentRevision(document: BoardDocumentV3): string {
     viewport: document.viewport,
     appearance: document.appearance,
     canvasMode: document.canvasMode,
-    sampling: document.sampling,
   });
 }
 
@@ -456,10 +454,6 @@ export class BoardCanvasController {
 
   beginGesture(kind: string, targetId: string | null): void { this.gesture = { kind, objectId: targetId }; }
   endGesture(): void { this.gesture = null; this.refreshHotSnapshot(); }
-
-  async importAssetIds(ids: string[], point?: { x: number; y: number }): Promise<void> {
-    await this.operations.importAssetIds?.(ids, point);
-  }
 
   async save(): Promise<void> { this.setSaved(false); await this.operations.saveDocument?.(); this.setSaved(true); }
   refreshProxies(): void { void this.operations.refreshProxies?.(); }

@@ -25,6 +25,14 @@ describe("resolveBoardContext", () => {
       mode: "multi",
     });
   });
+
+  it("keeps the multi menu when right-clicking empty space with an active multi-selection", () => {
+    // 回归:第一次对齐把对象移走后,下一次右键常落在空白处(target 缺失)。
+    // 多选仍然有效,菜单必须保持 multi,否则对齐/分布入口整体消失(连击失效)。
+    expect(resolveBoardContext([first, second], undefined, false)).toEqual({
+      mode: "multi",
+    });
+  });
 });
 
 describe("clampBoardContextPosition", () => {

@@ -111,9 +111,17 @@ export class BoardArrangeController {
     this.commitLayoutObjects(canvas, objects);
   };
 
-  /** 排列：按名称/添加时间/图层顺序/路径/随机/堆叠（支持正序/反序与间距）。 */
+  /**
+   * 排列：按名称/添加时间/图层顺序/路径/随机/堆叠（支持正序/反序与间距）。
+   * options 缺省时保持既有默认：正序、间距 20、左对齐。
+   */
   readonly arrangeBy = (
     key: "name" | "added" | "layer" | "path" | "random" | "stack",
+    options?: {
+      reverse?: boolean;
+      gap?: number;
+      align?: "left" | "center" | "right";
+    },
   ) => {
     const canvas = this.deps.getCanvas();
     if (!canvas) return;
@@ -141,9 +149,9 @@ export class BoardArrangeController {
     });
     const results = arrangeItems(items, {
       key,
-      reverse: false,
-      gap: 20,
-      align: "left",
+      reverse: options?.reverse ?? false,
+      gap: options?.gap ?? 20,
+      align: options?.align ?? "left",
       seed: key === "random" ? Math.floor(Math.random() * 0xffffffff) : 0,
     });
     const byId = new Map(results.map((result) => [result.id, result]));

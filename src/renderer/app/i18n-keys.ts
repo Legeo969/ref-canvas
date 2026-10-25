@@ -138,6 +138,8 @@ export type MessageKey =
 
   | "board.apply"
 
+  | "board.arrangeApply"
+
   | "board.arrangeByAdded"
 
   | "board.arrangeByLayer"
@@ -150,15 +152,19 @@ export type MessageKey =
 
   | "board.arrangeCompactSelection"
 
+  | "board.arrangeGap"
+
+  | "board.arrangeSortKey"
+
   | "board.arrangeRandom"
+
+  | "board.arrangeReverse"
+
+  | "board.arrangeSettings"
 
   | "board.arrangeStack"
 
-  | "board.backgroundGrid"
-
   | "board.boardAssetDefaultTitle"
-
-  | "board.canvasGrayscale"
 
   | "board.canvasGrayscaleWhole"
 
@@ -170,15 +176,17 @@ export type MessageKey =
 
   | "board.clickThroughNotice"
 
+  | "board.collapseToolbar"
+
   | "board.close3DPreview"
+
+  | "board.closeArrangeSettings"
 
   | "board.closeDrawingSettings"
 
   | "board.closeInspector"
 
   | "board.closeLayers"
-
-  | "board.closeMoreTools"
 
   | "board.closePreview"
 
@@ -292,6 +300,8 @@ export type MessageKey =
 
   | "board.drawRectangle"
 
+  | "board.dropFolderUnsupported"
+
   | "board.dropLimited"
 
   | "board.dropPlaced"
@@ -300,7 +310,11 @@ export type MessageKey =
 
   | "board.duplicate"
 
+  | "board.editContent"
+
   | "board.editNote"
+
+  | "board.emptyHint"
 
   | "board.enableDrawing"
 
@@ -311,6 +325,8 @@ export type MessageKey =
   | "board.exitDrawing"
 
   | "board.exitFocus"
+
+  | "board.expandToolbar"
 
   | "board.exportPngSelection"
 
@@ -344,10 +360,6 @@ export type MessageKey =
   | "board.gifPause"
 
   | "board.gifPlay"
-
-  | "board.grayscaleGlyph"
-
-  | "board.gridStyle"
 
   | "board.gridStyleCycle"
 
@@ -414,6 +426,10 @@ export type MessageKey =
   | "board.hudZoomPercent"
 
   | "board.imageDefaultName"
+
+  | "board.importFiles"
+
+  | "board.importFilesTitle"
 
   | "board.importPlaced"
 
@@ -487,11 +503,13 @@ export type MessageKey =
 
   | "board.maskRectShort"
 
-  | "board.moreTools"
-
   | "board.moveBottom"
 
+  | "board.moveDownOne"
+
   | "board.moveTop"
+
+  | "board.moveUpOne"
 
   | "board.normalizeHeight"
 
@@ -571,19 +589,13 @@ export type MessageKey =
 
   | "board.restoreCanvasColor"
 
-  | "board.restoreColor"
-
   | "board.rotate90"
 
   | "board.sampleColor"
 
   | "board.sampleColorTitle"
 
-  | "board.samplingBilinear"
-
   | "board.samplingColorLabel"
-
-  | "board.samplingNearest"
 
   | "board.samplingNotice"
 
@@ -592,8 +604,6 @@ export type MessageKey =
   | "board.samplingResultDescription"
 
   | "board.samplingResultTitle"
-
-  | "board.samplingTitle"
 
   | "board.samplingXLabel"
 
@@ -647,15 +657,7 @@ export type MessageKey =
 
   | "board.textDefaultContent"
 
-  | "board.toggleGrayscale"
-
-  | "board.toggleGrayscaleShort"
-
   | "board.toggleLock"
-
-  | "board.toggleSampling"
-
-  | "board.toggleSamplingLabel"
 
   | "board.toolbarLabel"
 
@@ -686,6 +688,12 @@ export type MessageKey =
   | "board.windowOverlay"
 
   | "board.zoom100"
+
+  | "board.zoomFit"
+
+  | "board.zoomIn"
+
+  | "board.zoomOut"
 
   | "boards.createConfirm"
 
@@ -1951,14 +1959,6 @@ export type MessageKey =
   | "settings.board.controlsPureRef"
 
   | "settings.board.controlsStandard"
-
-  | "settings.board.sampling"
-
-  | "settings.board.samplingBilinear"
-
-  | "settings.board.samplingHint"
-
-  | "settings.board.samplingNearest"
 
   | "settings.board.snap"
 

@@ -103,6 +103,34 @@ export function optimizeBoardActiveSelection(
   return selection as BoardActiveSelection;
 }
 
+/**
+ * Ctrl+点击加选/移出：活动对象为多选且含 target 时移出（剩 1 个收拢为单选、
+ * 剩 0 个清除、其余重建多选），不含 target 时加入；无多选（单选/空）保持
+ * Fabric 普通点击行为不动。与 selectAllBoardObjects 一样只调度一次重绘。
+ */
+export function toggleObjectInActiveSelection(
+  canvas: Canvas,
+  target: FabricObject,
+): void {
+  const active = canvas.getActiveObject();
+  if (!(active instanceof ActiveSelection)) return;
+  const members = active.getObjects();
+  const rest = members.filter((object) => object !== target);
+  if (rest.length === members.length) {
+    canvas.setActiveObject(
+      createBoardActiveSelection([...members, target], canvas),
+    );
+  } else if (rest.length === 1) {
+    canvas.setActiveObject(rest[0]);
+  } else if (rest.length === 0) {
+    canvas.discardActiveObject();
+  } else {
+    canvas.setActiveObject(createBoardActiveSelection(rest, canvas));
+  }
+  canvas.getActiveObject()?.setCoords();
+  canvas.requestRenderAll();
+}
+
 /** Selects all selectable board objects and schedules exactly one repaint. */
 export function selectAllBoardObjects(canvas: Canvas): void {
   const selectable = canvas

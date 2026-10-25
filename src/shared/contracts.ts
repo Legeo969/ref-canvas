@@ -325,7 +325,6 @@ export interface BoardSettings {
   snapEnabled: boolean;
   /** 选中图片对象时自动置顶。 */
   bringToFrontOnSelect: boolean;
-  sampling: "nearest" | "bilinear";
   /** 撤销历史最大条数。 */
   undoLimit: number;
 }
@@ -1056,7 +1055,6 @@ export type BoardWindowMode =
   | "always-on-bottom"
   | "transparent-overlay"
   | "locked";
-export type BoardSampling = "nearest" | "bilinear";
 export type BoardExportFormat = "png" | "jpeg" | "webp";
 
 export interface BoardCanvasMode {
@@ -1085,8 +1083,8 @@ export interface BoardNote {
 }
 
 /**
- * PureRef-grade board document: extends V2 with window/canvas modes, export
- * settings and sampling; notes/lists/links travel inside the canvas object
+ * PureRef-grade board document: extends V2 with window/canvas modes and export
+ * settings; notes/lists/links travel inside the canvas object
  * `data` so existing tooling keeps working.
  */
 export interface BoardDocumentV3 {
@@ -1100,7 +1098,6 @@ export interface BoardDocumentV3 {
   appearance: BoardAppearance;
   windowMode: BoardWindowMode;
   canvasMode: BoardCanvasMode;
-  sampling: BoardSampling;
   exportSettings: BoardExportSettings;
 }
 
@@ -2053,6 +2050,8 @@ export interface RefCanvasApi {
     markRendererInteractive(): Promise<void>;
     /** Sets always-on-bottom window behavior (special window modes). */
     setAlwaysOnBottom(enabled: boolean): Promise<boolean>;
+    /** 独立白板窗口弹层打开期间临时抬升到置顶层；disable 按快照还原。 */
+    setInteractionLift(enabled: boolean): Promise<void>;
     /** Enables a frameless click-through overlay window mode. */
     setClickThrough(enabled: boolean): Promise<boolean>;
     /** Sets a visible translucent overlay window. */

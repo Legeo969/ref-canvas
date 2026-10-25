@@ -43,6 +43,9 @@ Windows-first、纯本地的磁盘原生媒体浏览器与无限参考白板。
 - `Ctrl+C / Ctrl+V`：跨白板复制粘贴对象
 - `Ctrl+G / Ctrl+Shift+G`：组合/取消组合
 - `Ctrl+Z / Ctrl+Y`：撤销/重做
+- `空格+左键拖拽`：平移画布
+- `Ctrl+点击`：加选/移出选择
+- `Ctrl+[ / Ctrl+]`：图层下移/上移一层
 - `Space`：聚焦选中图片/返回原视图；聚焦时 `←/→` 浏览前后图片
 - `Tab`：专注白板
 - 可选全局快捷键：`Ctrl+Shift+C` 捕获剪贴板，`Ctrl+Shift+R` 区域截图

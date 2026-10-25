@@ -33,7 +33,7 @@ export interface ArrangeOptions {
   /** Gap between stacked items. */
   gap?: number;
   /** Alignment within the arrangement for name/added/layer/path. */
-  align?: "left" | "center";
+  align?: "left" | "center" | "right";
   /** Anchor point for stacking (0=first item's top-left). */
   stackAnchor?: "first" | "last";
   /** Random seed for deterministic random order (0 = true random). */
@@ -130,8 +130,8 @@ export function arrangeItems(
     cursorX += item.width + gap;
     rowMaxHeight = Math.max(rowMaxHeight, item.height);
   }
-  if (align === "center") {
-    // Center each row horizontally around the widest row.
+  if (align !== "left") {
+    // Center/right-align each row horizontally against the widest row.
     const rows = new Map<number, { start: number; width: number }>();
     let currentRow = 0;
     let rowWidth = 0;
@@ -148,14 +148,16 @@ export function arrangeItems(
     }
     const maxWidth = Math.max(...[...rows.values()].map((row) => row.width));
     for (const placed of result) {
-      const item = sorted.find((candidate) => candidate.id === placed.id)!;
       const row = [...rows.entries()].find(
         ([, value]) => placed.y === value.start,
       );
       if (row) {
-        placed.x = (maxWidth - row[1].width) / 2 + placed.x;
+        // 居中偏移行宽差的一半，右对齐偏移整段行宽差。
+        placed.x +=
+          align === "center"
+            ? (maxWidth - row[1].width) / 2
+            : maxWidth - row[1].width;
       }
-      void item;
     }
   }
   return result;

@@ -54,7 +54,6 @@ const boardDocument: BoardDocumentV3 = {
   appearance: { backgroundColor: "#202426", gridVisible: true, gridSize: 24 },
   windowMode: "normal",
   canvasMode: { locked: false, grayscale: false, gridStyle: "line" },
-  sampling: "bilinear",
   exportSettings: { format: "png", embedAssets: false },
 };
 
@@ -98,7 +97,6 @@ describe("BoardCanvas selection persistence", () => {
               interactionPreset: "pureref",
               snapEnabled: true,
               bringToFrontOnSelect: true,
-              sampling: "bilinear",
               undoLimit: 99,
             },
           })),

@@ -54,6 +54,24 @@ describe("board panning pointer", () => {
     ).toBe(false);
   });
 
+  it("pans with space+left in both interaction presets", () => {
+    const spaceLeft = { button: 0, buttons: 1, altKey: false };
+    expect(isPanPointerEvent(spaceLeft, false, true)).toBe(true);
+    expect(isPanPointerEvent(spaceLeft, true, true)).toBe(true);
+    // 非主键按下不算空格平移。
+    expect(
+      isPanPointerEvent({ button: 2, buttons: 2, altKey: false }, false, true),
+    ).toBe(false);
+    // spaceHeld 关闭时不影响原有 middle / Alt+左 判定。
+    expect(
+      isPanPointerEvent({ button: 1, buttons: 4, altKey: false }, false, false),
+    ).toBe(true);
+    expect(isPanPointerEvent(spaceLeft, false, false)).toBe(false);
+    expect(
+      isPanPointerEvent({ ...spaceLeft, altKey: true }, true, false),
+    ).toBe(true);
+  });
+
   it("tracks a native middle-button drag through press, move and release", () => {
     const session = new MiddlePanSession();
     expect(

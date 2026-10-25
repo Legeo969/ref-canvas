@@ -102,7 +102,7 @@ export const MIGRATIONS: readonly MigrationStep[] = [
     version: 11,
     id: "v11-board-v3",
     description:
-      "BoardDocumentV3: rich-text notes, links and checklists on board objects, plus persistent window mode, canvas mode, sampling and export settings.",
+      "BoardDocumentV3: rich-text notes, links and checklists on board objects, plus persistent window mode, canvas mode and export settings.",
     apply(db) {
       V11BoardV3.apply(db);
     },
@@ -747,7 +747,6 @@ class V11BoardV3 {
       },
       windowMode: "normal",
       canvasMode: { locked: false, grayscale: false, gridStyle: "line" },
-      sampling: "bilinear",
       exportSettings: { format: "png", embedAssets: false },
     };
   }

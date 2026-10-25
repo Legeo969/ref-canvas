@@ -330,7 +330,6 @@ describe("RefCanvasDatabase", () => {
       grayscale: false,
       gridStyle: "line",
     });
-    expect(loaded?.document.sampling).toBe("bilinear");
     expect(objects).toHaveLength(1);
     expect(loaded?.document.appearance).toEqual({
       backgroundColor: "#202426",

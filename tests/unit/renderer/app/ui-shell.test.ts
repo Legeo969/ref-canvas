@@ -118,16 +118,20 @@ describe("UI shell regressions", () => {
     );
   });
 
-  it("keeps the board tools window fixed to its opening coordinates", async () => {
+  it("keeps the flat board toolbar wrapping inside the window", async () => {
+    // 「更多」弹层退役后全部工具平铺在一条工具栏上：窄窗口时换行居中，
+    // 不裁剪、不出横向滚动条（max-width / flex-wrap 在 board.css 主块）。
     const css = await readStyles();
-    expect(css).toMatch(/\.board-toolbar-more\s*{[^}]*position: fixed;/s);
+    expect(css).toMatch(
+      /\.canvas-toolbar\s*{[^}]*max-width: calc\(100vw - 24px\);[^}]*flex-wrap: wrap;[^}]*justify-content: center;/s,
+    );
   });
 
   it("lifts folder action menus out of the sidebar overflow clip", async () => {
     // The sidebar sets overflow-y: auto, which per the CSS spec also clips
     // horizontally — an in-flow popover anchored to a far-right trigger gets
     // sliced off. The menu must be fixed + portaled so it escapes that clip,
-    // matching .batch-actions-popover / .board-toolbar-more above.
+    // matching .batch-actions-popover above.
     const css = await readStyles();
     expect(css).toMatch(/\.folder-actions-popover\s*{[^}]*position: fixed;/s);
   });

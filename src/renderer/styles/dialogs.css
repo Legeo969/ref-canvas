@@ -1265,9 +1265,6 @@
   right: auto;
   left: 50%;
   width: max-content;
-  max-width: calc(100% - 24px);
-  justify-content: flex-start;
-  overflow-x: auto;
   translate: -50% 0;
 }
 
@@ -1912,24 +1909,6 @@
   font-weight: 700;
 }
 
-.color-dot-icon {
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 30deg,
-    #ef6a62,
-    #f1c45a,
-    #58c58b,
-    #56a9df,
-    #a97ce0,
-    #ef6a62
-  );
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.18),
-    inset 0 0 0 2px rgba(23, 27, 28, 0.28);
-}
-
 .layers-panel {
   position: absolute;
   z-index: 21;
@@ -2103,7 +2082,6 @@
   white-space: nowrap;
 }
 
-.board-toolbar-more button > svg,
 .layer-row-menu button > svg {
   flex: 0 0 auto;
 }

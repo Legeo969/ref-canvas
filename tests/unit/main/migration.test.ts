@@ -260,7 +260,6 @@ describe("database migration", () => {
         grayscale: false,
         gridStyle: "line",
       });
-      expect(v1.document.sampling).toBe("bilinear");
       // V2 的 viewport/guides/appearance 保留。
       const v2 = migrated.loadBoard("00000000-0000-4000-8000-000000000002")!;
       expect(v2.document.viewport.zoom).toBe(1.5);

@@ -15,7 +15,6 @@ export class BoardRuntimeController {
   appearance: BoardAppearance;
   document: BoardDocumentV3;
   canvasMode: NonNullable<BoardDocumentV3["canvasMode"]>;
-  sampling: NonNullable<BoardDocumentV3["sampling"]>;
   exportSettings: NonNullable<BoardDocumentV3["exportSettings"]>;
   windowMode: NonNullable<BoardDocumentV3["windowMode"]>;
   interactionPreset: BoardSettings["interactionPreset"] = "pureref";
@@ -31,7 +30,6 @@ export class BoardRuntimeController {
       grayscale: false,
       gridStyle: "line",
     };
-    this.sampling = document.sampling ?? "bilinear";
     this.exportSettings = document.exportSettings ?? {
       format: "png",
       embedAssets: false,
@@ -48,7 +46,6 @@ export class BoardRuntimeController {
       grayscale: false,
       gridStyle: "line",
     };
-    this.sampling = document.sampling ?? "bilinear";
     this.exportSettings = document.exportSettings ?? {
       format: "png",
       embedAssets: false,
@@ -60,6 +57,5 @@ export class BoardRuntimeController {
     this.interactionPreset = settings.interactionPreset;
     this.snapEnabled = settings.snapEnabled;
     this.bringToFrontOnSelect = settings.bringToFrontOnSelect;
-    if (settings.sampling) this.sampling = settings.sampling;
   }
 }

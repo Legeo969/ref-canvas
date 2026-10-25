@@ -184,7 +184,6 @@ describe("hardening", () => {
         appearance: { backgroundColor: "#202426", gridVisible: true, gridSize: 24 },
         windowMode: "normal",
         canvasMode: { locked: false, grayscale: false, gridStyle: "line" },
-        sampling: "bilinear",
         exportSettings: { format: "png", embedAssets: false },
       });
       expect(saved.title).toBe("Strict");

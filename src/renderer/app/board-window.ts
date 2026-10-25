@@ -19,3 +19,21 @@ export function parseBoardWindowParams(search: string): BoardWindowParams | null
   if (!UUID_PATTERN.test(boardId)) return null;
   return { mode: "window", boardId };
 }
+
+/** 当前渲染进程是否为独立白板窗口（URL `?board=<uuid>&mode=window`）。 */
+export function isStandaloneBoardWindow(): boolean {
+  return parseBoardWindowParams(window.location.search) !== null;
+}
+
+/**
+ * 交互抬升触发条件：仅独立白板窗口存在打开中的弹层类 UI（右键菜单 /
+ * 排列面板 / 绘制面板）时抬升；主窗口工作区恒为 false，不产生任何 IPC。
+ */
+export function shouldLiftInteraction(
+  isStandalone: boolean,
+  menuOpen: boolean,
+  arrangeOpen: boolean,
+  drawingOpen: boolean,
+): boolean {
+  return isStandalone && (menuOpen || arrangeOpen || drawingOpen);
+}

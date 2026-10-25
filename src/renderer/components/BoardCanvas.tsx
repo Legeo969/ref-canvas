@@ -1,7 +1,8 @@
 import {
+  Maximize,
+  Minus,
   Pencil,
   Plus,
-  RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -20,7 +21,6 @@ import {
   ActiveSelection,
   Textbox,
   Triangle,
-  filters,
   util,
   type TMat2D,
 } from "fabric";
@@ -35,11 +35,13 @@ import {
 } from "react";
 import { BoardObjectComment } from "./BoardObjectComment";
 import { translate } from "../app/i18n";
+import { useAppStore } from "../app/store";
 import {
   createBoardActiveSelection,
   installBoardActiveSelection,
   optimizeBoardActiveSelection,
   selectAllBoardObjects,
+  toggleObjectInActiveSelection,
 } from "../app/board-active-selection";
 import type {
   AssetRecord,
@@ -102,7 +104,7 @@ import {
   BoardContextMenu,
   type BoardContextMenuState,
 } from "./board/BoardContextMenu";
-import { BoardToolbarMorePanel } from "./board/BoardToolbarMorePanel";
+import { BoardArrangePanel } from "./board/BoardArrangePanel";
 import { BoardDrawingPanel } from "./board/BoardDrawingPanel";
 import {
   BoardCommandPalette,
@@ -116,7 +118,10 @@ import {
   interruptedSelectionMouseUp,
   resolveBoardContext,
 } from "../app/board-context-menu";
-import { toolbarPanelPosition } from "../app/board-toolbar-position";
+import {
+  isStandaloneBoardWindow,
+  shouldLiftInteraction,
+} from "../app/board-window";
 import { applyBoardControls } from "../app/board-controls";
 import {
   boardProxySizeForPixels,
@@ -171,6 +176,7 @@ import { resolveBoardSelection } from "../features/board/controllers/selection-c
 import {
   clientToScenePoint,
   fitViewport,
+  zoomTo100,
 } from "../features/board/controllers/viewport-controller";
 import { useBoardEventBindings } from "../features/board/use-board-bindings";
 import {
@@ -184,7 +190,6 @@ import {
 import { BoardLayerPanel } from "./board/BoardLayerPanel";
 import {
   applyBoardCanvasMode,
-  applyBoardSampling,
   ensureBoardObjectIdentity as ensureObjectIdentity,
   serializeBoardDocument,
   type BoardCanvasObject as CanvasObjectWithData,
@@ -248,6 +253,22 @@ function BoardGifPreviewDialog({ asset }: { asset: AssetRecord }) {
   );
 }
 
+/**
+ * 独立白板窗口交互抬升：弹层类 UI 打开期间把窗口临时提到置顶层
+ * （system:set-interaction-lift），关闭或组件卸载时还原快照；
+ * 主窗口工作区恒为 no-op，不产生任何 IPC。
+ */
+function useBoardWindowInteractionLift(active: boolean): void {
+  const standalone = isStandaloneBoardWindow();
+  useEffect(() => {
+    if (!standalone) return;
+    void window.refCanvas.system.setInteractionLift(active);
+    return () => {
+      void window.refCanvas.system.setInteractionLift(false);
+    };
+  }, [standalone, active]);
+}
+
 export function BoardCanvas({
   board,
   document,
@@ -266,6 +287,8 @@ export function BoardCanvas({
   onReferencesChanged,
 }: BoardCanvasProps) {
   const dialog = useDialog();
+  // 应用级聚焦模式（隐藏侧栏/面板）时收起空板引导层，保持沉浸画面。
+  const focusMode = useAppStore((state) => state.focusMode);
   const canvasElementRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<FabricCanvas | null>(null);
@@ -347,6 +370,11 @@ export function BoardCanvas({
   const toolRef = useRef<BoardTool>("select");
   const drawingStyleRef = useRef<BoardDrawingStyle>(defaultBoardDrawingStyle);
   const scheduleSaveRef = useRef<(() => void) | null>(null);
+  // 桥接画布初始化 effect 内的缩放调度，供组件作用域的缩放控件（±按钮）调用。
+  const zoomUiRef = useRef<{
+    scheduleZoomState: (percent: number) => void;
+    scheduleProxyRefresh: () => void;
+  } | null>(null);
   const loadingRef = useRef(false);
   const bulkMutationRef = useRef(false);
   const historyControllerRef = useRef(new BoardHistoryController());
@@ -363,18 +391,14 @@ export function BoardCanvas({
     cropRect: cropRectRef,
     moveStart: moveStartRef,
   } = controller.gestureResources;
+  // 空格平移：按住 Space 时左键临时接管平移（两种交互预设通用），
+  // 轻按（未拖动）在 keyup 时保持原 Space 的聚焦切换语义。
+  const spaceHeldRef = useRef(false);
+  const spacePanMovedRef = useRef(false);
   const [hudMessage, setHudMessage] = useState<string | null>(null);
   const hudTimerRef = useRef<number | null>(null);
   const [boardContextMenu, setBoardContextMenu] =
     useState<BoardContextMenuState | null>(null);
-  const [toolbarMoreOpen, setToolbarMoreOpen] = useState(false);
-  const toolbarMoreButtonRef = useRef<HTMLButtonElement>(null);
-  const toolbarMorePanelRef = useRef<HTMLElement | null>(null);
-  const [toolbarMorePosition, setToolbarMorePosition] = useState({
-    x: 14,
-    y: 66,
-    maxHeight: 280,
-  });
   /** 吸附指示：拖动命中吸附时显示临时参考线，松开后淡出。 */
   const [snapIndicator, setSnapIndicator] = useState<{
     axis: "x" | "y";
@@ -413,11 +437,7 @@ export function BoardCanvas({
     );
     canvas.selection = interaction.selection;
     canvas.defaultCursor =
-      toolRef.current === "select"
-        ? "default"
-        : toolRef.current === "eraser"
-          ? "not-allowed"
-          : "crosshair";
+      toolRef.current === "select" ? "default" : "crosshair";
     canvas.setCursor(canvas.defaultCursor);
   };
 
@@ -471,59 +491,6 @@ export function BoardCanvas({
     return true;
   };
 
-  useEffect(() => {
-    if (!toolbarMoreOpen) return;
-    const button = toolbarMoreButtonRef.current;
-    if (!button) return;
-    let frame = 0;
-    const reposition = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        setToolbarMorePosition(
-          toolbarPanelPosition(
-            button.getBoundingClientRect(),
-            window.innerWidth,
-            window.innerHeight,
-          ),
-        );
-      });
-    };
-    const observer = new ResizeObserver(reposition);
-    observer.observe(button);
-    if (hostRef.current) observer.observe(hostRef.current);
-    const removeResize = controller.onDom(window, "resize", reposition);
-    reposition();
-    return () => {
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      removeResize();
-    };
-  }, [toolbarMoreOpen]);
-
-  // 「更多工具」面板：点击面板与触发按钮以外的任意区域、或按 Esc 时关闭。
-  // 用捕获阶段监听，Fabric 画布的指针处理不会拦截它。
-  useEffect(() => {
-    if (!toolbarMoreOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target instanceof Node) {
-        if (toolbarMorePanelRef.current?.contains(target)) return;
-        if (toolbarMoreButtonRef.current?.contains(target)) return;
-      }
-      setToolbarMoreOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setToolbarMoreOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [toolbarMoreOpen]);
-
   // 吸附参考线在松手后淡出，不常驻。
   useEffect(() => {
     if (!snapIndicator || snapIndicator.visible) return;
@@ -541,6 +508,18 @@ export function BoardCanvas({
   const [drawingStyle, setDrawingStyle] =
     useState<BoardDrawingStyle>(defaultBoardDrawingStyle);
   const [drawingPanelOpen, setDrawingPanelOpen] = useState(false);
+  const [arrangePanelOpen, setArrangePanelOpen] = useState(false);
+  // 工具栏收起态：默认展开，仅会话内有效，不持久化。
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  // 独立白板窗口：弹层打开期间临时抬升窗口，避免被置顶主窗口盖住。
+  useBoardWindowInteractionLift(
+    shouldLiftInteraction(
+      isStandaloneBoardWindow(),
+      Boolean(boardContextMenu),
+      arrangePanelOpen,
+      drawingPanelOpen,
+    ),
+  );
   const [layersOpen, setLayersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const layersPanelRef = useRef<HTMLElement | null>(null);
@@ -777,8 +756,8 @@ export function BoardCanvas({
 
   const openCommandPalette = () => {
     setBoardContextMenu(null);
-    setToolbarMoreOpen(false);
     setDrawingPanelOpen(false);
+    setArrangePanelOpen(false);
     setCommandPaletteOpen(true);
   };
 
@@ -802,12 +781,6 @@ export function BoardCanvas({
     canvas: FabricCanvas,
     mode: { locked: boolean; grayscale: boolean; gridStyle: string },
   ) => applyBoardCanvasMode(canvas, mode, toolRef.current);
-
-  /** Applies image sampling mode to the render context (nearest vs bilinear). */
-  const applySampling = (
-    canvas: FabricCanvas,
-    sampling: "nearest" | "bilinear",
-  ) => applyBoardSampling(canvas, sampling);
 
   const hierarchyObjects = (canvas: FabricCanvas): CanvasObjectWithData[] =>
     (canvas.getObjects() as CanvasObjectWithData[]).filter(
@@ -1041,6 +1014,7 @@ export function BoardCanvas({
     const scheduleProxyRefresh = () => {
       importController.scheduleProxyRefresh(refreshVisibleImageProxies);
     };
+    zoomUiRef.current = { scheduleZoomState, scheduleProxyRefresh };
     canvasRef.current = canvas;
     controller.onCanvas(canvas, "contextmenu", ({ e, target: hitTarget }) => {
       const event = e as MouseEvent;
@@ -1396,8 +1370,14 @@ export function BoardCanvas({
 
     let panning = false;
     const nativeMiddlePan = new MiddlePanSession();
-    let panButton: "middle" | "alt-left" | "locked-left" | null = null;
+    let panButton: "middle" | "alt-left" | "locked-left" | "space-left" | null = null;
+    // 空格平移的起点（客户区坐标），用于判定“轻按未拖动”。
+    let spacePanStartX = 0;
+    let spacePanStartY = 0;
     let selectionBeforePointer: CanvasObjectWithData | null = null;
+    // Ctrl+点击加选：按下前的多选成员快照（点中非成员时 Fabric 会在
+    // mouse:down 收拢多选，只能在这里抢救成员列表）。
+    let selectionMembersBeforePointer: CanvasObjectWithData[] | null = null;
     let lastX = 0;
     let lastY = 0;
     let drawingStart: { x: number; y: number } | null = null;
@@ -1405,6 +1385,9 @@ export function BoardCanvas({
     let hudFrame: number | null = null;
     let pendingHud = "";
     let primaryPointerDown = false;
+    // 主指针按下的客户区坐标：mouse:up 用它判定“纯点击”（位移 < 3px）。
+    let primaryPointerDownX = 0;
+    let primaryPointerDownY = 0;
     let primaryPointerRecoveryQueued = false;
     let disposed = false;
     let lastPrimaryPointer: PrimaryPointerSnapshot = {
@@ -1547,17 +1530,93 @@ export function BoardCanvas({
           (kind === "opacity" || kind === "flip" || kind === "cropZoom"));
       if (shouldFinish) recoverPrimaryPointer();
     };
+    const restoreSelectCursor = () => {
+      if (
+        toolRef.current === "select" &&
+        !gestureRef.current.kind &&
+        heldKeysRef.current.size === 0
+      ) {
+        canvas.defaultCursor = "default";
+        canvas.setCursor("default");
+      }
+    };
     const handleWindowBlur = () => {
+      // 失焦可能吞掉 keyup：收起空格平移状态，避免左键一直被当作平移。
+      spaceHeldRef.current = false;
       if (!recoverPrimaryPointer()) finishPanning();
+      restoreSelectCursor();
+      // 失焦即收起右键菜单：保证独立窗口的交互抬升必然还原。
+      setBoardContextMenu(null);
     };
     const handleVisibilityChange = () => {
       if (canvas.upperCanvasEl.ownerDocument.visibilityState === "hidden") {
+        spaceHeldRef.current = false;
         if (!recoverPrimaryPointer()) finishPanning();
+        restoreSelectCursor();
       }
     };
     const handlePointerCancel = (event: PointerEvent) => {
       rememberPrimaryPointer(event);
       if (!recoverPrimaryPointer()) finishPanning();
+    };
+    const spaceEventEditing = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        Boolean(target?.isContentEditable)
+      ) {
+        return true;
+      }
+      const active = canvas.getActiveObject() as
+        | CanvasObjectWithData
+        | undefined;
+      return Boolean((active as { isEditing?: boolean } | undefined)?.isEditing);
+    };
+    const handleSpaceKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" && event.key !== " ") return;
+      // Ctrl+Space 是 fitAll，Alt/Meta 组合交给系统与其它快捷键。
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (spaceEventEditing(event)) return;
+      event.preventDefault();
+      // 按住不放的自动重复 keydown 不重置“轻按”判定。
+      if (event.repeat) return;
+      spaceHeldRef.current = true;
+      spacePanMovedRef.current = false;
+      if (
+        toolRef.current === "select" &&
+        !panning &&
+        heldKeysRef.current.size === 0
+      ) {
+        canvas.defaultCursor = "grab";
+        canvas.setCursor("grab");
+      }
+    };
+    const handleSpaceKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space" && event.key !== " ") return;
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (!spaceHeldRef.current) return;
+      spaceHeldRef.current = false;
+      if (panning && panButton === "space-left") {
+        finishPanning();
+      } else if (
+        toolRef.current === "select" &&
+        !gestureRef.current.kind &&
+        heldKeysRef.current.size === 0
+      ) {
+        canvas.defaultCursor = "default";
+        canvas.setCursor("default");
+      }
+      // 空格轻按（未拖动）=聚焦切换，保持原 Space 语义；Space 由本组件
+      // 专用路径处理，use-board-shortcuts 的 focus 绑定已排除空格防双触发。
+      if (
+        !spacePanMovedRef.current &&
+        !panning &&
+        toolRef.current === "select" &&
+        !gestureRef.current.kind
+      ) {
+        toggleObjectFocus();
+      }
     };
     controller.onDom(canvas.upperCanvasEl, "mousedown", startNativeMiddlePan as EventListener, true);
     controller.onDom(
@@ -1584,15 +1643,25 @@ export function BoardCanvas({
       "visibilitychange",
       handleVisibilityChange,
     );
+    controller.onDom(window, "keydown", handleSpaceKeyDown as EventListener);
+    controller.onDom(window, "keyup", handleSpaceKeyUp as EventListener);
     controller.onCanvas(canvas, "mouse:down:before", () => {
       selectionBeforePointer = canvas.getActiveObject() as
         | CanvasObjectWithData
         | null;
+      // Ctrl+点击加选需要按下前的多选成员：点中非成员时 Fabric 会在
+      // mouse:down 里收拢多选（onDeselect 清空成员），先快照留底。
+      selectionMembersBeforePointer =
+        selectionBeforePointer instanceof ActiveSelection
+          ? ([...selectionBeforePointer.getObjects()] as CanvasObjectWithData[])
+          : null;
     });
     controller.onCanvas(canvas, "mouse:down", (event) => {
       const pointerEvent = event.e as MouseEvent;
       if (pointerEvent.button === 0) {
         primaryPointerDown = true;
+        primaryPointerDownX = pointerEvent.clientX;
+        primaryPointerDownY = pointerEvent.clientY;
         rememberPrimaryPointer(pointerEvent);
       }
       const pureRef = runtime.interactionPreset === "pureref";
@@ -1603,7 +1672,10 @@ export function BoardCanvas({
         !pointerEvent.altKey &&
         !pointerEvent.shiftKey &&
         (pointerEvent.button === 0 || (pointerEvent.buttons & 1) !== 0);
-      if (isPanPointerEvent(pointerEvent, pureRef) || lockedLeftPan) {
+      if (
+        isPanPointerEvent(pointerEvent, pureRef, spaceHeldRef.current) ||
+        lockedLeftPan
+      ) {
         pointerEvent.preventDefault();
         canvas.endCurrentTransform(pointerEvent);
         restoreSelectionBeforeGesture();
@@ -1612,9 +1684,15 @@ export function BoardCanvas({
           ? "middle"
           : lockedLeftPan
             ? "locked-left"
-            : "alt-left";
+            : spaceHeldRef.current
+              ? "space-left"
+              : "alt-left";
         lastX = pointerEvent.clientX;
         lastY = pointerEvent.clientY;
+        if (panButton === "space-left") {
+          spacePanStartX = pointerEvent.clientX;
+          spacePanStartY = pointerEvent.clientY;
+        }
         canvas.selection = false;
         canvas.defaultCursor = "grabbing";
         canvas.setCursor("grabbing");
@@ -2038,6 +2116,16 @@ export function BoardCanvas({
         finishPanning();
         return;
       }
+      // 空格平移中位移超过 2px 视为真实拖动，keyup 时不再触发聚焦切换。
+      if (
+        panButton === "space-left" &&
+        Math.hypot(
+          pointerEvent.clientX - spacePanStartX,
+          pointerEvent.clientY - spacePanStartY,
+        ) > 2
+      ) {
+        spacePanMovedRef.current = true;
+      }
       pointerEvent.preventDefault();
       canvas.relativePan(
         new Point(
@@ -2267,6 +2355,50 @@ export function BoardCanvas({
       setSnapIndicator((current) =>
         current ? { axis: current.axis, value: current.value, visible: false } : current,
       );
+      // Ctrl+纯点击（按下位移 < 3px）：命中对象加入/移出当前多选。两种交互
+      // 预设通用；PureRef 的 Ctrl+左拖旋转手势需要位移，纯点击在此按加选
+      // 处理，拖拽超过 3px 走原手势收尾，互不干扰。
+      if (
+        toolRef.current === "select" &&
+        pointerEvent.button === 0 &&
+        pointerEvent.ctrlKey &&
+        !pointerEvent.shiftKey &&
+        !pointerEvent.altKey &&
+        !pointerEvent.metaKey &&
+        Math.hypot(
+          pointerEvent.clientX - primaryPointerDownX,
+          pointerEvent.clientY - primaryPointerDownY,
+        ) < 3
+      ) {
+        // findTarget 把点中的多选成员上报为整个 ActiveSelection，这里改用
+        // 全场景搜索拿真正的命中对象。
+        const pointed = canvas.searchPossibleTargets(
+          canvas.getObjects(),
+          canvas.getScenePoint(pointerEvent),
+        ).target as CanvasObjectWithData | undefined;
+        if (pointed) {
+          // 点中非成员时 Fabric 已在 mouse:down 收拢多选：用按下前快照恢复。
+          if (
+            !(canvas.getActiveObject() instanceof ActiveSelection) &&
+            selectionMembersBeforePointer
+          ) {
+            canvas.setActiveObject(
+              createBoardActiveSelection(
+                [...selectionMembersBeforePointer],
+                canvas,
+              ),
+            );
+          }
+          toggleObjectInActiveSelection(canvas, pointed);
+          // 纯点击不进入手势收尾（如 PureRef Ctrl 旋转），避免覆盖切换结果。
+          gestureRef.current.kind = null;
+          gestureRef.current.changed = false;
+          gestureRef.current.suppressSave = false;
+          gestureRef.current.target = null;
+          gestureRef.current.selection = null;
+          restoreCanvasInteraction(canvas);
+        }
+      }
       const gesture = gestureRef.current;
       if (gesture.kind) {
         // 手势结束：收尾时产生一条完整的 undo 记录（不按帧记录）。
@@ -2424,7 +2556,6 @@ export function BoardCanvas({
       runtime.syncDocument(document);
       setCanvasLocked(runtime.canvasMode.locked);
       applyCanvasMode(canvas, runtime.canvasMode);
-      applySampling(canvas, runtime.sampling);
       loadingRef.current = false;
       setReadyBoardId(board.id);
       historyControllerRef.current.reset(
@@ -2461,6 +2592,7 @@ export function BoardCanvas({
       importController.dispose();
       if (hudFrame !== null) window.cancelAnimationFrame(hudFrame);
       scheduleSaveRef.current = null;
+      zoomUiRef.current = null;
       finishContinuousGestureRef.current = null;
       for (const animator of gifAnimatorsRef.current.values()) {
         animator.dispose();
@@ -2493,7 +2625,6 @@ export function BoardCanvas({
         canvas.setViewportTransform(nextDocument.viewport.transform);
         runtime.syncDocument(nextDocument);
         applyCanvasMode(canvas, runtime.canvasMode);
-        applySampling(canvas, runtime.sampling);
         loadingRef.current = false;
         controller.refreshSnapshot();
         canvas.requestRenderAll();
@@ -2501,12 +2632,6 @@ export function BoardCanvas({
       saveDocument: async () => {
         const canvas = canvasRef.current;
         if (canvas) await saveLocalDocument(makeDocument(canvas));
-      },
-      importAssetIds: async (ids, point) => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const target = point ?? sceneCenter(canvas);
-        await addDroppedAssetsRef.current(ids, target, !point);
       },
       refreshProxies: () => canvasRef.current?.requestRenderAll(),
     });
@@ -2539,7 +2664,7 @@ export function BoardCanvas({
     canvas.selection = interaction.selection;
     canvas.skipTargetFind = interaction.skipTargetFind;
     canvas.defaultCursor =
-      tool === "select" ? "default" : tool === "eraser" ? "not-allowed" : "crosshair";
+      tool === "select" ? "default" : "crosshair";
     if (tool === "pencil") {
       const brush = new PencilBrush(canvas);
       brush.color = drawingStyle.color;
@@ -2701,6 +2826,17 @@ export function BoardCanvas({
       canvas.fire("object:modified", { target: object });
     }
     canvas.requestRenderAll();
+  };
+
+  // 上移/下移一层：逐个选中对象复用 controller 的 move-up/move-down 命令
+  // （多选成员各自在堆叠中移动一层，保持相对顺序）。
+  const moveSelectionOneLayer = (direction: "move-up" | "move-down") => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    for (const object of canvas.getActiveObjects()) {
+      const id = (object as CanvasObjectWithData).data?.objectId;
+      if (id) controller.command(direction, id);
+    }
   };
 
   const arrangeController = useState(
@@ -2905,28 +3041,6 @@ export function BoardCanvas({
     setCropTarget(null);
   };
 
-  const setSelectionGrayscale = (enabled: boolean | "toggle") => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    for (const object of canvas.getActiveObjects()) {
-      if (!(object instanceof FabricImage)) continue;
-      const hasGrayscale = object.filters.some(
-        (filter) => filter.toObject().type === "Grayscale",
-      );
-      const shouldEnable =
-        enabled === "toggle" ? !hasGrayscale : enabled;
-      object.filters = object.filters.filter(
-        (filter) => filter.toObject().type !== "Grayscale",
-      );
-      if (shouldEnable) {
-        object.filters.push(new filters.Grayscale({ mode: "luminosity" }));
-      }
-      object.applyFilters();
-      canvas.fire("object:modified", { target: object });
-    }
-    canvas.requestRenderAll();
-  };
-
   const resetSelectionCrop = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -3107,21 +3221,27 @@ export function BoardCanvas({
     scheduleSaveRef.current?.();
   };
 
-  /** 100% 缩放（保持视口中心）。 */
+  /** 100% 缩放（保持视口中心），收尾与 zoomByFactor 一致。 */
   const setZoom100 = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const center = canvas.getVpCenter();
-    canvas.setViewportTransform([
-      1,
-      0,
-      0,
-      1,
-      center.x - canvas.width / 2,
-      center.y - canvas.height / 2,
-    ]);
+    zoomTo100(canvas);
     controller.setZoom(100);
-    canvas.requestRenderAll();
+    zoomUiRef.current?.scheduleZoomState(100);
+    zoomUiRef.current?.scheduleProxyRefresh();
+  };
+
+  /** 围绕当前视口中心按倍率缩放（钳制 0.08–4.0），调度与 mouse:wheel 一致的刷新。 */
+  const zoomByFactor = (factor: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const next = Math.min(4, Math.max(0.08, canvas.getZoom() * factor));
+    canvas.zoomToPoint(
+      new Point(canvas.getWidth() / 2, canvas.getHeight() / 2),
+      next,
+    );
+    zoomUiRef.current?.scheduleZoomState(Math.round(next * 100));
+    zoomUiRef.current?.scheduleProxyRefresh();
   };
 
   /** 重置相机：适应全部对象（等同 fit-all）。 */
@@ -3224,17 +3344,6 @@ export function BoardCanvas({
     });
   };
 
-  /** 采样模式切换：nearest（像素）↔ bilinear（平滑）。 */
-  const toggleSampling = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const next: "nearest" | "bilinear" =
-      runtime.sampling === "nearest" ? "bilinear" : "nearest";
-    runtime.sampling = next;
-    applySampling(canvas, next);
-    scheduleSaveRef.current?.();
-  };
-
   // 阶段 6 §11：手动重连引用。先按 fingerprint 解析（拿候选），
   // ambiguous 时让用户选择；missing 时打开文件选择器。
   const relinkBoardReference = async (assetId: string) => {
@@ -3307,15 +3416,8 @@ export function BoardCanvas({
     const applySettings = (settings: BoardSettings) => {
       historyControllerRef.current.setLimit(settings.undoLimit);
       if (settings.interactionPreset !== "pureref") heldKeysRef.current.clear();
-      const canvas = canvasRef.current;
-      const samplingChanged = Boolean(
-        settings.sampling && settings.sampling !== runtime.sampling,
-      );
       runtime.syncSettings(settings);
       controller.syncSettings(settings);
-      if (canvas && settings.sampling && samplingChanged) {
-        applySampling(canvas, settings.sampling);
-      }
     };
     const onSettingsChanged = (event: Event) => {
       applySettings((event as CustomEvent<BoardSettings>).detail);
@@ -3632,6 +3734,31 @@ export function BoardCanvas({
     showDropNotice(notice);
   };
 
+  /** 「添加文件」通路：系统文件对话框多选后，按当前视口中心批量导入放置。 */
+  const importFilesFromDialog = async () => {
+    const paths = await window.refCanvas.system.pickFile({
+      title: translate("board.importFilesTitle"),
+      multiSelections: true,
+    });
+    if (!paths.length) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const center = sceneCenter(canvas);
+    const notice = await importController.importPathList(
+      paths,
+      { x: center.x, y: center.y },
+      {
+        pathsForFiles: (items) => window.refCanvas.library.pathsForFiles(items),
+        importPaths: (items) => window.refCanvas.library.importPaths(items),
+        getByPath: (item) => window.refCanvas.library.getByPath(item),
+      },
+      (ids, point) => addDroppedAssets(ids, point),
+      onLibraryChanged,
+    );
+    if (!notice) return;
+    showDropNotice(notice);
+  };
+
   const handleShortcutCommand = (
     command: BoardShortcutCommand,
     payload?: BoardShortcutPayload,
@@ -3654,9 +3781,7 @@ export function BoardCanvas({
       case "resetCrop": resetSelectionCrop(); break;
       case "flipX": transformSelection("flipX"); break;
       case "flipY": transformSelection("flipY"); break;
-      case "toggleSelectionGrayscale": setSelectionGrayscale("toggle"); break;
       case "toggleCanvasGrayscale": void toggleCanvasGrayscale(); break;
-      case "toggleSampling": void toggleSampling(); break;
       case "toggleLock": toggleLockSelection(); break;
       case "exitFocus": exitObjectFocus(); break;
       case "fitAll": fitObjects(false); break;
@@ -4476,8 +4601,10 @@ export function BoardCanvas({
     addGuide,
     addNote,
     addChecklistNote,
+    importFilesFromDialog,
     editSelectedNote,
     moveSelection,
+    moveSelectionLayer: moveSelectionOneLayer,
     transformSelection,
     alignSelection,
     distributeSelection,
@@ -4493,7 +4620,6 @@ export function BoardCanvas({
     applyMask,
     openCropDialog,
     resetSelectionCrop,
-    setSelectionGrayscale,
     setSelectionOpacity,
     duplicateSelection,
     editObjectComment,
@@ -4525,6 +4651,7 @@ export function BoardCanvas({
 
   const handleToolbarCommand = (command: BoardToolbarCommand) => {
     switch (command) {
+      case "importFiles": void importFilesFromDialog(); break;
       case "select": setTool("select"); break;
       case "addText": addText(); break;
       case "addNote": void addNote(); break;
@@ -4535,10 +4662,13 @@ export function BoardCanvas({
       case "addHorizontalGuide": addGuide("y"); break;
       case "toggleDrawing": setTool((current) => toggleBoardDrawingTool(current, lastDrawingTool)); break;
       case "toggleDrawingPanel": setDrawingPanelOpen((value) => !value); break;
+      case "toggleArrangePanel": setArrangePanelOpen((value) => !value); break;
       case "toggleEraser": toggleEraser(); break;
       case "undoStroke": undoLastStroke(); break;
       case "moveBottom": moveSelection(false); break;
       case "moveTop": moveSelection(true); break;
+      case "moveUp": moveSelectionOneLayer("move-up"); break;
+      case "moveDown": moveSelectionOneLayer("move-down"); break;
       case "rotate": transformSelection("rotate"); break;
       case "flipX": transformSelection("flipX"); break;
       case "flipY": transformSelection("flipY"); break;
@@ -4553,6 +4683,8 @@ export function BoardCanvas({
       case "arrangeCompact": arrangeCompact(); break;
       case "normalizeWidth": normalizeSize("width"); break;
       case "normalizeHeight": normalizeSize("height"); break;
+      case "uniformArea": uniformArea(); break;
+      case "uniformScale": uniformScale(); break;
       case "resetTransform": resetSelectionTransform(); break;
       case "toggleLock": toggleLockSelection(); break;
       case "group": groupSelection(); break;
@@ -4568,10 +4700,9 @@ export function BoardCanvas({
         break;
       }
       case "resetCrop": resetSelectionCrop(); break;
-      case "toggleGrayscale": setSelectionGrayscale("toggle"); break;
-      case "restoreColor": setSelectionGrayscale(false); break;
       case "setOpacity": void setSelectionOpacity(); break;
       case "duplicate": void duplicateSelection(); break;
+      case "editContent": void editSelectedNote(); break;
       case "editComment": void editObjectComment(); break;
       case "delete": deleteSelection(); break;
       case "undo": restoreHistory(-1); break;
@@ -4579,6 +4710,8 @@ export function BoardCanvas({
       case "fitAll": fitObjects(false); break;
       case "toggleFocus": toggleObjectFocus(); break;
       case "fitSelection": fitObjects(true); break;
+      case "exportPng": window.dispatchEvent(new Event("refcanvas:export-png-selection")); break;
+      case "toggleInspector": setInspectorOpen((value) => !value); break;
       case "toggleLayers": setLayersOpen((value) => !value); break;
       case "toggleGrid": updateAppearance({ ...runtime.appearance, gridVisible: !runtime.appearance.gridVisible }); break;
       case "editAppearance": void editBoardAppearance(); break;
@@ -4588,59 +4721,26 @@ export function BoardCanvas({
       case "zoom100": void setZoom100(); break;
       case "resetViewport": void resetViewport(); break;
       case "sampleColor": void sampleColor(); break;
-      case "toggleSampling": void toggleSampling(); break;
+      case "openCommandPalette": openCommandPalette(); break;
+      case "toggleToolbarCollapsed": setToolbarCollapsed((value) => !value); break;
     }
   };
   return (
     <section
       className="board-panel"
       onDragOver={(event) => {
-        if (
-          event.dataTransfer.types.includes("application/x-refcanvas-asset") ||
-          event.dataTransfer.types.includes("application/x-refcanvas-asset-ids") ||
-          event.dataTransfer.types.includes("Files")
-        ) {
+        if (event.dataTransfer.types.includes("Files")) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
         }
       }}
       onDrop={(event) => {
-        const assetIdsPayload = event.dataTransfer.getData(
-          "application/x-refcanvas-asset-ids",
-        );
-        if (assetIdsPayload && canvasRef.current) {
-          try {
-            const assetIds = JSON.parse(assetIdsPayload);
-            if (
-              Array.isArray(assetIds) &&
-              assetIds.every((id) => typeof id === "string")
-            ) {
-              event.preventDefault();
-              const point = canvasRef.current.getScenePoint(event.nativeEvent);
-              void controller.importAssetIds(assetIds, { x: point.x, y: point.y });
-              return;
-            }
-          } catch {
-            // Ignore malformed external drag payloads.
-          }
-        }
-        const assetId = event.dataTransfer.getData(
-          "application/x-refcanvas-asset",
-        );
         if (!canvasRef.current) return;
-        if (!assetId) {
-          const files = Array.from(event.dataTransfer.files);
-          if (!files.length) return;
-          event.preventDefault();
-          const point = canvasRef.current.getScenePoint(event.nativeEvent);
-          void importDroppedFiles(files, { x: point.x, y: point.y });
-          return;
-        }
+        const files = Array.from(event.dataTransfer.files);
+        if (!files.length) return;
         event.preventDefault();
-        const asset = boardAssets.find((item) => item.id === assetId);
-        if (!asset) return;
         const point = canvasRef.current.getScenePoint(event.nativeEvent);
-        void addAsset(asset, { x: point.x, y: point.y });
+        void importDroppedFiles(files, { x: point.x, y: point.y });
       }}
     >
       {previewAsset && (
@@ -4804,69 +4904,36 @@ export function BoardCanvas({
         }
       >
         <canvas ref={canvasElementRef} />
+        {!hasBoardObjects && !focusMode && (
+          <div className="board-empty-state">
+            <p>{translate("board.emptyHint")}</p>
+            <button onClick={() => void importFilesFromDialog()}>
+              {translate("board.importFiles")}
+            </button>
+          </div>
+        )}
         <BoardToolbar
           state={{
             tool,
             drawingToolActive: isBoardDrawingTool(tool),
             drawingPanelOpen,
+            arrangePanelOpen,
             selectedHasComment,
             focused: Boolean(focusedObjectId),
             layersOpen,
+            inspectorOpen,
             gridVisible: appearance.gridVisible,
             canvasLocked,
             canvasGrayscale: runtime.canvasMode.grayscale,
-            sampling: runtime.sampling,
-            moreOpen: toolbarMoreOpen,
+            hasSelection,
+            selectionHasNote: capabilities.hasNote,
+            selectionCount,
+            hasBoardObjects,
+            toolbarCollapsed,
           }}
           onCommand={handleToolbarCommand}
           shortcuts={shortcutBindings}
-          moreButtonRef={toolbarMoreButtonRef}
-          onMoreClick={(event) => {
-            if (toolbarMoreOpen) {
-              setToolbarMoreOpen(false);
-              return;
-            }
-            setToolbarMorePosition(
-              toolbarPanelPosition(
-                event.currentTarget.getBoundingClientRect(),
-                window.innerWidth,
-                window.innerHeight,
-              ),
-            );
-            setToolbarMoreOpen(true);
-          }}
         />
-        {toolbarMoreOpen && (
-          <BoardToolbarMorePanel
-            position={toolbarMorePosition}
-            panelRef={(element) => { toolbarMorePanelRef.current = element; }}
-            inspectorOpen={inspectorOpen}
-            canvasLocked={canvasLocked}
-            hasSelection={hasSelection}
-            onClose={() => setToolbarMoreOpen(false)}
-            actions={{
-              addText,
-              addChecklist: () => void addChecklistNote(),
-              addArrow,
-              addRectangle,
-              addGuide,
-              editAppearance: () => void editBoardAppearance(),
-              sampleColor: () => void sampleColor(),
-              undo: () => restoreHistory(-1),
-              redo: () => restoreHistory(1),
-              fitAll: () => fitObjects(false),
-              fitSelection: () => fitObjects(true),
-              toggleFocusCarousel: toggleObjectFocus,
-              toggleInspector: () => setInspectorOpen((value) => !value),
-              exportPngSelection: () =>
-                window.dispatchEvent(new Event("refcanvas:export-png-selection")),
-              toggleCanvasLock,
-              toggleCanvasGrayscale: () => void toggleCanvasGrayscale(),
-              cycleGridStyle,
-              openCommandPalette,
-            }}
-          />
-        )}
         {drawingPanelOpen && (
           <BoardDrawingPanel
             tool={tool}
@@ -4877,6 +4944,17 @@ export function BoardCanvas({
             onClose={() => setDrawingPanelOpen(false)}
           />
         )}
+        <BoardArrangePanel
+          open={arrangePanelOpen}
+          onClose={() => setArrangePanelOpen(false)}
+          onApply={(options) => {
+            arrangeBy(options.key, {
+              reverse: options.reverse,
+              gap: options.gap,
+              align: options.align,
+            });
+          }}
+        />
         {layersOpen && (
           <BoardLayerPanel
             rootRef={layersPanelRef}
@@ -4938,17 +5016,30 @@ export function BoardCanvas({
         )}
         <div className="zoom-control">
           <button
-            onClick={() => {
-              const canvas = canvasRef.current;
-              if (!canvas) return;
-              canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-              controller.setZoom(100);
-            }}
-            aria-label={translate("board.resetView")}
+            onClick={() => zoomByFactor(1 / 1.25)}
+            aria-label={translate("board.zoomOut")}
           >
-            <RotateCcw size={14} />
+            <Minus size={14} />
           </button>
-          <span>{boardSnapshot.zoom}%</span>
+          <button
+            className="zoom-percent"
+            onClick={() => void setZoom100()}
+            aria-label={translate("board.zoom100")}
+          >
+            {boardSnapshot.zoom}%
+          </button>
+          <button
+            onClick={() => zoomByFactor(1.25)}
+            aria-label={translate("board.zoomIn")}
+          >
+            <Plus size={14} />
+          </button>
+          <button
+            onClick={() => fitObjects(false)}
+            aria-label={translate("board.zoomFit")}
+          >
+            <Maximize size={14} />
+          </button>
         </div>
         {hudMessage && (
           <div className="board-hud" role="status" aria-live="polite">
@@ -5001,12 +5092,10 @@ export function BoardCanvas({
               toggleLock: toggleLockSelection,
               duplicate: () => void duplicateSelection(),
               remove: deleteSelection,
-              toggleGrayscale: () => setSelectionGrayscale("toggle"),
               toggleGif: (id) => {
                 const object = objectById(id);
                 if (object) toggleGifPlayback(object);
               },
-              toggleSampling: () => void toggleSampling(),
               locate: (assetId) => {
                 void window.refCanvas.library
                   .get(assetId)

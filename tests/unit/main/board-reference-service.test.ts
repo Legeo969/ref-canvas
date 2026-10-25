@@ -38,7 +38,6 @@ function boardDocumentWith(assetId: string): BoardDocumentV3 {
     },
     canvasMode: { locked: false, grayscale: false, gridStyle: "line" },
     windowMode: "normal",
-    sampling: "bilinear",
     exportSettings: { format: "png", embedAssets: false },
   };
 }

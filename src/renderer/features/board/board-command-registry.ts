@@ -49,8 +49,10 @@ export interface BoardCommandContext {
   addGuide: (axis: "x" | "y") => void;
   addNote: () => Promise<void>;
   addChecklistNote: () => Promise<void>;
+  importFilesFromDialog: () => Promise<void>;
   editSelectedNote: () => Promise<void>;
   moveSelection: (toFront: boolean) => void;
+  moveSelectionLayer: (direction: "move-up" | "move-down") => void;
   transformSelection: (mode: "rotate" | "flipX" | "flipY") => void;
   alignSelection: (mode: "left" | "centerX" | "right" | "top" | "centerY" | "bottom") => void;
   distributeSelection: (axis: "x" | "y") => void;
@@ -68,7 +70,6 @@ export interface BoardCommandContext {
   applyMask: (shape: "rect" | "circle") => void;
   openCropDialog: (target: FabricImage) => void;
   resetSelectionCrop: () => void;
-  setSelectionGrayscale: (enabled: boolean | "toggle") => void;
   setSelectionOpacity: () => Promise<void>;
   duplicateSelection: () => Promise<void>;
   editObjectComment: (target?: CanvasObjectWithData) => Promise<void>;
@@ -119,8 +120,10 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
     addGuide,
     addNote,
     addChecklistNote,
+    importFilesFromDialog,
     editSelectedNote,
     moveSelection,
+    moveSelectionLayer,
     transformSelection,
     alignSelection,
     distributeSelection,
@@ -138,7 +141,6 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
     applyMask,
     openCropDialog,
     resetSelectionCrop,
-    setSelectionGrayscale,
     setSelectionOpacity,
     duplicateSelection,
     editObjectComment,
@@ -233,6 +235,13 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
       run: addRectangle,
     },
     {
+      id: "import-files",
+      label: translate("board.importFiles"),
+      group: translate("board.groupInsert"),
+      keywords: ["import file add", "导入文件"],
+      run: () => void importFilesFromDialog(),
+    },
+    {
       id: "add-guide-x",
       label: translate("board.addGuideX"),
       group: translate("board.groupInsert"),
@@ -261,6 +270,22 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
       disabled: !hasSelection,
       keywords: ["bring front"],
       run: () => moveSelection(true),
+    },
+    {
+      id: "move-up",
+      label: translate("board.moveUpOne"),
+      group: translate("board.groupArrange"),
+      disabled: !hasSelection,
+      keywords: ["bring forward one layer"],
+      run: () => moveSelectionLayer("move-up"),
+    },
+    {
+      id: "move-down",
+      label: translate("board.moveDownOne"),
+      group: translate("board.groupArrange"),
+      disabled: !hasSelection,
+      keywords: ["send backward one layer"],
+      run: () => moveSelectionLayer("move-down"),
     },
     {
       id: "rotate-90",
@@ -528,22 +553,6 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
       disabled: !hasImageSelection,
       keywords: ["reset crop"],
       run: resetSelectionCrop,
-    },
-    {
-      id: "grayscale",
-      label: translate("board.toggleGrayscale"),
-      group: translate("board.groupImage"),
-      disabled: !hasImageSelection,
-      keywords: ["black white grayscale"],
-      run: () => setSelectionGrayscale("toggle"),
-    },
-    {
-      id: "restore-color",
-      label: translate("board.restoreColor"),
-      group: translate("board.groupImage"),
-      disabled: !hasImageSelection,
-      keywords: ["restore color"],
-      run: () => setSelectionGrayscale(false),
     },
     {
       id: "opacity",

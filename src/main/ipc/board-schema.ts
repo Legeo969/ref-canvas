@@ -67,7 +67,6 @@ export const boardDocumentSchema = z.union([
       grayscale: z.boolean(),
       gridStyle: z.enum(["line", "dot", "none"]),
     }),
-    sampling: z.enum(["nearest", "bilinear"]),
     exportSettings: z.object({
       format: z.enum(["png", "jpeg", "webp"]),
       embedAssets: z.boolean(),

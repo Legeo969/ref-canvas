@@ -1,5 +1,9 @@
 import {
+  AlignCenterHorizontal,
   AlignCenterVertical,
+  AlignEndHorizontal,
+  AlignEndVertical,
+  AlignStartHorizontal,
   AlignStartVertical,
   Clipboard as ClipboardIcon,
   CopyPlus,
@@ -36,7 +40,7 @@ export interface BoardContextMenuState {
 
 /** 右键菜单行为：全部由 BoardCanvas 注入，组件只做声明式渲染。 */
 export interface BoardContextMenuActions {
-  align(mode: "left" | "centerX"): void;
+  align(mode: "left" | "centerX" | "right" | "top" | "centerY" | "bottom"): void;
   distribute(axis: "x" | "y"): void;
   arrangeCompact(): void;
   normalizeWidth(): void;
@@ -47,9 +51,7 @@ export interface BoardContextMenuActions {
   toggleLock(): void;
   duplicate(): void;
   remove(): void;
-  toggleGrayscale(): void;
   toggleGif(id: string): void;
-  toggleSampling(): void;
   locate(id: string): void;
   relink(id: string): void;
   paste(): void;
@@ -98,6 +100,22 @@ export function BoardContextMenu({
               <AlignCenterVertical size={16} />
               {translate("board.alignCenterX")}
             </button>
+            <button role="menuitem" onClick={() => run(() => actions.align("right"))}>
+              <AlignEndVertical size={16} />
+              {translate("board.alignRight")}
+            </button>
+            <button role="menuitem" onClick={() => run(() => actions.align("top"))}>
+              <AlignStartHorizontal size={16} />
+              {translate("board.alignTop")}
+            </button>
+            <button role="menuitem" onClick={() => run(() => actions.align("centerY"))}>
+              <AlignCenterHorizontal size={16} />
+              {translate("board.alignCenterY")}
+            </button>
+            <button role="menuitem" onClick={() => run(() => actions.align("bottom"))}>
+              <AlignEndHorizontal size={16} />
+              {translate("board.alignBottom")}
+            </button>
             <button role="menuitem" onClick={() => run(() => actions.distribute("x"))}>
               <LayoutGrid size={16} />
               {translate("board.distributeX")}
@@ -117,6 +135,15 @@ export function BoardContextMenu({
             <button role="menuitem" onClick={() => run(actions.group)}>
               <GroupIcon size={16} />
               {translate("board.group")}
+            </button>
+            <button role="menuitem" onClick={() => run(actions.duplicate)}>
+              <CopyPlus size={16} />
+              {translate("board.duplicate")}
+            </button>
+            <div className="folder-menu-separator" />
+            <button className="danger" role="menuitem" onClick={() => run(actions.remove)}>
+              <Trash2 size={16} />
+              {translate("board.delete")}
             </button>
           </>
         )}
@@ -159,10 +186,6 @@ export function BoardContextMenu({
               <Crop size={16} />
               {translate("board.crop")}
             </button>
-            <button role="menuitem" onClick={() => run(actions.toggleGrayscale)}>
-              <span className="text-tool-icon">B/W</span>
-              {translate("board.toggleGrayscaleShort")}
-            </button>
             {menu.target.hasGif && (
               <button role="menuitem" onClick={() => run(() => actions.toggleGif(menu.target!.id))}>
                 {menu.target.gifPlaying ? <Pause size={16} /> : <Play size={16} />}
@@ -171,9 +194,17 @@ export function BoardContextMenu({
                   : translate("board.gifPlay")}
               </button>
             )}
-            <button role="menuitem" onClick={() => run(actions.toggleSampling)}>
-              <span className="text-tool-icon">NN</span>
-              {translate("board.toggleSampling")}
+            <button role="menuitem" onClick={() => run(actions.setOpacity)}>
+              <span className="text-tool-icon">%</span>
+              {translate("board.opacity")}
+            </button>
+            <button role="menuitem" onClick={() => run(actions.toggleLock)}>
+              <Lock size={16} />
+              {translate("board.lockUnlock")}
+            </button>
+            <button role="menuitem" onClick={() => run(actions.duplicate)}>
+              <CopyPlus size={16} />
+              {translate("board.duplicate")}
             </button>
             {locateEnabled && menu.target.assetId && (
               <button role="menuitem" onClick={() => run(() => actions.locate(menu.target!.assetId!))}>

@@ -67,9 +67,12 @@ export function isMiddleButtonPointer(
 export function isPanPointerEvent(
   event: PanPointerEvent,
   pureRef: boolean,
+  spaceHeld = false,
 ): boolean {
   return (
     isMiddleButtonPointer(event) ||
+    // 空格+左：两种交互预设通用（与中键、Alt+左并列）。
+    (spaceHeld && (event.button === 0 || (event.buttons & 1) !== 0)) ||
     (pureRef &&
       event.altKey &&
       !event.ctrlKey &&

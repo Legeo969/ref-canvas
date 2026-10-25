@@ -340,6 +340,25 @@ export function registerSystemIpc(
     window.setAlwaysOnTop(next);
     return next;
   });
+  // 交互抬升：独立白板窗口的弹层类 UI 打开期间临时置顶（"pop-up-menu" 级），
+  // 避免菜单被置顶主窗口或贴底模拟盖住；enable 时按窗口快照置顶前的
+  // always-on-top 状态，disable 按快照还原（防重复 enable / 未抬升 disable）。
+  const interactionLifts = new Map<number, boolean>();
+  ipc.handleWithEvent("system:set-interaction-lift", (event, enabled) => {
+    const next = z.boolean().parse(enabled);
+    const window = dependencies.windowForSender(event);
+    if (next) {
+      if (interactionLifts.has(window.id)) return;
+      interactionLifts.set(window.id, window.isAlwaysOnTop());
+      window.setAlwaysOnTop(true, "pop-up-menu");
+      return;
+    }
+    const prior = interactionLifts.get(window.id);
+    if (prior === undefined) return;
+    interactionLifts.delete(window.id);
+    // prior 为 true 的窗口本就置顶：不带 level 还原，避免重设等级。
+    window.setAlwaysOnTop(prior);
+  });
   ipc.handle("system:mark-renderer-interactive", () => {
     state.rendererInteractive = true;
     dependencies.scheduleBackgroundServices();
@@ -557,7 +576,6 @@ export function registerSystemIpc(
       interactionPreset: "pureref",
       snapEnabled: true,
       bringToFrontOnSelect: false,
-      sampling: "bilinear",
       undoLimit: 99,
     }),
     previewSettings: readPreviewSettings(database()),
@@ -584,7 +602,6 @@ export function registerSystemIpc(
             interactionPreset: z.enum(["pureref", "standard"]).optional(),
             snapEnabled: z.boolean().optional(),
             bringToFrontOnSelect: z.boolean().optional(),
-            sampling: z.enum(["nearest", "bilinear"]).optional(),
             undoLimit: z.number().int().min(1).max(500).optional(),
           })
           .optional(),

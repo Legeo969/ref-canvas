@@ -26,6 +26,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** 目录条目拖拽 MIME（DirectoryAssetPanel setData 注入，白板行消费）。 */
+const DIRECTORY_ENTRY_MIME = "application/x-refcanvas-directory-entry";
+
 /** 面板间水平分隔条：4px 深色条 + 中央 40×2 手柄，行拖拽调高（参考 PanelDividers）。 */
 function SidebarSplitter({
   onDragStart,
@@ -122,6 +125,8 @@ export function Sidebar() {
   );
   /** 白板（参考板）区折叠态：与其他面板一致，可展开/折叠。 */
   const [boardsCollapsed, setBoardsCollapsed] = useState(false);
+  /** 目录条目拖放悬停的白板行 id：仅高亮当前落点，离开/落下后清空。 */
+  const [dropTargetBoardId, setDropTargetBoardId] = useState<string | null>(null);
   const recentBoardIds = new Set(store.recentBoards.map((board) => board.id));
   const boardRows = [
     ...store.recentBoards,
@@ -383,9 +388,40 @@ export function Sidebar() {
                 store.activeBoard?.id === board.id
                   ? "active"
                   : ""
-              }`}
+              }${dropTargetBoardId === board.id ? " drop-target" : ""}`}
               key={board.id}
               onClick={() => void store.switchBoard(board.id)}
+              onDragOver={(event) => {
+                if (!event.dataTransfer.types.includes(DIRECTORY_ENTRY_MIME)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+                setDropTargetBoardId(board.id);
+              }}
+              onDragLeave={() => {
+                if (dropTargetBoardId === board.id) setDropTargetBoardId(null);
+              }}
+              onDrop={(event) => {
+                setDropTargetBoardId(null);
+                if (!event.dataTransfer.types.includes(DIRECTORY_ENTRY_MIME)) return;
+                event.preventDefault();
+                try {
+                  const entry = JSON.parse(
+                    event.dataTransfer.getData(DIRECTORY_ENTRY_MIME),
+                  ) as { path?: string; isDirectory?: boolean };
+                  // 文件夹暂不支持上板：提示后放弃；文件交给 store 自动导入
+                  // 并切到白板工作区居中放置，这里不重复处理。
+                  if (entry.isDirectory) {
+                    window.dispatchEvent(new CustomEvent("refcanvas:toast", {
+                      detail: translate("board.dropFolderUnsupported"),
+                    }));
+                    return;
+                  }
+                  if (!entry.path) return;
+                  void store.addDirectoryEntriesToBoard([entry.path]);
+                } catch {
+                  // 非本应用的拖拽数据或损坏 JSON：静默忽略。
+                }
+              }}
             >
               {board.thumbnailUrl ? (
                 <img className="board-nav-thumbnail" src={board.thumbnailUrl} alt="" />

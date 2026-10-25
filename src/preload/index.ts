@@ -396,6 +396,8 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("system:mark-renderer-interactive"),
     setAlwaysOnBottom: (enabled) =>
       ipcRenderer.invoke("system:set-always-on-bottom", enabled),
+    setInteractionLift: (enabled) =>
+      ipcRenderer.invoke("system:set-interaction-lift", enabled),
     setClickThrough: (enabled) =>
       ipcRenderer.invoke("system:set-click-through", enabled),
     setWindowTransparent: (enabled) =>

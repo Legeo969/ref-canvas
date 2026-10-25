@@ -401,29 +401,6 @@ export function SettingsPanel({
                 </label>
                 <label className="settings-row">
                   <span>
-                    {translate("settings.board.sampling")}
-                    <small>{translate("settings.board.samplingHint")}</small>
-                  </span>
-                  <SelectMenu
-                    value={
-                      appPreferences?.boardSettings.sampling ?? "bilinear"
-                    }
-                    ariaLabel={translate("settings.board.sampling")}
-                    options={[
-                      { value: "bilinear", label: translate("settings.board.samplingBilinear") },
-                      { value: "nearest", label: translate("settings.board.samplingNearest") },
-                    ]}
-                    onValueChange={(value) =>
-                      void setAppPreference({
-                        boardSettings: {
-                          sampling: value,
-                        },
-                      })
-                    }
-                  />
-                </label>
-                <label className="settings-row">
-                  <span>
                     {translate("settings.board.undoLimit")}
                     <small>{translate("settings.board.undoLimitHint")}</small>
                   </span>

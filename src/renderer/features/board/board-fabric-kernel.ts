@@ -79,7 +79,6 @@ export function serializeBoardDocument(
     appearance: { ...runtime.appearance },
     windowMode: runtime.document.windowMode ?? "normal",
     canvasMode: runtime.canvasMode,
-    sampling: runtime.sampling,
     exportSettings: runtime.exportSettings,
   };
 }
@@ -100,21 +99,4 @@ export function applyBoardCanvasMode(
     object.evented = !mode.locked;
   }
   canvas.requestRenderAll();
-}
-
-export function applyBoardSampling(
-  canvas: FabricCanvas,
-  sampling: "nearest" | "bilinear",
-): void {
-  // 画布可能在异步 effect 里已被 dispose（StrictMode 双挂 / 切走白板）：
-  // Fabric 的 canvas.getContext() 在 disposed 后访问 elements.lower 会直接抛
-  // （Cannot read properties of undefined, reading 'ctx'）。这里用可选链安全
-  // 取值，已销毁时静默跳过。
-  const lower = (canvas as unknown as {
-    elements?: { lower?: { ctx?: CanvasRenderingContext2D | null } };
-  }).elements?.lower;
-  const context = lower?.ctx;
-  if (!context) return;
-  context.imageSmoothingEnabled = sampling === "bilinear";
-  context.imageSmoothingQuality = sampling === "bilinear" ? "high" : "low";
 }

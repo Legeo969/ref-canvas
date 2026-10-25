@@ -9,6 +9,7 @@ import {
   installBoardActiveSelection,
   optimizeBoardActiveSelection,
   selectAllBoardObjects,
+  toggleObjectInActiveSelection,
 } from "../../../../src/renderer/app/board-active-selection";
 
 const controlContext = new Proxy(
@@ -181,5 +182,132 @@ describe("BoardActiveSelection", () => {
     expect(selection).toBeInstanceOf(BoardActiveSelection);
     expect(selection.getObjects()).toEqual([first, second]);
     expect(requestRenderAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds a clicked object to the active multi-selection", () => {
+    const first = new Rect({ selectable: true });
+    const second = new Rect({ selectable: true });
+    const clicked = new Rect({ selectable: true });
+    const requestRenderAll = vi.fn();
+    let active: unknown = new ActiveSelection([first, second]);
+    const setActiveObject = vi.fn((next: unknown) => {
+      active = next;
+    });
+    const canvas = {
+      // Fabric 在多选构造的 layout 钩子里会对 canvas.fire 发事件。
+      fire: vi.fn(),
+      discardActiveObject: vi.fn(() => {
+        active = null;
+      }),
+      getActiveObject: () => active,
+      requestRenderAll,
+      setActiveObject,
+    } as unknown as Canvas;
+
+    toggleObjectInActiveSelection(canvas, clicked);
+
+    const selection = setActiveObject.mock.calls[0][0] as BoardActiveSelection;
+    expect(selection).toBeInstanceOf(BoardActiveSelection);
+    expect(selection.getObjects()).toEqual([first, second, clicked]);
+    expect(requestRenderAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a clicked member and rebuilds the multi-selection", () => {
+    const first = new Rect({ selectable: true });
+    const second = new Rect({ selectable: true });
+    const third = new Rect({ selectable: true });
+    const requestRenderAll = vi.fn();
+    let active: unknown = new ActiveSelection([first, second, third]);
+    const setActiveObject = vi.fn((next: unknown) => {
+      active = next;
+    });
+    const canvas = {
+      // Fabric 在多选构造的 layout 钩子里会对 canvas.fire 发事件。
+      fire: vi.fn(),
+      discardActiveObject: vi.fn(() => {
+        active = null;
+      }),
+      getActiveObject: () => active,
+      requestRenderAll,
+      setActiveObject,
+    } as unknown as Canvas;
+
+    toggleObjectInActiveSelection(canvas, second);
+
+    const selection = setActiveObject.mock.calls[0][0] as BoardActiveSelection;
+    expect(selection).toBeInstanceOf(BoardActiveSelection);
+    expect(selection.getObjects()).toEqual([first, third]);
+    expect(requestRenderAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses to the single remaining member after removing another", () => {
+    const first = new Rect({ selectable: true });
+    const second = new Rect({ selectable: true });
+    const requestRenderAll = vi.fn();
+    let active: unknown = new ActiveSelection([first, second]);
+    // ActiveSelection 构造入组时会调用一次成员 setCoords（_shouldSetNestedCoords
+    // 恒为 true），spy 必须在其后安装，才能只统计收拢路径里的那次调用。
+    const setCoords = vi.spyOn(first, "setCoords");
+    const setActiveObject = vi.fn((next: unknown) => {
+      active = next;
+    });
+    const canvas = {
+      discardActiveObject: vi.fn(() => {
+        active = null;
+      }),
+      getActiveObject: () => active,
+      requestRenderAll,
+      setActiveObject,
+    } as unknown as Canvas;
+
+    toggleObjectInActiveSelection(canvas, second);
+
+    expect(setActiveObject).toHaveBeenCalledTimes(1);
+    expect(setActiveObject).toHaveBeenCalledWith(first);
+    expect(setCoords).toHaveBeenCalledOnce();
+    expect(requestRenderAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the selection when the only member is removed", () => {
+    const only = new Rect({ selectable: true });
+    const requestRenderAll = vi.fn();
+    let active: unknown = new ActiveSelection([only]);
+    const setActiveObject = vi.fn((next: unknown) => {
+      active = next;
+    });
+    const discardActiveObject = vi.fn(() => {
+      active = null;
+    });
+    const canvas = {
+      discardActiveObject,
+      getActiveObject: () => active,
+      requestRenderAll,
+      setActiveObject,
+    } as unknown as Canvas;
+
+    toggleObjectInActiveSelection(canvas, only);
+
+    expect(discardActiveObject).toHaveBeenCalledTimes(1);
+    expect(setActiveObject).not.toHaveBeenCalled();
+    expect(requestRenderAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves single selections and empty canvases untouched", () => {
+    const only = new Rect({ selectable: true });
+    const requestRenderAll = vi.fn();
+    const setActiveObject = vi.fn();
+    const discardActiveObject = vi.fn();
+    const canvas = {
+      discardActiveObject,
+      getActiveObject: () => only,
+      requestRenderAll,
+      setActiveObject,
+    } as unknown as Canvas;
+
+    toggleObjectInActiveSelection(canvas, only);
+
+    expect(setActiveObject).not.toHaveBeenCalled();
+    expect(discardActiveObject).not.toHaveBeenCalled();
+    expect(requestRenderAll).not.toHaveBeenCalled();
   });
 });

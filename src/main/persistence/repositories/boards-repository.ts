@@ -85,7 +85,6 @@ export function toBoardV3(document: BoardDocument): BoardDocumentV3 {
           ? canvasMode.gridStyle
           : "line",
     },
-    sampling: source?.sampling === "nearest" ? "nearest" : "bilinear",
     exportSettings: {
       format:
         source?.exportSettings?.format === "jpeg" ||
@@ -179,7 +178,6 @@ export class BoardsRepository {
       appearance: { ...defaultBoardAppearance },
       windowMode: "normal",
       canvasMode: { locked: false, grayscale: false, gridStyle: "line" },
-      sampling: "bilinear",
       exportSettings: { format: "png", embedAssets: false },
     };
     this.db.prepare(`

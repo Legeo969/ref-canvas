@@ -41,7 +41,12 @@ export function resolveBoardContext<T>(
   target: T | undefined,
   targetIsActiveSelection: boolean,
 ): BoardContextResolution<T> {
-  if (!target) return { mode: "empty" };
+  // 右键落在空白处时 target 为 undefined,但活动多选仍然有效:对齐/分布等
+  // 多选操作只依赖选区本身。若此处回落为 empty,第一次对齐把对象移走后,
+  // 下一次右键常落在空白处,对齐/分布入口会整体消失(连击失效)。
+  if (!target) {
+    return selected.length > 1 ? { mode: "multi" } : { mode: "empty" };
+  }
   if (
     targetIsActiveSelection ||
     (selected.length > 1 && selected.includes(target))

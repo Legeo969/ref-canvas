@@ -170,17 +170,21 @@
 .canvas-toolbar {
   top: 12px;
   left: 50%;
+  /* 按功能分组：组是换行单位，窄窗口时整组换行居中，不裁剪、不出滚动条。 */
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 2px;
-  min-height: 42px;
-  padding: 4px;
+  min-height: 36px;
+  padding: 3px;
   translate: -50% 0;
 }
 
 .canvas-toolbar button,
 .zoom-control button {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   place-items: center;
   border: 0;
@@ -191,6 +195,12 @@
   transition-property: background-color, color, scale;
   transition-duration: 130ms;
   transition-timing-function: ease-out;
+}
+
+/* 缩放控件维持 40px 触达面积，仅工具栏按钮收紧到 34px。 */
+.zoom-control button {
+  width: 40px;
+  height: 40px;
 }
 
 .canvas-toolbar button:hover:not(:disabled),
@@ -227,25 +237,98 @@
   translate: -50% 0;
 }
 
-.toolbar-divider {
+/* 空白板引导层：深色玻璃沿用 .board-drop-notice 的语言；整层不拦截画布
+   鼠标事件，仅按钮可交互；z-index 压在工具栏（20）之下。 */
+.board-empty-state {
+  position: absolute;
+  z-index: 12;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  max-width: min(360px, calc(100% - 48px));
+  padding: 20px 26px;
+  border-radius: 12px;
+  background: rgba(20, 25, 25, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(115, 205, 178, 0.24),
+    0 10px 28px rgba(0, 0, 0, 0.28);
+  color: #c9e7de;
+  font-size: 13px;
+  text-align: center;
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
+.board-empty-state p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.board-empty-state button {
+  min-height: 32px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px rgba(115, 205, 178, 0.32);
+  color: #75d2b6;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  transition-property: background-color, color;
+  transition-duration: 130ms;
+  transition-timing-function: ease-out;
+}
+
+.board-empty-state button:hover {
+  background: rgba(58, 178, 143, 0.24);
+  color: #8cdec5;
+}
+
+/* 工具栏分组：组内 nowrap 不拆行；组间细分隔线沿用原 toolbar-divider 的视觉语言。 */
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.toolbar-group + .toolbar-group::before {
+  content: "";
   width: 1px;
-  height: 20px;
-  margin: 0 3px;
+  height: 18px;
+  margin-right: 2px;
   background: var(--line-strong);
+}
+
+/* 收起/展开开关：比工具按钮更收敛的配色，示意它是栏级 UI 而非画布命令。 */
+.canvas-toolbar button.toolbar-collapse {
+  color: #6b7370;
 }
 
 .zoom-control {
   right: 14px;
   bottom: 14px;
+  gap: 2px;
   min-height: 38px;
   padding: 2px 9px 2px 2px;
-  color: #939c98;
   font-size: 10px;
 }
 
 .zoom-control button {
   width: 34px;
   height: 34px;
+}
+
+/* 百分比文字按钮：配色沿用 .zoom-control button（闲置 #929b97 / hover #e3e9e6），按内容收口。 */
+.zoom-control .zoom-percent {
+  width: auto;
+  min-width: 34px;
+  padding: 0 4px;
 }
 
 .board-object-comment {
@@ -485,6 +568,140 @@
     currentColor 0 6px,
     transparent 6px 10px
   );
+}
+
+.arrange-settings-panel {
+  position: absolute;
+  z-index: 25;
+  top: 64px;
+  left: 50%;
+  display: grid;
+  width: min(320px, calc(100% - 28px));
+  gap: 10px;
+  padding: 10px;
+  border-radius: 24px;
+  background: rgba(25, 30, 30, 0.97);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 18px 46px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  translate: -50% 0;
+}
+
+.arrange-settings-panel > header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 4px;
+}
+
+.arrange-settings-panel > header div {
+  display: grid;
+  gap: 3px;
+}
+
+.arrange-settings-panel > header strong {
+  color: #e2e9e5;
+  font-size: 12px;
+  text-wrap: balance;
+}
+
+.arrange-settings-panel button {
+  min-width: 40px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #9aa49f;
+  cursor: pointer;
+  transition-property: background-color, color, box-shadow, scale;
+  transition-duration: 130ms;
+  transition-timing-function: ease-out;
+}
+
+.arrange-settings-panel button:hover,
+.arrange-settings-panel button:focus-visible {
+  background: rgba(255, 255, 255, 0.075);
+  color: #eef3f0;
+}
+
+.arrange-settings-panel button.active {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px rgba(115, 205, 178, 0.22);
+  color: #75d2b6;
+}
+
+.arrange-settings-panel button:active {
+  scale: 0.96;
+}
+
+.arrange-sort-field,
+.arrange-gap-field {
+  display: grid;
+  gap: 5px;
+  padding: 7px 9px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.055);
+  color: #89938e;
+  font-size: 9px;
+}
+
+.arrange-sort-field .select-menu-trigger,
+.arrange-gap-field input {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  color: #e2e9e5;
+  font-size: 11px;
+}
+
+.arrange-gap-field input {
+  padding: 0 9px;
+  background: rgba(255, 255, 255, 0.05);
+  font-variant-numeric: tabular-nums;
+}
+
+.arrange-align-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 5px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.055);
+}
+
+.arrange-align-options button {
+  font-size: 10px;
+}
+
+.arrange-reverse-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.055);
+  color: #89938e;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.arrange-reverse-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.arrange-apply {
+  color: #75d2b6;
+  font-size: 11px;
 }
 
 .board-unavailable {
@@ -1428,6 +1645,7 @@
 .presentation-mode .board-workspace .board-header,
 .presentation-mode .board-workspace .canvas-toolbar,
 .presentation-mode .board-workspace .zoom-control,
+.presentation-mode .board-workspace .board-empty-state,
 .presentation-mode .board-workspace .layers-panel {
   display: none;
 }
