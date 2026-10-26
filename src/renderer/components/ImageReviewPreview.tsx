@@ -61,6 +61,8 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
   const [copied, setCopied] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  // 适配状态下图片的屏幕宽度：算 1:1 对应多少倍缩放要用它。
+  const [fittedWidth, setFittedWidth] = useState(0);
 
   const isLayered = LAYERED_FORMATS.has(asset.extension.toLowerCase());
   const eyedropActive = controlledEyedropActive ?? localEyedropActive;
@@ -75,6 +77,32 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     setSample(null);
     setImageFailed(false);
   }, [asset.id, asset.previewUrl]);
+
+  /**
+   * 量出「适配尺寸」下的显示宽度，用于把 zoom 换算成真实像素比例。
+   * offsetWidth 不受 transform 影响，所以即使在放大状态也拿得到适配宽度。
+   */
+  const measureFittedWidth = () => {
+    const image = imageRef.current;
+    if (!image) return;
+    const width = image.offsetWidth;
+    if (width > 0 && width !== fittedWidth) setFittedWidth(width);
+  };
+
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!image) return;
+    measureFittedWidth();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => measureFittedWidth());
+    observer.observe(image);
+    return () => observer.disconnect();
+  }, [asset.id, asset.previewUrl]);
+
+  const nativeZoom =
+    fittedWidth > 0 && imageRef.current && imageRef.current.naturalWidth > 0
+      ? imageRef.current.naturalWidth / fittedWidth
+      : 1;
 
   /**
    * 取色：屏幕点 → 源图归一化坐标 → 主进程 sharp 解码源文件单像素。
@@ -142,6 +170,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
         interactionDisabled={eyedropActive}
         canvasBackground={managed ? "var(--surface-1, #1d201f)" : undefined}
         controlsTarget={controlsTarget}
+        nativeZoom={nativeZoom}
         toolbarEnd={
           <>
             {!sharedColorControls && <button
@@ -201,6 +230,7 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
               style={style}
               onClick={(event) => void samplePixel(event)}
               onError={() => setImageFailed(true)}
+              onLoad={measureFittedWidth}
             />
             {imageFailed && (
               <p className="image-review-error">{translate("imageReview.error")}</p>

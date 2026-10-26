@@ -1,4 +1,4 @@
-import { Grid2X2, RotateCw } from "lucide-react";
+import { Grid2X2, Grid3X3, RotateCw } from "lucide-react";
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -15,6 +15,18 @@ import { translate } from "../app/i18n";
 
 export const MIN_IMAGE_ZOOM = 0.1;
 export const MAX_IMAGE_ZOOM = 8;
+
+/** 像素级开关打开时的像素比（1 个源像素占多少屏幕像素）。 */
+export const PIXEL_ZOOM_RATIO = 8;
+
+/**
+ * 缩放上限：普通查看 8 倍，但必须够到「1 像素 = 8 屏幕像素」。
+ * 大图适配后可能已缩到 1:8，固定 8 倍上限永远看不到真实像素。
+ */
+export function maxZoomForPixelRatio(nativeZoom: number): number {
+  if (!Number.isFinite(nativeZoom) || nativeZoom <= 0) return MAX_IMAGE_ZOOM;
+  return Math.max(MAX_IMAGE_ZOOM, nativeZoom * PIXEL_ZOOM_RATIO);
+}
 
 interface Point {
   x: number;
@@ -36,10 +48,16 @@ interface ImagePreviewViewportProps {
   interactionDisabled?: boolean;
   canvasBackground?: string;
   controlsTarget?: HTMLElement | null;
+  /**
+   * 当前 zoom 值对应 1:1 像素时的倍数（源图尺寸 / 适配尺寸）。
+   * 缺省时按「适配尺寸 = 源图尺寸」处理。
+   */
+  nativeZoom?: number;
 }
 
-export function clampImageZoom(value: number): number {
-  return Math.min(MAX_IMAGE_ZOOM, Math.max(MIN_IMAGE_ZOOM, value));
+export function clampImageZoom(value: number, max = MAX_IMAGE_ZOOM): number {
+  const upper = Number.isFinite(max) && max > 0 ? max : MAX_IMAGE_ZOOM;
+  return Math.min(upper, Math.max(MIN_IMAGE_ZOOM, value));
 }
 
 /** Keep the content point under the pointer stationary while zoom changes. */
@@ -64,6 +82,7 @@ export function ImagePreviewViewport({
   interactionDisabled = false,
   canvasBackground = "var(--preview-canvas, #0F1119)",
   controlsTarget,
+  nativeZoom = 1,
 }: ImagePreviewViewportProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
@@ -77,6 +96,10 @@ export function ImagePreviewViewport({
   const [rotation, setRotation] = useState(0);
   const [showChecker, setShowChecker] = useState(false);
   const [panning, setPanning] = useState(false);
+  // 像素级查看：不插值，并把缩放直接对到 1 像素 = PIXEL_ZOOM_RATIO 屏幕像素。
+  const [pixelated, setPixelated] = useState(false);
+
+  const maxZoom = useMemo(() => maxZoomForPixelRatio(nativeZoom), [nativeZoom]);
 
   const fitView = useCallback(() => {
     setFit(true);
@@ -96,20 +119,28 @@ export function ImagePreviewViewport({
     return () => window.removeEventListener("refcanvas:preview-fit", onFit);
   }, [fitView]);
 
-  const applyZoom = useCallback((nextValue: number, pointer?: Point) => {
-    const nextZoom = clampImageZoom(nextValue);
-    setFit(false);
-    setZoom((previousZoom) => {
-      if (pointer) {
-        setPan((currentPan) =>
-          zoomPanAtPoint(currentPan, pointer, previousZoom, nextZoom),
-        );
-      } else if (nextZoom <= 1) {
-        setPan({ x: 0, y: 0 });
-      }
-      return nextZoom;
-    });
-  }, []);
+  const applyZoom = useCallback(
+    (nextValue: number, pointer?: Point) => {
+      const nextZoom = clampImageZoom(nextValue, maxZoom);
+      setFit(false);
+      setZoom((previousZoom) => {
+        if (pointer) {
+          setPan((currentPan) =>
+            zoomPanAtPoint(currentPan, pointer, previousZoom, nextZoom),
+          );
+        } else if (nextZoom <= 1) {
+          setPan({ x: 0, y: 0 });
+        }
+        return nextZoom;
+      });
+    },
+    [maxZoom],
+  );
+
+  /** 直接跳到 1:1（每个源像素对应 1 个屏幕像素）。 */
+  const zoomToNative = useCallback(() => {
+    applyZoom(nativeZoom);
+  }, [applyZoom, nativeZoom]);
 
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     if (interactionDisabled) return;
@@ -158,7 +189,9 @@ export function ImagePreviewViewport({
     transform: `translate3d(${pan.x}px, ${pan.y}px, 0) rotate(${rotation}deg) scale(${zoom})`,
     transformOrigin: "center center",
     transitionDuration: panning ? "0ms" : "90ms",
-  }), [pan.x, pan.y, panning, rotation, zoom]);
+    // 像素级查看必须关掉浏览器的平滑插值，否则放大的只是一团模糊。
+    imageRendering: pixelated ? "pixelated" : "auto",
+  }), [pan.x, pan.y, panning, rotation, zoom, pixelated]);
 
   const toolbar = (
     <div className="image-preview-toolbar">
@@ -185,6 +218,23 @@ export function ImagePreviewViewport({
           onClick={() => setShowChecker((value) => !value)}
         >
           <Grid2X2 size={15} />
+        </button>
+        <button
+          type="button"
+          className={`mini-icon-button${pixelated ? " active" : ""}`}
+          aria-label={translate("imageReview.pixelViewHint")}
+          aria-pressed={pixelated}
+          onClick={() => setPixelated((value) => !value)}
+        >
+          <Grid3X3 size={15} />
+        </button>
+        <button
+          type="button"
+          className="preview-tool-label image-preview-native-button"
+          aria-label={translate("imageReview.nativeSize")}
+          onClick={zoomToNative}
+        >
+          1:1
         </button>
       </div>
       {toolbarEnd && <div className="image-preview-toolbar-end">{toolbarEnd}</div>}

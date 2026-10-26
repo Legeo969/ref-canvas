@@ -1439,6 +1439,10 @@ export type MessageKey =
 
   | "imageReview.noLayers"
 
+  | "imageReview.nativeSize"
+
+  | "imageReview.pixelViewHint"
+
 
 
 
