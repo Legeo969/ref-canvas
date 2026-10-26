@@ -926,11 +926,20 @@ export function SettingsPanel({
                     <button
                       type="button"
                       className="icon-button"
-                      aria-label={translate("settings.preview.locateOcioConfig")}
-                      disabled={!appPreferences?.previewSettings.ocioConfigPath}
+                      aria-label={translate("settings.preview.pickOcioConfig")}
+                      title={translate("settings.preview.pickOcioConfig")}
                       onClick={() => {
-                        const value = appPreferences?.previewSettings.ocioConfigPath;
-                        if (value) void window.refCanvas.system.revealInFolder(value);
+                        void window.refCanvas.system
+                          .pickFile({
+                            title: translate("settings.preview.pickOcioConfig"),
+                            filters: [{ name: "OCIO Config", extensions: ["ocio"] }],
+                          })
+                          .then(([path]) => {
+                            if (!path) return;
+                            void setAppPreference({
+                              previewSettings: { ocioConfigPath: path },
+                            });
+                          });
                       }}
                     >
                       <FolderOpen size={14} />
@@ -955,11 +964,20 @@ export function SettingsPanel({
                     <button
                       type="button"
                       className="icon-button"
-                      aria-label={translate("settings.preview.locateLut")}
-                      disabled={!appPreferences?.previewSettings.activeLut}
+                      aria-label={translate("settings.preview.pickLut")}
+                      title={translate("settings.preview.pickLut")}
                       onClick={() => {
-                        const value = appPreferences?.previewSettings.activeLut;
-                        if (value) void window.refCanvas.system.revealInFolder(value);
+                        void window.refCanvas.system
+                          .pickFile({
+                            title: translate("settings.preview.pickLut"),
+                            filters: [{ name: "LUT", extensions: ["cube", "3dl"] }],
+                          })
+                          .then(([path]) => {
+                            if (!path) return;
+                            void setAppPreference({
+                              previewSettings: { activeLut: path },
+                            });
+                          });
                       }}
                     >
                       <FolderOpen size={14} />
@@ -1094,27 +1112,6 @@ export function SettingsPanel({
                     {translate("settings.preview.debugLogging")}
                     <small>{translate("settings.preview.debugLoggingHint")}</small>
                   </span>
-                </label>
-                <label className="settings-row">
-                  <span>
-                    {translate("settings.preview.closeBehavior")}
-                    <small>{translate("settings.preview.closeBehaviorHint")}</small>
-                  </span>
-                  <SelectMenu
-                    value={appPreferences?.previewSettings.closeBehavior ?? "quit"}
-                    ariaLabel={translate("settings.preview.closeBehavior")}
-                    options={[
-                      { value: "quit", label: translate("settings.preview.closeQuit") },
-                      { value: "tray", label: translate("settings.preview.closeTray") },
-                    ]}
-                    onValueChange={(value) =>
-                      void setAppPreference({
-                        previewSettings: {
-                          closeBehavior: value,
-                        },
-                      })
-                    }
-                  />
                 </label>
               </div>
             )}

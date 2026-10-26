@@ -18,6 +18,10 @@ export class SettingsRepository {
     `).run(key, JSON.stringify(value));
   }
 
+  delete(key: string): void {
+    this.db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+  }
+
   getPlayback(assetId: string): PlaybackState | null {
     return this.get<PlaybackState | null>(`playback:${assetId}`, null);
   }

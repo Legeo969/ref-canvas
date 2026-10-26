@@ -474,7 +474,6 @@ export interface PreviewSettings {
   activeLut: string | null;
   // §10.5 本地设置
   debugLogging: boolean;
-  closeBehavior: "quit" | "tray";
 }
 
 export const PREVIEW_SETTINGS_DEFAULTS: PreviewSettings = {
@@ -534,7 +533,6 @@ export const PREVIEW_SETTINGS_DEFAULTS: PreviewSettings = {
   lutDirectories: [],
   activeLut: null,
   debugLogging: false,
-  closeBehavior: "quit",
 };
 
 /** 应用级偏好补丁：boardSettings 可只传要改的字段。 */

@@ -534,6 +534,7 @@
 .maintenance-progress progress {
   width: 100%;
   height: 5px;
+  accent-color: var(--accent);
 }
 
 .maintenance-progress small {
@@ -579,6 +580,11 @@
 .settings-toggle small {
   color: var(--muted);
   font-size: 9px;
+}
+
+/* 复选框跟随主题强调色：不声明时 Chromium 回退到原生蓝色，与深色绿调主题冲突。 */
+.settings-panel input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 .watch-root-list {
@@ -924,8 +930,8 @@
   gap: 3px;
   padding: 0 5px 0 8px;
   border-radius: 6px;
-  background: #293139;
-  color: #dbe4df;
+  background: var(--surface-3);
+  color: var(--text);
   font-family: ui-monospace, Consolas, monospace;
   font-size: 10px;
 }
@@ -1061,7 +1067,7 @@
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
-  accent-color: #7fb8a0;
+  accent-color: var(--accent);
 }
 
 .mp4-preset-row > input[type="text"],

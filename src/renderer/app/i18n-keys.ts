@@ -2138,14 +2138,6 @@ export type MessageKey =
 
   | "settings.preview.autoplayVideoHint"
 
-  | "settings.preview.closeBehavior"
-
-  | "settings.preview.closeBehaviorHint"
-
-  | "settings.preview.closeQuit"
-
-  | "settings.preview.closeTray"
-
   | "settings.preview.colorManagement"
 
   | "settings.preview.currentLut"
@@ -2188,9 +2180,9 @@ export type MessageKey =
 
   | "settings.preview.locate"
 
-  | "settings.preview.locateLut"
+  | "settings.preview.pickLut"
 
-  | "settings.preview.locateOcioConfig"
+  | "settings.preview.pickOcioConfig"
 
   | "settings.preview.lutCacheInvalidate"
 

@@ -2116,6 +2116,10 @@ export class RefCanvasDatabase {
     this.settingsRepository.set(key, value);
   }
 
+  deleteSetting(key: string): void {
+    this.settingsRepository.delete(key);
+  }
+
   /**
    * schema 17 引用集合仓储（FND-003）。仓储直接使用内部连接；
    * IPC 层只通过这里访问集合 CRUD/解析/导出。

@@ -194,7 +194,6 @@ const previewSettingsPatchSchema = z.object({
   lutDirectories: z.array(z.string().max(4096)).max(50).optional(),
   activeLut: z.string().max(4096).nullable().optional(),
   debugLogging: z.boolean().optional(),
-  closeBehavior: z.enum(["quit", "tray"]).optional(),
 });
 
 export function registerSystemIpc(
@@ -206,6 +205,20 @@ export function registerSystemIpc(
   const libraryManager = () => dependencies.getLibraryManager();
   const mainWindow = () => dependencies.getMainWindow();
   const state = dependencies.state;
+
+  // 一次性迁移：旧的「关闭行为」(closeBehavior) 与「后台驻留」语义重复且互不同步，
+  // 统一为 backgroundResidency。tray 曾与驻留按 OR 生效，这里等价改写后删键。
+  try {
+    const legacyCloseBehavior = database().getSetting<unknown>("closeBehavior", null);
+    if (legacyCloseBehavior !== null) {
+      if (legacyCloseBehavior === "tray") {
+        database().setSetting("backgroundResidency", true);
+      }
+      database().deleteSetting("closeBehavior");
+    }
+  } catch {
+    // 只读降级模式下无法写入：保留旧键，下次可写启动时再迁移。
+  }
 
   ipc.handle("system:open-external", async (filename) => {
     const local = assertAbsoluteLocalPath(z.string().min(1).max(32_768).parse(filename));
@@ -664,9 +677,6 @@ export function registerSystemIpc(
       }
       if (parsed.previewSettings.debugLogging !== undefined) {
         database().setSetting("debugLogging", parsed.previewSettings.debugLogging);
-      }
-      if (parsed.previewSettings.closeBehavior !== undefined) {
-        database().setSetting("closeBehavior", parsed.previewSettings.closeBehavior);
       }
     }
     return readAppPreferences();

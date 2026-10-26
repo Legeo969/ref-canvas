@@ -46,7 +46,10 @@ describe("settings domain sections", () => {
     expect(css).toMatch(
       /\.settings-panel input\[type="text"\]:focus[\s\S]*?border-color:\s*var\(--accent\);/,
     );
-    expect(css).not.toMatch(/\.settings-panel input\[type="checkbox"\]\s*\{/);
+    // 复选框同样跟随主题强调色：不声明时 Chromium 回退到原生蓝色，与主题不符。
+    expect(css).toMatch(
+      /\.settings-panel input\[type="checkbox"\]\s*\{[\s\S]*?accent-color:\s*var\(--accent\);/,
+    );
   });
 
   it("keeps uninstall intent in the parent orchestrator", () => {

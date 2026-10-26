@@ -830,11 +830,7 @@ function broadcastAll(channel: string, ...args: unknown[]): void {
 /** 后台驻留：关闭窗口后保留主进程与托盘（可选设置，默认关闭）。 */
 function backgroundResidencyEnabled(): boolean {
   if (quitting) return false;
-  // 阶段 5 §10.5：closeBehavior=tray 与 backgroundResidency 等效。
-  return (
-    database.getSetting("backgroundResidency", false) ||
-    database.getSetting<"quit" | "tray">("closeBehavior", "quit") === "tray"
-  );
+  return database.getSetting("backgroundResidency", false);
 }
 
 function rebuildTrayMenu(): void {
