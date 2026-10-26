@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ImagePreviewViewport } from "../../../../src/renderer/components/ImagePreviewViewport";
 
 /**
- * 像素级查看：开关打开后必须关掉浏览器的平滑插值，
- * 否则放大到 1:1 以上仍然是一团模糊。
+ * 像素级显示是自动的：没有开关，没有 1:1 按钮。
+ * 显示比例到 1:1 及以上时自动关掉插值，往下缩再自动打开。
  */
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -15,11 +15,11 @@ import { ImagePreviewViewport } from "../../../../src/renderer/components/ImageP
 let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 
-function render(nativeZoom?: number) {
+/** nativeZoom 是「1:1 对应的 zoom 倍数」。 */
+function render(nativeZoom: number) {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  let lastStyle: Record<string, unknown> = {};
   act(() => {
     root?.render(
       <ImagePreviewViewport
@@ -27,14 +27,25 @@ function render(nativeZoom?: number) {
         checkerBackground="none"
         nativeZoom={nativeZoom}
       >
-        {(state) => {
-          lastStyle = state.style as Record<string, unknown>;
-          return <img alt="" style={state.style} />;
-        }}
+        {(state) => <img alt="" style={state.style} />}
       </ImagePreviewViewport>,
     );
   });
-  return { getStyle: () => lastStyle };
+  return host;
+}
+
+function wheel(target: HTMLElement, deltaY: number) {
+  act(() => {
+    target.dispatchEvent(
+      new WheelEvent("wheel", {
+        bubbles: true,
+        cancelable: true,
+        deltaY,
+        clientX: 400,
+        clientY: 300,
+      }),
+    );
+  });
 }
 
 afterEach(() => {
@@ -44,29 +55,43 @@ afterEach(() => {
   host = null;
 });
 
-describe("ImagePreviewViewport pixel view", () => {
-  it("uses smooth rendering by default", () => {
-    const { getStyle } = render();
-    expect(getStyle().imageRendering).toBe("auto");
+describe("ImagePreviewViewport automatic pixel view", () => {
+  it("starts smooth because fit is below 1:1 for a downscaled image", () => {
+    // nativeZoom=5 表示 1:1 在 5 倍处，适配状态远低于 1:1。
+    const el = render(5);
+    expect(el.querySelector("img")?.style.imageRendering).toBe("auto");
   });
 
-  it("turns off interpolation once pixel view is enabled", () => {
-    render();
-    const button = host?.querySelector<HTMLButtonElement>(
-      "[aria-label='关闭插值，放大后单个像素保持锐利'], [aria-label='Turn off interpolation so single pixels stay sharp when magnified']",
-    );
-    expect(button).toBeTruthy();
-    act(() => button?.click());
-    const img = host?.querySelector("img");
-    expect(img?.style.imageRendering).toBe("pixelated");
+  it("starts pixelated when the fitted image is already at or past 1:1", () => {
+    // nativeZoom <= 1：适配时就已经不小于 1:1，不该再平滑。
+    const el = render(1);
+    expect(el.querySelector("img")?.style.imageRendering).toBe("pixelated");
   });
 
-  it("exposes a 1:1 zoom control", () => {
-    render(5);
-    const button = host?.querySelector<HTMLButtonElement>(
-      "[aria-label='缩放到 1:1（1 个图像像素对应 1 个屏幕像素）'], [aria-label='Zoom to 1:1 (one image pixel per screen pixel)']",
+  it("switches to pixelated by zooming in, with no toggle to press", () => {
+    const el = render(5);
+    const stage = el.querySelector<HTMLElement>(".image-preview-viewport-stage")!;
+    // 连续放大直到超过 1:1（nativeZoom=5）。
+    for (let i = 0; i < 12; i += 1) wheel(stage, -120);
+    expect(el.querySelector("img")?.style.imageRendering).toBe("pixelated");
+  });
+
+  it("returns to smooth rendering when zooming back out", () => {
+    const el = render(5);
+    const stage = el.querySelector<HTMLElement>(".image-preview-viewport-stage")!;
+    for (let i = 0; i < 12; i += 1) wheel(stage, -120);
+    expect(el.querySelector("img")?.style.imageRendering).toBe("pixelated");
+    for (let i = 0; i < 16; i += 1) wheel(stage, 120);
+    expect(el.querySelector("img")?.style.imageRendering).toBe("auto");
+  });
+
+  it("has no pixel-view toggle and no 1:1 button", () => {
+    const el = render(5);
+    const labels = Array.from(el.querySelectorAll("button")).map((button) =>
+      button.getAttribute("aria-label"),
     );
-    expect(button).toBeTruthy();
-    expect(button?.textContent).toBe("1:1");
+    expect(labels.some((label) => label?.includes("1:1"))).toBe(false);
+    expect(labels.some((label) => label?.includes("interpolation"))).toBe(false);
+    expect(labels.some((label) => label?.includes("插值"))).toBe(false);
   });
 });
