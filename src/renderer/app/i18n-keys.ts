@@ -687,6 +687,12 @@ export type MessageKey =
 
   | "board.zoom100"
 
+  | "board.pixelView"
+
+  | "board.pixelViewOff"
+
+  | "board.pixelViewOn"
+
   | "board.zoomFit"
 
   | "board.zoomIn"

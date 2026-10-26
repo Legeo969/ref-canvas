@@ -1,5 +1,6 @@
 import {
   Maximize,
+  Grid3X3,
   Minus,
   Pencil,
   Plus,
@@ -91,7 +92,7 @@ import {
   nextCircularIndex,
   sceneAxisToViewport,
 } from "../app/board-layout";
-import { clampBoardZoom } from "../app/board-zoom";
+import { clampBoardZoom, BOARD_MAX_ZOOM, BOARD_PIXEL_ZOOM } from "../app/board-zoom";
 import { localToUv } from "../app/board-sample-uv";
 import { sampleDisplayPixel } from "../app/display-sample";
 import {
@@ -736,6 +737,10 @@ export function BoardCanvas({
   const [dropNotice, setDropNotice] = useState<string | null>(null);
   const dropNoticeTimerRef = useRef<number | null>(null);
   const [colorSampling, setColorSampling] = useState(false);
+  // 像素级核对：关闭图片平滑，并把缩放上限抬到能看到单个源像素。
+  const [pixelView, setPixelView] = useState(false);
+  // 滚轮回调里读它，避开闭包快照。
+  const pixelViewRef = useRef(false);
   const [focusedObjectId, setFocusedObjectId] = useState<string | null>(null);
   const [appearance, setAppearance] = useState<BoardAppearance>(
     document.appearance ?? defaultBoardAppearance,
@@ -987,6 +992,8 @@ export function BoardCanvas({
             scaleY: (signY * displayHeight) / Math.max(1, image.height),
             dirty: true,
           });
+          // 换源后要保持像素级核对状态（新图默认平滑）。
+          image.imageSmoothing = !pixelViewRef.current;
           image.setCoords();
           scheduleRender();
         })
@@ -1386,7 +1393,10 @@ export function BoardCanvas({
     });
     controller.onCanvas(canvas, "mouse:wheel", (event) => {
       const wheel = event.e as WheelEvent;
-      const nextZoom = clampBoardZoom(canvas.getZoom() * 0.999 ** wheel.deltaY);
+      const nextZoom = clampBoardZoom(
+        canvas.getZoom() * 0.999 ** wheel.deltaY,
+        pixelViewRef.current ? BOARD_PIXEL_ZOOM : BOARD_MAX_ZOOM,
+      );
       canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), nextZoom);
       scheduleZoomState(Math.round(nextZoom * 100));
       scheduleProxyRefresh();
@@ -3215,13 +3225,43 @@ export function BoardCanvas({
   const zoomByFactor = (factor: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const next = clampBoardZoom(canvas.getZoom() * factor);
+    const next = clampBoardZoom(
+      canvas.getZoom() * factor,
+      pixelViewRef.current ? BOARD_PIXEL_ZOOM : BOARD_MAX_ZOOM,
+    );
     canvas.zoomToPoint(
       new Point(canvas.getWidth() / 2, canvas.getHeight() / 2),
       next,
     );
     zoomUiRef.current?.scheduleZoomState(Math.round(next * 100));
     zoomUiRef.current?.scheduleProxyRefresh();
+  };
+
+  /**
+   * 像素级核对开关。
+   *
+   * 两件事缺一不可：
+   *  - 缩放上限抬到 BOARD_PIXEL_ZOOM：画布通常已缩得远小于 1:1，8 倍根本到不了。
+   *  - 每个图片对象 imageSmoothing = false：否则放大只是双线性模糊，
+   *    单个像素永远分不出来。
+   */
+  const togglePixelView = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const next = !pixelViewRef.current;
+    pixelViewRef.current = next;
+    setPixelView(next);
+    for (const object of canvas.getObjects() as CanvasObjectWithData[]) {
+      if (object instanceof FabricImage) {
+        object.imageSmoothing = !next;
+      }
+    }
+    canvas.requestRenderAll();
+    showDropNotice(
+      next
+        ? translate("board.pixelViewOn")
+        : translate("board.pixelViewOff"),
+    );
   };
 
   /** Arms one-shot canvas pixel sampling; the next canvas click reports color and scene coordinates. */
@@ -5099,6 +5139,14 @@ export function BoardCanvas({
             aria-label={translate("board.zoomFit")}
           >
             <Maximize size={14} />
+          </button>
+          <button
+            className={pixelView ? "active" : undefined}
+            onClick={togglePixelView}
+            aria-label={translate("board.pixelView")}
+            aria-pressed={pixelView}
+          >
+            <Grid3X3 size={14} />
           </button>
         </div>
         {hudMessage && (
