@@ -33,8 +33,13 @@ describe("board controllers", () => {
       300,
     );
 
-    expect(fitted?.zoom).toBe(4);
-    expect(fitted?.transform).toEqual([4, 0, 0, 4, 50, 50]);
+    // 上限从 4（400%）提到 8 后，(500-96)/100 = 4.04 不再被截断成 4，
+    // 适应视图会给到真实可容纳的缩放值。
+    expect(fitted?.zoom).toBeCloseTo(4.04, 5);
+    expect(fitted?.transform[0]).toBeCloseTo(4.04, 5);
+    expect(fitted?.transform[3]).toBeCloseTo(4.04, 5);
+    expect(fitted?.transform[4]).toBeCloseTo(48, 5);
+    expect(fitted?.transform[5]).toBeCloseTo(49, 5);
   });
 
   it("resolves resident and missing selection assets", () => {

@@ -38,6 +38,15 @@ describe("ImageReviewPreview (FND-005)", () => {
     Object.assign(window, {
       refCanvas: {
         filesystem: { previewToken: vi.fn() },
+        // 预览取色走主进程（color.sampleImage）；默认返回一个固定像素。
+        color: {
+          sampleImage: vi.fn(async () => ({
+            hex: "#123456",
+            alpha: 255,
+            decodedWidth: 100,
+            decodedHeight: 50,
+          })),
+        },
         system: {
           writeClipboard: vi.fn(async () => undefined),
           getPreferences: vi.fn(async () => ({
@@ -167,17 +176,22 @@ describe("ImageReviewPreview (FND-005)", () => {
     expect(writeClipboard).toHaveBeenCalledWith("#0c2238");
   });
 
-  it("samples the visible pixel inline and copies its HEX value", async () => {
-    const writeClipboard = vi.fn(async () => undefined);
+  it("does not let the transformed rect size change the sample point", async () => {
+    // 关键回归：<img> 自身带 translate/rotate/scale，getBoundingClientRect()
+    // 返回**变换后**的外框，其宽高随缩放变化。旧实现拿它当布局基准，
+    // 于是同一个屏幕点在不同缩放下会算出不同的 u/v —— 取色整体漂移。
+    //
+    // 用「rect 尺寸变化时结果必须不变」来卡这个 bug：
+    // 与具体 zoom 数值无关，也不复制实现里的缩放公式。
     installRefCanvas();
-    window.refCanvas.system.writeClipboard = writeClipboard;
-    const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray([18, 52, 86, 255]) }));
-    const drawImage = vi.fn();
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-      clearRect: vi.fn(),
-      drawImage,
-      getImageData,
-    } as unknown as CanvasRenderingContext2D);
+    type SampleInput = { assetId: string; u: number; v: number };
+    const sampleImage = vi.fn(async (_input: SampleInput) => ({
+      hex: "#123456",
+      alpha: 255,
+      decodedWidth: 100,
+      decodedHeight: 50,
+    }));
+    window.refCanvas.color.sampleImage = sampleImage;
     const { host, root, asset } = render();
     await act(async () => {
       root.render(<ImageReviewPreview asset={asset} />);
@@ -186,6 +200,79 @@ describe("ImageReviewPreview (FND-005)", () => {
     Object.defineProperties(image, {
       naturalWidth: { configurable: true, value: 100 },
       naturalHeight: { configurable: true, value: 50 },
+      offsetWidth: { configurable: true, value: 200 },
+      offsetHeight: { configurable: true, value: 100 },
+    });
+
+    // 元素中心固定 (300, 140)；只改 rect 的宽高，模拟不同缩放倍数。
+    const rectAt = (scale: number): DOMRect =>
+      ({
+        left: 300 - (200 * scale) / 2,
+        top: 140 - (100 * scale) / 2,
+        width: 200 * scale,
+        height: 100 * scale,
+        right: 300 + (200 * scale) / 2,
+        bottom: 140 + (100 * scale) / 2,
+        x: 300 - (200 * scale) / 2,
+        y: 140 - (100 * scale) / 2,
+        toJSON: () => ({}),
+      });
+
+    const clickAt = async (scale: number) => {
+      const rectSpy = vi.spyOn(image, "getBoundingClientRect");
+      rectSpy.mockReturnValue(rectAt(scale));
+      await act(async () => {
+        host.querySelector<HTMLButtonElement>("[aria-label='像素取色']")?.click();
+      });
+      await act(async () => {
+        image.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, clientX: 250, clientY: 140 }),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      rectSpy.mockRestore();
+    };
+
+    await clickAt(1);
+    await clickAt(2);
+    await clickAt(4);
+
+    expect(sampleImage).toHaveBeenCalledTimes(3);
+    const results = sampleImage.mock.calls.map(
+      (call) => (call[0] as unknown as { u: number; v: number }).u,
+    );
+    // 同一屏幕点 = 同一源像素，与缩放无关。
+    expect(results[1]).toBeCloseTo(results[0], 9);
+    expect(results[2]).toBeCloseTo(results[0], 9);
+  });
+
+
+  it("samples the source pixel through the main process and copies its HEX value", async () => {
+    const writeClipboard = vi.fn(async () => undefined);
+    installRefCanvas();
+    window.refCanvas.system.writeClipboard = writeClipboard;
+    // 取色现在由主进程解码源文件单像素（不再读 DOM canvas：源是缩略图、
+    // 坐标乘错尺寸、HDR 滤镜都会偏值）。
+    const sampleImage = vi.fn(async () => ({
+      hex: "#123456",
+      alpha: 255,
+      decodedWidth: 100,
+      decodedHeight: 50,
+    }));
+    window.refCanvas.color.sampleImage = sampleImage;
+    const { host, root, asset } = render();
+    await act(async () => {
+      root.render(<ImageReviewPreview asset={asset} />);
+    });
+    const image = host.querySelector<HTMLImageElement>(".image-review-img")!;
+    Object.defineProperties(image, {
+      naturalWidth: { configurable: true, value: 100 },
+      naturalHeight: { configurable: true, value: 50 },
+      // 布局尺寸不受 transform 影响：取色的归一化必须用它，
+      // 不能用被缩放/旋转污染过的 getBoundingClientRect。
+      offsetWidth: { configurable: true, value: 200 },
+      offsetHeight: { configurable: true, value: 100 },
     });
     vi.spyOn(image, "getBoundingClientRect").mockReturnValue({
       left: 10,
@@ -203,6 +290,7 @@ describe("ImageReviewPreview (FND-005)", () => {
       host.querySelector<HTMLButtonElement>("[aria-label='像素取色']")?.click();
     });
     await act(async () => {
+      // 盒子 200×100、图片 100×50（同宽高比，无留白），点击落在正中心。
       image.dispatchEvent(new MouseEvent("click", {
         bubbles: true,
         clientX: 110,
@@ -210,11 +298,12 @@ describe("ImageReviewPreview (FND-005)", () => {
       }));
       await Promise.resolve();
     });
-    expect(getImageData).toHaveBeenLastCalledWith(0, 0, 1, 1);
-    expect(drawImage).toHaveBeenLastCalledWith(image, 50, 25, 1, 1, 0, 0, 1, 1);
-    const sampleCanvas = host.querySelector<HTMLCanvasElement>(".image-preview-viewport-stage canvas");
-    expect(sampleCanvas?.width).toBe(1);
-    expect(sampleCanvas?.height).toBe(1);
+    expect(sampleImage).toHaveBeenCalledTimes(1);
+    expect(sampleImage).toHaveBeenCalledWith({
+      assetId: asset.id,
+      u: 0.5,
+      v: 0.5,
+    });
     const sample = host.querySelector<HTMLButtonElement>('[aria-label="复制 #123456"]');
     expect(sample).toBeTruthy();
     await act(async () => sample?.click());

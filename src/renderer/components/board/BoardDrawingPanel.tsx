@@ -2,10 +2,14 @@ import {
   Circle as CircleIcon,
   Minus,
   Paintbrush,
+  Pipette,
   Square,
   X,
 } from "lucide-react";
+import { useState } from "react";
+import { hexToHsv, hsvToHex, type Hsv } from "../../app/color-readout";
 import { translate } from "../../app/i18n";
+import { ColorPanel } from "../ColorPanel";
 import type {
   BoardDrawingStyle,
   BoardDrawingTool,
@@ -32,6 +36,11 @@ export function BoardDrawingPanel({
   setDrawingStyle,
   onClose,
 }: BoardDrawingPanelProps) {
+  // 颜色用自建颜色面板，不再用原生 <input type="color">：原生控件的取色光标
+  // 由 Chromium 自绘，CSS 改不了，与全局吸管视觉不一致。
+  const [colorPanelOpen, setColorPanelOpen] = useState(false);
+  const hsv =
+    hexToHsv(drawingStyle.color) ?? ({ h: 0, s: 0, v: 0 } as Hsv);
   return (
     <aside className="draw-settings-panel" aria-label={translate("board.drawingSettings")}>
       <header>
@@ -68,19 +77,35 @@ export function BoardDrawingPanel({
         })}
       </div>
       <div className="draw-style-row">
-        <label className="draw-color-field">
+        <div className="draw-color-field">
           <span>{translate("board.drawingColor")}</span>
-          <input
-            type="color"
-            value={drawingStyle.color}
-            onChange={(event) =>
-              setDrawingStyle((current) => ({
-                ...current,
-                color: event.target.value,
-              }))
-            }
-          />
-        </label>
+          <button
+            type="button"
+            className={`draw-color-trigger ${colorPanelOpen ? "active" : ""}`}
+            aria-label={translate("board.drawingColor")}
+            aria-expanded={colorPanelOpen}
+            onClick={() => setColorPanelOpen((open) => !open)}
+          >
+            <span
+              className="draw-color-swatch"
+              style={{ background: drawingStyle.color }}
+              aria-hidden="true"
+            />
+            <code>{drawingStyle.color.toUpperCase()}</code>
+            <Pipette size={13} />
+          </button>
+          {colorPanelOpen && (
+            <ColorPanel
+              hsv={hsv}
+              onChange={(next) =>
+                setDrawingStyle((current) => ({
+                  ...current,
+                  color: hsvToHex(next),
+                }))
+              }
+            />
+          )}
+        </div>
         <label className="draw-width-field">
           <span>{translate("board.drawingWidth")}</span>
           <input

@@ -118,12 +118,13 @@ describe("UI shell regressions", () => {
     );
   });
 
-  it("keeps the flat board toolbar wrapping inside the window", async () => {
+  it("keeps the flat board toolbar wrapping inside the board host", async () => {
     // 「更多」弹层退役后全部工具平铺在一条工具栏上：窄窗口时换行居中，
-    // 不裁剪、不出横向滚动条（max-width / flex-wrap 在 board.css 主块）。
+    // 不裁剪、不出横向滚动条。宽度上限按宿主（%）而非 100vw 计算——
+    // 宿主两侧还有侧栏与详情面板，100vw 会越过实际可用宽度被裁掉。
     const css = await readStyles();
     expect(css).toMatch(
-      /\.canvas-toolbar\s*{[^}]*max-width: calc\(100vw - 24px\);[^}]*flex-wrap: wrap;[^}]*justify-content: center;/s,
+      /\.canvas-toolbar\s*{[^}]*max-width: calc\(100% - 24px\);[^}]*flex-wrap: wrap;[^}]*justify-content: center;/s,
     );
   });
 

@@ -695,13 +695,19 @@ export function registerResourcesIpc(
     const resolved = assertAbsoluteLocalPath(pathSchema.parse(asset.sourcePath));
     const { samplePath, removeSample } = await resolveColorSampleSource(resolved);
     try {
+      // 必须 .rotate()：浏览器会按 EXIF Orientation 自动摆正图片，
+      // sharp 默认不摆。不摆正时 u/v 映射到存储方向，
+      // 旋转 90° 的手机照片会有一半位置取错像素（实测 2/4 点不符）。
+      const pipeline = () => sharp(samplePath, { failOn: "none" }).rotate();
       const metadata = await sharp(samplePath, { animated: false, failOn: "none" }).metadata();
-      const width = metadata.width ?? 0;
-      const height = metadata.height ?? 0;
+      // 摆正后的尺寸：EXIF 方向为 5–8 时宽高互换。
+      const swaps = (metadata.orientation ?? 1) >= 5;
+      const width = (swaps ? metadata.height : metadata.width) ?? 0;
+      const height = (swaps ? metadata.width : metadata.height) ?? 0;
       if (width <= 0 || height <= 0) throw new Error("SAMPLE_DECODE_FAILED");
       const left = Math.min(width - 1, Math.max(0, Math.floor(parsed.u * width)));
       const top = Math.min(height - 1, Math.max(0, Math.floor(parsed.v * height)));
-      const { data } = await sharp(samplePath, { failOn: "none" })
+      const { data } = await pipeline()
         .extract({ left, top, width: 1, height: 1 })
         .ensureAlpha()
         .raw()
@@ -713,6 +719,10 @@ export function registerResourcesIpc(
           .join("")
           .toUpperCase()}`,
         alpha,
+        // 解码图尺寸：渲染端据此判断该像素坐标能否等同于源文件坐标
+        // （EXR/HDR 走缩略图缓存、视频取首帧，二者与源尺寸不同）。
+        decodedWidth: width,
+        decodedHeight: height,
       };
     } finally {
       if (removeSample) await rm(samplePath, { force: true }).catch(() => undefined);

@@ -21,6 +21,12 @@
   --danger: #e56e6e;
   --shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
   --shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
+  /* 吸管光标：取色模式共用（白板画布 + 预览面板）。热区在管口(8,22)，
+     整张图描黑边 + 白底，深浅画布上都保持可见。 */
+  --cursor-eyedropper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'%3E%3Cg stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round' fill='none'%3E%3Cpath d='M8 22 15.2 14.8M17.6 6.4a3.1 3.1 0 0 1 4.4 4.4l-2.2 2.2-4.4-4.4zM14.2 8.2l3.6 3.6L8.6 21 5 22l1-3.6z'/%3E%3C/g%3E%3Cg stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'%3E%3Cpath d='M8 22 15.2 14.8M17.6 6.4a3.1 3.1 0 0 1 4.4 4.4l-2.2 2.2-4.4-4.4zM14.2 8.2l3.6 3.6L8.6 21 5 22l1-3.6z'/%3E%3C/g%3E%3C/svg%3E") 8 22, crosshair;
+  /* 橡皮擦圆圈光标：参照 PS 的笔刷轮廓——中心空心圆 + 四角刻度，
+     热区在圆心(14,14)，与擦除的命中判定中心一致。 */
+  --cursor-eraser: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Ccircle cx='14' cy='14' r='8.5' fill='none' stroke='%23000' stroke-width='3'/%3E%3Ccircle cx='14' cy='14' r='8.5' fill='none' stroke='%23fff' stroke-width='1.4'/%3E%3Cg stroke='%23fff' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M14 1.5v3M14 23.5v3M1.5 14h3M23.5 14h3'/%3E%3C/g%3E%3C/svg%3E") 14 14, cell;
 }
 
 * {

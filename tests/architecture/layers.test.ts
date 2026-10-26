@@ -465,13 +465,15 @@ describe("physical module boundaries", () => {
       '@import "./directory.css";',
       '@import "./library.css";',
       '@import "./board.css";',
+      '@import "./board-dock.css";',
+      '@import "./color-panel.css";',
       '@import "./dialogs.css";',
       '@import "./collections.css";',
       '@import "./image-review.css";',
       '@import "./preview-panel.css";',
     ]);
     await Promise.all(
-      ["shell", "select-menu", "directory", "library", "board", "dialogs", "collections", "image-review", "preview-panel"].map((name) =>
+      ["shell", "select-menu", "directory", "library", "board", "board-dock", "color-panel", "dialogs", "collections", "image-review", "preview-panel"].map((name) =>
         readFile(path.join(rendererRoot, "styles", `${name}.css`), "utf8"),
       ),
     );

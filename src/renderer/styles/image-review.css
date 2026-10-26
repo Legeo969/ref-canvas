@@ -47,7 +47,7 @@
 }
 
 .image-review-img.eyedrop {
-  cursor: crosshair;
+  cursor: var(--cursor-eyedropper);
 }
 
 .image-review-error {
@@ -152,6 +152,14 @@
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+/* 显示层值：屏幕上那份 WebP 的像素，用于对齐视觉。 */
+.image-review-inline-sample-display {
+  color: #8a938f;
+  font-size: 9px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .select-menu-trigger.image-preview-zoom-menu {

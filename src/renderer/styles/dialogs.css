@@ -1909,45 +1909,23 @@
   font-weight: 700;
 }
 
-.layers-panel {
-  position: absolute;
-  z-index: 21;
-  top: 64px;
-  right: 12px;
-  width: min(320px, calc(100% - 24px));
-  max-height: calc(100% - 118px);
-  overflow: hidden;
-  border-radius: 14px;
-  background: rgba(31, 36, 37, 0.97);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 18px 42px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(14px);
+/* 图层面板内容体：外框、标题、折叠由 .board-side-dock 提供。 */
+.layers-panel-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.layers-panel > header {
-  display: grid;
-  gap: 3px;
-  padding: 11px 12px 9px;
-  border-bottom: 1px solid var(--line);
-}
-
-.layers-panel > header strong {
-  color: #aab3af;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.layers-panel > header span {
+/* 拖拽操作提示：旧版压在标题下方，改到内容体顶部。 */
+.layer-drag-hint {
+  margin: 0;
+  padding: 6px 12px 0;
   color: #737d78;
   font-size: 9px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
+  line-height: 1.4;
   text-wrap: pretty;
 }
+
 
 .layer-root-drop {
   display: flex;
@@ -2800,37 +2778,11 @@
 
 /* ===== 白板对象检查器 ===== */
 
-.board-inspector {
-  position: absolute;
-  z-index: 21;
-  top: 64px;
-  right: 12px;
-  width: min(240px, calc(100% - 24px));
-  max-height: calc(100% - 118px);
-  overflow: auto;
-  border-radius: 14px;
-  background: rgba(31, 36, 37, 0.97);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 18px 42px rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(14px);
+.board-inspector-body {
+  display: grid;
+  gap: 8px;
 }
 
-.board-inspector > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 11px 12px 9px;
-  border-bottom: 1px solid var(--line);
-}
-
-.board-inspector > header strong {
-  color: #aab3af;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
 
 .board-inspector-empty {
   margin: 0;
@@ -3494,7 +3446,7 @@
 
 .hdr-preview-stage.is-sampling,
 .video-preview.is-sampling {
-  cursor: crosshair;
+  cursor: var(--cursor-eyedropper);
 }
 
 .hdr-sample-reticle,

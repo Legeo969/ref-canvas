@@ -1,3 +1,5 @@
+import { clampBoardZoom } from "./board-zoom";
+
 export interface LayoutItem {
   width: number;
   height: number;
@@ -116,10 +118,9 @@ export function calculateFocusViewport(
   const availableHeight = Math.max(1, viewport.height - padding * 2);
   const width = Math.max(1, bounds.width);
   const height = Math.max(1, bounds.height);
-  const zoom = Math.min(4, Math.max(0.08, Math.min(
-    availableWidth / width,
-    availableHeight / height,
-  )));
+  const zoom = clampBoardZoom(
+    Math.min(availableWidth / width, availableHeight / height),
+  );
   const centerX = bounds.left + width / 2;
   const centerY = bounds.top + height / 2;
   return {

@@ -1,0 +1,335 @@
+/* ===== 可复用颜色面板（取色结果 + 白板外观设置） ===== */
+
+.color-panel {
+  display: grid;
+  gap: 8px;
+}
+
+/* SV 平面：底色由色相决定，白色→透明铺横向（饱和度），
+   黑色→透明铺纵向（明度）。用两层渐变而不是每帧重绘 canvas。 */
+.color-panel-plane {
+  position: relative;
+  height: 132px;
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  cursor: crosshair;
+  touch-action: none;
+  background-image:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, transparent);
+}
+
+.color-panel-plane:focus-visible,
+.color-panel-hue:focus-visible {
+  outline: 2px solid rgba(58, 178, 143, 0.7);
+  outline-offset: 1px;
+}
+
+.color-panel-plane-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
+.color-panel-hue {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  cursor: ew-resize;
+  touch-action: none;
+  background: linear-gradient(
+    to right,
+    #f00 0%,
+    #ff0 17%,
+    #0f0 33%,
+    #0ff 50%,
+    #00f 67%,
+    #f0f 83%,
+    #f00 100%
+  );
+}
+
+.color-panel-hue-handle {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  translate: -50% -50%;
+  pointer-events: none;
+}
+
+/* ===== 取色结果内容体（外框由 .board-side-dock 提供） ===== */
+
+.board-color-sample-body {
+  display: grid;
+  gap: 9px;
+}
+
+
+.board-color-sample-swatch {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.board-color-sample-status {
+  margin: 0;
+  color: #6f7874;
+  font-size: 9px;
+  text-align: center;
+}
+
+.board-color-sample-grid {
+  display: grid;
+  gap: 3px;
+}
+
+.board-color-sample-field {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #cdd4d0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.board-color-sample-field:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.board-color-sample-field span {
+  color: #6f7874;
+  font-size: 9px;
+}
+
+.board-color-sample-field code {
+  color: #dbe0dd;
+  font-family: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-color-sample-meta {
+  display: grid;
+  gap: 2px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+/* 屏幕值默认收起：展开才显示，避免两个值并列让人权衡。 */
+.board-color-sample-detail {
+  margin-top: 4px;
+}
+
+.board-color-sample-detail > summary {
+  color: #6f7874;
+  font-size: 9px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.board-color-sample-detail > summary::-webkit-details-marker {
+  display: none;
+}
+
+.board-color-sample-detail > summary:hover {
+  color: #9aa3a0;
+}
+
+.board-color-sample-detail[open] > summary {
+  margin-bottom: 4px;
+}
+
+/* 两个值的对照行（仅展开时可见）。 */
+.board-color-sample-compare-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+}
+
+.board-color-sample-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.board-color-sample-compare-label {
+  flex: 1;
+  overflow: hidden;
+  color: #6f7874;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-color-sample-compare-row code {
+  color: #dbe0dd;
+  font-family: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-color-sample-source {
+  margin: 0 0 2px;
+  overflow: hidden;
+  color: #9aa49f;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-color-sample-dim {
+  margin: 0;
+  color: #6f7874;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 白板背景与网格（外框由 .board-side-dock 提供） ===== */
+
+.board-appearance-body {
+  display: grid;
+  gap: 10px;
+}
+
+
+.board-appearance-hex {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.board-appearance-hex span:first-child {
+  color: #7f8985;
+  font-size: 9px;
+  grid-column: 1 / -1;
+}
+
+.board-appearance-hex input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  background: #1a1e1f;
+  color: #dbe0dd;
+  font-family: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-appearance-hex input:focus {
+  outline: none;
+  border-color: rgba(58, 178, 143, 0.55);
+  box-shadow: 0 0 0 2px rgba(58, 178, 143, 0.18);
+}
+
+.board-appearance-hex input[aria-invalid] {
+  border-color: rgba(229, 110, 110, 0.6);
+}
+
+.board-appearance-hex-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.board-appearance-grid {
+  display: grid;
+  gap: 5px;
+}
+
+.board-appearance-grid > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: #7f8985;
+  font-size: 9px;
+}
+
+.board-appearance-grid output {
+  color: #aab3af;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-appearance-grid input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.board-appearance-error {
+  margin: 0;
+  color: #e56e6e;
+  font-size: 9px;
+}
+
+.board-appearance-body > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.board-appearance-body > footer button {
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.board-appearance-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: #9aa49f;
+}
+
+.board-appearance-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e3e9e6;
+}
+
+.board-appearance-apply {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px rgba(115, 205, 178, 0.32);
+  color: #75d2b6;
+}
+
+.board-appearance-apply:hover:not(:disabled) {
+  background: rgba(58, 178, 143, 0.24);
+}
+
+.board-appearance-apply:disabled {
+  cursor: default;
+  opacity: 0.45;
+}

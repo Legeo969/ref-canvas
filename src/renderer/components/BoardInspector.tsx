@@ -1,5 +1,4 @@
-import { X } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import {
   parseInspectorNumber,
   type InspectorMetrics,
@@ -25,17 +24,12 @@ export function BoardInspector({
   name,
   metrics,
   onCommit,
-  onClose,
-  style,
   sourceSize = null,
 }: {
   selectionCount: number;
   name: string | null;
   metrics: InspectorMetrics | null;
   onCommit(key: keyof InspectorMetrics, value: number): void;
-  onClose(): void;
-  /** 双开避让：父级用内联样式把检查器压到图层面板下方。 */
-  style?: CSSProperties;
   /** 位图/视频资产的源文件像素（只读展示；形状/文本无此概念）。 */
   sourceSize?: { width: number; height: number } | null;
 }) {
@@ -54,17 +48,8 @@ export function BoardInspector({
   };
 
   return (
-    <aside
-      className="board-inspector"
-      style={style}
-      aria-label={translate("board.inspectorLabel")}
-    >
-      <header>
-        <strong>{translate("board.inspectorTitle")}</strong>
-        <button className="mini-icon-button" aria-label={translate("board.inspectorClose")} onClick={onClose}>
-          <X size={13} />
-        </button>
-      </header>
+    // 内容体：外框、标题、折叠、关闭由 BoardSideDock 提供。
+    <div className="board-inspector-body">
       {selectionCount === 0 ? (
         <p className="board-inspector-empty">{translate("board.inspectorEmpty")}</p>
       ) : selectionCount > 1 ? (
@@ -107,6 +92,6 @@ export function BoardInspector({
           )}
         </>
       ) : null}
-    </aside>
+    </div>
   );
 }

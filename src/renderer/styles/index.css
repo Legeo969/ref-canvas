@@ -3,6 +3,8 @@
 @import "./directory.css";
 @import "./library.css";
 @import "./board.css";
+@import "./board-dock.css";
+@import "./color-panel.css";
 @import "./dialogs.css";
 @import "./collections.css";
 @import "./image-review.css";

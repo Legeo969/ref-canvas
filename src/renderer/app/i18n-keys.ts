@@ -128,8 +128,6 @@ export type MessageKey =
 
   | "board.appearanceBackgroundLabel"
 
-  | "board.appearanceDescription"
-
   | "board.appearanceGridLabel"
 
   | "board.appearanceHexError"
@@ -137,6 +135,8 @@ export type MessageKey =
   | "board.appearanceTitle"
 
   | "board.apply"
+
+  | "board.cancel"
 
   | "board.arrangeApply"
 
@@ -435,13 +435,9 @@ export type MessageKey =
 
   | "board.importUnsupported"
 
-  | "board.inspectorClose"
-
   | "board.inspectorEmpty"
 
   | "board.inspectorHeight"
-
-  | "board.inspectorLabel"
 
   | "board.inspectorMultiSelection"
 
@@ -489,19 +485,9 @@ export type MessageKey =
 
   | "board.locateFailed"
 
-  | "board.lockCanvas"
-
   | "board.lockCanvasWhole"
 
   | "board.lockUnlock"
-
-  | "board.maskCircle"
-
-  | "board.maskCircleShort"
-
-  | "board.maskRect"
-
-  | "board.maskRectShort"
 
   | "board.moveBottom"
 
@@ -571,8 +557,6 @@ export type MessageKey =
 
   | "board.relinkTitle"
 
-  | "board.relinkTitleHint"
-
   | "board.renameBoard"
 
   | "board.renameBoardTitle"
@@ -583,31 +567,45 @@ export type MessageKey =
 
   | "board.resetTransform"
 
-  | "board.resetView"
-
-  | "board.resetViewport"
-
   | "board.restoreCanvasColor"
 
   | "board.rotate90"
 
-  | "board.sampleColor"
-
   | "board.sampleColorTitle"
 
-  | "board.samplingColorLabel"
+  | "board.colorCanvasPoint"
+
+  | "board.colorFieldAlpha"
+
+  | "board.colorFieldHex"
+
+  | "board.colorFieldHsl"
+
+  | "board.colorFieldRgb"
+
+  | "board.colorHue"
+
+  | "board.colorPlane"
+
+  | "board.colorSampleCopied"
+
+  | "board.colorSampleCopyHint"
+
+  | "board.colorSampleTitle"
+
+  | "board.colorSourceCanvas"
+
+  | "board.colorSourcePoint"
+
+  | "board.colorSourcePointUnavailable"
+
+  | "board.colorSourceSize"
+
+  | "board.colorDifferenceHint"
 
   | "board.samplingNotice"
 
   | "board.samplingReadFailed"
-
-  | "board.samplingResultDescription"
-
-  | "board.samplingResultTitle"
-
-  | "board.samplingXLabel"
-
-  | "board.samplingYLabel"
 
   | "board.saved"
 
@@ -655,11 +653,11 @@ export type MessageKey =
 
   | "board.switchBoard"
 
-  | "board.textDefaultContent"
-
   | "board.toggleLock"
 
   | "board.toolbarLabel"
+
+  | "board.toolbarMore"
 
   | "board.toolSelect"
 

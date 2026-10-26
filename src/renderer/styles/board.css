@@ -115,7 +115,7 @@
 
 .board-host.color-sampling .canvas-container,
 .board-host.color-sampling .canvas-container canvas {
-  cursor: crosshair !important;
+  cursor: var(--cursor-eyedropper) !important;
 }
 
 /* 点状网格（默认） */
@@ -170,8 +170,10 @@
 .canvas-toolbar {
   top: 12px;
   left: 50%;
-  /* 按功能分组：组是换行单位，窄窗口时整组换行居中，不裁剪、不出滚动条。 */
-  max-width: calc(100vw - 24px);
+  /* 分层后不再依赖 flex-wrap：层是独立行，行内不拆。
+     宽度上限按画布宿主算（%），不用 100vw：宿主两侧还有侧栏和详情面板，
+     100vw 会让工具栏越过宿主宽度后被 .board-host 的 overflow:hidden 裁掉。 */
+  max-width: calc(100% - 24px);
   flex-wrap: wrap;
   justify-content: center;
   gap: 2px;
@@ -303,6 +305,69 @@
   height: 18px;
   margin-right: 2px;
   background: var(--line-strong);
+}
+
+/* 分层工具条：常驻层与上下文层各自一个 flex 行，层之间用竖线分隔。
+   不把三层塞进同一个 wrap 容器：那样换行点会落在组中间，出现参差边缘。 */
+.toolbar-layer {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+.toolbar-layer + .toolbar-layer::before,
+.toolbar-layer + .toolbar-overflow::before {
+  content: "";
+  width: 1px;
+  height: 18px;
+  margin: 0 3px 0 1px;
+  background: var(--line-strong);
+}
+
+/* 上下文层用略高的背景块区分：选中对象时一眼看出“这排只在选中时才有”。 */
+.toolbar-layer-context {
+  padding: 1px 3px;
+  border-radius: 8px;
+  background: rgba(58, 178, 143, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(58, 178, 143, 0.16);
+}
+
+/* 层内不再画组间分隔线，避免两层各出一条短竖线导致视觉噪声。 */
+.toolbar-layer-context .toolbar-group + .toolbar-group::before {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* 溢出菜单：低频动作收进弹层，不占常驻宽度。 */
+.toolbar-overflow {
+  position: relative;
+}
+
+.toolbar-overflow-popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 11px;
+  background: rgba(25, 30, 30, 0.98);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 14px 34px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(14px);
+}
+
+.toolbar-overflow-row {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.toolbar-overflow-row + .toolbar-overflow-row {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
 }
 
 /* 收起/展开开关：比工具按钮更收敛的配色，示意它是栏级 UI 而非画布命令。 */
@@ -511,17 +576,47 @@
 }
 
 .draw-color-field {
-  grid-template-columns: 1fr 40px;
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
 }
 
-.draw-color-field input {
-  width: 40px;
-  height: 40px;
-  padding: 3px;
+/* 颜色触发条：色块 + hex + 吸管图标，替代原生 <input type="color">。 */
+.draw-color-trigger {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
   border: 0;
   border-radius: 8px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  color: #cdd4d0;
   cursor: pointer;
+}
+
+.draw-color-trigger:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.draw-color-trigger.active {
+  box-shadow: inset 0 0 0 1px rgba(58, 178, 143, 0.45);
+}
+
+.draw-color-trigger code {
+  flex: 1;
+  color: #dbe0dd;
+  font-family: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.draw-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
 .draw-width-field {

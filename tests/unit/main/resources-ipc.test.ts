@@ -184,7 +184,12 @@ describe("resources IPC mount events", () => {
     const sample = await handlers.get("color:sample-image")?.({
       assetId, u: 0.9, v: 0.9,
     });
-    expect(sample).toEqual({ hex: "#123456", alpha: 255 });
+    expect(sample).toEqual({
+      hex: "#123456",
+      alpha: 255,
+      decodedWidth: 10,
+      decodedHeight: 10,
+    });
 
     // 非法 uuid 被拒绝。
     await expect(

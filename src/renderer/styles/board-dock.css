@@ -1,0 +1,149 @@
+/* ===== 右侧停靠列（图层 / 检查器 / 取色结果 / 外观设置） ===== */
+
+/*
+ * 旧做法：每张卡片各自 position:absolute; top:64px; right:12px，
+ * 再靠父组件测量"上面那张有多高"手动往下推。漏一个面板就会重叠
+ * （取色结果压住图层列表就是这么来的），而且每加一个面板都要改一遍测量代码。
+ *
+ * 现在它们排进同一个纵向流式列：重叠在结构上不可能发生，不需要任何高度测量。
+ * 列整体可纵向滚动，面板再多也不互相挤压；空白边距可拖动整体位置。
+ */
+.board-side-dock {
+  position: absolute;
+  z-index: 24;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(300px, calc(100% - 24px));
+  max-height: calc(100% - 90px);
+  padding: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 拖动热区：列的内边距部分（面板本身不抢）。 */
+  cursor: grab;
+  touch-action: none;
+}
+
+.board-side-dock:active {
+  cursor: grabbing;
+}
+
+.board-side-dock-panel {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(31, 36, 37, 0.97);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 14px 34px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(14px);
+  /* 面板内不继承抓取手势。 */
+  cursor: default;
+}
+
+.board-side-dock-header {
+  display: flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 6px 0 4px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  user-select: none;
+}
+
+.board-side-dock-panel.collapsed .board-side-dock-header {
+  border-bottom: 0;
+}
+
+.board-side-dock-toggle {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #aab3af;
+  cursor: pointer;
+  text-align: left;
+}
+
+.board-side-dock-toggle:hover {
+  color: #e3e9e6;
+}
+
+.board-side-dock-toggle span {
+  flex: 0 0 auto;
+  color: #6f7874;
+  font-size: 9px;
+}
+
+.board-side-dock-toggle strong {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.board-side-dock-close {
+  display: grid;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #6f7874;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.board-side-dock-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e3e9e6;
+}
+
+.board-side-dock-body {
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+/* 图层面板自带虚拟滚动与搜索，内容体不再套一层内边距。 */
+.board-side-dock-body:has(> .layers-panel-body) {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 内容体：既有的内层元素保持原有排布，只去掉它们自己的外框定位。 */
+
+.board-inspector-body {
+  display: grid;
+  gap: 6px;
+}
+
+.board-color-sample-body {
+  display: grid;
+  gap: 9px;
+}
+
+.board-appearance-body {
+  display: grid;
+  gap: 10px;
+}

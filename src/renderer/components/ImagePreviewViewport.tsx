@@ -24,6 +24,8 @@ interface Point {
 export interface ImageViewportRenderState {
   style: CSSProperties;
   panning: boolean;
+  /** 当前位移/旋转/缩放，供子元素做坐标反算（如取色）。 */
+  transform: { panX: number; panY: number; rotateDeg: number; scale: number };
 }
 
 interface ImagePreviewViewportProps {
@@ -202,7 +204,11 @@ export function ImagePreviewViewport({
         onPointerCancel={endPan}
         onDoubleClick={fitView}
       >
-        {children({ style: contentStyle, panning })}
+        {children({
+          style: contentStyle,
+          panning,
+          transform: { panX: pan.x, panY: pan.y, rotateDeg: rotation, scale: zoom },
+        })}
       </div>
       {controlsTarget ? createPortal(toolbar, controlsTarget) : toolbar}
     </div>

@@ -67,7 +67,6 @@ export interface BoardCommandContext {
   parentSelection: () => void;
   unparentSelection: () => void;
   ungroupSelection: () => void;
-  applyMask: (shape: "rect" | "circle") => void;
   openCropDialog: (target: FabricImage) => void;
   resetSelectionCrop: () => void;
   setSelectionOpacity: () => Promise<void>;
@@ -81,7 +80,7 @@ export interface BoardCommandContext {
   focusObjects: (canvas: FabricCanvas) => CanvasObjectWithData[];
   toggleObjectFocus: () => void;
   updateAppearance: (next: BoardAppearance) => void;
-  editBoardAppearance: () => Promise<void>;
+  editBoardAppearance: () => void;
   setWindowMode: (mode: "normal" | "always-on-bottom" | "transparent-overlay" | "locked") => Promise<void>;
   createBoard: () => Promise<void>;
   onRenameBoard: (board: BoardSummary) => void;
@@ -138,7 +137,6 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
     parentSelection,
     unparentSelection,
     ungroupSelection,
-    applyMask,
     openCropDialog,
     resetSelectionCrop,
     setSelectionOpacity,
@@ -518,22 +516,6 @@ export function buildBoardCommands(ctx: BoardCommandContext): BoardCommand[] {
       disabled: !capabilities.hasParent,
       keywords: ["unparent hierarchy"],
       run: unparentSelection,
-    },
-    {
-      id: "mask-rect",
-      label: translate("board.maskRect"),
-      group: translate("board.groupImage"),
-      disabled: !hasSelection,
-      keywords: ["mask rectangle"],
-      run: () => applyMask("rect"),
-    },
-    {
-      id: "mask-circle",
-      label: translate("board.maskCircle"),
-      group: translate("board.groupImage"),
-      disabled: !hasSelection,
-      keywords: ["mask circle"],
-      run: () => applyMask("circle"),
     },
     {
       id: "crop",

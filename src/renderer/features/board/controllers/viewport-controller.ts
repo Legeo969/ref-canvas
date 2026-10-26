@@ -1,4 +1,5 @@
 import { Point, type StaticCanvas, type TMat2D } from "fabric";
+import { clampBoardZoom } from "../../../app/board-zoom";
 
 export interface ViewportBox {
   left: number;
@@ -44,12 +45,8 @@ export function fitViewport(
   const bottom = Math.max(...boxes.map((box) => box.top + box.height));
   const width = Math.max(1, right - left);
   const height = Math.max(1, bottom - top);
-  const zoom = Math.min(
-    4,
-    Math.max(
-      0.08,
-      Math.min((canvasWidth - 96) / width, (canvasHeight - 96) / height),
-    ),
+  const zoom = clampBoardZoom(
+    Math.min((canvasWidth - 96) / width, (canvasHeight - 96) / height),
   );
   const centerX = (left + right) / 2;
   const centerY = (top + bottom) / 2;

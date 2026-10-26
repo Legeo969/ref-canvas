@@ -2,7 +2,7 @@
  * 图片审阅（FND-005，§5 图片会话）。
  *
  * - 缩放/平移/适配/100%/旋转 + 棋盘透明背景（复用 alphaBackgroundStyle）。
- * - 像素取色：从显示变换后的可见像素取色（显示色值），支持复制 RGB/HEX。
+ * - 像素取色：屏幕点反算为源图坐标，由主进程解码源文件单像素（真值）。
  * - 确定性五色主色板提取：同一源指纹与设置产生稳定顺序；透明像素不参与。
  * - 图层：仅对可解析分层格式显示面板；普通/不可解析格式显示原因并保留合成预览。
  * 所有处理只作用于内存/缓存预览，绝不写回源文件。
@@ -19,6 +19,12 @@ import {
 } from "react";
 import type { AssetRecord } from "../../shared/contracts";
 import { alphaBackgroundStyle, usePreviewSettings } from "../app/preview-settings";
+import {
+  containBox,
+  screenPointToUv,
+  uvInsideContain,
+  type ViewportTransform,
+} from "../app/preview-sample";
 import { translate } from "../app/i18n";
 import { ImagePreviewViewport } from "./ImagePreviewViewport";
 import { PreviewColorBar } from "./PreviewColorBar";
@@ -42,14 +48,14 @@ interface ColorSample {
   hex: string;
 }
 
-function toHex(value: number): string {
-  return value.toString(16).padStart(2, "0");
-}
-
 export function ImageReviewPreview({ asset, onPaletteChange, managed = false, controlsTarget, sharedColorControls = false, eyedropActive: controlledEyedropActive, onEyedropActiveChange, onColorSample }: ImageReviewPreviewProps) {
   const previewSettings = usePreviewSettings();
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // 当前显示变换：取色点需要按它反算（旋转/缩放/平移都会改变命中位置）。
+  const transformRef = useRef<ViewportTransform>({
+    rotateDeg: 0,
+    scale: 1,
+  });
   const [localEyedropActive, setLocalEyedropActive] = useState(false);
   const [sample, setSample] = useState<ColorSample | null>(null);
   const [copied, setCopied] = useState(false);
@@ -70,60 +76,56 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
     setImageFailed(false);
   }, [asset.id, asset.previewUrl]);
 
-  /** 取色只绘制目标源像素，避免为大图分配整张 canvas。 */
+  /**
+   * 取色：屏幕点 → 源图归一化坐标 → 主进程 sharp 解码源文件单像素。
+   * 不再从 DOM 画布取样：源是缩略图、坐标乘错尺寸、HDR 滤镜都会偏值。
+   */
   const samplePixel = async (event: MouseEvent<HTMLImageElement>) => {
     if (!eyedropActive) return;
-    const image = imageRef.current;
-    const canvas = canvasRef.current;
-    if (!image || !canvas) return;
+    const image = event.currentTarget;
     const rect = image.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    const normalizedX = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    const normalizedY = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return;
-    const sampleSource = (
-      source: CanvasImageSource,
-      width: number,
-      height: number,
-    ) => {
-      const x = Math.min(width - 1, Math.max(0, Math.floor(normalizedX * width)));
-      const y = Math.min(height - 1, Math.max(0, Math.floor(normalizedY * height)));
-      canvas.width = 1;
-      canvas.height = 1;
-      context.imageSmoothingEnabled = false;
-      context.clearRect(0, 0, 1, 1);
-      context.drawImage(source, x, y, 1, 1, 0, 0, 1, 1);
-      return context.getImageData(0, 0, 1, 1).data;
+    // rect 是**变换后**的外框（随缩放变大、随旋转成为外包矩形），
+    // 只能用它的中心（transform-origin: center，平移后中心跟着走）；
+    // 布局宽高必须取 offsetWidth/offsetHeight。
+    const layout = {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      width: image.offsetWidth,
+      height: image.offsetHeight,
     };
-    let pixel: Uint8ClampedArray;
-    try {
-      pixel = sampleSource(image, image.naturalWidth, image.naturalHeight);
-    } catch {
-      let bitmap: ImageBitmap | null = null;
-      try {
-        const response = await fetch(asset.previewUrl, {
-          referrer: window.location.href,
-        });
-        if (!response.ok) return;
-        bitmap = await createImageBitmap(await response.blob());
-        pixel = sampleSource(bitmap, bitmap.width, bitmap.height);
-      } catch {
-        setEyedropActive(false);
-        return;
-      } finally {
-        bitmap?.close();
-      }
-    }
-    const [sr, sg, sb] = [pixel[0], pixel[1], pixel[2]];
-    const next = {
-      rgb: [sr, sg, sb] as [number, number, number],
-      hex: `#${toHex(sr)}${toHex(sg)}${toHex(sb)}`,
-    };
-    setSample(next);
-    setCopied(false);
-    onColorSample?.(next.hex);
+    const box = containBox(
+      image.naturalWidth,
+      image.naturalHeight,
+      layout.width,
+      layout.height,
+    );
+    const raw = screenPointToUv(event.clientX, event.clientY, layout, transformRef.current);
+    if (!raw) return;
+    const uv = uvInsideContain(raw.u, raw.v, box);
+    if (!uv) return;
     setEyedropActive(false);
+    try {
+      const sampled = await window.refCanvas.color.sampleImage({
+        assetId: asset.id,
+        u: uv.u,
+        v: uv.v,
+      });
+      const next = {
+        rgb: [
+          Number.parseInt(sampled.hex.slice(1, 3), 16),
+          Number.parseInt(sampled.hex.slice(3, 5), 16),
+          Number.parseInt(sampled.hex.slice(5, 7), 16),
+        ] as [number, number, number],
+        hex: sampled.hex,
+      };
+      setSample(next);
+      setCopied(false);
+      onColorSample?.(next.hex);
+    } catch {
+      // 主进程取不到（源文件缺失/格式不支持）时不伪造颜色。
+      setEyedropActive(false);
+    }
   };
 
   const copySample = async () => {
@@ -185,7 +187,10 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
           </>
         }
       >
-        {({ style }) => (
+        {({ style, transform }) => {
+          // 渲染期写入 ref：取色回调可直接读最新变换，不依赖闭包快照。
+          transformRef.current = transform;
+          return (
           <>
             <img
               ref={imageRef}
@@ -200,9 +205,9 @@ export function ImageReviewPreview({ asset, onPaletteChange, managed = false, co
             {imageFailed && (
               <p className="image-review-error">{translate("imageReview.error")}</p>
             )}
-            <canvas ref={canvasRef} hidden />
           </>
-        )}
+          );
+        }}
       </ImagePreviewViewport>
 
       {sharedColorControls && <PreviewColorBar

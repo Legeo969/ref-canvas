@@ -17,7 +17,6 @@ import {
   PencilBrush,
   Point,
   Rect,
-  Circle,
   ActiveSelection,
   Textbox,
   Triangle,
@@ -33,6 +32,9 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import {
+  sourcePixelFromUv,
+} from "../app/color-readout";
 import { BoardObjectComment } from "./BoardObjectComment";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
@@ -89,6 +91,9 @@ import {
   nextCircularIndex,
   sceneAxisToViewport,
 } from "../app/board-layout";
+import { clampBoardZoom } from "../app/board-zoom";
+import { localToUv } from "../app/board-sample-uv";
+import { sampleDisplayPixel } from "../app/display-sample";
 import {
   DEFAULT_GIF_STATE,
   GifAnimator,
@@ -104,7 +109,10 @@ import {
   BoardContextMenu,
   type BoardContextMenuState,
 } from "./board/BoardContextMenu";
+import { BoardAppearancePanel } from "./board/BoardAppearancePanel";
 import { BoardArrangePanel } from "./board/BoardArrangePanel";
+import { BoardColorSampleBody, type ColorSample } from "./board/BoardColorSample";
+import { BoardSideDock } from "./board/BoardSideDock";
 import { BoardDrawingPanel } from "./board/BoardDrawingPanel";
 import {
   BoardCommandPalette,
@@ -226,6 +234,11 @@ const defaultBoardAppearance = DEFAULT_BOARD_APPEARANCE;
 
 /** 图层/检查器卡片的统一顶部起点（与 dialogs.css 中两卡片定位一致）。 */
 const BOARD_CARD_TOP = 64;
+/**
+ * 工具栏实际占底（含外边距）：窄窗口分组换行时工具栏会变成两行，
+ * 右侧卡片必须跟着下移，否则会压住第二行按钮。
+ */
+const BOARD_CARD_GAP = 12;
 
 const noopOpenTool = () => {};
 
@@ -437,7 +450,11 @@ export function BoardCanvas({
     );
     canvas.selection = interaction.selection;
     canvas.defaultCursor =
-      toolRef.current === "select" ? "default" : "crosshair";
+      toolRef.current === "select"
+        ? "default"
+        : toolRef.current === "eraser"
+          ? "var(--cursor-eraser)"
+          : "crosshair";
     canvas.setCursor(canvas.defaultCursor);
   };
 
@@ -522,22 +539,34 @@ export function BoardCanvas({
   );
   const [layersOpen, setLayersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const layersPanelRef = useRef<HTMLElement | null>(null);
-  const [layersPanelHeight, setLayersPanelHeight] = useState<number | null>(null);
+  // 取色结果面板：关闭后不清空面板自己的读数，但再次取色会整体替换。
+  const [colorSample, setColorSample] = useState<ColorSample | null>(null);
+  // 取色序号：同一位置重复取色时保证面板能确认"换了一份新样本"。
+  const colorSampleSeqRef = useRef(0);
+  const [appearancePanelOpen, setAppearancePanelOpen] = useState(false);
+  // 工具栏换行后的实际占高：右侧停靠列用它作顶部起点。
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [toolbarBottom, setToolbarBottom] = useState<number | null>(null);
 
-  // 双开避让：图层面板打开期间持续测量其高度，检查器据此下移。
+  // 停靠列里各面板的折叠状态（按面板 id 记录）。
+  const [dockCollapsed, setDockCollapsed] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
-    const panel = layersPanelRef.current;
-    if (!layersOpen || !panel) {
-      setLayersPanelHeight(null);
-      return;
-    }
-    const update = () => setLayersPanelHeight(panel.offsetHeight);
+    const panel = toolbarRef.current;
+    if (!panel) return;
+    const update = () => {
+      // offsetTop 相对画布宿主，与停靠列定位同一坐标系。
+      setToolbarBottom(panel.offsetTop + panel.offsetHeight);
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(panel);
     return () => observer.disconnect();
-  }, [layersOpen]);
+  }, []);
+  // 停靠列顶部：工具栏压得更低时以工具栏为准，否则维持基线。
+  const cardTop = toolbarBottom
+    ? Math.max(BOARD_CARD_TOP, toolbarBottom + BOARD_CARD_GAP)
+    : BOARD_CARD_TOP;
   const [modelAsset, setModelAsset] = useState<AssetRecord | null>(null);
   const [modelView, setModelView] = useState<ModelView | null>(null);
   // 阶段 6 §11：双击进入完整 preview（视频/音频/高位深图片）。
@@ -1357,10 +1386,7 @@ export function BoardCanvas({
     });
     controller.onCanvas(canvas, "mouse:wheel", (event) => {
       const wheel = event.e as WheelEvent;
-      const nextZoom = Math.min(
-        4,
-        Math.max(0.08, canvas.getZoom() * 0.999 ** wheel.deltaY),
-      );
+      const nextZoom = clampBoardZoom(canvas.getZoom() * 0.999 ** wheel.deltaY);
       canvas.zoomToPoint(new Point(wheel.offsetX, wheel.offsetY), nextZoom);
       scheduleZoomState(Math.round(nextZoom * 100));
       scheduleProxyRefresh();
@@ -2664,7 +2690,11 @@ export function BoardCanvas({
     canvas.selection = interaction.selection;
     canvas.skipTargetFind = interaction.skipTargetFind;
     canvas.defaultCursor =
-      tool === "select" ? "default" : "crosshair";
+      tool === "select"
+        ? "default"
+        : tool === "eraser"
+          ? "var(--cursor-eraser)"
+          : "crosshair";
     if (tool === "pencil") {
       const brush = new PencilBrush(canvas);
       brush.color = drawingStyle.color;
@@ -2681,7 +2711,13 @@ export function BoardCanvas({
       canvas.skipTargetFind = enabled || toolRef.current !== "select";
       canvas.selection = enabled ? false : toolRef.current === "select";
       canvas.defaultCursor =
-        enabled || toolRef.current === "select" ? "default" : "crosshair";
+        enabled
+          ? "default"
+          : toolRef.current === "select"
+            ? "default"
+            : toolRef.current === "eraser"
+              ? "var(--cursor-eraser)"
+              : "crosshair";
       if (enabled) {
         canvas.discardActiveObject();
         eventBindingsRef.current.onSelectAsset(null);
@@ -2997,29 +3033,6 @@ export function BoardCanvas({
     canvas.requestRenderAll();
   };
 
-  const applyMask = (shape: "rect" | "circle") => {
-    const canvas = canvasRef.current;
-    const active = canvas?.getActiveObject();
-    if (!canvas || !active) return;
-    active.clipPath =
-      shape === "circle"
-        ? new Circle({
-            radius: Math.min(active.width ?? 1, active.height ?? 1) / 2,
-            originX: "center",
-            originY: "center",
-          })
-        : new Rect({
-            width: active.width,
-            height: active.height,
-            rx: 16,
-            ry: 16,
-            originX: "center",
-            originY: "center",
-          });
-    canvas.fire("object:modified", { target: active });
-    canvas.requestRenderAll();
-  };
-
   const applyCrop = (rect: CropRect) => {
     const canvas = canvasRef.current;
     const target = canvas && cropTarget
@@ -3128,41 +3141,8 @@ export function BoardCanvas({
     scheduleSaveRef.current?.();
   };
 
-  const editBoardAppearance = async () => {
-    await dialog.requestForm({
-      title: translate("board.appearanceTitle"),
-      description: translate("board.appearanceDescription"),
-      confirmLabel: translate("board.apply"),
-      fields: [
-        {
-          name: "backgroundColor",
-          label: translate("board.appearanceBackgroundLabel"),
-          initialValue: runtime.appearance.backgroundColor,
-          required: true,
-          maxLength: 7,
-          placeholder: "#202426",
-        },
-        {
-          name: "gridSize",
-          label: translate("board.appearanceGridLabel"),
-          type: "number",
-          initialValue: String(runtime.appearance.gridSize),
-          required: true,
-          min: 8,
-          max: 96,
-        },
-      ],
-      onSubmit: ({ backgroundColor, gridSize }) => {
-        if (!/^#[0-9a-f]{6}$/i.test(backgroundColor)) {
-          throw new Error(translate("board.appearanceHexError"));
-        }
-        updateAppearance({
-          ...runtime.appearance,
-          backgroundColor,
-          gridSize: Math.round(Number(gridSize)),
-        });
-      },
-    });
+  const editBoardAppearance = () => {
+    setAppearancePanelOpen((open) => !open);
   };
 
   const fitObjects = (selectionOnly = false) => {
@@ -3231,22 +3211,17 @@ export function BoardCanvas({
     zoomUiRef.current?.scheduleProxyRefresh();
   };
 
-  /** 围绕当前视口中心按倍率缩放（钳制 0.08–4.0），调度与 mouse:wheel 一致的刷新。 */
+  /** 围绕当前视口中心按倍率缩放（钳制区间由 board-zoom 统一），调度与 mouse:wheel 一致的刷新。 */
   const zoomByFactor = (factor: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const next = Math.min(4, Math.max(0.08, canvas.getZoom() * factor));
+    const next = clampBoardZoom(canvas.getZoom() * factor);
     canvas.zoomToPoint(
       new Point(canvas.getWidth() / 2, canvas.getHeight() / 2),
       next,
     );
     zoomUiRef.current?.scheduleZoomState(Math.round(next * 100));
     zoomUiRef.current?.scheduleProxyRefresh();
-  };
-
-  /** 重置相机：适应全部对象（等同 fit-all）。 */
-  const resetViewport = async () => {
-    fitObjects(false);
   };
 
   /** Arms one-shot canvas pixel sampling; the next canvas click reports color and scene coordinates. */
@@ -3284,63 +3259,81 @@ export function BoardCanvas({
       const width = object.width ?? 0;
       const height = object.height ?? 0;
       if (width <= 0 || height <= 0) continue;
+      // 注意：calcTransformMatrix 的逆转得到的是「以对象中心为原点」的
+      // 局部坐标（范围 -w/2..+w/2），不是以左上角为原点。
+      // 实测 fabric v7：对象中心 → (0,0)，左上角 → (-w/2,-h/2)。
+      // 因此不能直接把 local.x 当 0..w 用，否则左半部分会被误判为
+      // 「不在对象内」而跳过，右半部分会被算成偏小的 u。
       const local = util.transformPoint(
         scenePoint,
         util.invertTransform(object.calcTransformMatrix()),
       );
-      if (local.x < 0 || local.y < 0 || local.x > width || local.y > height) {
-        continue;
-      }
-      hit = {
-        assetId,
-        u: Math.min(1, Math.max(0, local.x / width)),
-        v: Math.min(1, Math.max(0, local.y / height)),
-      };
+      const uv = localToUv(local, width, height);
+      if (!uv) continue;
+      hit = { assetId, u: uv.u, v: uv.v };
       break;
     }
-    let sampledHex: string | null = null;
+    let sampled: { hex: string; alpha: number; decodedWidth: number; decodedHeight: number } | null = null;
     if (hit) {
       try {
-        sampledHex = (
-          await window.refCanvas.color.sampleImage({
-            assetId: hit.assetId,
-            u: hit.u,
-            v: hit.v,
-          })
-        ).hex;
+        sampled = await window.refCanvas.color.sampleImage({
+          assetId: hit.assetId,
+          u: hit.u,
+          v: hit.v,
+        });
       } catch {
         showDropNotice(translate("board.samplingReadFailed"));
         return;
       }
     }
+    const hitAsset = hit
+      ? boardAssets.find((item) => item.id === hit.assetId) ?? null
+      : null;
+    // 显示层像素：与用户眼睛看到的一致（代理 WebP，含压缩与缩放）。
+    // 取不到（对象无 src）时留 null，不伪造。
+    let displayHex: string | null = null;
+    if (hit) {
+      const hitObject = objects.find(
+        (object) => object.data?.assetId === hit.assetId,
+      );
+      // 只有带图像源的 FabricImage 才有显示层像素；形状/文本无此概念。
+      const displayUrl =
+        hitObject instanceof FabricImage
+          ? (hitObject as unknown as { getSrc(): string }).getSrc()
+          : null;
+      if (displayUrl) {
+        const display = await sampleDisplayPixel(displayUrl, hit.u, hit.v).catch(
+          () => null,
+        );
+        displayHex = display?.hex ?? null;
+      }
+    }
     const fallback = runtime.appearance.backgroundColor.match(
       /^#([0-9a-f]{6})$/i,
     )?.[1];
-    const hex =
-      sampledHex ??
-      (fallback ? `#${fallback.toUpperCase()}` : "#000000");
-    const point = scenePoint;
+    const hex = sampled?.hex ?? (fallback ? `#${fallback}` : "#000000");
     await navigator.clipboard.writeText(hex).catch(() => undefined);
-    await dialog.requestForm({
-      title: translate("board.samplingResultTitle"),
-      description: translate("board.samplingResultDescription"),
-      confirmLabel: translate("preview.close"),
-      fields: [
-        { name: "color", label: translate("board.samplingColorLabel"), initialValue: hex, maxLength: 7 },
-        {
-          name: "x",
-          label: translate("board.samplingXLabel"),
-          initialValue: point.x.toFixed(1),
-          maxLength: 16,
-        },
-        {
-          name: "y",
-          label: translate("board.samplingYLabel"),
-          initialValue: point.y.toFixed(1),
-          maxLength: 16,
-        },
-      ],
-      onSubmit: () => undefined,
+    setColorSample({
+      seq: (colorSampleSeqRef.current += 1),
+      hex,
+      displayHex,
+      alpha: sampled?.alpha ?? 255,
+      canvasPoint: { x: scenePoint.x, y: scenePoint.y },
+      sourcePixel: sampled && hit
+        ? sourcePixelFromUv(
+            hit.u,
+            hit.v,
+            sampled.decodedWidth,
+            sampled.decodedHeight,
+            hitAsset?.width ?? null,
+            hitAsset?.height ?? null,
+          )
+        : null,
+      source: {
+        name: hitAsset?.title ?? null,
+        width: hitAsset?.width ?? null,
+        height: hitAsset?.height ?? null,
+      },
     });
   };
 
@@ -4309,7 +4302,9 @@ export function BoardCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const center = sceneCenter(canvas);
-    const text = new Textbox(translate("board.textDefaultContent"), {
+    // 空白内容进入编辑：旧行为预填占位文案，用户必须先全选删掉才能打字。
+    // 空内容的 Textbox 一样能进入编辑态（同 Figma）。
+    const text = new Textbox("", {
       left: center.x - 70,
       top: center.y - 20,
       width: 180,
@@ -4321,6 +4316,9 @@ export function BoardCanvas({
     canvas.add(text);
     canvas.setActiveObject(text);
     text.enterEditing();
+    // 光标落在开头，不预选任何字符。
+    text.selectionStart = 0;
+    text.selectionEnd = 0;
   };
 
   /**
@@ -4617,7 +4615,6 @@ export function BoardCanvas({
     parentSelection,
     unparentSelection,
     ungroupSelection,
-    applyMask,
     openCropDialog,
     resetSelectionCrop,
     setSelectionOpacity,
@@ -4631,8 +4628,7 @@ export function BoardCanvas({
     focusObjects,
     toggleObjectFocus,
     updateAppearance,
-    editBoardAppearance,
-    capabilities,
+    editBoardAppearance,    capabilities,
     boardClipboard: hasBoardClipboard() ? CLIPBOARD_PRESENT : [],
     uniformArea,
     uniformScale,
@@ -4691,8 +4687,6 @@ export function BoardCanvas({
       case "parent": parentSelection(); break;
       case "unparent": unparentSelection(); break;
       case "ungroup": ungroupSelection(); break;
-      case "maskRect": applyMask("rect"); break;
-      case "maskCircle": applyMask("circle"); break;
       case "crop": {
         const id = boardSnapshot.activeObjectId;
         const active = id ? objectById(id) : null;
@@ -4714,15 +4708,24 @@ export function BoardCanvas({
       case "toggleInspector": setInspectorOpen((value) => !value); break;
       case "toggleLayers": setLayersOpen((value) => !value); break;
       case "toggleGrid": updateAppearance({ ...runtime.appearance, gridVisible: !runtime.appearance.gridVisible }); break;
-      case "editAppearance": void editBoardAppearance(); break;
+      case "editAppearance": editBoardAppearance(); break;
       case "toggleCanvasLock": toggleCanvasLock(); break;
       case "toggleCanvasGrayscale": void toggleCanvasGrayscale(); break;
       case "cycleGridStyle": void cycleGridStyle(); break;
       case "zoom100": void setZoom100(); break;
-      case "resetViewport": void resetViewport(); break;
       case "sampleColor": void sampleColor(); break;
       case "openCommandPalette": openCommandPalette(); break;
-      case "toggleToolbarCollapsed": setToolbarCollapsed((value) => !value); break;
+      case "toggleToolbarCollapsed": {
+        const collapsed = !toolbarCollapsed;
+        setToolbarCollapsed(collapsed);
+        // 收起态不渲染 drawing-settings / arrange-settings 触发按钮，
+        // 已开着的浮层必须一并关掉，否则会悬空在画布上无法再开合。
+        if (collapsed) {
+          setDrawingPanelOpen(false);
+          setArrangePanelOpen(false);
+        }
+        break;
+      }
     }
   };
   return (
@@ -4933,6 +4936,7 @@ export function BoardCanvas({
           }}
           onCommand={handleToolbarCommand}
           shortcuts={shortcutBindings}
+          toolbarRef={toolbarRef}
         />
         {drawingPanelOpen && (
           <BoardDrawingPanel
@@ -4955,65 +4959,121 @@ export function BoardCanvas({
             });
           }}
         />
-        {layersOpen && (
-          <BoardLayerPanel
-            rootRef={layersPanelRef}
-            rows={boardStructure.layers}
-            onCommand={(command, id) => { controller.command(command, id); }}
-            onReparent={(id, parentId) => {
-              const canvas = canvasRef.current;
-              const object = canvas ? hierarchyObjects(canvas).find((item) => item.data?.objectId === id) : undefined;
-              if (object) setHierarchyParent(object, parentId ?? undefined);
-            }}
-            onReorder={(id, targetId, before) => {
-              const canvas = canvasRef.current;
-              if (!canvas) return;
-              const objects = hierarchyObjects(canvas);
-              const object = objects.find((item) => item.data?.objectId === id);
-              const target = objects.find((item) => item.data?.objectId === targetId);
-              if (object && target) reorderHierarchyObject(object, target, before);
-            }}
-            onRename={(row) => {
-              void dialog.requestForm({
-                title: translate("board.renameLayer"),
-                confirmLabel: translate("board.saveName"),
-                fields: [{ name: "name", label: translate("board.layerName"), initialValue: row.name, required: true, maxLength: 120 }],
-                onSubmit: ({ name }) => { controller.rename(row.id, name); },
-              });
-            }}
-            onComment={(id) => {
-              const canvas = canvasRef.current;
-              const object = canvas ? hierarchyObjects(canvas).find((item) => item.data?.objectId === id) : undefined;
-              if (object) void editObjectComment(object);
-            }}
-          />
-        )}
-        {inspectorOpen && (
-          <BoardInspector
-            selectionCount={boardSnapshot.selectionCount}
-            name={boardSnapshot.inspector?.name ?? null}
-            metrics={boardSnapshot.inspector?.metrics ?? null}
-            onCommit={(key, value) => { controller.updateInspector(key, value); }}
-            onClose={() => setInspectorOpen(false)}
-            sourceSize={(() => {
-              const assetId = boardSnapshot.inspector?.assetId;
-              if (!assetId) return null;
-              const asset = boardAssets.find((item) => item.id === assetId);
-              return asset && (asset.width ?? 0) > 0 && (asset.height ?? 0) > 0
-                ? { width: asset.width as number, height: asset.height as number }
-                : null;
-            })()}
-            style={
-              layersOpen && layersPanelHeight
-                ? {
-                    // 双开避让：压到图层面板下方，并按剩余空间收口。
-                    top: BOARD_CARD_TOP + layersPanelHeight + 10,
-                    maxHeight: `calc(100% - ${BOARD_CARD_TOP + layersPanelHeight + 26}px)`,
-                  }
-                : undefined
-            }
-          />
-        )}
+        <BoardSideDock
+          top={cardTop}
+          onToggleCollapsed={(id) =>
+            setDockCollapsed((current) => ({
+              ...current,
+              [id]: !current[id],
+            }))
+          }
+          onClose={(id) => {
+            if (id === "layers") setLayersOpen(false);
+            else if (id === "inspector") setInspectorOpen(false);
+            else if (id === "color") setColorSample(null);
+            else if (id === "appearance") setAppearancePanelOpen(false);
+          }}
+          panels={[
+            ...(layersOpen
+              ? [{
+                  id: "layers",
+                  collapsed: Boolean(dockCollapsed.layers),
+                  title: translate("board.layersTitle"),
+                  children: (
+                    <BoardLayerPanel
+                      rows={boardStructure.layers}
+                      onCommand={(command, id) => { controller.command(command, id); }}
+                      onReparent={(id, parentId) => {
+                        const canvas = canvasRef.current;
+                        const object = canvas ? hierarchyObjects(canvas).find((item) => item.data?.objectId === id) : undefined;
+                        if (object) setHierarchyParent(object, parentId ?? undefined);
+                      }}
+                      onReorder={(id, targetId, before) => {
+                        const canvas = canvasRef.current;
+                        if (!canvas) return;
+                        const objects = hierarchyObjects(canvas);
+                        const object = objects.find((item) => item.data?.objectId === id);
+                        const target = objects.find((item) => item.data?.objectId === targetId);
+                        if (object && target) reorderHierarchyObject(object, target, before);
+                      }}
+                      onRename={(row) => {
+                        void dialog.requestForm({
+                          title: translate("board.renameLayer"),
+                          confirmLabel: translate("board.saveName"),
+                          fields: [{ name: "name", label: translate("board.layerName"), initialValue: row.name, required: true, maxLength: 120 }],
+                          onSubmit: ({ name }) => { controller.rename(row.id, name); },
+                        });
+                      }}
+                      onComment={(id) => {
+                        const canvas = canvasRef.current;
+                        const object = canvas ? hierarchyObjects(canvas).find((item) => item.data?.objectId === id) : undefined;
+                        if (object) void editObjectComment(object);
+                      }}
+                    />
+                  ),
+                }]
+              : []),
+            ...(inspectorOpen
+              ? [{
+                  id: "inspector",
+                  collapsed: Boolean(dockCollapsed.inspector),
+                  title: translate("board.inspectorTitle"),
+                  children: (
+                    <BoardInspector
+                      selectionCount={boardSnapshot.selectionCount}
+                      name={boardSnapshot.inspector?.name ?? null}
+                      metrics={boardSnapshot.inspector?.metrics ?? null}
+                      onCommit={(key, value) => { controller.updateInspector(key, value); }}
+                      sourceSize={(() => {
+                        const assetId = boardSnapshot.inspector?.assetId;
+                        if (!assetId) return null;
+                        const asset = boardAssets.find((item) => item.id === assetId);
+                        return asset && (asset.width ?? 0) > 0 && (asset.height ?? 0) > 0
+                          ? { width: asset.width as number, height: asset.height as number }
+                          : null;
+                      })()}
+                    />
+                  ),
+                }]
+              : []),
+            ...(colorSample
+              ? [{
+                  id: "color",
+                  collapsed: Boolean(dockCollapsed.color),
+                  title: translate("board.colorSampleTitle"),
+                  children: <BoardColorSampleBody sample={colorSample} />,
+                }]
+              : []),
+            ...(appearancePanelOpen
+              ? [{
+                  id: "appearance",
+                  collapsed: Boolean(dockCollapsed.appearance),
+                  title: translate("board.appearanceTitle"),
+                  children: (
+                    <BoardAppearancePanel
+                      appearance={runtime.appearance}
+                      onPreview={(backgroundColor) => {
+                        // 直接改宿主 CSS 变量：走 updateAppearance 会每帧重渲染整个
+                        // BoardCanvas，拖色相条时明显卡顿；且预览不该落盘。
+                        hostRef.current?.style.setProperty("--board-background", backgroundColor);
+                      }}
+                      onCancel={() => {
+                        hostRef.current?.style.setProperty(
+                          "--board-background",
+                          runtime.appearance.backgroundColor,
+                        );
+                        setAppearancePanelOpen(false);
+                      }}
+                      onApply={(next) => {
+                        updateAppearance({ ...runtime.appearance, ...next });
+                        setAppearancePanelOpen(false);
+                      }}
+                    />
+                  ),
+                }]
+              : []),
+          ]}
+        />
         <div className="zoom-control">
           <button
             onClick={() => zoomByFactor(1 / 1.25)}

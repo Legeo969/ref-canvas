@@ -1793,12 +1793,19 @@ export interface RefCanvasApi {
     /**
      * 白板取色：按资产 id 与归一化坐标在主进程采样源文件像素。
      * u/v ∈ [0,1]（对象包围盒内相对位置），返回 RGB 十六进制与 alpha。
+     * decodedWidth/Height 为实际解码图尺寸：EXR/HDR 经缩略图缓存、视频取首帧，
+     * 与源文件尺寸不同，渲染端据此判断像素坐标能否标注为源坐标。
      */
     sampleImage(request: {
       assetId: string;
       u: number;
       v: number;
-    }): Promise<{ hex: string; alpha: number }>;
+    }): Promise<{
+      hex: string;
+      alpha: number;
+      decodedWidth: number;
+      decodedHeight: number;
+    }>;
   };
   scripts: {
     list(): Promise<RegisteredScript[]>;
