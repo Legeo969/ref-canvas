@@ -1535,6 +1535,37 @@ function registerIpc(): void {
   });
 }
 
+/** 进程是否还在。EPERM 说明进程存在但无权探测，按存活处理。 */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * 首次安装由 Squirrel 的更新器拉起应用：它把应用进程启动后自己还要停留一两秒
+ * 播完安装动画才退。窗口在那段时间里露脸，用户看到的便是“安装还没结束，应用
+ * 已经开了”。这里等父进程（更新器）退出后再露脸；最多等 10 秒，避免异常时
+ * 窗口永远不出现。
+ */
+async function revealWhenInstallerSettles(deadlineMs = 10_000): Promise<void> {
+  if (!squirrelFirstRun) return;
+  const parent = process.ppid;
+  if (!parent || parent <= 0) return;
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(parent)) {
+      // 父进程刚退，安装器窗口可能还在收尾绘制。
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
 /**
  * 迁移失败恢复窗口（FND-001）：不初始化任何依赖 database 的服务，只加载
  * 渲染层并展示恢复信息。窗口关闭即退出应用。
@@ -1625,7 +1656,9 @@ function createWindow(): void {
   });
   mainWindow.once("ready-to-show", () => {
     const window = mainWindow;
-    window?.show();
+    // 首次安装时 Squirrel 的顺序是先拉起应用、自己随后才退，所以窗口露脸前
+    // 先等安装器进程结束，否则用户看到的是安装器动画和应用同屏。
+    void revealWhenInstallerSettles().then(() => window?.show());
   });
   mainWindow.on("enter-full-screen", () => {
     setFullscreenTitleBarOverlay(mainWindow, true);
@@ -1658,10 +1691,12 @@ function createWindow(): void {
     previewTokens.clear();
   });
 
+  // 首次安装时 Squirrel 会先把应用拉起来、自己随后才退；此刻再叠一张「安装完成」
+  // 引导卡，会和安装器窗口同屏，用户会以为安装还没结束。首次启动直接进工作区，
+  // 空工作区自带引导。（`?first-run=1` 仍保留，供将来手动触发引导页。）
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const query = new URLSearchParams();
     if (fpsCheckMode) query.set("fps", "1");
-    if (app.isPackaged && squirrelFirstRun) query.set("first-run", "1");
     const suffix = query.toString() ? `?${query.toString()}` : "";
     void mainWindow.loadURL(
       `${MAIN_WINDOW_VITE_DEV_SERVER_URL}${suffix}`,
@@ -1669,7 +1704,6 @@ function createWindow(): void {
   } else {
     const query = {
       ...(fpsCheckMode ? { fps: "1" } : {}),
-      ...(app.isPackaged && squirrelFirstRun ? { "first-run": "1" } : {}),
     };
     void mainWindow.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),

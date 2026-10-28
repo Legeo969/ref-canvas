@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, mkdir, mkdtemp, open, readdir, rename, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegStatic from "ffmpeg-static";
@@ -180,9 +182,120 @@ export async function extractGifFramesToDirectory(
 }
 
 /**
+ * ffmpeg filtergraph 的路径转义：`:` 分割 option、反斜杠会被当成转义前缀，
+ * 所以 Windows 盘符与目录分隔符都必须重写。命名参数 + 单引号是 ffmpeg 6.x
+ * 里带盘符绝对路径最稳的形式（`lut3d=file='C\:/dir/x.cube'`），裸写
+ * `lut3d=C\:/...` 会被 option 解析器在冒号处截断。
+ */
+function lut3dFilter(lutPath: string): string {
+  const normalized = lutPath.replaceAll("\\", "/").replaceAll(":", "\\:");
+  return `lut3d=file='${normalized}'`;
+}
+
+/**
+ * `lut3d=file='...'` 无法表达路径里的单引号：ffmpeg 6.1 会把单引号一律当作
+ * 引号开关，`\'` / `'\''` 都会被吞掉（实测）。这类路径改为复制到无特殊
+ * 字符的临时文件再喂给 filter；普通路径零拷贝。
+ */
+async function filterSafeLutPath(
+  lutPath: string,
+): Promise<{ path: string; cleanup: () => Promise<void> }> {
+  if (!lutPath.includes("'")) {
+    return { path: lutPath, cleanup: async () => undefined };
+  }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "refcanvas-lut-"));
+  const extension = /^\.[a-z0-9]{1,8}$/i.test(path.extname(lutPath))
+    ? path.extname(lutPath).toLowerCase()
+    : ".cube";
+  const safePath = path.join(
+    directory,
+    `lut-${createHash("sha256").update(lutPath).digest("hex").slice(0, 12)}${extension}`,
+  );
+  try {
+    await copyFile(lutPath, safePath);
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+  return {
+    path: safePath,
+    cleanup: () => rm(directory, { recursive: true, force: true }).catch(() => undefined),
+  };
+}
+
+/**
+ * 对一张静态图应用 3D LUT 并编码为指定格式；输出先写临时文件再 rename。
+ *
+ * 编码器与容器显式指定：此前只给 `-f image2` + `.lut-tmp` 未知扩展名，
+ * ffmpeg 会按扩展名猜成 mjpeg，把 JPEG 字节写进 .webp 缓存文件名。
+ * quality 只对 WebP 生效（libwebp 的 0-100）。
+ */
+export async function applyLut3dImage(
+  inputPath: string,
+  lutPath: string,
+  outputPath: string,
+  options: {
+    encoder?: "png" | "webp";
+    quality?: number;
+    executable?: string;
+    signal?: AbortSignal;
+  } = {},
+): Promise<void> {
+  const encoder = options.encoder ?? "png";
+  const executable = options.executable ?? packagedFfmpegPath();
+  const quality = Math.min(100, Math.max(0, Math.round(options.quality ?? 90)));
+  const temporary = `${outputPath}.${randomSuffix()}.tmp.${encoder}`;
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  const lut = await filterSafeLutPath(lutPath);
+  try {
+    await execFileAsync(
+      executable,
+      [
+        "-v",
+        "error",
+        "-i",
+        inputPath,
+        "-vf",
+        lut3dFilter(lut.path),
+        "-frames:v",
+        "1",
+        "-c:v",
+        encoder === "png" ? "png" : "libwebp",
+        ...(encoder === "webp" ? ["-quality", String(quality)] : []),
+        "-f",
+        "image2",
+        "-y",
+        temporary,
+      ],
+      {
+        maxBuffer: 16 * 1024 * 1024,
+        timeout: 60_000,
+        windowsHide: true,
+        signal: options.signal,
+      },
+    );
+    const info = await stat(temporary).catch(() => null);
+    if (!info?.isFile() || info.size === 0) {
+      throw new Error("LUT_OUTPUT_EMPTY");
+    }
+    await rename(temporary, outputPath);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  } finally {
+    await lut.cleanup();
+  }
+}
+
+/** 临时文件名只需进程内唯一；扩展名保持与编码器一致，避免再被 ffmpeg 推断。 */
+function randomSuffix(): string {
+  return randomUUID().slice(0, 8);
+}
+
+/**
  * 阶段 5 §10.3：对 PNG 应用 Camera LUT（ffmpeg lut3d filter）。
- * 输入输出为同一目录下的图片；输出先写临时文件再 rename（ffmpeg 拒绝
- * 输出=输入）。LUT 进 thumbnail cache key 由调用方保证。
+ * 保留旧签名转调通用实现；编码固定 PNG，避免调用方缓存 `.png` 却拿到
+ * JPEG/WebP 字节。
  */
 export async function applyLut3dToPng(
   inputPath: string,
@@ -191,28 +304,9 @@ export async function applyLut3dToPng(
   executable = packagedFfmpegPath(),
   signal?: AbortSignal,
 ): Promise<void> {
-  const temporary = `${outputPath}.lut-tmp`;
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await execFileAsync(
+  await applyLut3dImage(inputPath, lutPath, outputPath, {
+    encoder: "png",
     executable,
-    [
-      "-v",
-      "error",
-      "-i",
-      inputPath,
-      "-vf",
-      `lut3d=${lutPath.replaceAll(":", "\\:")}`,
-      "-f",
-      "image2",
-      "-y",
-      temporary,
-    ],
-    {
-      maxBuffer: 16 * 1024 * 1024,
-      timeout: 30_000,
-      windowsHide: true,
-      signal,
-    },
-  );
-  await rename(temporary, outputPath);
+    signal,
+  });
 }

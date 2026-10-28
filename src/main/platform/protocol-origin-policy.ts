@@ -126,6 +126,7 @@ export function evaluateProtocolRequest(
 export function protocolResponseHeaders(
   decision: ProtocolRequestDecision,
   contentType?: string,
+  cacheControl = "private, max-age=300",
 ): Record<string, string> {
   return {
     ...(contentType ? { "Content-Type": contentType } : {}),
@@ -137,6 +138,10 @@ export function protocolResponseHeaders(
     // 图片路径均为整包缓冲返回（可缓存），加会话级短 max-age 让重显直接
     // 命中 HTTP 缓存；文件内容变化时由 thumbnail 缓存键 / ?revision= 等
     // 参数改 URL 来绕过（不会长时间服务旧图）。
-    "Cache-Control": "private, max-age=300",
+    //
+    // 例外：套了 LUT 的预览会被用户随时换掉，而 URL 不变，所以调用方传
+    // no-store，否则换 LUT 后画面会卡在旧图直到 max-age 过期。磁盘缓存
+    // 仍然命中，代价只是少一层浏览器缓存。
+    "Cache-Control": cacheControl,
   };
 }

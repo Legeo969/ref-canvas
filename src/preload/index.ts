@@ -188,6 +188,11 @@ const api: RefCanvasApi = {
     thumbnail: (path, options) =>
       ipcRenderer.invoke("media:thumbnail", path, options),
     preview: (path) => ipcRenderer.invoke("media:preview", path),
+    matchAnalysis: (referencePath) =>
+      ipcRenderer.invoke("media:matchAnalysis", referencePath),
+    matchCreate: (request) => ipcRenderer.invoke("media:matchCreate", request),
+    exportMatchLut: (request) =>
+      ipcRenderer.invoke("media:exportMatchLut", request),
     validateOcioConfig: (path) =>
       ipcRenderer.invoke("media:validateOcioConfig", path),
     frame: (path, options) =>

@@ -26,6 +26,7 @@ Windows-first、纯本地的磁盘原生媒体浏览器与无限参考白板。
 ### 预览与检查
 
 - 图片、视频、音频、EXR/HDR、glTF/GLB/OBJ/FBX/STL、PDF、文本、字体与 DCC 文件提供本地预览或明确降级。
+- 参考图仿色:导入一张参考图即可把它的色板、亮度与对比关系拟合到当前画面,分屏对比确认后导出 33/65 点 Resolve `.cube`;匹配强度、暗/中/高三分区权重与肤色/饱和/对比保护均可调。
 - Three.js 负责 3D、EXR/HDR 与 tone mapping;内置 FFmpeg/FFprobe 负责视频、音频与序列处理。
 - 格式 Inspector 显示通用文件信息以及视频、音频、序列、HDR 与 3D 专用 metadata。
 
