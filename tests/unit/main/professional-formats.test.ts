@@ -320,13 +320,16 @@ describe("DocumentProvider（阶段 4：文档）", () => {
     await provider.dispose();
   });
 
-  it("PDF：明确降级（不伪装支持）", async () => {
+  it("PDF：不报无渲染器（Chromium 内置查看器可真实预览）", async () => {
     const directory = await withTemp();
     const target = path.join(directory, "doc.pdf");
     await writeFile(target, "%PDF-1.4\n%%EOF", "latin1");
     const provider = new DocumentProvider();
     const result = await provider.probe({ path: target, kind: "pdf", extension: "pdf", size: 0 });
-    expect(result.extra.unsupportedReason).toContain("PDF");
+    // PDF 由渲染端 iframe + 协议层 application/pdf 直接呈现，属于真实预览：
+    // 不得再透出「本地无渲染器」类降级文案（它会以警告形式盖在真实画面上）。
+    expect(result.extra.unsupportedReason).toBeUndefined();
+    // 缩略图仍由 document-provider 生成不了，这一层不算「伪装支持」。
     await expect(provider.thumbnail({ path: target, kind: "pdf", extension: "pdf", width: 480, height: 320 })).rejects.toThrow("PROVIDER_CAPABILITY_UNSUPPORTED");
     await provider.dispose();
   });

@@ -1693,6 +1693,18 @@ export type MessageKey =
 
   | "preview.fullscreen"
 
+  | "preview.captureThumbnail"
+
+  | "preview.thumbnailMoreActions"
+
+  | "preview.pickThumbnailFile"
+
+  | "preview.settingThumbnail"
+
+  | "preview.thumbnailUpdated"
+
+  | "preview.thumbnailFailed"
+
   | "preview.generating"
 
   | "preview.grid"
@@ -2420,6 +2432,24 @@ export type MessageKey =
   | "text.readFailed"
 
   | "text.truncated"
+
+  | "archive.meta"
+
+  | "archive.truncated"
+
+  | "archive.unsupported"
+
+  | "archive.upOneLevel"
+
+  | "archive.backToEntries"
+
+  | "archive.emptyDirectory"
+
+  | "archive.entryLoading"
+
+  | "archive.entryUnreadable"
+
+  | "archive.entryUnsupported"
 
 
   | "titlebar.exportPng"

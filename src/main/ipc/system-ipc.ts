@@ -8,7 +8,7 @@ import {
   type BrowserWindow,
   type IpcMainInvokeEvent,
 } from "electron";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { z } from "zod";
@@ -45,6 +45,11 @@ export interface SystemIpcState {
     number,
     { filePath: string; width: number; height: number }
   >;
+  /**
+   * 本次截图会话的目标资产：设置时，框选结果直接成为该资产的缩略图，
+   * 不写图库（否则每设一次缩略图就多出一条截图素材）。
+   */
+  captureThumbnailAssetId?: string | null;
   clickThrough: boolean;
   previewCacheIndex: PreviewCacheIndex | null;
   rendererInteractive: boolean;
@@ -347,6 +352,46 @@ export function registerSystemIpc(
     await writeFile(destination, png);
     return { mode: "export" as const, path: destination };
   });
+  /**
+   * 把一张图写成资产的缩略图：统一转 PNG（协议层按 image/png 回包）、
+   * 限制在 1024px 内，落进 userData 后回写 customThumbnailPath。
+   * 选图与截图两条入口共用，保证两者产物完全一致。
+   */
+  async function applyThumbnailImage(assetId: string, image: Buffer) {
+    const directory = path.join(app.getPath("userData"), "custom-thumbnails");
+    await mkdir(directory, { recursive: true });
+    const png = await sharp(image)
+      .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    const filename = path.join(directory, `${assetId}.png`);
+    await writeFile(filename, png);
+    return dependencies.getLibrary().setCustomThumbnail(assetId, filename);
+  }
+
+  /**
+   * 从本地图片设置资产缩略图（.blend / .max 等无法生成真实预览的 DCC 格式）。
+   * 选图走系统对话框（一次性授权），随后把图复制进 userData/custom-thumbnails，
+   * 避免用户移动或删除原图后缩略图失效。
+   */
+  ipc.handleWithEvent("system:set-thumbnail-from-file", async (event, assetId) => {
+    const id = z.string().uuid().parse(assetId);
+    const picked = await dialog.showOpenDialog(dependencies.windowForSender(event), {
+      title: "选择缩略图图片",
+      properties: ["openFile"],
+      filters: [
+        {
+          name: "图片",
+          extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif", "avif", "tif", "tiff", "svg"],
+        },
+      ],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return null;
+    const [source] = await dependencies.writeAccess.authorizePickerSelection([
+      { path: picked.filePaths[0], mode: "existing" },
+    ]);
+    return applyThumbnailImage(id, await readFile(source));
+  });
   ipc.handleWithEvent("system:toggle-always-on-top", (event) => {
     const window = dependencies.windowForSender(event);
     const next = !window.isAlwaysOnTop();
@@ -448,7 +493,23 @@ export function registerSystemIpc(
     // 会话编排（冻结全部显示器、锁定宿主、每屏覆盖窗接管框选）在主进程
     // 入口 startRegionCapture；这里只是渲染端（标题栏按钮）的入口与错误
     // 通道。全局快捷键不经渲染端中转，由主进程直连调用。
+    state.captureThumbnailAssetId = null;
     await dependencies.startRegionCapture();
+  });
+  /**
+   * 区域截图直接作为资产缩略图：先标记会话目标，再开截图会话。
+   * 会话期间这个标记只在主进程内，框选完成后由 save-region-capture 分流。
+   */
+  ipc.handle("system:capture-thumbnail", async (assetId) => {
+    const id = z.string().uuid().parse(assetId);
+    state.captureThumbnailAssetId = id;
+    try {
+      await dependencies.startRegionCapture();
+    } catch (error) {
+      // 会话开不起来必须清标记，否则下一次普通截图会被误当成设缩略图。
+      state.captureThumbnailAssetId = null;
+      throw error;
+    }
   });
   ipc.handleWithEvent("system:save-region-capture", async (event, crop) => {
     const parsed = z
@@ -486,6 +547,17 @@ export function registerSystemIpc(
       })
       .png()
       .toBuffer();
+
+    // 缩略图模式：结果直接写进 custom-thumbnails，不建素材、不进图库。
+    const thumbnailAssetId = state.captureThumbnailAssetId ?? null;
+    if (thumbnailAssetId) {
+      state.captureThumbnailAssetId = null;
+      const asset = await applyThumbnailImage(thumbnailAssetId, png);
+      await dependencies.discardPendingCaptures();
+      dependencies.endCaptureSession("saved");
+      return asset;
+    }
+
     const filename = await dependencies.saveCapture(png, captureDirectory);
     // 截图同时写入系统剪贴板：这样在参考版（或任何应用）里 Ctrl+V
     // 就能直接粘贴刚截的图，无需先去文件管理器复制。
@@ -500,6 +572,7 @@ export function registerSystemIpc(
     return database().getAssetByPath(filename);
   });
   ipc.handle("system:cancel-region-capture", async () => {
+    state.captureThumbnailAssetId = null;
     await dependencies.discardPendingCaptures();
     // "cancelled"：宿主保持会话前的原状（隐藏的保持隐藏），只是拿回控制权。
     dependencies.endCaptureSession("cancelled");

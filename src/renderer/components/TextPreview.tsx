@@ -82,7 +82,7 @@ export function TextPreview({ asset }: { asset: AssetRecord }) {
       ));
 
   return (
-    <MediaNotesOverlay asset={asset}>
+    <MediaNotesOverlay asset={asset} mediaClassName="is-text-media">
       <div className="text-preview">
         <div className="text-preview-meta">
           <FileText size={14} />

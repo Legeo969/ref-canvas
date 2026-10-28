@@ -1620,6 +1620,7 @@ button.preview-color-palette-status {
 /* 降级壳（无本地解码的 DCC/RAW/Office 等）：缩略图垂直居中、
    contain 适配视口，不再贴顶以自然尺寸溢出或留下大片空白。 */
 .preview-panel .preview-unavailable {
+  position: relative;
   justify-content: center;
   gap: 8px;
 }
@@ -1629,6 +1630,162 @@ button.preview-color-palette-status {
   max-height: 100%;
   object-fit: contain;
   border-radius: 6px;
+}
+
+/* DCC 降级壳的「自选缩略图」出口：悬浮在预览区右上角。
+   不放右下：那里会压住预览内容，且与底部工具栏视觉拥挤。 */
+.set-thumbnail-control {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.set-thumbnail-split {
+  display: inline-flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(32, 37, 38, 0.92);
+  box-shadow: var(--shadow-border), 0 6px 18px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+.set-thumbnail-split.busy {
+  opacity: 0.6;
+}
+
+.set-thumbnail-main,
+.set-thumbnail-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: #cdd6d1;
+  font-size: 11px;
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+}
+
+.set-thumbnail-main {
+  gap: 6px;
+  padding: 0 10px 0 11px;
+}
+
+.set-thumbnail-more {
+  width: 26px;
+  padding: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.set-thumbnail-main:hover:not(:disabled),
+.set-thumbnail-more:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.set-thumbnail-main:disabled,
+.set-thumbnail-more:disabled {
+  cursor: default;
+}
+
+.set-thumbnail-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #1b2021;
+  box-shadow: var(--shadow-border-hover), 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.set-thumbnail-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #cdd6d1;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.set-thumbnail-menu button:hover {
+  background: var(--accent-soft);
+  color: #8cdec5;
+}
+
+/* 工具栏形态：与「打开素材／在文件夹中显示」同为预览区头部图标按钮。 */
+.set-thumbnail-control.is-toolbar {
+  position: relative;
+  top: auto;
+  right: auto;
+  display: inline-flex;
+  align-items: center;
+}
+
+.set-thumbnail-control.is-toolbar .set-thumbnail-split {
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  border-radius: 8px;
+}
+
+.set-thumbnail-control.is-toolbar .set-thumbnail-main {
+  gap: 0;
+  color: #98a19d;
+}
+
+.set-thumbnail-control.is-toolbar .set-thumbnail-more {
+  width: 20px;
+  border-left-color: rgba(255, 255, 255, 0.08);
+  color: #7f8a86;
+}
+
+.set-thumbnail-control.is-toolbar .set-thumbnail-main:hover:not(:disabled),
+.set-thumbnail-control.is-toolbar .set-thumbnail-more:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.set-thumbnail-control.is-toolbar .set-thumbnail-menu {
+  top: calc(100% + 4px);
+  right: 0;
+}
+
+/* 工具栏形态的反馈：绝对定位在头部下方，不挤动 header 布局。 */
+.set-thumbnail-toast {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(32, 37, 38, 0.96);
+  box-shadow: var(--shadow-border);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.set-thumbnail-feedback {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgba(32, 37, 38, 0.92);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .preview-panel .pdf-preview {

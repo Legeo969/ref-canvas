@@ -29,8 +29,8 @@ const DCC_FORMAT_HINTS: Record<string, string> = {
   hip: "Houdini 场景",
   hipnc: "Houdini 场景",
   blend: "Blender 场景",
-  // .blend1 不在其列：它走 systemFileIconThumbnail 分支直接显示系统
-  // 文件图标（Windows 上无注册关联，即白底空白文档），不需要合成卡片。
+  // .blend1 不在其列：它与 .blend 共用 TEST 块，走内嵌预览；
+  // 读不到时才走本文件图标卡片。
 };
 
 export function genericPlaceholderSvg(
@@ -103,32 +103,4 @@ export async function fileIconPlaceholderThumbnail(
 /** 是否使用软件关联图标作为占位（DCC 专有格式优先）。 */
 export function shouldUseFileIcon(extension: string): boolean {
   return extension.replace(/^\./, "").toLowerCase() in DCC_FORMAT_HINTS;
-}
-
-/**
- * 系统文件图标原样展示：.blend1（Blender 自动备份）无系统缩略图也无
- * 注册关联，app.getFileIcon 返回的就是 Windows 通用空白文档图标
- * （白底 + 纸张轮廓）——直接把它以 contain 方式铺到白底画布上展示，
- * 不做深色合成卡片。图标为空或取图标失败时回退纯文字占位。
- */
-export async function systemFileIconThumbnail(
-  filename: string,
-  extension: string,
-  size: { width: number; height: number },
-): Promise<Buffer> {
-  const width = Math.max(64, Math.min(640, Math.round(size.width)));
-  const height = Math.max(48, Math.min(480, Math.round(size.height)));
-  try {
-    const icon = await app.getFileIcon(filename, { size: "large" });
-    if (icon.isEmpty()) return genericPlaceholderThumbnail(extension, size);
-    return sharp(icon.toPNG())
-      .resize(width, height, {
-        fit: "contain",
-        background: { r: 255, g: 255, b: 255, alpha: 1 },
-      })
-      .webp({ quality: 85 })
-      .toBuffer();
-  } catch {
-    return genericPlaceholderThumbnail(extension, size);
-  }
 }

@@ -25,7 +25,7 @@ import {
 } from "./refbrowse";
 import { thumbnailCacheFilename } from "./thumbnail-cache";
 import type { ThumbnailWorkerClient } from "./thumbnail-worker-client";
-import { genericPlaceholderThumbnail, fileIconPlaceholderThumbnail, shouldUseFileIcon, systemFileIconThumbnail } from "./placeholder-thumbnail";
+import { genericPlaceholderThumbnail, fileIconPlaceholderThumbnail, shouldUseFileIcon } from "./placeholder-thumbnail";
 import type { ProviderRegistry } from "./provider-registry";
 import { invokeThumbnail } from "./provider-registry";
 import {
@@ -162,20 +162,10 @@ async function generateThumbnail(
   displayTransform?: "linear-srgb" | "aces-1.3" | "aces-2.0" | "raw",
 ): Promise<Buffer> {
   const extension = path.extname(source).replace(/^\./, "").toLowerCase();
-  // .blend1（Blender 自动备份）无系统缩略图也无注册关联：直接展示
-  // 系统文件图标（Windows 上是白底空白文档），不读内嵌预览、不做深色
-  // 合成卡片；图标缺失时回退文字占位。必须在 blend 分支之前：blend1
-  // 不再尝试读 TEST 块。
-  if (extension === "blend1") {
-    const placeholder = await systemFileIconThumbnail(source, extension, size);
-    await writeCacheAtomically(cacheFile, placeholder);
-    return placeholder;
-  }
-  // .blend 读文件内嵌预览（TEST 块，Blender 保存时自动写入的场景缩略
-  // 图）：只读文件头几十 KB、不启动任何外部程序、毫秒级零内存——滚轮
-  // 浏览大目录不再卡爆。zstd 压缩的 .blend 无法直接定位内部块，回落
-  // 软件关联图标卡片。
-  if (extension === "blend") {
+  // .blend1（Blender 自动备份）与 .blend 共用 TEST 块布局：先读内嵌预览。
+  // 旧逻辑直接把系统文件图标（Windows 上是白底空白文档）铺满卡片，
+  // 深色网格里那一格格白块就是它。读不到预览时才退图标卡片。
+  if (extension === "blend1" || extension === "blend") {
     const embedded = await readBlendEmbeddedPreviewSafe(source);
     if (embedded) {
       const { default: sharp } = await import("sharp");
@@ -184,6 +174,9 @@ async function generateThumbnail(
       const webp = await sharp(rgba, {
         raw: { width: embedded.rectx, height: embedded.recty, channels: 4 },
       })
+        // Blender 的 TEST 预览按 OpenGL 行序存储（自下而上，同 BMP）：
+        // 不翻转就是上下颠倒的图。
+        .flip()
         .resize(side, side, {
           fit: "contain",
           background: { r: 29, g: 31, b: 30, alpha: 1 },
@@ -193,6 +186,8 @@ async function generateThumbnail(
       await writeCacheAtomically(cacheFile, webp);
       return webp;
     }
+    // zstd 压缩的 .blend（Blender 4.x 默认）内部块不可直接寻址，
+    // 没有预览可读：回落软件关联图标卡片。
     const placeholder = await fileIconPlaceholderThumbnail(source, extension, size);
     await writeCacheAtomically(cacheFile, placeholder);
     return placeholder;

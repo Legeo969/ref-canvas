@@ -3830,11 +3830,238 @@
   color: #7fb8a0;
 }
 
+/* 文本预览占满整个预览区并自行滚动：
+   .media-notes-media 默认 align-items:center（给图片/视频居中用），会让
+   .text-preview 的高度塔缩成内容高度，里面的 text-preview-body 即使写了
+   overflow:auto 也没有可滚动区域——长文件直接溢出看不见后面。
+   由 TextPreview 给 .media-notes-media 挂 is-text-media 标记，不靠 :has()。 */
+.media-notes-media.is-text-media {
+  display: block;
+  overflow: hidden;
+}
+
+.media-notes-media.is-text-media > .media-notes-floating {
+  top: 6px;
+  right: 10px;
+}
+
+.media-notes-media.is-text-media .text-preview {
+  height: 100%;
+  overflow: hidden;
+}
+
 .text-preview {
   display: flex;
   flex-direction: column;
   min-height: 0;
   width: 100%;
+}
+
+/* 压缩包清单：与文本预览共用「占满预览区 + 自行滚动」的布局。 */
+.archive-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+.archive-preview-empty {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 48px 0;
+  color: #8d9a94;
+  font-size: 13px;
+}
+
+.archive-preview-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #8d9a94;
+  font-size: 12px;
+}
+
+.archive-truncated {
+  color: #c99a5b;
+}
+
+.archive-entry-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.archive-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 12px 4px 14px;
+  border: 0;
+  background: none;
+  color: #c8d1cc;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.archive-entry:hover {
+  background: var(--hover-fill, rgba(255, 255, 255, 0.05));
+}
+
+.archive-entry:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 路径栏：压缩软件式面包屑，可点回退到任意层级。 */
+.archive-preview-path {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 8px 3px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.archive-path-back {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.archive-path-back:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.archive-path-back:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.archive-path-segment {
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.archive-path-segment:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.archive-path-separator {
+  color: var(--subtle);
+}
+
+.archive-path-current {
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px 4px;
+  color: #c8d1cc;
+  text-overflow: ellipsis;
+}
+
+/* 包内条目预览：图片/视频居中，文本铺满并自行滚动。 */
+.archive-entry-preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.archive-entry-text {
+  align-self: stretch;
+  width: 100%;
+  margin: 0;
+  overflow: auto;
+  color: #c8d1cc;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.archive-entry-image,
+.archive-entry-video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.archive-entry-audio {
+  width: 100%;
+}
+
+.archive-entry-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.archive-entry-hint {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.archive-entry.directory {
+  color: #8d9a94;
+}
+
+.archive-entry svg {
+  flex: 0 0 auto;
+  color: var(--subtle);
+}
+
+.archive-entry.directory svg {
+  color: var(--accent);
+}
+
+.archive-entry-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-entry-size {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: #6f7974;
+  font-size: 11px;
 }
 
 .text-preview-empty {

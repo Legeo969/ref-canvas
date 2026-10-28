@@ -6,6 +6,8 @@ import { translate } from "../app/i18n";
 interface MediaNotesOverlayProps {
   asset: Pick<AssetRecord, "id">;
   children: ReactNode;
+  /** 追加到内层媒体的类名：文本预览靠它拿满高度并自行滚动。 */
+  mediaClassName?: string;
 }
 
 function formatTime(ms: number): string {
@@ -24,6 +26,7 @@ function formatTime(ms: number): string {
 export function MediaNotesOverlay({
   asset,
   children,
+  mediaClassName,
 }: MediaNotesOverlayProps) {
   const mediaRef = useRef<HTMLDivElement | null>(null);
   const [notes, setNotes] = useState<MediaNote[]>([]);
@@ -83,7 +86,7 @@ export function MediaNotesOverlay({
     <div className="media-notes-root">
       <div
         ref={mediaRef}
-        className="media-notes-media"
+        className={`media-notes-media${mediaClassName ? ` ${mediaClassName}` : ""}`}
         onPlayCapture={persist}
         onPauseCapture={persist}
         onTimeUpdateCapture={persist}

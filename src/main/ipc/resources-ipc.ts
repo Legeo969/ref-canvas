@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import sharp from "sharp";
 import { z } from "zod";
 import path from "node:path";
@@ -28,6 +29,7 @@ import {
 import { validateOcioConfigWithOpenImageIo } from "../services/media/openimageio-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
 import { readTextPreview } from "../services/media/text-reader";
+import { readArchiveListing, extractArchiveEntry } from "../services/media/archive-listing";
 import { readMediaMetadata } from "../services/media-metadata";
 import { exportSequenceToMp4, exportVideoToMp4 } from "../services/media/mp4-export";
 import {
@@ -773,6 +775,49 @@ export function registerResourcesIpc(
         .parse(options) ?? {};
     return readTextPreview(resolved, parsed.limit);
   });
+  /**
+   * 压缩包清单（只读浏览）：只读表结构、不解压到磁盘。
+   * 不支持的格式（rar/7z）由服务层抛 ARCHIVE_FORMAT_UNSUPPORTED，
+   * 渲染层捕获后降级为图标卡片。
+   */
+  ipc.handle("media:listArchive", async (filename) => {
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
+    return readArchiveListing(resolved);
+  });
+  /**
+   * 包内单条目预览：像压缩软件那样双击看内容。
+   *
+   * 只在用户点开条目时解压那一条，不批量解压。文本直接回传，
+   * 图片／视频／音频写临时文件后走 refbrowse token（与磁盘预览同一管线）。
+   */
+  ipc.handle("media:archiveEntry", async (filename, entryPath) => {
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
+    const target = z.string().min(1).max(4096).parse(entryPath);
+    const { data } = await extractArchiveEntry(resolved, target);
+    const mimeType = mimeTypeForPath(target);
+
+    if (/^(image|video|audio)\//.test(mimeType) || mimeType === "application/pdf") {
+      const source = await archiveEntryTempSource(
+        dependencies.previewTokens,
+        resolved,
+        target,
+        data,
+      );
+      return { kind: "media" as const, source, mimeType, size: data.byteLength };
+    }
+
+    const decoded = decodeArchiveEntryText(data);
+    if (decoded) {
+      return {
+        kind: "text" as const,
+        text: decoded.text,
+        truncated: decoded.truncated,
+        size: data.byteLength,
+        mimeType,
+      };
+    }
+    return { kind: "unsupported" as const, size: data.byteLength, mimeType };
+  });
   ipc.handle("media:convert", async (filename, targetFormat, requestedJobId) => {
     const resolved = assertAbsoluteLocalPath(pathSchema.parse(filename));
     const extension = path.extname(resolved).replace(/^\./, "").toLowerCase();
@@ -1267,6 +1312,66 @@ export function registerResourcesIpc(
 function thumbnailIdForPath(filename: string): string {
   // 稳定可复现的文件名（不含路径信息，防止缓存文件名泄露绝对路径）。
   return createHash("sha256").update(path.normalize(filename)).digest("hex").slice(0, 20);
+}
+
+/** 包内条目临时文件的存放目录（惰性清理，不随会话结束消失，但不会无限增长）。 */
+const ARCHIVE_ENTRY_TEMP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+let archiveEntryPrunedAt = 0;
+
+async function archiveEntryTempSource(
+  previewTokens: PreviewTokenRegistry,
+  archivePath: string,
+  entryPath: string,
+  data: Buffer,
+): Promise<string> {
+  const directory = path.join(os.tmpdir(), "refcanvas-archive-entries");
+  await mkdir(directory, { recursive: true });
+  // 把包路径纳入 key：不同包里的同一相对路径不能互相覆盖。
+  const key = createHash("sha1")
+    .update(`${archivePath}::${entryPath}::${data.byteLength}`)
+    .digest("hex");
+  const extension = path.extname(entryPath);
+  const target = path.join(directory, `${key}${extension}`);
+  await writeFile(target, data).catch(async (error: unknown) => {
+    // 同名并发写不致命：已有文件可复用。
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+  });
+
+  const now = Date.now();
+  if (now - archiveEntryPrunedAt > 60 * 60 * 1000) {
+    archiveEntryPrunedAt = now;
+    void pruneArchiveEntryTemp(directory);
+  }
+  return `refbrowse://preview/${previewTokens.tokenFor(target)}`;
+}
+
+async function pruneArchiveEntryTemp(directory: string): Promise<void> {
+  const names = await readdir(directory).catch(() => [] as string[]);
+  const cutoff = Date.now() - ARCHIVE_ENTRY_TEMP_MAX_AGE_MS;
+  await Promise.all(
+    names.map(async (name) => {
+      const file = path.join(directory, name);
+      const info = await stat(file).catch(() => null);
+      if (info && info.mtimeMs < cutoff) await rm(file, { force: true }).catch(() => undefined);
+    }),
+  );
+}
+
+/**
+ * 包内文本解码。含 NUL 或替换字符过多视为二进制，交给调用方降级。
+ */
+function decodeArchiveEntryText(
+  data: Buffer,
+): { text: string; truncated: boolean } | null {
+  if (!data.byteLength) return { text: "", truncated: false };
+  const head = data.subarray(0, Math.min(data.byteLength, 8192));
+  if (head.includes(0)) return null;
+  const limit = 512 * 1024;
+  const truncated = data.byteLength > limit;
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(data.subarray(0, limit));
+  const replacement = text.split("\uFFFD").length - 1;
+  if (replacement > text.length * 0.05) return null;
+  return { text, truncated };
 }
 
 async function availableOutputPath(

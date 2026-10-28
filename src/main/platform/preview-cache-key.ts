@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 
 // Bump after changing the thumbnail encode pipeline (PNG→WebP) so stale
 // PNG caches are regenerated instead of being served with a WebP header.
-export const PREVIEW_CACHE_VERSION = "preview-v6";
+// v7: .blend TEST 块改为按 8/12 字节双布局解析（旧版只认 12 字节，所有
+// 2.80+ 文件都解析失败并被缓存成图标卡片），必须让旧缓存失效。
+// v8: .blend 预览改为 OpenGL 行序翻转（原上下颠倒），OBJ 缩略图投影改为
+// +Y 朝上（原倒立）；旧图必须重新生成。
+export const PREVIEW_CACHE_VERSION = "preview-v8";
 
 export interface PreviewCacheIdentity {
   realPath: string;

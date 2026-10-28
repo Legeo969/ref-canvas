@@ -927,7 +927,6 @@ export function SettingsPanel({
                       type="button"
                       className="icon-button"
                       aria-label={translate("settings.preview.pickOcioConfig")}
-                      title={translate("settings.preview.pickOcioConfig")}
                       onClick={() => {
                         void window.refCanvas.system
                           .pickFile({
@@ -965,7 +964,6 @@ export function SettingsPanel({
                       type="button"
                       className="icon-button"
                       aria-label={translate("settings.preview.pickLut")}
-                      title={translate("settings.preview.pickLut")}
                       onClick={() => {
                         void window.refCanvas.system
                           .pickFile({

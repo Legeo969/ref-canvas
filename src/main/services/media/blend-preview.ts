@@ -38,7 +38,13 @@ export async function isZstdCompressedBlend(filename: string): Promise<boolean> 
 
 /**
  * 从普通（未压缩）.blend 读取内嵌预览图。找不到 TEST 块或块不完整时
- * 返回 null（调用方回退 Blender 渲染）。
+ * 返回 null（调用方回落图标卡片）。
+ *
+ * TEST 块头布局随 Blender 版本变过：
+ * - 2.80 起：w[4] + h[4]，像素从第 8 字节开始；
+ * - 早期版本：previewSize[4] + w[4] + h[4]，像素从第 12 字节开始。
+ * 只按 12 字节解会把 width 当成 previewSize、把首个像素的 RGBA 当成
+ * height（实测算出 recty = -14671840），整类文件因此静默退回图标卡片。
  */
 export async function readBlendEmbeddedPreview(
   filename: string,
@@ -64,17 +70,11 @@ export async function readBlendEmbeddedPreview(
       if (!/^[A-Za-z0-9]{4}$/.test(code) || size <= 0 || size > 64 * 1024 * 1024) {
         return null;
       }
-      if (code === "TEST" && size > 12) {
+      if (code === "TEST" && size > 8) {
         const payload = Buffer.alloc(size);
         const { bytesRead: payloadRead } = await handle.read(payload, 0, size, offset + 24);
         if (payloadRead < size) return null;
-        const rectx = payload.readInt32LE(4);
-        const recty = payload.readInt32LE(8);
-        if (rectx <= 0 || recty <= 0 || rectx > 8192 || recty > 8192) return null;
-        // 12 字节头 + 像素数据；块内剩余空间必须能容纳像素。
-        if (size - 12 < rectx * recty * 4) return null;
-        // 忽略 previewSize 与像素布局的细微差异，直接按 rect 读取。
-        return { pixels: payload.subarray(12, 12 + rectx * recty * 4), rectx, recty };
+        return decodeTestBlock(payload, size);
       }
       offset += 24 + size;
     }
@@ -82,6 +82,36 @@ export async function readBlendEmbeddedPreview(
   } finally {
     await handle.close();
   }
+}
+
+/** 按 8 字节（2.80+）或 12 字节（早期）头解析 TEST 块：块长必须精确匹配。 */
+function decodeTestBlock(
+  payload: Buffer,
+  size: number,
+): BlendEmbeddedPreview | null {
+  const candidates = [
+    { headerSize: 8, width: payload.readInt32LE(0), height: payload.readInt32LE(4) },
+  ];
+  if (size >= 12) {
+    candidates.push({
+      headerSize: 12,
+      width: payload.readInt32LE(4),
+      height: payload.readInt32LE(8),
+    });
+  }
+  for (const candidate of candidates) {
+    const { headerSize, width, height } = candidate;
+    if (width <= 0 || height <= 0 || width > 8192 || height > 8192) continue;
+    const pixels = width * height * 4;
+    // 只认精确匹配：错位布局算出的矩形不可能与块长吻合。
+    if (size !== headerSize + pixels) continue;
+    return {
+      pixels: payload.subarray(headerSize, headerSize + pixels),
+      rectx: width,
+      recty: height,
+    };
+  }
+  return null;
 }
 
 /** BGRA → RGBA（并转换为 PNG 的输入格式）。 */
@@ -96,10 +126,10 @@ export function bgraToRgba(pixels: Buffer): Buffer {
   return out;
 }
 
-/** 根据扩展名判断是否尝试内嵌预览（仅 .blend；.blend1 不再读内嵌预览，.abc 无此机制）。 */
+/** 根据扩展名判断是否尝试内嵌预览（.blend 与 .blend1 共用同一 TEST 块；.abc 无此机制）。 */
 export function hasEmbeddedPreviewSupport(extension: string): boolean {
   const normalized = extension.toLowerCase();
   const lastDot = normalized.lastIndexOf(".");
   const raw = lastDot >= 0 ? normalized.slice(lastDot + 1) : normalized;
-  return raw === "blend";
+  return raw === "blend" || raw === "blend1";
 }

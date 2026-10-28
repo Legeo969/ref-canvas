@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
+import { PREVIEW_CACHE_VERSION } from "./preview-cache-key";
 
 /** 不属于统一 preview-index 管理的遗留/临时缓存前缀。 */
 const ORPHAN_PREFIX = /^(frame|palette|media)-/i;
@@ -18,7 +19,12 @@ export function thumbnailCacheFilename(
   asset: ThumbnailIdentity,
   variant = "composite",
 ): string {
+  // 必须带上 PREVIEW_CACHE_VERSION：refasset://thumbnail（预览面板）只靠这个
+  // 文件名做缓存键，而 refbrowse://thumbnail（目录卡片）走 previewCacheKey()。
+  // 不带版本号时两条协议会分叉：卡片随版本失效、预览面板继续命中旧图。
   const identity = createHash("sha256")
+    .update(PREVIEW_CACHE_VERSION)
+    .update("\0")
     .update(`${asset.mtimeMs}:${asset.size}:${asset.fingerprint}`);
   if (variant !== "composite") identity.update(`:${variant}`);
   const signature = identity.digest("hex")

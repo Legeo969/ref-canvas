@@ -1221,6 +1221,34 @@ export interface TextPreviewResult {
   lineCount: number;
 }
 
+/** 压缩包清单条目（media.listArchive）；只读表结构，不解压。 */
+export interface ArchiveEntryInfo {
+  path: string;
+  size: number;
+  compressedSize: number;
+  isDirectory: boolean;
+  modifiedAt: string | null;
+}
+
+export interface ArchiveListingResult {
+  format: "zip" | "tar" | "gzip" | "rar" | "sevenzip";
+  entries: ArchiveEntryInfo[];
+  totalSize: number;
+  totalCompressedSize: number;
+  truncated: boolean;
+}
+
+/**
+ * 包内单条目预览结果（media.archiveEntry）。
+ *
+ * 文本直接回传；图片／视频／音频写临时文件后给 refbrowse 地址，
+ * 与磁盘文件预览走同一管线（不另造渲染器）。
+ */
+export type ArchiveEntryPreviewResult =
+  | { kind: "text"; text: string; truncated: boolean; size: number; mimeType: string }
+  | { kind: "media"; source: string; mimeType: string; size: number }
+  | { kind: "unsupported"; size: number; mimeType: string };
+
 /** 序列导出 MP4 请求（阶段 5）。 */
 export interface ExportMp4Request {
   /** 帧文件绝对路径（按帧号升序）。 */
@@ -1764,6 +1792,13 @@ export interface RefCanvasApi {
       path: string,
       options?: { limit?: number },
     ): Promise<TextPreviewResult>;
+    /**
+     * 压缩包清单（zip/jar/apk/tar/tgz/gz）；只读表结构，不解压到磁盘。
+     * 不支持的格式（rar/7z）以 ARCHIVE_FORMAT_UNSUPPORTED 拒绝。
+     */
+    listArchive(path: string): Promise<ArchiveListingResult>;
+    /** 包内单条目预览：双击压缩包内的文件时按需解压那一条。 */
+    archiveEntry(path: string, entryPath: string): Promise<ArchiveEntryPreviewResult>;
     /** Downscale 图片（阶段 5 §10.4 Downscale naming）。 */
     downscale(request: DownscaleRequest): Promise<DownscaleResult>;
   };
@@ -2050,6 +2085,17 @@ export interface RefCanvasApi {
         defaultName?: string;
       },
     ): Promise<SaveRenderedImageResult | null>;
+    /**
+     * 用本地图片作为资产缩略图（.blend/.max 等无法生成真实预览的格式）。
+     * 图片会被复制进 userData 目录，源文件移动/删除不影响已设置的缩略图。
+     * 返回更新后的资产（渲染层据 customThumbnailPath 判断是否生效）。
+     */
+    setThumbnailFromFile(assetId: string): Promise<AssetRecord | null>;
+    /**
+     * 区域截图直接作为资产缩略图：开区域截图会话，框选结果写入缩略图，
+     * 不建图库素材。取消时返回 null。
+     */
+    captureThumbnail(assetId: string): Promise<AssetRecord | null>;
     toggleAlwaysOnTop(): Promise<boolean>;
     /** Signals that initial renderer data is painted and background work may start. */
     markRendererInteractive(): Promise<void>;

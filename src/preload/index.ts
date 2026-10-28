@@ -209,6 +209,9 @@ const api: RefCanvasApi = {
       ipcRenderer.invoke("media:waveform", path, options),
     readText: (path, options) =>
       ipcRenderer.invoke("media:readText", path, options),
+    listArchive: (path) => ipcRenderer.invoke("media:listArchive", path),
+    archiveEntry: (path, entryPath) =>
+      ipcRenderer.invoke("media:archiveEntry", path, entryPath),
   },
   sequences: {
     detect: (directory, options) =>
@@ -390,6 +393,10 @@ const api: RefCanvasApi = {
     pickFile: (options) => ipcRenderer.invoke("system:pick-file", options),
     saveRenderedImage: (dataUrl, options) =>
       ipcRenderer.invoke("system:save-rendered-image", dataUrl, options),
+    setThumbnailFromFile: (assetId) =>
+      ipcRenderer.invoke("system:set-thumbnail-from-file", assetId),
+    captureThumbnail: (assetId) =>
+      ipcRenderer.invoke("system:capture-thumbnail", assetId),
     toggleAlwaysOnTop: () =>
       ipcRenderer.invoke("system:toggle-always-on-top"),
     markRendererInteractive: () =>

@@ -11,6 +11,7 @@ import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
 import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
 import { AssetPreview } from "./AssetPreview";
+import { SetThumbnailButton } from "./SetThumbnailButton";
 import { GifExportStudio } from "./GifExportStudio";
 import {
   PreviewSessionModeButtons,
@@ -56,6 +57,8 @@ const FULLSCREEN_CONTROLS_SELECTOR = ".preview-workspace, .preview-session-foote
 function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const previewSettings = usePreviewSettings();
   const [asset, setAsset] = useState<AssetRecord | null>(null);
+  /** 自定义缩略图的本地 revision：设置后立即换 URL，不等重新拉资产。 */
+  const [thumbnailRevision, setThumbnailRevision] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [tool, setTool] = useState<WorkbenchTool>("preview");
@@ -400,6 +403,13 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       <header className="preview-tab-bar" aria-label={translate("preview.panelLabel")}>
         <span className="preview-toolbar-spacer" />
         <div className="workbench-file-actions">
+          {asset && (
+            <SetThumbnailButton
+              assetId={asset.id}
+              onUpdated={setThumbnailRevision}
+              variant="toolbar"
+            />
+          )}
           <button className="workbench-external-action" type="button" aria-label={translate("preview.openAsset")} onClick={() => void window.refCanvas.filesystem.open(entry.path)}>
             <SquareArrowOutUpRight size={15} />
           </button>
@@ -465,6 +475,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     <AssetPreview
                       key={asset.path}
                       asset={asset}
+                      thumbnailRevision={thumbnailRevision}
                       onTimeChange={setTimeSeconds}
                       playbackFps={playbackFps}
                       onOpenTool={handleOpenTool}

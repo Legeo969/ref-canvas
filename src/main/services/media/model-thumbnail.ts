@@ -11,7 +11,9 @@ interface ProjectedFace {
 }
 
 function project([x, y, z]: Point3): [number, number, number] {
-  return [(x - z) * 0.866, y - (x + z) * 0.5, x + y + z];
+  // 屏幕坐标 y 向下，世界坐标 y 向上：这里取 -y，否则渲染出来的模型是倒立的
+  //（正上方看起来像地面，人体双手双脚朝上、头朝下）。
+  return [(x - z) * 0.866, -y - (x + z) * 0.5, x + y + z];
 }
 
 function faceLight(a: Point3, b: Point3, c: Point3): number {

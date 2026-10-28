@@ -1,7 +1,6 @@
 // @vitest-environment node
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import sharp from "sharp";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
   app: {
@@ -15,7 +14,6 @@ import {
   genericPlaceholderSvg,
   genericPlaceholderThumbnail,
   shouldUseFileIcon,
-  systemFileIconThumbnail,
 } from "../../../src/main/platform/placeholder-thumbnail";
 
 beforeEach(() => {
@@ -110,75 +108,7 @@ describe("fileIconPlaceholderThumbnail", () => {
     }
     expect(shouldUseFileIcon("png")).toBe(false);
     expect(shouldUseFileIcon("aep")).toBe(false);
-    // .blend1 不走合成卡片：systemFileIconThumbnail 分支直接显示系统文件图标。
+    // .blend1 与 .blend 共用 TEST 块：先读内嵌预览，不直接走合成卡片。
     expect(shouldUseFileIcon("blend1")).toBe(false);
-  });
-});
-
-describe("systemFileIconThumbnail", () => {
-  // mock electron.app.getFileIcon：返回一个 32x32 红色 PNG 图标
-  // （由 sharp 生成，保证 libpng 可解析——直接嵌入 SVG 的 base64
-  // 不需要解析，但 systemFileIconThumbnail 会把图标 PNG 交给 sharp）。
-  let iconPng: Buffer;
-
-  beforeAll(async () => {
-    iconPng = await sharp({
-      create: {
-        width: 32,
-        height: 32,
-        channels: 4,
-        background: { r: 255, g: 0, b: 0, alpha: 1 },
-      },
-    })
-      .png()
-      .toBuffer();
-  });
-
-  it("lays the system file icon out on a white canvas at the target size", async () => {
-    vi.mocked(app.getFileIcon).mockResolvedValue({
-      isEmpty: () => false,
-      toPNG: () => iconPng,
-    } as never);
-    const png = await systemFileIconThumbnail(
-      "D:\\refs\\shot.blend1",
-      "blend1",
-      { width: 480, height: 320 },
-    );
-    expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
-    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
-    expect(app.getFileIcon).toHaveBeenCalledWith("D:\\refs\\shot.blend1", {
-      size: "large",
-    });
-    const metadata = await sharp(png).metadata();
-    expect(metadata.width).toBe(480);
-    expect(metadata.height).toBe(320);
-  });
-
-  it("falls back to the generic placeholder when the icon is empty", async () => {
-    vi.mocked(app.getFileIcon).mockResolvedValue({
-      isEmpty: () => true,
-      toPNG: () => iconPng,
-    } as never);
-    const png = await systemFileIconThumbnail(
-      "D:\\refs\\shot.blend1",
-      "blend1",
-      { width: 480, height: 320 },
-    );
-    expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
-    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
-  });
-
-  it("falls back to the generic placeholder when getFileIcon throws", async () => {
-    vi.mocked(app.getFileIcon).mockRejectedValue(new Error("no icon"));
-    const png = await systemFileIconThumbnail(
-      "D:\\refs\\shot.blend1",
-      "blend1",
-      { width: 480, height: 320 },
-    );
-    expect(Buffer.isBuffer(png)).toBe(true);
-    expect(png.subarray(0, 4).toString("hex")).toBe("52494646");
-    expect(png.subarray(8, 12).toString("hex")).toBe("57454250");
   });
 });

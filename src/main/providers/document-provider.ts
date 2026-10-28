@@ -36,27 +36,27 @@ const TEXT_EXTENSIONS = new Set([
   "glsl", "hlsl", "vert", "frag", "comp",
 ]);
 
-const OFFICE_EXTENSIONS: Record<string, string> = {
-  pdf: "PDF：本地无渲染器（无 poppler），不静默依赖系统组件",
-  doc: "Word 97-2003：无本地渲染器",
-  docx: "Word：无本地渲染器",
-  xls: "Excel 97-2003：无本地渲染器",
-  xlsx: "Excel：无本地渲染器",
-  ppt: "PowerPoint 97-2003：无本地渲染器",
-  pptx: "PowerPoint：无本地渲染器",
-  odt: "OpenDocument 文本：无本地渲染器",
-  ods: "OpenDocument 表格：无本地渲染器",
-  odp: "OpenDocument 演示：无本地渲染器",
-  epub: "EPUB：无本地渲染器",
-};
+/** 文档 provider 负责的全部非纯文本扩展名（manifest 声明与可读判定共用）。 */
+const DOCUMENT_BINARY_EXTENSIONS = [
+  "pdf",
+  "docx", "xlsx", "pptx",
+  "odt", "ods", "odp", "epub",
+  "doc", "xls", "ppt",
+];
 
-const READABLE_OFFICE_EXTENSIONS = new Set(["docx", "xlsx", "pptx"]);
+const READABLE_OFFICE_EXTENSIONS = new Set([
+  "docx", "xlsx", "pptx",
+  // 同为 ZIP+XML：由 text-reader 的同一套提取逻辑处理，属于真实内容浏览。
+  "odt", "ods", "odp", "epub",
+  // 旧版 Office：OLE2 容器 + 专有取文（只文字、无版式），仍是真实内容。
+  "doc", "xls", "ppt",
+]);
 
 const DOCUMENT_PROVIDER_MANIFEST: ResourceProviderManifest = {
   id: "document-provider",
   version: "1.0.0",
   kinds: ["generic", "pdf"],
-  extensions: [...TEXT_EXTENSIONS, ...Object.keys(OFFICE_EXTENSIONS)],
+  extensions: [...TEXT_EXTENSIONS, ...DOCUMENT_BINARY_EXTENSIONS],
   mimeTypes: [],
   capabilities: ["probe", "metadata", "thumbnail"],
   priority: 20,
@@ -129,17 +129,25 @@ export class DocumentProvider implements ResourceProvider {
 
   async probe(input: ProviderProbeInput): Promise<ProviderProbeResult> {
     const extension = input.extension.toLowerCase();
-    if (OFFICE_EXTENSIONS[extension]) {
+    // PDF 由渲染端 Chromium 内置查看器直接呈现（iframe + 协议层
+    // application/pdf），属于真实预览：不报 unsupportedReason，也不能因为
+    // 本 provider 不生成缩略图就抛错（那会让能力探测当作失败）。
+    if (extension === "pdf") {
       return {
         width: null,
         height: null,
         duration: null,
-        extra: {
-          format: extension,
-          ...(READABLE_OFFICE_EXTENSIONS.has(extension)
-            ? { previewMode: "extracted-text" }
-            : { unsupportedReason: OFFICE_EXTENSIONS[extension] }),
-        },
+        extra: { format: extension, previewMode: "browser-pdf" },
+      };
+    }
+    // 所有声明支持的二进制文档格式都能提取文字（docx/xlsx/pptx/odt/ods/odp/
+    // epub 走 ZIP+XML，doc/xls/ppt 走 OLE2）——不再有「无渲染器」分支。
+    if (READABLE_OFFICE_EXTENSIONS.has(extension)) {
+      return {
+        width: null,
+        height: null,
+        duration: null,
+        extra: { format: extension, previewMode: "extracted-text" },
       };
     }
     if (TEXT_EXTENSIONS.has(extension)) {
@@ -165,9 +173,12 @@ export class DocumentProvider implements ResourceProvider {
 
   async metadata(input: ProviderMetadataInput): Promise<ProviderMetadataResult> {
     const extension = input.extension.toLowerCase();
-    if (OFFICE_EXTENSIONS[extension]) {
+    if (READABLE_OFFICE_EXTENSIONS.has(extension)) {
       return {
-        fields: { format: extension.toUpperCase(), note: OFFICE_EXTENSIONS[extension] },
+        fields: {
+          format: extension.toUpperCase(),
+          note: "文本可提取（无版式渲染）",
+        },
       };
     }
     const sample = await sampleText(input.path);
@@ -187,7 +198,7 @@ export class DocumentProvider implements ResourceProvider {
 
   async thumbnail(input: ProviderThumbnailInput): Promise<ProviderThumbnailResult> {
     const extension = input.extension.toLowerCase();
-    if (OFFICE_EXTENSIONS[extension]) {
+    if (READABLE_OFFICE_EXTENSIONS.has(extension)) {
       throw new Error("PROVIDER_CAPABILITY_UNSUPPORTED");
     }
     if (!TEXT_EXTENSIONS.has(extension)) {

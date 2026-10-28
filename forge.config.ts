@@ -29,6 +29,10 @@ const packagedRuntimePaths = [
   // node-screenshots-win32-x64-msvc，两条路径都必须进白名单。
   "/node_modules/node-screenshots",
   "/node_modules/node-screenshots-win32-x64-msvc",
+  // 压缩包格式的 WASM 解码器：.wasm 靠 __dirname 相对路径定位，
+  // 必须整包进 asar（被忽略则运行时找不到 wasm，rar/7z 直接失效）。
+  "/node_modules/node-unrar-js",
+  "/node_modules/7z-wasm",
 ];
 const signingConfigured = Boolean(
   process.env.REFCANVAS_CERTIFICATE_FILE ||
@@ -38,8 +42,11 @@ const signingConfigured = Boolean(
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
+      // 7z-wasm / node-unrar-js 的 .wasm 是 Emscripten 用 __dirname
+      // 相对定位的数据文件，解包到 asar 外最稳（Electron 会把 unpacked
+      // 路径透明重定向，fs 读到的就是真实文件）。
       unpackDir:
-        "{node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static,node-screenshots-win32-x64-msvc},assets/native/openimageio}",
+        "{node_modules/{@img/sharp-win32-x64,@ffprobe-installer/win32-x64,ffmpeg-static,node-screenshots-win32-x64-msvc,7z-wasm,node-unrar-js},assets/native/openimageio}",
     },
     executableName: "RefCanvas",
     icon: "assets/installer/refcanvas.ico",
