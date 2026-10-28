@@ -709,6 +709,7 @@ export function DirectoryAssetPanel() {
     searchSnapshot,
     runSearch,
     onQueryChange,
+    submitQuery,
     applySearchSuggestion,
     cancelSearch,
     locatePathInput,
@@ -2373,6 +2374,11 @@ export function DirectoryAssetPanel() {
             event.target.value,
             (event.nativeEvent as InputEvent).inputType,
           )}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            submitQuery(event.currentTarget.value);
+          }}
           placeholder={translate("directory.searchPlaceholder")}
           aria-label={translate("directory.searchCurrent")}
           onFocus={() => setSearchSuggestionsOpen(true)}

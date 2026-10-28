@@ -2458,6 +2458,70 @@ describe("DirectoryAssetPanel", () => {
     expect(startSearch).not.toHaveBeenCalled();
   });
 
+  it("locates an absolute path typed into the search field on Enter", async () => {
+    // 注释承诺「粘贴（或回车提交）一个绝对路径」都会定位，但此前只有粘贴
+    // 这条路实现了：手输地址后回车会被当成关键词搜索，目录搜不到，表现为
+    // "输入地址不通过"。
+    const listDirectory = vi.fn(async () => ({
+      entries: [],
+      total: 0,
+      nextCursor: null,
+    }));
+    const pathType = vi.fn(async () => "directory" as const);
+    const startSearch = vi.fn(async () => "search-1");
+    const openDirectory = vi.fn(async () => undefined);
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          pathType,
+          startSearch,
+          cancelSearch: vi.fn(async () => true),
+          getSearch: vi.fn(async () => null),
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+      openDirectory,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+
+    const target =
+      "G:\\AIwork\\ref-canvas\\.hana\\worktrees\\1026-5zov\\out\\RefCanvas-win32-x64";
+    const input = host.querySelector<HTMLInputElement>(".search-field input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(input, target);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(pathType).toHaveBeenCalledWith(target);
+    expect(openDirectory).toHaveBeenCalledWith(target);
+    // 回车定位后不得再冒一次关键词搜索：等待排队中的 debounce 到期再断言。
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+    });
+    expect(startSearch).not.toHaveBeenCalled();
+  });
+
   it("opens the parent folder and selects the file when a pasted file path is entered", async () => {
     const fileEntry = {
       path: "D:\\refs\\concept.psd",

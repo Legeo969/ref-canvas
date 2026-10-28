@@ -203,6 +203,21 @@ export function useDirectorySearch(params: UseDirectorySearchParams) {
     debounceRef.current = window.setTimeout(() => runSearch(value), 160);
   };
 
+  /**
+   * 回车提交。绝对路径直接定位（与粘贴同一条识别逻辑），
+   * 其余情况立即执行关键词搜索，不等 debounce。
+   * 必须清掉排队中的 debounce：否则回车定位后 160ms 还会冒一次搜索。
+   */
+  const submitQuery = (value: string) => {
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    if (locatePathInput(value)) return;
+    const trimmed = value.trim();
+    if (trimmed) void runSearch(trimmed);
+  };
+
   const applySearchSuggestion = (value: string) => {
     setSearchSuggestionsOpen(false);
     onQueryChange(value);
@@ -334,6 +349,7 @@ export function useDirectorySearch(params: UseDirectorySearchParams) {
     searchSnapshot,
     runSearch,
     onQueryChange,
+    submitQuery,
     applySearchSuggestion,
     cancelSearch,
     locatePathInput,
