@@ -137,7 +137,6 @@ function buildCfb(streams: StreamSpec[]): Buffer {
     }
     stream.data.copy(miniStream, miniOffset);
     miniOffset += Math.max(MINI, miniCount * MINI);
-    stream.data = stream.data; // 保持原样
   }
   miniStream.copy(file, SECTOR + miniStreamStart * SECTOR);
   for (let i = 0; i < miniFat.length; i += 1) {
