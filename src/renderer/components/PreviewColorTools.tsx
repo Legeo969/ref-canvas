@@ -4,9 +4,11 @@ import { translate } from "../app/i18n";
 
 interface PreviewColorToolsProps {
   settings: PreviewSettings;
+  /** 打开「参考图仿色」；缺省时不显示入口（例如非图片/视频素材）。 */
+  onOpenMatch?: () => void;
 }
 
-export function PreviewColorTools({ settings }: PreviewColorToolsProps) {
+export function PreviewColorTools({ settings, onOpenMatch }: PreviewColorToolsProps) {
   const [activeLut, setActiveLut] = useState(settings.activeLut);
 
   const updateLut = async (value: string | null) => {
@@ -34,6 +36,11 @@ export function PreviewColorTools({ settings }: PreviewColorToolsProps) {
         {activeLut.split(/[\\/]/).pop()}
       </span>}
       <button type="button" aria-label={translate("preview.importLut")} onClick={() => void importLut()}>{translate("preview.addLut")}</button>
+      {onOpenMatch && (
+        <button type="button" className="lut-match-entry" onClick={onOpenMatch}>
+          {translate("preview.matchOpen")}
+        </button>
+      )}
     </section>
   );
 }

@@ -23,7 +23,7 @@ import type { PreviewTokenRegistry } from "../platform/refbrowse";
 import {
   extractGifFramesToDirectory,
   extractVideoFrame,
-  applyLut3dToPng,
+  applyLut3dImage,
 } from "../services/media/ffmpeg-tools";
 import { validateOcioConfigWithOpenImageIo } from "../services/media/openimageio-tools";
 import { detectSequencesInDirectory } from "../services/media/sequence-service";
@@ -40,6 +40,7 @@ import {
   downscaleImage,
   planDownscale,
 } from "../services/media/downscale";
+import { createReferenceMatchService } from "../services/media/reference-match";
 import { PREVIEW_SETTINGS_DEFAULTS } from "../../shared/contracts";
 import { readPreviewSettings } from "./preview-settings";
 import { idSchema, pathSchema } from "./schemas";
@@ -117,6 +118,25 @@ export function registerResourcesIpc(
     if (!index) return;
     const info = await stat(filename).catch(() => null);
     if (info?.isFile()) index.recordSuccess(key, filename, info.size);
+  };
+
+  // 参考图仿色服务持有解码 LRU 与惰性构造的缓存目录；每次调用都新建会把
+  // “拖滑杆不重复解码”的收益清零，所以整个 IPC 生命周期只建一次。
+  let referenceMatchService: ReturnType<typeof createReferenceMatchService> | null = null;
+  const referenceMatch = (): ReturnType<typeof createReferenceMatchService> => {
+    if (!referenceMatchService) {
+      const cacheDirectory = dependencies.getThumbnailCacheDirectory();
+      if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
+      referenceMatchService = createReferenceMatchService({
+        cacheDirectory,
+        previewUrlFor: (filePath) =>
+          `refbrowse://preview/${dependencies.previewTokens.tokenFor(filePath)}`,
+        registerCacheFile: (key, filePath) => {
+          void recordCacheFile(dependencies.getPreviewCacheIndex(), key, filePath);
+        },
+      });
+    }
+    return referenceMatchService;
   };
 
   // 每个 GIF identity 目录含一套完整拆帧（165 张 PNG）；只保留最近使用过的
@@ -344,7 +364,9 @@ export function registerResourcesIpc(
         },
       );
       if (lutPath) {
-        await applyLut3dToPng(result.path, lutPath, target);
+        // 缓存名固定 `.png`，编码器也必须显式 PNG：交给 ffmpeg 按扩展名
+        // 推断会在未知临时名上产出 JPEG 字节。
+        await applyLut3dImage(result.path, lutPath, target, { encoder: "png" });
       }
       await recordCacheFile(
         dependencies.getPreviewCacheIndex(),
@@ -364,7 +386,7 @@ export function registerResourcesIpc(
       height: parsed.height ?? 320,
     });
     if (lutPath) {
-      await applyLut3dToPng(target, lutPath, target);
+      await applyLut3dImage(target, lutPath, target, { encoder: "png" });
     }
     await recordCacheFile(
       dependencies.getPreviewCacheIndex(),
@@ -735,6 +757,61 @@ export function registerResourcesIpc(
       source: `refbrowse://preview/${token}`,
       mimeType: mimeTypeForPath(resolved),
     };
+  });
+
+  // --- media:match*（参考图仿色）---
+
+  ipc.handle("media:matchAnalysis", async (referencePath) => {
+    const resolved = assertAbsoluteLocalPath(pathSchema.parse(referencePath));
+    return referenceMatch().analyse(resolved);
+  });
+
+  ipc.handle("media:matchCreate", async (request) => {
+    const parsed = z
+      .object({
+        sourcePath: pathSchema,
+        referencePath: pathSchema,
+        timeMs: z.number().min(0).max(86_400_000).optional(),
+        controls: z.object({
+          matchStrength: z.number().min(0).max(100),
+          shadows: z.number().min(0).max(100),
+          midtones: z.number().min(0).max(100),
+          highlights: z.number().min(0).max(100),
+          protectSkin: z.boolean(),
+          protectSaturation: z.boolean(),
+          protectContrast: z.boolean(),
+        }),
+        dimension: z.union([z.literal(33), z.literal(65)]).optional(),
+        previewSize: z.number().int().min(256).max(4_096).optional(),
+      })
+      .parse(request);
+    return referenceMatch().create({
+      ...parsed,
+      sourcePath: assertAbsoluteLocalPath(parsed.sourcePath),
+      referencePath: assertAbsoluteLocalPath(parsed.referencePath),
+    });
+  });
+
+  ipc.handleWithEvent("media:exportMatchLut", async (event, request) => {
+    const parsed = z
+      .object({
+        lutPath: pathSchema,
+        targetDirectory: pathSchema,
+        baseName: z.string().min(1).max(128).optional(),
+      })
+      .parse(request);
+    // 与其它导出入口一致：目录先过写权限审批（destination 允许自动建名），
+    // 具体文件名（重名 -1/-2）由服务在已授权目录内决定。
+    const [targetDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "export",
+      [{ path: assertAbsoluteLocalPath(parsed.targetDirectory), mode: "destination" }],
+    );
+    return referenceMatch().exportLut({
+      lutPath: assertAbsoluteLocalPath(parsed.lutPath),
+      targetDirectory,
+      baseName: parsed.baseName,
+    });
   });
   /**
    * 阶段 4：音频波形峰值（provider waveform，8kHz 流式解码）。

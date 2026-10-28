@@ -24,6 +24,15 @@ import {
   type PreviewTokenRegistry,
 } from "./refbrowse";
 import { thumbnailCacheFilename } from "./thumbnail-cache";
+import { lutCacheSignature } from "./lut-signature";
+import {
+  GRADED_PREVIEW_KINDS,
+  planPreviewLut,
+  previewCacheControl,
+  previewLutVariant,
+  type PreviewLutPlan,
+} from "./preview-lut";
+import { applyLut3dImage } from "../services/media/ffmpeg-tools";
 import type { ThumbnailWorkerClient } from "./thumbnail-worker-client";
 import { genericPlaceholderThumbnail, fileIconPlaceholderThumbnail, shouldUseFileIcon, systemFileIconThumbnail } from "./placeholder-thumbnail";
 import type { ProviderRegistry } from "./provider-registry";
@@ -147,6 +156,45 @@ async function writeCacheAtomically(filename: string, data: Buffer): Promise<voi
     await rm(temporary, { force: true });
     throw error;
   });
+}
+
+/**
+ * 缓存未命中且当前 LUT 生效时，把刚生成的 WebP 再走一遍 ffmpeg lut3d。
+ *
+ * 失败必须降级为未调色图（本次响应用 generateThumbnail 的字节），否则一次
+ * 偶发的 ffmpeg 失败会让预览 404；错误只打日志，不进 preview index——
+ * 负缓存会让这张图在 LUT 更换前一直失败。
+ */
+async function applyPreviewLut(
+  plain: Buffer,
+  cacheFile: string,
+  lutPath: string,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  const suffix = randomUUID();
+  const sourceFile = `${cacheFile}.${suffix}.lut-src.webp`;
+  const outputFile = `${cacheFile}.${suffix}.lut-out.webp`;
+  try {
+    await writeFile(sourceFile, plain);
+    await applyLut3dImage(sourceFile, lutPath, outputFile, {
+      encoder: "webp",
+      quality: 90,
+      signal,
+    });
+    const tinted = await readFile(outputFile);
+    await writeCacheAtomically(cacheFile, tinted);
+    return tinted;
+  } catch (error) {
+    if (signal.aborted) throw error;
+    console.warn("[preview] LUT skipped, using ungraded thumbnail:", error);
+    // 不把未调色图留在 LUT 专属缓存名下：否则这张图会在 LUT 不变期间
+    // 永远缺色，只有换 LUT（键变化）才重试。本次请求仍返回降级图。
+    await rm(cacheFile, { force: true }).catch(() => undefined);
+    return plain;
+  } finally {
+    await rm(sourceFile, { force: true }).catch(() => undefined);
+    await rm(outputFile, { force: true }).catch(() => undefined);
+  }
 }
 
 async function generateThumbnail(
@@ -379,6 +427,8 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         }
         let cacheFile: string;
         let cacheKey: string;
+        // 白板代理不做创意调色：proxySize 分支不消费 LUT。
+        let lutPlan: PreviewLutPlan = { lutPath: null, variantSuffix: "" };
         if (proxySize) {
           const info = await stat(source);
           const identity = previewCacheKey({
@@ -398,11 +448,20 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
           const colorVariant = hdrColorVariant(url);
           // 尺寸变体纳入缓存键：preview-1920 与默认 composite 分开缓存。
           const sizeVariant = previewSize ? `preview-${previewSize}` : null;
-          const cacheFilename = thumbnailCacheFilename(
-            asset,
+          const settings = readPreviewSettings(dependencies.getDatabase());
+          lutPlan = planPreviewLut({
+            activeLut: settings.activeLut,
+            lutSignature: await lutCacheSignature(settings.activeLut),
+            boardProxy: false,
+            gradeable: GRADED_PREVIEW_KINDS.has(asset.kind),
+          });
+          const baseVariant =
             sizeVariant || channel || colorVariant
               ? `${sizeVariant ? `${sizeVariant}:` : ""}${channel ? `channel:${channel}` : "default"}${colorVariant}`
-              : undefined,
+              : "";
+          const cacheFilename = thumbnailCacheFilename(
+            asset,
+            previewLutVariant(baseVariant, lutPlan),
           );
           cacheKey = `asset:${cacheFilename}`;
           cacheFile = path.join(dependencies.getThumbnailCacheDirectory(), cacheFilename);
@@ -420,7 +479,7 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
         if (cached) {
           dependencies.getPreviewCacheIndex()?.recordSuccess(cacheKey, cacheFile, cached.byteLength);
           return new Response(new Uint8Array(cached), {
-            headers: protocolResponseHeaders(access, "image/webp"),
+            headers: protocolResponseHeaders(access, "image/webp", previewCacheControl(lutPlan)),
           });
         }
         const png = await dependencies.thumbnailQueue.enqueue(`asset:${cacheFile}`, async (signal) => {
@@ -442,18 +501,21 @@ function registerAssetProtocol(dependencies: ProtocolDependencies): void {
             hdrInputColorSpace(url),
             hdrDisplayTransform(url),
           );
+          const ready = lutPlan.lutPath
+            ? await applyPreviewLut(generated, cacheFile, lutPlan.lutPath, signal)
+            : generated;
           dependencies.getPreviewCacheIndex()?.recordSuccess(
             cacheKey,
             cacheFile,
-            generated.byteLength,
+            ready.byteLength,
           );
-          return generated;
+          return ready;
         }, {
           priority: thumbnailPriority(url),
           signal: request.signal,
         });
         return new Response(new Uint8Array(png), {
-          headers: protocolResponseHeaders(access, "image/webp"),
+          headers: protocolResponseHeaders(access, "image/webp", previewCacheControl(lutPlan)),
         });
       } catch (error) {
         if (request.signal.aborted) {

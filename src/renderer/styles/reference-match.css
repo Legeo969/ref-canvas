@@ -1,0 +1,523 @@
+/* ── 参考图仿色（reference match）────────────────────────────────────────
+   一块面板里同时是读数和调节：参考图风格摘要在上、分屏对比居中、参数在
+   下。配色沿用托盘底色与绿色强调色（#40a186），与 LUT/GIF 工具一致。 */
+
+.reference-match-studio {
+  display: grid;
+  gap: 10px;
+  /* 托盘只有四五百宽；聚焦/全屏下会铺满整窗，限宽居中才不会把滑杆拉成
+     一米长、把分屏图挤成一条。 */
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 10px 12px 14px;
+  color: #d5dbd8;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+/* 整个面板都能接受拖放：拖动经过时给一圈提示，否则用户不知道能放。 */
+.reference-match-studio.is-drag-over {
+  border-radius: 6px;
+  outline: 1px dashed rgba(64, 161, 130, 0.65);
+  outline-offset: -5px;
+}
+
+.match-reference-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.match-reference-slot {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #e3e8e5;
+  font-size: 12px;
+  text-align: left;
+}
+
+.match-reference-slot:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.match-reference-slot.is-drag-over {
+  border-color: rgba(64, 161, 130, 0.7);
+  background: rgba(64, 161, 130, 0.14);
+}
+
+.match-reference-thumb,
+.match-reference-empty {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #7d8783;
+  object-fit: cover;
+}
+
+.match-reference-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-reference-change {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  background: transparent;
+  color: #9aa4a0;
+  font-size: 11px;
+}
+
+.match-reference-change:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e7e4;
+}
+
+.match-hint {
+  margin: 0;
+  color: #8b9591;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.match-compare.is-empty {
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+}
+
+.match-compare.is-drag-over {
+  border-color: rgba(64, 161, 130, 0.7);
+  background: rgba(64, 161, 130, 0.08);
+}
+
+.match-dropzone {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 150px;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 18px;
+  border: 0;
+  background: transparent;
+  color: #8b9591;
+  font-size: 11px;
+  text-align: center;
+}
+
+.match-dropzone:hover {
+  color: #c8d2ce;
+}
+
+.match-dropzone strong {
+  color: #d5dbd8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.match-dropzone span {
+  max-width: 34ch;
+  line-height: 1.55;
+}
+
+/* 未选参考图时，读数与参数区保持位置但明确地“未就绪”，避免面板看起来是空的。 */
+.match-analysis.is-idle .match-stat strong {
+  color: #5d6763;
+}
+
+.match-swatch-empty {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.match-controls.is-idle {
+  opacity: 0.5;
+}
+
+.match-controls.is-idle .match-slider input[type="range"] {
+  cursor: not-allowed;
+}
+
+.match-slider input[type="range"],
+.match-toggle,
+.match-reset,
+.match-export {
+  cursor: pointer;
+}
+
+.match-slider input[type="range"]:disabled,
+.match-toggle:disabled,
+.match-reset:disabled,
+.match-export:disabled {
+  cursor: not-allowed;
+}
+
+.match-compare {
+  position: relative;
+  width: 100%;
+  /* 没有结果之前也要占位：按 16:9 撑出高度，免得面板塌成一条线。 */
+  aspect-ratio: 16 / 9;
+  /* 宽度上限由内联 style 按图片比例反算，这里只限制高度；两者叠加才不会
+     把框拉成和画面不同比例，导致分界线落在黑边上。 */
+  max-height: min(48vh, 420px);
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0d0f0e;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  touch-action: none;
+  user-select: none;
+}
+
+.match-layer,
+.match-layer-clip {
+  position: absolute;
+  inset: 0;
+}
+
+.match-layer {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.match-caption {
+  position: absolute;
+  bottom: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #dfe5e2;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.match-caption-left { left: 6px; }
+.match-caption-right { right: 6px; }
+
+.match-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: ew-resize;
+}
+
+.match-divider:focus-visible {
+  outline: 2px solid #40a186;
+  outline-offset: 2px;
+}
+
+.match-divider-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(16, 18, 17, 0.82);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+.match-divider-grip::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  border-right: 1.5px solid #dfe5e2;
+  border-left: 1.5px solid #dfe5e2;
+  content: "";
+}
+
+.match-compare-placeholder {
+  display: grid;
+  height: 100%;
+  min-height: 120px;
+  place-items: center;
+  color: #8b9591;
+  font-size: 11px;
+}
+
+.match-busy-indicator {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #a9e6d2;
+}
+
+.match-error {
+  margin: 0;
+  color: #f0907f;
+  font-size: 11px;
+}
+
+.match-analysis {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+
+.match-palette {
+  display: flex;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.match-swatch {
+  min-width: 4px;
+  height: 100%;
+}
+
+.match-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.match-stat {
+  display: grid;
+  gap: 2px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.match-stat small {
+  color: #8b9591;
+  font-size: 10px;
+}
+
+.match-stat strong {
+  color: #e6ebe8;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.match-analysis-busy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  color: #7d8783;
+}
+
+.match-controls {
+  display: grid;
+  gap: 9px;
+}
+
+.match-slider {
+  display: grid;
+  gap: 4px;
+}
+
+.match-slider > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: #98a29d;
+  font-size: 11px;
+}
+
+.match-slider strong {
+  color: #dfe5e2;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.match-slider input[type="range"] {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  accent-color: #40a186;
+  background: transparent;
+}
+
+.match-zone-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.match-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.match-toggle {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: transparent;
+  color: #9aa4a0;
+  font-size: 11px;
+}
+
+.match-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.match-toggle.is-on {
+  border-color: rgba(64, 161, 130, 0.55);
+  background: rgba(64, 161, 130, 0.16);
+  color: #a9e6d2;
+}
+
+.match-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.match-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #98a29d;
+  font-size: 11px;
+}
+
+.match-size .select-menu-trigger {
+  width: 62px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  background: #181b1a;
+  color: #e2e7e4;
+  font-size: 11px;
+}
+
+.match-size .select-menu-trigger .select-menu-chevron {
+  width: 12px;
+  height: 12px;
+}
+.match-export {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: #2f7d64;
+  color: #eaf5f0;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.match-export:hover:not(:disabled) {
+  background: #379079;
+}
+
+.match-export:disabled {
+  opacity: 0.45;
+}
+
+.match-reset {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  background: transparent;
+  color: #9aa4a0;
+}
+
+.match-reset:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e7e4;
+}
+
+.match-pin-frame {
+  justify-self: start;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: transparent;
+  color: #9aa4a0;
+  font-size: 11px;
+}
+
+.match-pin-frame:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e7e4;
+}
+
+.match-exported {
+  margin: 0;
+  color: #8b9591;
+  font-size: 11px;
+}
+
+.match-exported button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #7fc7ac;
+  font-size: 11px;
+  text-decoration: underline;
+}
+
+.match-exported button.match-apply {
+  color: #a9e6d2;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+
+.match-exported button.match-apply:disabled {
+  color: #6c7672;
+  border-bottom-color: transparent;
+}
+
+.match-applied {
+  margin: 0;
+  color: #7fc7ac;
+  font-size: 11px;
+}
+
+/* LUT 浮层里的入口：与上面的单选/文件名行同一列，但用分隔线隔开，
+   表明它不是一个 LUT 选项而是一个动作。 */
+.preview-color-tools.lut-popover-menu .lut-match-entry {
+  margin-top: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0 0 4px 4px;
+  color: #a9e6d2;
+}

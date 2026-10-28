@@ -65,7 +65,9 @@
 
 .select-menu-popover {
   position: fixed;
-  z-index: 1200;
+  /* 选择器菜单是 portal 到 body 的，必须在预览的聚焦/全屏层（2600）与工具浮层
+     （2700）之上，否则在沉浸模式下点击只像“点了没反应”。 */
+  z-index: 2800;
   display: grid;
   gap: 2px;
   padding: 5px;

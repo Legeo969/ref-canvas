@@ -20,6 +20,7 @@ import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { AssetNotesPanel } from "./AssetNotesPanel";
 import { PreviewColorTools } from "./PreviewColorTools";
+import { ReferenceMatchStudio } from "./ReferenceMatchStudio";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { SequencePreviewDialog } from "./SequencePreview";
 import {
@@ -39,7 +40,7 @@ import {
   previewRendererKind,
 } from "./PreviewSessionShell";
 
-type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "rate" | "notes" | "lut";
+type WorkbenchTool = "preview" | "gif" | "frames" | "fps" | "rate" | "notes" | "lut" | "match";
 type WorkbenchCommand = WorkbenchTool | "color";
 
 const videoPattern = /^(mp4|mov|mkv|webm|avi|m4v|wmv|flv|mpg|mpeg)$/i;
@@ -463,7 +464,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     />
                   ) : (
                     <AssetPreview
-                      key={asset.path}
+                      key={`${asset.path}:${previewSettings.activeLut ?? ""}`}
                       asset={asset}
                       onTimeChange={setTimeSeconds}
                       playbackFps={playbackFps}
@@ -485,7 +486,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     {tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" && (
                       <section className={`preview-context-tray preview-context-tray-${tool}`} aria-label={translate("preview.trayLabel")}>
                         <header className="preview-context-tray-header">
-                          <strong>{tool === "gif" ? translate("preview.exportGif") : tool === "frames" ? translate("preview.exportFrames") : tool === "notes" ? translate("preview.notes") : translate("preview.lut")}</strong>
+                          <strong>{tool === "gif" ? translate("preview.exportGif") : tool === "frames" ? translate("preview.exportFrames") : tool === "notes" ? translate("preview.notes") : tool === "match" ? translate("preview.matchOpen") : translate("preview.lut")}</strong>
                           <button type="button" aria-label={translate("preview.closeTool")} onClick={() => { setTool("preview"); setSequenceGifRangeActive(false); }}><X size={15} /></button>
                         </header>
                         {tool === "gif" && isVideo && (
@@ -537,6 +538,13 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                               const count = transport.snapshot?.frameCount ?? 1;
                               transport.actions?.seek(Math.max(0, Math.min(1, (frame - start) / Math.max(1, count - 1))));
                             }}
+                          />
+                        )}
+                        {tool === "match" && (
+                          <ReferenceMatchStudio
+                            key={asset.path}
+                            asset={asset}
+                            timeMs={timeSeconds * 1000}
                           />
                         )}
                       </section>
@@ -623,7 +631,17 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                     onNotesToggle={() => toggleTool("notes")}
                     lutActive={tool === "lut"}
                     onLutToggle={() => toggleTool("lut")}
-                    lutMenu={tool === "lut" ? <PreviewColorTools settings={previewSettings} /> : undefined}
+                    lutMenu={tool === "lut" ? (
+                      <PreviewColorTools
+                        settings={previewSettings}
+                        onOpenMatch={toolbarVariant === "image" || toolbarVariant === "svg" || toolbarVariant === "video" || toolbarVariant === "sequence"
+                          ? () => {
+                              window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
+                              setTool("match");
+                            }
+                          : undefined}
+                      />
+                    ) : undefined}
                     paletteActive={paletteOpen}
                     onPaletteToggle={() => {
                       const next = !paletteOpen;

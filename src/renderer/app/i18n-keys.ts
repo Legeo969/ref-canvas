@@ -1706,6 +1706,96 @@ export type MessageKey =
 
   | "preview.lutMenu"
 
+  | "preview.matchApply"
+
+  | "preview.matchApplied"
+
+  | "preview.matchChangeReference"
+
+  | "preview.matchControlsInvalid"
+
+  | "preview.matchContrast"
+
+  | "preview.matchDivider"
+
+  | "preview.matchExport"
+
+  | "preview.matchExported"
+
+  | "preview.matchHint"
+
+  | "preview.matchHue"
+
+  | "preview.matchHueCoolBlue"
+
+  | "preview.matchHueCoolCyan"
+
+  | "preview.matchHueCoolViolet"
+
+  | "preview.matchHueMagenta"
+
+  | "preview.matchHueNaturalGreen"
+
+  | "preview.matchHueNeutral"
+
+  | "preview.matchHueRose"
+
+  | "preview.matchHueWarmOrange"
+
+  | "preview.matchHueWarmRed"
+
+  | "preview.matchHueWarmYellow"
+
+  | "preview.matchHueYellowGreen"
+
+  | "preview.matchHighlights"
+
+  | "preview.matchLutMissing"
+
+  | "preview.matchMedian"
+
+  | "preview.matchMidtones"
+
+  | "preview.matchOpen"
+
+  | "preview.matchOriginal"
+
+  | "preview.matchPalette"
+
+  | "preview.matchPickDirectory"
+
+  | "preview.matchPickReference"
+
+  | "preview.matchProtectContrast"
+
+  | "preview.matchProtectSaturation"
+
+  | "preview.matchProtectSkin"
+
+  | "preview.matchReferenceUnavailable"
+
+  | "preview.matchReset"
+
+  | "preview.matchResult"
+
+  | "preview.matchSaturation"
+
+  | "preview.matchShadows"
+
+  | "preview.matchSize"
+
+  | "preview.matchSourceUnavailable"
+
+  | "preview.matchStrength"
+
+  | "preview.matchTargetMissing"
+
+  | "preview.matchUseCurrentFrame"
+
+  | "preview.matchWaiting"
+
+  | "preview.matchCacheUnavailable"
+
   | "preview.moveToTrash"
 
   | "preview.multichannel"

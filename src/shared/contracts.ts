@@ -1363,6 +1363,75 @@ export interface DownscaleResult {
   jobId?: string;
 }
 
+export type ReferenceMatchHueFamily =
+  | "neutral"
+  | "warm-red"
+  | "warm-orange"
+  | "warm-yellow"
+  | "yellow-green"
+  | "natural-green"
+  | "cool-cyan"
+  | "cool-blue"
+  | "cool-violet"
+  | "magenta"
+  | "rose";
+
+/** 参考图仿色的观感参数，全部为 0–100 的百分比或布尔开关。 */
+export interface ReferenceMatchControls {
+  matchStrength: number;
+  shadows: number;
+  midtones: number;
+  highlights: number;
+  protectSkin: boolean;
+  protectSaturation: boolean;
+  protectContrast: boolean;
+}
+
+export interface ReferenceMatchSwatch {
+  hex: string;
+  rgb: [number, number, number];
+  coverage: number;
+}
+
+/** 参考图风格摘要：主色板、亮度分布、饱和度与色相族。 */
+export interface ReferenceMatchAnalysis {
+  /** 参考图的预览源（refbrowse:// 或 refasset://，可直接用于 <img>）。 */
+  url: string;
+  width: number;
+  height: number;
+  palette: ReferenceMatchSwatch[];
+  brightness: { p10: number; median: number; p90: number; contrastSpan: number };
+  saturation: { mean: number; p90: number };
+  hue: { meanDegrees: number | null; family: ReferenceMatchHueFamily };
+}
+
+export interface ReferenceMatchRequest {
+  sourcePath: string;
+  referencePath: string;
+  /** 视频/图像序列取帧时间（毫秒）；静态图片忽略。 */
+  timeMs?: number;
+  controls: ReferenceMatchControls;
+  /** LUT 网格点数，默认 33。 */
+  dimension?: 33 | 65;
+  /** 预览长边像素，默认 1280。 */
+  previewSize?: number;
+}
+
+export interface ReferenceMatchResult {
+  previewUrl: string;
+  originalUrl: string;
+  lutPath: string;
+  width: number;
+  height: number;
+}
+
+export interface ReferenceMatchExportRequest {
+  lutPath: string;
+  targetDirectory: string;
+  /** 不含扩展名；缺省用 LUT 的 TITLE 或 "reference-match"。 */
+  baseName?: string;
+}
+
 /** 色彩管理状态（阶段 5 §10.3）。 */
 export interface ColorStatus {
   /** 自动检测的 $OCIO 环境变量。 */
@@ -1715,6 +1784,12 @@ export interface RefCanvasApi {
     thumbnail(path: string, options?: MediaThumbnailOptions): Promise<MediaThumbnailResult>;
     /** 生成 refbrowse 预览源 URL。 */
     preview(path: string): Promise<MediaPreviewResult>;
+    /** 分析参考图的主色板、亮度分布与色相族（参考图仿色）。 */
+    matchAnalysis(referencePath: string): Promise<ReferenceMatchAnalysis>;
+    /** 按参考图拟合 3D LUT，产出预览/原图 PNG 与 .cube 路径（参考图仿色）。 */
+    matchCreate(request: ReferenceMatchRequest): Promise<ReferenceMatchResult>;
+    /** 把匹配 LUT 复制到目标目录（重名自动编号）。 */
+    exportMatchLut(request: ReferenceMatchExportRequest): Promise<{ path: string }>;
     /** 校验自定义 OCIO 配置可用性（解析 + 最小转换；LUT 缺失在此暴露）。 */
     validateOcioConfig(path: string): Promise<{ ok: boolean; detail: string | null }>;
     /** 按时间戳精确取帧（视频逐帧；不依赖 HTML video seek）。 */
