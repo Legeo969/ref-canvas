@@ -2333,7 +2333,7 @@ describe("DirectoryAssetPanel", () => {
       host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
-    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
+    const input = host.querySelector<HTMLInputElement>(".search-field input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
@@ -2538,6 +2538,64 @@ describe("DirectoryAssetPanel", () => {
     act(() => useAppStore.setState(originalActions));
   });
 
+  it("does not write the address bar into the search field", async () => {
+    // 回归：地址栏的 onChange 曾调 onQueryChange，于是每敲一个字符都写进
+    // 搜索框并发起搜索 —— 两个输入框看起来"同步"。地址栏只应编辑路径；
+    // 导航由 commitPathEdit / 粘贴定位负责。
+    const listDirectory = vi.fn(async () => ({
+      entries: [],
+      total: 0,
+      nextCursor: null,
+    }));
+    const startSearch = vi.fn(async () => "search-1");
+    Object.assign(window, {
+      refCanvas: {
+        filesystem: {
+          listDirectory,
+          pathType: vi.fn(async () => "directory" as const),
+          startSearch,
+          cancelSearch: vi.fn(async () => true),
+          getSearch: vi.fn(async () => null),
+          onSearchProgress: () => () => undefined,
+        },
+      } as unknown as RefCanvasApi,
+    });
+    useAppStore.setState({
+      directoryPath: "D:\\refs",
+      directoryEntries: [],
+      directoryTotal: 0,
+    });
+
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    roots.push(root);
+    await act(async () => {
+      root.render(<DialogProvider><DirectoryAssetPanel /></DialogProvider>);
+    });
+    await act(async () => {
+      host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const pathInput = host.querySelector<HTMLInputElement>(".dir-path-input")!;
+    const searchInput = host.querySelector<HTMLInputElement>(".search-field input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(pathInput, "Downloads");
+      pathInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+    });
+
+    // 搜索框仍为空，也没有因为地址栏输入而发起搜索。
+    expect(searchInput.value).toBe("");
+    expect(startSearch).not.toHaveBeenCalled();
+  });
+
   it("falls back to keyword search for non-path input and invalid paths", async () => {
     const listDirectory = vi.fn(async () => ({
       entries: [],
@@ -2671,7 +2729,7 @@ describe("DirectoryAssetPanel", () => {
       host.querySelector<HTMLElement>(".dir-crumbs")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
-    const input = host.querySelector<HTMLInputElement>(".dir-path-input")!;
+    const input = host.querySelector<HTMLInputElement>(".search-field input")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,

@@ -2575,7 +2575,12 @@ export function DirectoryAssetPanel() {
             onChange={(event) => {
               const value = event.target.value;
               setPathDraft(value);
-              onQueryChange(value, (event.nativeEvent as InputEvent).inputType);
+              // 地址栏只编辑路径：不写搜索词，也不触发搜索。
+              // 之前这里调 onQueryChange，导致地址栏每敲一个字符都会同步进
+              // 搜索框并发起搜索；导航已由 commitPathEdit 负责。
+              if ((event.nativeEvent as InputEvent).inputType === "insertFromPaste") {
+                if (locatePathInput(value)) setPathEditing(false);
+              }
             }}
             onFocus={(event) => event.target.select()}
             onBlur={commitPathEdit}
