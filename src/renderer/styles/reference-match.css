@@ -32,12 +32,13 @@
   gap: 10px;
   align-content: start;
   min-width: 0;
+  overflow: hidden;
 }
 
 /* 宽托盘（聚焦、全屏、拉宽的侧栏）：画面占主列，参数收到右侧一栏。 */
 @container match (min-width: 760px) {
   .match-body {
-    grid-template-columns: minmax(0, 1fr) 288px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     align-items: start;
   }
 }
@@ -426,6 +427,7 @@
 
 .match-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -547,86 +549,81 @@
   color: #a9e6d2;
 }
 
-/* ── 参考图仿色独立面板 ────────────────────────────────────────────────
-   托盘宽度只有四五百，放不下分屏对比 + 示波器 + 一整套参数；这个工具
-   改成从 LUT 菜单打开的一块独立工作区：左画面、右参数，两块都按实际
-   可用尺寸排版。 */
+/* ── 参考图仿色工作区（与“磁盘 / 参考板”并列）───────────────────────── */
 
-.reference-match-panel {
-  position: fixed;
-  inset: 0;
-  z-index: 2650;
-  display: grid;
-  padding: 22px;
-  place-items: center;
-  background: rgba(6, 8, 7, 0.74);
-}
-
-.reference-match-panel-card {
-  display: grid;
-  width: min(1440px, 96vw);
-  height: min(920px, 92vh);
-  grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
-  border-radius: 10px;
-  background: #101312;
-  box-shadow:
-    0 28px 80px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-
-.reference-match-panel-head {
+.match-workspace {
   display: flex;
-  height: 46px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 8px 0 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 14px 16px;
 }
 
-.reference-match-panel-head strong {
-  color: #e6ebe8;
+.match-workspace.is-drag-over {
+  outline: 1px dashed rgba(64, 161, 130, 0.6);
+  outline-offset: -6px;
+}
+
+.match-workspace-empty {
+  display: grid;
+  place-items: center;
+}
+
+.match-workspace-dropzone {
+  display: grid;
+  width: min(560px, 82%);
+  justify-items: center;
+  gap: 9px;
+  padding: 40px 26px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  color: #8b9591;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.match-workspace-dropzone strong {
+  color: #d5dbd8;
   font-size: 12.5px;
   font-weight: 600;
 }
 
-.reference-match-panel-source {
+.match-workspace-dropzone span {
+  max-width: 40ch;
+  line-height: 1.6;
+}
+
+.match-workspace-dropzone:hover {
+  border-color: rgba(64, 161, 130, 0.55);
+  color: #c8d2ce;
+}
+
+/* 工作区里画面可以更高：这正是它值得占一整块的理由。 */
+.match-workspace .reference-match-studio {
+  --match-compare-cap: min(62vh, 720px);
+}
+
+.match-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.match-source-label {
+  flex: 0 0 auto;
+  color: #98a29d;
+  font-size: 11px;
+}
+
+.match-source-name {
   overflow: hidden;
-  max-width: 46%;
-  color: #8b9591;
+  color: #e3e8e5;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.reference-match-panel-close {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  margin-left: auto;
-  place-items: center;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #9aa4a0;
-}
-
-.reference-match-panel-close:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #e6ebe8;
-}
-
-.reference-match-panel-body {
-  overflow: auto;
-  padding: 6px 8px 12px;
-}
-
-/* 面板里画面可以比托盘高得多：这是它值得单独开一块的全部理由。 */
-.reference-match-panel-body .reference-match-studio {
-  --match-compare-cap: min(64vh, 760px);
-}
-
-/* ── 面板新增控件（工作空间、次级动作、设置区）──────────────────────── */
+}/* ── 面板新增控件（工作空间、次级动作、设置区）──────────────────────── */
 
 .match-workspace-menu .select-menu-trigger {
   width: auto;

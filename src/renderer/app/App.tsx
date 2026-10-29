@@ -40,6 +40,7 @@ import {
 import { BoardCanvas } from "../components/BoardCanvas";
 import { BoardWindow } from "../components/BoardWindow";
 import { BrowserTabBar } from "../components/BrowserTabBar";
+import { MatchWorkspace } from "../components/MatchWorkspace";
 import { CaptureWindow } from "../components/CaptureWindow";
 import { TaskCenter } from "../components/TaskCenter";
 import { CollectionDetailsPanel } from "../components/CollectionsPanel";
@@ -678,6 +679,7 @@ function WorkspaceApp() {
             void createBoard();
           }
         }}
+        onShowMatchWorkspace={() => store.showMatchWorkspace()}
         onPrepareRegionCapture={() => void prepareRegionCapture()}
         onExportPng={() =>
           window.dispatchEvent(new Event("refcanvas:export-png"))
@@ -707,7 +709,9 @@ function WorkspaceApp() {
           windowWidth={windowWidth}
           onCommit={(next) => commitPanelLayout("sidebar", next)}
         />
-        {store.workspaceMode === "board" ? (
+        {store.workspaceMode === "match" ? (
+          <MatchWorkspace />
+        ) : store.workspaceMode === "board" ? (
           store.activeBoard && store.boardDocument ? (
             <BoardCanvas
               board={store.activeBoard}
@@ -781,7 +785,9 @@ function WorkspaceApp() {
             ? translate("status.importing")
             : store.workspaceMode === "directory"
               ? translate("status.diskReady")
-            : translate("status.boardReady")}
+              : store.workspaceMode === "match"
+                ? translate("status.matchReady")
+                : translate("status.boardReady")}
         </span>
         <span
           className="status-hint"

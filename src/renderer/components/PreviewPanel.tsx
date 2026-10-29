@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssetRecord, DirectoryEntry } from "../../shared/contracts";
 import { usePreviewSettings } from "../app/preview-settings";
 import { translate } from "../app/i18n";
+import { useAppStore } from "../app/store";
 import { AssetPreview } from "./AssetPreview";
 import { SetThumbnailButton } from "./SetThumbnailButton";
 import { GifExportStudio } from "./GifExportStudio";
@@ -21,7 +22,6 @@ import { VideoFramesExportDialog } from "./VideoFramesExportDialog";
 import { PreviewToolbar } from "./PreviewToolbar";
 import { AssetNotesPanel } from "./AssetNotesPanel";
 import { PreviewColorTools } from "./PreviewColorTools";
-import { ReferenceMatchPanel } from "./ReferenceMatchPanel";
 import { PreviewEmptyState } from "./PreviewEmptyState";
 import { SequencePreviewDialog } from "./SequencePreview";
 import {
@@ -74,7 +74,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
   const [multichannelAnchor, setMultichannelAnchor] = useState<HTMLButtonElement | null>(null);
   const [multichannelOpen, setMultichannelOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [matchPanelOpen, setMatchPanelOpen] = useState(false);
   const [paletteLoading, setPaletteLoading] = useState(false);
   const [paletteError, setPaletteError] = useState<string | null>(null);
   const [eyedropActive, setEyedropActive] = useState(false);
@@ -402,13 +401,6 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
       fullscreen={previewSession.fullscreen}
       className={`preview-panel details-panel directory-details-panel directory-workbench-panel ${tool !== "preview" && tool !== "lut" && tool !== "fps" && tool !== "rate" ? "tool-open" : ""}${fullscreenControlsVisible ? " fullscreen-controls-visible" : ""}`}
     >
-      {matchPanelOpen && asset && (
-        <ReferenceMatchPanel
-          asset={asset}
-          timeMs={timeSeconds * 1000}
-          onClose={() => setMatchPanelOpen(false)}
-        />
-      )}
       <header className="preview-tab-bar" aria-label={translate("preview.panelLabel")}>
         <span className="preview-toolbar-spacer" />
         <div className="workbench-file-actions">
@@ -649,7 +641,7 @@ function PreviewPanelContent({ entry }: { entry: DirectoryEntry | null }) {
                         onOpenMatch={toolbarVariant === "image" || toolbarVariant === "svg" || toolbarVariant === "video" || toolbarVariant === "sequence"
                           ? () => {
                               window.dispatchEvent(new Event("refcanvas:close-preview-popovers"));
-                              setMatchPanelOpen(true);
+                              useAppStore.getState().showMatchWorkspace(asset.path);
                             }
                           : undefined}
                       />
