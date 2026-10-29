@@ -233,6 +233,19 @@ async function moveDirectoryCursor(
 let lastNavigationSignature = "";
 let initializationPromise: Promise<void> | null = null;
 
+/**
+ * 导航类状态变更（打开目录、切换标签、打开集合）不能把用户从参考图仿色
+ * 踢回磁盘工作区：他往往正在为工具挑下一张素材。只有显式点「磁盘」标签
+ * （showDirectoryWorkspace）才真正切走。
+ */
+function navigationWorkspace(
+  state: Pick<AppState, "workspaceMode" | "matchSourcePath">,
+): { workspaceMode: "directory" | "match"; matchSourcePath: string | null } {
+  return state.workspaceMode === "match"
+    ? { workspaceMode: "match", matchSourcePath: state.matchSourcePath }
+    : { workspaceMode: "directory", matchSourcePath: null };
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   ...createLibraryQuerySliceState(),
   ...createDirectorySliceState(),
@@ -402,9 +415,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const directory = asset.path.slice(0, separator);
     await get().openDirectory(directory);
     set({
-      workspaceMode: "directory",
-
-      matchSourcePath: null,
+      ...navigationWorkspace(get()),
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: null,
@@ -649,9 +660,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openCollection: (id) => {
     set({
-      workspaceMode: "directory",
-
-      matchSourcePath: null,
+      ...navigationWorkspace(get()),
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: id,
@@ -769,9 +778,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadDirectoryState: async (path, history, historyIndex) => {
     const generation = ++directoryOpenGeneration;
     set({
-      workspaceMode: "directory",
-
-      matchSourcePath: null,
+      ...navigationWorkspace(get()),
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: null,
@@ -837,9 +844,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           return;
         }
         set({
-          workspaceMode: "directory",
-
-          matchSourcePath: null,
+          ...navigationWorkspace(get()),
           navigationSource: "directory",
           focusMode: false,
           activeCollectionId: null,
@@ -883,9 +888,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (target.kind === "collection" && target.targetId) {
       // 集合标签：切换到对应集合视图（集合引用不依赖目录路径）。
       set({
-        workspaceMode: "directory",
-
-        matchSourcePath: null,
+        ...navigationWorkspace(get()),
         navigationSource: "directory",
         focusMode: false,
         directoryPath: null,

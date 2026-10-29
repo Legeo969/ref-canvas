@@ -162,7 +162,7 @@ describe("ReferenceMatchStudio", () => {
     expect(host.textContent).toContain("已应用");
   });
 
-  it("accepts an image dragged from the app's own grid", async () => {
+  it("accepts a reference image dropped on the comparison area", async () => {
     const matchAnalysis = vi.fn(async () => ({
       url: "refbrowse://preview/reference",
       width: 800,
@@ -198,7 +198,7 @@ describe("ReferenceMatchStudio", () => {
       },
     });
     await act(async () => {
-      host.querySelector(".reference-match-studio")?.dispatchEvent(drop);
+      host.querySelector(".match-compare")?.dispatchEvent(drop);
     });
     await flush();
 

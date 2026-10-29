@@ -72,10 +72,10 @@ describe("UI shell regressions", () => {
     );
   });
 
-  it("renders the two workspace modes without an empty third segment", async () => {
+  it("renders the three workspace modes in one switch row", async () => {
     const css = await readStyles();
     expect(css).toMatch(
-      /\.workspace-mode-switch\s*{[^}]*grid-template-columns: repeat\(2,/s,
+      /\.workspace-mode-switch\s*{[^}]*grid-template-columns: repeat\(3,/s,
     );
     expect(css).not.toMatch(/\.dir-current-row\s*{/);
   });
