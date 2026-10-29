@@ -58,7 +58,7 @@ export function MatchWorkspace() {
   if (!sourcePath) {
     return (
       <section
-        className={`match-workspace match-workspace-empty${dragOver ? " is-drag-over" : ""}`}
+        className={`match-surface match-surface-empty${dragOver ? " is-drag-over" : ""}`}
         onDragOver={(event) => {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
@@ -70,7 +70,7 @@ export function MatchWorkspace() {
         }}
         onDrop={dropSource}
       >
-        <button type="button" className="match-workspace-dropzone" onClick={() => void pickSource()}>
+        <button type="button" className="match-surface-dropzone" onClick={() => void pickSource()}>
           <ImagePlus size={22} aria-hidden="true" />
           <strong>{translate("preview.matchPickSource")}</strong>
           <span>{translate("preview.matchSourceHint")}</span>
@@ -81,7 +81,7 @@ export function MatchWorkspace() {
 
   return (
     <section
-      className={`match-workspace${dragOver ? " is-drag-over" : ""}`}
+      className={`match-surface${dragOver ? " is-drag-over" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";

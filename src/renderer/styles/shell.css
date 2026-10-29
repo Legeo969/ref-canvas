@@ -137,7 +137,7 @@ button[aria-label] {
 .workspace-mode-switch {
   display: grid;
   height: 40px;
-  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
   gap: 2px;
   padding: 0;
   border-radius: 8px;
@@ -466,6 +466,12 @@ button[aria-label] {
 }
 
 .workspace.board-workspace {
+  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(360px, 1fr);
+}
+
+/* 参考图仿色也是一整块工作区（侧栏 + 分隔条 + 主区域），
+   不是预览里的浮层；列定义必须和 board 一致，否则子元素会被自动排成一列。 */
+.workspace.match-workspace {
   grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(360px, 1fr);
 }
 

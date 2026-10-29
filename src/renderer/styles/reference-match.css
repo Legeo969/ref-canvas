@@ -551,7 +551,7 @@
 
 /* ── 参考图仿色工作区（与“磁盘 / 参考板”并列）───────────────────────── */
 
-.match-workspace {
+.match-surface {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -560,17 +560,17 @@
   padding: 12px 14px 16px;
 }
 
-.match-workspace.is-drag-over {
+.match-surface.is-drag-over {
   outline: 1px dashed rgba(64, 161, 130, 0.6);
   outline-offset: -6px;
 }
 
-.match-workspace-empty {
+.match-surface-empty {
   display: grid;
   place-items: center;
 }
 
-.match-workspace-dropzone {
+.match-surface-dropzone {
   display: grid;
   width: min(560px, 82%);
   justify-items: center;
@@ -584,24 +584,24 @@
   text-align: center;
 }
 
-.match-workspace-dropzone strong {
+.match-surface-dropzone strong {
   color: #d5dbd8;
   font-size: 12.5px;
   font-weight: 600;
 }
 
-.match-workspace-dropzone span {
+.match-surface-dropzone span {
   max-width: 40ch;
   line-height: 1.6;
 }
 
-.match-workspace-dropzone:hover {
+.match-surface-dropzone:hover {
   border-color: rgba(64, 161, 130, 0.55);
   color: #c8d2ce;
 }
 
 /* 工作区里画面可以更高：这正是它值得占一整块的理由。 */
-.match-workspace .reference-match-studio {
+.match-surface .reference-match-studio {
   --match-compare-cap: min(62vh, 720px);
 }
 
