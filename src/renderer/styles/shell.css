@@ -469,10 +469,9 @@ button[aria-label] {
   grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(360px, 1fr);
 }
 
-/* 参考图仿色也是一整块工作区（侧栏 + 分隔条 + 主区域），
-   不是预览里的浮层；列定义必须和 board 一致，否则子元素会被自动排成一列。 */
+/* 参考图仿色占满整块工作区：没有侧边栏，因此不存在“点一下就跳走”的歧义。 */
 .workspace.match-workspace {
-  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(360px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .panel-divider {

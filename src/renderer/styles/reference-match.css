@@ -41,6 +41,11 @@
     grid-template-columns: minmax(0, 1fr) 340px;
     align-items: start;
   }
+
+  /* 340px 里四列读数会把“暖橙 · -40°”这类值挤断，改成两列。 */
+  .match-side .match-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* 整个面板都能接受拖放：拖动经过时给一圈提示，否则用户不知道能放。 */
@@ -347,10 +352,13 @@
 }
 
 .match-stat strong {
+  overflow: hidden;
   color: #e6ebe8;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .match-analysis-busy {
@@ -670,17 +678,20 @@
 
 .match-settings {
   display: grid;
-  gap: 6px;
-  padding: 8px 9px;
+  min-width: 0;
+  gap: 8px;
+  padding: 9px 10px;
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.035);
 }
 
 .match-settings-row {
   display: flex;
-  margin: 0;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
+  margin: 0;
   color: #98a29d;
   font-size: 11px;
 }
@@ -689,14 +700,15 @@
   flex: 0 0 auto;
 }
 
+/* 路径必须完整可读：右栏只有 340px，再长的目录名也不能靠省略号消灭。 */
 .match-settings-row code {
-  flex: 1 1 auto;
-  overflow: hidden;
+  flex: 1 1 100%;
+  min-width: 0;
   color: #c8d2ce;
   font-family: inherit;
   font-size: 10.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.55;
+  word-break: break-all;
 }
 
 .match-settings-row button {
@@ -746,4 +758,25 @@
   color: #7d8783;
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
+}
+
+.match-surface-pick {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.match-surface-pick-actions {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+}
+
+.match-surface-pick-note {
+  max-width: 46ch;
+  margin: 0;
+  color: #6f7975;
+  font-size: 10.5px;
+  line-height: 1.6;
+  text-align: center;
 }

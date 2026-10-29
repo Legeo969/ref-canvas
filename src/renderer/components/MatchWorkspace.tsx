@@ -16,6 +16,7 @@ import { ReferenceMatchStudio } from "./ReferenceMatchStudio";
 export function MatchWorkspace() {
   const sourcePath = useAppStore((state) => state.matchSourcePath);
   const showMatchWorkspace = useAppStore((state) => state.showMatchWorkspace);
+  const showDirectoryWorkspace = useAppStore((state) => state.showDirectoryWorkspace);
   const [dragOver, setDragOver] = useState(false);
 
   const acceptSource = (path: string) => showMatchWorkspace(path);
@@ -70,11 +71,19 @@ export function MatchWorkspace() {
         }}
         onDrop={dropSource}
       >
-        <button type="button" className="match-surface-dropzone" onClick={() => void pickSource()}>
-          <ImagePlus size={22} aria-hidden="true" />
-          <strong>{translate("preview.matchPickSource")}</strong>
-          <span>{translate("preview.matchSourceHint")}</span>
-        </button>
+        <div className="match-surface-pick">
+          <button type="button" className="match-surface-dropzone" onClick={() => void pickSource()}>
+            <ImagePlus size={22} aria-hidden="true" />
+            <strong>{translate("preview.matchPickSource")}</strong>
+            <span>{translate("preview.matchSourceHint")}</span>
+          </button>
+          <div className="match-surface-pick-actions">
+            <button type="button" className="match-secondary" onClick={() => showDirectoryWorkspace()}>
+              {translate("preview.matchOpenDisk")}
+            </button>
+            <p className="match-surface-pick-note">{translate("preview.matchFromDiskHint")}</p>
+          </div>
+        </div>
       </section>
     );
   }
