@@ -43,9 +43,13 @@ const asset = {
 const RESULT: ReferenceMatchResult = {
   previewUrl: "refbrowse://preview/matched",
   originalUrl: "refbrowse://preview/original",
+  previewPath: "C:\\cache\\match-abc-preview.png",
   lutPath: "C:\\cache\\match-abc.cube",
   width: 1600,
   height: 900,
+  workspace: "rec709",
+  resolveOutputCompensation: false,
+  baseline: "none",
 };
 
 const flush = async () => {

@@ -42,3 +42,19 @@ G:/tmp/reference-match/.venv/Scripts/python.exe -m pip install numpy torch
 **注意**：出现「源图某色度轴几乎没有分布」的输入时，本实现会主动塌缩该轴
 （见 ADR-0005），与上游不再逐点相同，所以夹具刻意避开了这类用例；对应的行为由
 `tests/unit/shared/match/global-match.test.ts` 的退化轴用例单独锁定。
+
+## colour-management-cases.json
+
+色彩管理工作空间的交叉校验夹具。由上游 `lutcore.colour_management` 与
+`fit_dwg_residual_lut`（PyTorch，float32）在固定输入集上生成：
+
+1. 准备上游仓库：`git clone https://github.com/xrz1411/reference-match` 到 `G:/tmp/reference-match`；
+2. 安装 `torch`、`numpy`；
+3. 运行 `G:/tmp/crosscheck/gen_colour.py`，输出直接写到本目录。
+
+包含内容：240 个输入三元组在 DWG↔显示、Resolve 709 输出模型与预补偿、S-Log3
+三种组合（Cine/Full、Cine/Legal、S-Gamut3/Full）上的结果，以及一次 17³ 的
+DWG 直拟残差体（32×32 随机源图与参考图，种子固定）。
+
+注意：预补偿的比较只用 0..1 的码值。超范围输入在双向矩阵往返中会被浮点误差
+淹没，上游 float32 与本仓 float64 的结果不可比，属于预期差异。

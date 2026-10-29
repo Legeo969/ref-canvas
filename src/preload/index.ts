@@ -193,6 +193,14 @@ const api: RefCanvasApi = {
     matchCreate: (request) => ipcRenderer.invoke("media:matchCreate", request),
     exportMatchLut: (request) =>
       ipcRenderer.invoke("media:exportMatchLut", request),
+    exportMatchPng: (request) =>
+      ipcRenderer.invoke("media:exportMatchPng", request),
+    importMatchLutToLibrary: (request) =>
+      ipcRenderer.invoke("media:importMatchLutToLibrary", request),
+    clearMatchCache: () => ipcRenderer.invoke("media:clearMatchCache"),
+    matchSettings: () => ipcRenderer.invoke("media:matchSettings"),
+    updateMatchSettings: (patch) =>
+      ipcRenderer.invoke("media:updateMatchSettings", patch),
     validateOcioConfig: (path) =>
       ipcRenderer.invoke("media:validateOcioConfig", path),
     frame: (path, options) =>

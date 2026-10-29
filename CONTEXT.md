@@ -72,8 +72,25 @@ EXR 多层 / 多通道的提取与查看视图。
 HDR 素材的两种查看模式：等距柱状全景与反射球预览。
 
 **参考图仿色 (reference match)**:
-以一张参考图的色板、亮度与对比关系为目标，对当前画面做的全局匹配；结果既可即时预览，也可导出为 3D LUT。匹配在 Rec.709 Gamma 2.4 显示域里完成，参考图按 sRGB 解读。
+以一张参考图的色板、亮度与对比关系为目标，对当前画面做的全局匹配；结果既可即时预览，也可导出为 3D LUT。匹配在 Rec.709 Gamma 2.4 显示域里完成，参考图按 sRGB 解读；需要时再烘进 DWG+DI 或 S-Log3 的输入域。
 _Avoid_: 仿色滤镜、风格迁移、装滤镜
+
+**工作空间 (workspace)**:
+导出的 `.cube` 预期的输入域，三选一：Rec.709 Gamma 2.4、DWG + DI、S-Log3。它决定这张 LUT 该挂在 Resolve 的哪个节点上，选错就是错域。
+_Avoid_: 色彩空间、输出空间、模式
+
+**DWG + DI**:
+DaVinci Wide Gamut 加 DaVinci Intermediate，Resolve 的宽色域中间态。这里的 cube 不夹 0..1，要保留高光余量。
+
+**S-Log3 还原基线 (display baseline)**:
+把原生 S-Log3 码值还原成 SDR 显示的参考。Cine/Full 组合优先用 Sony 的 LC-709 Look Profile（文件不可再分发，由用户提供），其余组合退回解析式 S-Log3 → Rec.709 Gamma 2.4。
+
+**Resolve 709 输出补偿 (output compensation)**:
+Resolve 把 DWG/DI 转 Rec.709 时会叠加一段平滑的显示滚降。预先在 cube 里烘入它的逆曲线，导进 Resolve 后的画面才和本面板预览一致。
+_Avoid_: 版本补偿、显示补偿
+
+**示波器 (scopes)**:
+参考图的 RGB 直方图（7 点平滑、64 段）与 Cb/Cr 密度图。两者在主进程用同一份解码样本算出，渲染端只负责画。
 
 **匹配强度 (match strength)**:
 拟合结果的整体应用比例。0 等于不改变画面，100 保留拟合的全部幅度。

@@ -116,3 +116,60 @@ ffmpeg 会猜成 mjpeg，把 JPEG 字节塞进 `.png` / `.webp` 缓存文件。�
   的定位冲突，未采纳。
 - 用 ffmpeg 的 `lut3d` 反解做拟合：无法表达 OKLab 分区匹配，精度与语义都不够。
 - 只做算法不做界面：核心是一张表，不呈现就无从判断风格是否可用。
+
+## 追加：工作空间、DPX 与独立面板（0.40.0）
+
+上游除了「Rec.709 显示域里套一张 LUT」，还支持三种输入工作空间与 DPX 原生读取。
+这一轮把这些补齐，并把工具从预览托盘挪成独立面板。
+
+### 2. 色彩管理单独成模块
+
+`src/shared/match/colour-management.ts` 承载三套输入域的正反变换：
+
+| 函数 | 用途 |
+| --- | --- |
+| `dwgIntermediateToRec709Gamma24` / `rec709Gamma24ToDwgIntermediate` | DWG + DI ↔ 显示域，矩阵取自 Blackmagic 规范 rev 1.1 |
+| `slog3ToRec709Gamma24` | S-Log3 → SDR 显示，含 S-Gamut3 / S-Gamut3.Cine、full/legal |
+| `slog3ToDisplayMatchDomain` | 优先 Sony LC-709 Look Profile，缺失时退回解析式还原 |
+| `resolveDwgToRec709Gamma24` / `precompensateDwgForResolveRec709` | Resolve 709 输出响应的正/逆曲线 |
+| `bakeDwgIntermediateResidual` / `bakeSlog3ToRec709Residual` | 把显示域残差烘进对应工作空间的 cube |
+| `parseBaselineCube` | 读取用户提供的 Sony LC-709 cube（不可再分发，不进仓库） |
+
+三种流程的行为差异（与上游一致）：
+
+- **Rec.709**：拟合域就是 cube 域，导出夹 0..1。
+- **DWG + DI，DPX 源**：栅格直接建在 DI 里，参考图先转进同一空间；可选烘入 Resolve 709 补偿；导出不夹 0..1。
+- **DWG + DI，普通位图源**：仍在显示域拟合，再烘进 DI（`bakeDwgIntermediateResidual`），高亮度区按 gate 回退成恒等。
+- **S-Log3**：只接受 DPX；先用基线还原到显示域拟合，再把整条链烘回 S-Log3 → 显示的直通 cube（后面不要再接 CST）。
+
+预览与 cube 走同一条变换：这是「所见即所得」的唯一保证，也是我们不把预览
+交给渲染层另算一遍的原因。
+
+### 3. DPX 读取
+
+`decodeImageToRgb48` 用打包的 ffmpeg 以 `rgb48le` 解码，不经任何传输曲线、不做
+缩放；DPI 级细腻度靠整数步长最近邻抽样降到预览尺寸，避免在码值域里插值。
+参考图仍然只接受 sRGB 静帧，DPX 会被明确拒绝。
+
+### 4. 示波器在主进程算
+
+直方图（256 桶 → 7 点二项式平滑 → 64 段）与 Cb/Cr 密度（128²）由
+`analyseScopes` 在同一份解码样本上算出，随分析结果一起返回。上游是在浏览器里
+对已显示图像重算的，那样得到的数值和拟合看到的像素不是同一批；放到主进程后
+渲染端退化成纯画图，也便于单测。
+
+### 5. 从托盘工具升为独立面板
+
+托盘只有四五百像素宽，分屏对比、色板、示波器、参数与设置挤在一列里已经到极限。
+现在 LUT 菜单的「参考图仿色…」打开一块独立面板（`ReferenceMatchPanel`）：左侧
+画面 + 示波器，右侧参数，宽窄由容器查询自动切换单/双列。面板里补上导出 PNG、
+导入 Resolve LUT 库（写进 `<库>/Reference LUT/`，重名报错）、产出目录设置、
+Resolve 709 补偿开关与缓存清理。
+
+### 验证
+
+`tests/unit/shared/match/colour-management-parity.test.ts` 与上游 Python 实现逐点
+交叉校验（夹具 `tests/fixtures/match/colour-management-cases.json`）：DWG↔显示、
+S-Log3 三种组合、Resolve 输出模型均在 1e-5 量级，DWG 直拟残差体在 2e-4 量级。
+两处刻意放宽并写明原因：DI 的 log 编码在近黑区把 float32/float64 差异放大到
+5e-4；超过 1.0 的宽色域码值在双向矩阵往返中只剩浮点噪声，不予比较。

@@ -7,31 +7,49 @@
  * 1280px 的大图会直接卡住 UI 线程。
  */
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
 import { assetKindForExtension } from "../../../shared/asset-kind";
 import type {
   ReferenceMatchAnalysis,
   ReferenceMatchControls,
+  ReferenceMatchExportPngRequest,
   ReferenceMatchExportRequest,
+  ReferenceMatchLibraryImportRequest,
   ReferenceMatchRequest,
   ReferenceMatchResult,
+  ReferenceMatchSettings,
+  ReferenceMatchSettingsPatch,
 } from "../../../shared/contracts";
 import {
   clamp01,
   matchDomainToSrgb,
   srgbToMatchDomain,
 } from "../../../shared/match/colour";
-import { fitGlobalResidualLut } from "../../../shared/match/global-match";
+import {
+  bakeDwgIntermediateResidual,
+  bakeSlog3ToRec709Residual,
+  dwgIntermediateToRec709Gamma24,
+  parseBaselineCube,
+  precompensateDwgLutResidualForResolveRec709,
+  rec709Gamma24ToDwgIntermediate,
+  resolveDwgToRec709Gamma24,
+  slog3ToDisplayMatchDomain,
+  usesSonyLc709Baseline,
+  type Slog3Gamut,
+  type Slog3InputRange,
+} from "../../../shared/match/colour-management";
+import { fitDwgResidualLut, fitGlobalResidualLut } from "../../../shared/match/global-match";
 import { applyLookControls } from "../../../shared/match/look-controls";
 import { analyseReference } from "../../../shared/match/reference-analysis";
 import {
+  renderResidualToBytes,
   renderResidualToSrgbBytes,
   writeCubeText,
   type ResidualLut,
 } from "../../../shared/match/residual-lut";
-import { extractVideoFrame } from "./ffmpeg-tools";
+import { extractVideoFrame, decodeImageToRgb48 } from "./ffmpeg-tools";
 
 const DEFAULT_DIMENSION = 33;
 const DEFAULT_PREVIEW_SIZE = 1280;
@@ -44,21 +62,61 @@ const DECODE_CACHE_CAPACITY = 8;
 
 export interface ReferenceMatchDependencies {
   cacheDirectory: string;
+  /** 参考图仿色自己的设置文件（产出目录、Resolve LUT 库、输出补偿）。 */
+  settingsPath: string;
+  /** 默认产出目录：用户未自定义时写到这里。 */
+  defaultExportDirectory: string;
   /** 生成可给 <img> 用的 URL（生产传入 previewTokens.tokenFor + refbrowse 前缀，测试可传 file URL 构造器）。 */
   previewUrlFor(filePath: string): string;
   /** 登记缓存文件以便缓存淘汰（生产传 preview cache index）。 */
   registerCacheFile?(key: string, filePath: string): void;
+  /** 平台默认的 Resolve LUT 库目录。 */
+  resolveLutDirectory?: string;
+  /** 可选的 Sony S-Log3/S-Gamut3.Cine → LC-709 基线 cube（不可再分发，从磁盘读）。 */
+  sonyBaselineCubePath?: string | null;
 }
 
 interface DecodedImage {
-  /** 解码样本，sRGB 0..1 交错 RGB。 */
+  /** 解码样本，sRGB 0..1 交错 RGB（DPX 时为未经转换的 16-bit 码值）。 */
   samples: Float32Array;
-  /** 同一图像转到 Rec.709 Gamma 2.4 匹配域的结果（每次解码只算一次）。 */
+  /** sRGB 编码源转到 Rec.709 Gamma 2.4 匹配域的结果（DPX 源不用）。 */
   matchDomain: Float32Array;
   width: number;
   height: number;
   /** 实际解码的图片路径：视频是该时间点的抽帧 PNG，静态图是原路径。 */
   sourcePath: string;
+  /** DPX 里装的是工作空间码值（DWG/DI 或原生 S-Log3），不能当 sRGB 图像用。 */
+  isDpx: boolean;
+}
+
+function isDpxPath(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === ".dpx";
+}
+
+/** 最近邻抽取：DPX 码值不能在缩小过程中被插值重采样。 */
+function decimateSamples(
+  samples: Float32Array,
+  width: number,
+  height: number,
+  maxSize: number,
+): { samples: Float32Array; width: number; height: number } {
+  const longest = Math.max(width, height);
+  if (longest <= maxSize) return { samples, width, height };
+  const step = Math.ceil(longest / maxSize);
+  const outWidth = Math.max(1, Math.floor(width / step));
+  const outHeight = Math.max(1, Math.floor(height / step));
+  const result = new Float32Array(outWidth * outHeight * 3);
+  for (let y = 0; y < outHeight; y += 1) {
+    const sourceRow = y * step * width;
+    for (let x = 0; x < outWidth; x += 1) {
+      const source = (sourceRow + x * step) * 3;
+      const target = (y * outWidth + x) * 3;
+      result[target] = samples[source];
+      result[target + 1] = samples[source + 1];
+      result[target + 2] = samples[source + 2];
+    }
+  }
+  return { samples: result, width: outWidth, height: outHeight };
 }
 
 function hashText(value: string): string {
@@ -108,6 +166,60 @@ function toSrgbBytes(samples: Float32Array): Buffer {
   return bytes;
 }
 
+/** S-Log3 码值 → 匹配域（Rec.709 Gamma 2.4），可选 Sony LC-709 基线。 */
+function restoreSlog3(
+  samples: Float32Array,
+  gamut: Slog3Gamut,
+  inputRange: Slog3InputRange,
+  sonyBaseline: ResidualLut | null,
+): Float32Array {
+  const restored = new Float32Array(samples.length);
+  for (let offset = 0; offset + 2 < samples.length; offset += 3) {
+    const converted = slog3ToDisplayMatchDomain(
+      samples[offset],
+      samples[offset + 1],
+      samples[offset + 2],
+      { gamut, inputRange, sonyBaseline },
+    );
+    restored[offset] = converted[0];
+    restored[offset + 1] = converted[1];
+    restored[offset + 2] = converted[2];
+  }
+  return restored;
+}
+
+/** 显示域样本 → DWG/DI 码值（非 DPX 源在 DWG 工作空间下的节点输入）。 */
+function toDwgSamples(displaySamples: Float32Array): Float32Array {
+  const converted = new Float32Array(displaySamples.length);
+  for (let offset = 0; offset + 2 < displaySamples.length; offset += 3) {
+    const value = rec709Gamma24ToDwgIntermediate(
+      displaySamples[offset],
+      displaySamples[offset + 1],
+      displaySamples[offset + 2],
+    );
+    converted[offset] = value[0];
+    converted[offset + 1] = value[1];
+    converted[offset + 2] = value[2];
+  }
+  return converted;
+}
+
+/** DWG/DI 码值 → 显示域（对比用的“原图”侧）。 */
+function dwgSamplesToDisplay(dwgSamples: Float32Array): Float32Array {
+  const converted = new Float32Array(dwgSamples.length);
+  for (let offset = 0; offset + 2 < dwgSamples.length; offset += 3) {
+    const value = dwgIntermediateToRec709Gamma24(
+      dwgSamples[offset],
+      dwgSamples[offset + 1],
+      dwgSamples[offset + 2],
+    );
+    converted[offset] = value[0];
+    converted[offset + 1] = value[1];
+    converted[offset + 2] = value[2];
+  }
+  return converted;
+}
+
 async function writeRgbPng(
   filename: string,
   bytes: Buffer,
@@ -142,6 +254,59 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
    */
   const fitCache = new Map<string, ResidualLut>();
 
+  /** Sony LC-709 基线 cube 只读一次；缺失时退回解析式还原。 */
+  let sonyBaseline: ResidualLut | null | undefined;
+
+  async function loadSonyBaseline(): Promise<ResidualLut | null> {
+    if (sonyBaseline !== undefined) return sonyBaseline;
+    const cubePath = deps.sonyBaselineCubePath;
+    if (!cubePath) {
+      sonyBaseline = null;
+      return null;
+    }
+    try {
+      sonyBaseline = parseBaselineCube(await readFile(cubePath, "utf8"));
+    } catch {
+      sonyBaseline = null;
+    }
+    return sonyBaseline;
+  }
+
+  interface StoredSettings {
+    outputDirectory: string;
+    resolveLutDirectory: string;
+    resolveOutputCompensation: boolean;
+  }
+
+  async function readSettings(): Promise<StoredSettings> {
+    const fallback: StoredSettings = {
+      outputDirectory: deps.defaultExportDirectory,
+      resolveLutDirectory: deps.resolveLutDirectory ?? "",
+      resolveOutputCompensation: true,
+    };
+    try {
+      const raw = JSON.parse(await readFile(deps.settingsPath, "utf8")) as Partial<StoredSettings>;
+      return {
+        outputDirectory:
+          typeof raw.outputDirectory === "string" && raw.outputDirectory.trim()
+            ? raw.outputDirectory
+            : fallback.outputDirectory,
+        resolveLutDirectory:
+          typeof raw.resolveLutDirectory === "string" && raw.resolveLutDirectory.trim()
+            ? raw.resolveLutDirectory
+            : fallback.resolveLutDirectory,
+        resolveOutputCompensation: raw.resolveOutputCompensation !== false,
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
+  async function writeSettings(next: StoredSettings): Promise<void> {
+    await mkdir(path.dirname(deps.settingsPath), { recursive: true });
+    await writeFile(deps.settingsPath, JSON.stringify(next, null, 2), "utf8");
+  }
+
   function rememberDecoded(key: string, decoded: DecodedImage): void {
     decodeCache.delete(key);
     decodeCache.set(key, decoded);
@@ -153,6 +318,21 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
   }
 
   async function decodeRaw(filePath: string, previewSize: number): Promise<DecodedImage> {
+    if (isDpxPath(filePath)) {
+      // DPX 走 ffmpeg 的 rgb48le 直解：sharp 读不了，且不能把它当 sRGB 解。
+      const decoded = await decodeImageToRgb48(filePath);
+      const reduced = decimateSamples(decoded.samples, decoded.width, decoded.height, previewSize);
+      return {
+        samples: reduced.samples,
+        // DPX 码值已在工作空间里，没有"sRGB 匹配域"这一说；字段留空数组
+        // 比编一个假值更容易在调用方发现用错。
+        matchDomain: new Float32Array(0),
+        width: reduced.width,
+        height: reduced.height,
+        sourcePath: filePath,
+        isDpx: true,
+      };
+    }
     const { data, info } = await sharp(filePath, { failOn: "none" })
       .rotate()
       .removeAlpha()
@@ -179,6 +359,7 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
       width: info.width,
       height: info.height,
       sourcePath: filePath,
+      isDpx: false,
     };
   }
 
@@ -282,6 +463,7 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
       brightness: analysis.brightness,
       saturation: analysis.saturation,
       hue: analysis.hue,
+      scopes: analysis.scopes,
     };
   }
 
@@ -305,6 +487,25 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
     if (!sourceInfo?.isFile()) throw new Error("REFERENCE_MATCH_SOURCE_UNAVAILABLE");
     const referenceInfo = await stat(request.referencePath).catch(() => null);
     if (!referenceInfo?.isFile()) throw new Error("REFERENCE_MATCH_REFERENCE_UNAVAILABLE");
+    if (isDpxPath(request.referencePath)) {
+      // 参考图必须是已经显示为目标风格的 sRGB 图像；DPX 是工作空间码值，
+      // 拿它当“参考风格”在概念上就不成立。
+      throw new Error("REFERENCE_MATCH_REFERENCE_DPX_UNSUPPORTED");
+    }
+    const workspace = request.workspace ?? "rec709";
+    const slog3Gamut: Slog3Gamut = request.slog3Gamut ?? "sgamut3-cine";
+    const slog3InputRange: Slog3InputRange = request.slog3InputRange ?? "full";
+    const sourceIsDpx = isDpxPath(request.sourcePath);
+    if (sourceIsDpx && workspace === "rec709") {
+      throw new Error("REFERENCE_MATCH_DPX_REQUIRES_WORKSPACE");
+    }
+    if (workspace === "slog3" && !sourceIsDpx) {
+      // S-Log3 LUT 必须套在原生 S-Log3 素材上；已还原的图像不能反过来当源。
+      throw new Error("REFERENCE_MATCH_SLOG3_REQUIRES_DPX");
+    }
+    const compensationSetting = (await readSettings()).resolveOutputCompensation;
+    const resolveOutputCompensation =
+      workspace === "dwg" ? (request.resolveOutputCompensation ?? compensationSetting) : false;
 
     // 三层指纹：内容（源图/时间点/预览尺寸）、拟合（再加参考图与网格）、
     // 结果（再加观感参数）。分开才能让拖滑杆时复用解码与拟合。
@@ -317,6 +518,12 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
         previewSize,
       ].join(":"),
     ).slice(0, 24);
+    const workspaceSignature = [
+      workspace,
+      workspace === "slog3" ? slog3Gamut : "-",
+      workspace === "slog3" ? slog3InputRange : "-",
+      workspace === "dwg" && resolveOutputCompensation ? "compensated" : "-",
+    ].join(":");
     const fitFingerprint = hashText(
       [
         contentFingerprint,
@@ -324,6 +531,7 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
         referenceInfo.size,
         referenceInfo.mtimeMs,
         dimension,
+        workspaceSignature,
       ].join(":"),
     ).slice(0, 24);
     const resultFingerprint = hashText(
@@ -359,9 +567,20 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
       return {
         previewUrl: deps.previewUrlFor(previewPath),
         originalUrl: deps.previewUrlFor(originalPath),
+        previewPath,
         lutPath,
         width: metadata.width,
         height: metadata.height,
+        workspace,
+        slog3Gamut: workspace === "slog3" ? slog3Gamut : undefined,
+        slog3InputRange: workspace === "slog3" ? slog3InputRange : undefined,
+        resolveOutputCompensation,
+        baseline:
+          workspace !== "slog3"
+            ? "none"
+            : usesSonyLc709Baseline(slog3Gamut, slog3InputRange) && deps.sonyBaselineCubePath
+              ? "sony-lc709"
+              : "analytical",
       };
     };
 
@@ -383,12 +602,29 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
 
     // 参考图的分布不随源图时间点变化，所以参考图固定取第 0 帧解码，
     // 同一张参考图在不同镜头间可以直接命中解码与拟合缓存。
+    // 参考图永远是 sRGB 图像（DPX 已被拒），所以直接取匹配域。
+    const referenceDisplay = reference.matchDomain.length
+      ? reference.matchDomain
+      : toMatchDomain(reference.samples);
+    const sonyBaseline = workspace === "slog3" ? await loadSonyBaseline() : null;
+
     let fitted = fitCache.get(fitFingerprint);
     if (fitted) {
       fitCache.delete(fitFingerprint);
       fitCache.set(fitFingerprint, fitted);
     } else {
-      fitted = fitGlobalResidualLut(source.matchDomain, reference.matchDomain, dimension);
+      if (workspace === "dwg" && source.isDpx) {
+        // DPX 直拟：栅格一开始就建在 DWG/DI 里，参考图同步转进同一空间。
+        fitted = fitDwgResidualLut(source.samples, referenceDisplay, dimension);
+      } else if (workspace === "slog3") {
+        fitted = fitGlobalResidualLut(
+          restoreSlog3(source.samples, slog3Gamut, slog3InputRange, sonyBaseline),
+          referenceDisplay,
+          dimension,
+        );
+      } else {
+        fitted = fitGlobalResidualLut(source.matchDomain, referenceDisplay, dimension);
+      }
       fitCache.set(fitFingerprint, fitted);
       while (fitCache.size > 4) {
         const oldest = fitCache.keys().next().value;
@@ -396,11 +632,53 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
         fitCache.delete(oldest);
       }
     }
-    const lut = applyLookControls(fitted, request.controls);
+    let lut = applyLookControls(fitted, request.controls);
 
-    // 渲染与编码一次走完：预览像素量是百万级，多一趟拷贝就是多几十毫秒。
+    // 预览必须与导出的 cube 走同一条变换，否则用户在面板里看到的和 Resolve
+    // 里套出来的是两张东西。
     const previewBytes = Buffer.allocUnsafe(source.samples.length);
-    renderResidualToSrgbBytes(lut, source.matchDomain, previewBytes, matchDomainToSrgb);
+    let originalBytes: Buffer;
+    if (workspace === "dwg") {
+      if (!source.isDpx) lut = bakeDwgIntermediateResidual(lut, dimension);
+      if (resolveOutputCompensation) {
+        lut = precompensateDwgLutResidualForResolveRec709(lut);
+      }
+      const previewInput = source.isDpx ? source.samples : toDwgSamples(source.matchDomain);
+      const calibrate = resolveOutputCompensation
+        ? resolveDwgToRec709Gamma24
+        : dwgIntermediateToRec709Gamma24;
+      renderResidualToBytes(lut, previewInput, previewBytes, (red, green, blue) => {
+        const display = calibrate(red, green, blue);
+        return [
+          matchDomainToSrgb(display[0]),
+          matchDomainToSrgb(display[1]),
+          matchDomainToSrgb(display[2]),
+        ];
+      });
+      // 左侧原图用“标准变换后的画面”，而不是把 DI 码值当 sRGB 直接铺开：
+      // 后者只是一片死黑，没有任何判断价值。
+      originalBytes = toSrgbBytes(
+        source.isDpx ? dwgSamplesToDisplay(source.samples) : source.samples,
+      );
+    } else if (workspace === "slog3") {
+      lut = bakeSlog3ToRec709Residual(lut, dimension, {
+        gamut: slog3Gamut,
+        inputRange: slog3InputRange,
+        sonyBaseline,
+      });
+      renderResidualToBytes(lut, source.samples, previewBytes, (red, green, blue) => [
+        matchDomainToSrgb(red),
+        matchDomainToSrgb(green),
+        matchDomainToSrgb(blue),
+      ]);
+      originalBytes = toSrgbBytes(
+        restoreSlog3(source.samples, slog3Gamut, slog3InputRange, sonyBaseline),
+      );
+    } else {
+      // 渲染与编码一次走完：预览像素量是百万级，多一趟拷贝就是多几十毫秒。
+      renderResidualToSrgbBytes(lut, source.matchDomain, previewBytes, matchDomainToSrgb);
+      originalBytes = toSrgbBytes(source.samples);
+    }
 
     await mkdir(deps.cacheDirectory, { recursive: true });
     const originalReady = await stat(originalPath).then(
@@ -408,29 +686,46 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
       () => false,
     );
     if (!originalReady) {
-      await writeRgbPng(
-        originalPath,
-        toSrgbBytes(source.samples),
-        source.width,
-        source.height,
-      );
+      await writeRgbPng(originalPath, originalBytes, source.width, source.height);
     }
     await writeRgbPng(previewPath, previewBytes, source.width, source.height);
     const controls = request.controls;
+    const workspaceLabel =
+      workspace === "dwg"
+        ? "DaVinci Wide Gamut + Intermediate"
+        : workspace === "slog3"
+          ? `Sony S-Log3 / ${slog3Gamut === "sgamut3" ? "S-Gamut3" : "S-Gamut3.Cine"} (${slog3InputRange} range)`
+          : "Rec.709 Gamma 2.4";
     const comments = [
-      "Input domain: Rec.709 Gamma 2.4",
-      "Reference image converted from sRGB to the Rec.709 Gamma 2.4 match domain",
+      `Input domain: ${workspaceLabel}`,
+      workspace === "rec709"
+        ? "Reference image converted from sRGB to the Rec.709 Gamma 2.4 match domain"
+        : workspace === "dwg"
+          ? "Reference image converted into the DWG/DI working space for the lattice fit"
+          : "S-Log3 still restored through the selected display baseline before matching",
       `Match strength: ${controls.matchStrength}%`,
       `Tone zones: shadows ${controls.shadows}%, midtones ${controls.midtones}%, highlights ${controls.highlights}%`,
       `Safeguards: skin ${controls.protectSkin ? "on" : "off"}, saturation ${controls.protectSaturation ? "on" : "off"}, contrast ${controls.protectContrast ? "on" : "off"}`,
       `Grid: ${dimension}^3`,
+      workspace === "dwg"
+        ? `Resolve DWG-to-Rec.709 output-response compensation: ${resolveOutputCompensation ? "enabled" : "disabled"}`
+        : "Resolve DWG-to-Rec.709 output-response compensation: not applicable",
+      workspace === "slog3"
+        ? `S-Log3 display baseline: ${
+            usesSonyLc709Baseline(slog3Gamut, slog3InputRange) && sonyBaseline
+              ? "Sony LC-709 Look Profile"
+              : "analytical S-Log3 -> Rec.709 Gamma 2.4"
+          }`
+        : "S-Log3 display baseline: not applicable",
     ];
     await writeFile(
       lutPath,
       writeCubeText(lut, {
-        title: DEFAULT_LUT_TITLE,
+        // DWG 的 cube 保留工作空间余量，不能把超过 1.0 的高光截断；
+        // 显示参考的导出才写 0..1。
+        title: `${DEFAULT_LUT_TITLE} · ${workspace}`,
         comments,
-        outputLimits: [0, 1],
+        outputLimits: workspace === "dwg" ? undefined : [0, 1],
       }),
       "utf8",
     );
@@ -446,9 +741,20 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
     return {
       previewUrl: deps.previewUrlFor(previewPath),
       originalUrl: deps.previewUrlFor(originalPath),
+      previewPath,
       lutPath,
       width: source.width,
       height: source.height,
+      workspace,
+      slog3Gamut: workspace === "slog3" ? slog3Gamut : undefined,
+      slog3InputRange: workspace === "slog3" ? slog3InputRange : undefined,
+      resolveOutputCompensation,
+      baseline:
+        workspace !== "slog3"
+          ? "none"
+          : usesSonyLc709Baseline(slog3Gamut, slog3InputRange) && sonyBaseline
+            ? "sony-lc709"
+            : "analytical",
     };
   }
 
@@ -477,5 +783,127 @@ export function createReferenceMatchService(deps: ReferenceMatchDependencies) {
     throw new Error("REFERENCE_MATCH_EXPORT_UNAVAILABLE");
   }
 
-  return { analyse, create, exportLut };
+  async function uniqueTarget(directory: string, baseName: string, extension: string): Promise<string> {
+    for (let suffix = 0; suffix < 10_000; suffix += 1) {
+      const candidate = path.join(
+        directory,
+        `${baseName}${suffix === 0 ? "" : `-${suffix}`}.${extension}`,
+      );
+      const existing = await stat(candidate).catch(() => null);
+      if (!existing) return candidate;
+    }
+    throw new Error("REFERENCE_MATCH_EXPORT_UNAVAILABLE");
+  }
+
+  async function exportPng(
+    request: ReferenceMatchExportPngRequest,
+  ): Promise<{ path: string }> {
+    const targetInfo = await stat(request.targetDirectory).catch(() => null);
+    if (!targetInfo?.isDirectory()) throw new Error("REFERENCE_MATCH_TARGET_MISSING");
+    const info = await stat(request.previewPath).catch(() => null);
+    if (!info?.isFile()) throw new Error("REFERENCE_MATCH_PREVIEW_MISSING");
+    const baseName = sanitizeBaseName(request.baseName?.trim() || "reference-match-preview");
+    const target = await uniqueTarget(request.targetDirectory, baseName, "png");
+    await copyFile(request.previewPath, target);
+    return { path: target };
+  }
+
+  async function importToLibrary(
+    request: ReferenceMatchLibraryImportRequest,
+  ): Promise<{ path: string }> {
+    const info = await stat(request.lutPath).catch(() => null);
+    if (!info?.isFile() || path.extname(request.lutPath).toLowerCase() !== ".cube") {
+      throw new Error("REFERENCE_MATCH_LUT_MISSING");
+    }
+    const stored = await readSettings();
+    if (!request.targetDirectory && !stored.resolveLutDirectory) {
+      throw new Error("REFERENCE_MATCH_LIBRARY_DIRECTORY_MISSING");
+    }
+    const directory = request.targetDirectory
+      ? path.resolve(request.targetDirectory)
+      : path.join(path.resolve(stored.resolveLutDirectory), "Reference LUT");
+    const baseName = sanitizeBaseName(
+      request.name?.trim() || (await lutTitle(request.lutPath)) || DEFAULT_BASE_NAME,
+    );
+    const target = path.join(directory, `${baseName}.cube`);
+    if (await stat(target).then((item) => item.isFile(), () => false)) {
+      throw new Error("REFERENCE_MATCH_LIBRARY_EXISTS");
+    }
+    await mkdir(path.dirname(target), { recursive: true });
+    await copyFile(request.lutPath, target);
+    return { path: target };
+  }
+
+  async function clearCache(): Promise<{ removed: number }> {
+    let removed = 0;
+    const sweep = async (directory: string, prefixes: readonly string[]) => {
+      const entries = await readdir(directory).catch(() => [] as string[]);
+      for (const entry of entries) {
+        if (!prefixes.some((prefix) => entry.startsWith(prefix))) continue;
+        const extension = path.extname(entry).toLowerCase();
+        if (![".cube", ".png", ".json"].includes(extension)) continue;
+        await unlink(path.join(directory, entry)).catch(() => undefined);
+        removed += 1;
+      }
+    };
+    await sweep(deps.cacheDirectory, ["match-"]);
+    const stored = await readSettings();
+    if (stored.outputDirectory) {
+      await sweep(path.resolve(stored.outputDirectory), ["reference-match-"]);
+    }
+    decodeCache.clear();
+    fitCache.clear();
+    return { removed };
+  }
+
+  async function getSettings(): Promise<ReferenceMatchSettings> {
+    const stored = await readSettings();
+    const outputDirectory = path.resolve(stored.outputDirectory);
+    return {
+      outputDirectory,
+      isDefault: outputDirectory === path.resolve(deps.defaultExportDirectory),
+      resolveLutDirectory: stored.resolveLutDirectory
+        ? path.resolve(stored.resolveLutDirectory)
+        : "",
+      resolveOutputCompensation: stored.resolveOutputCompensation,
+      sonyBaselineCubePath: deps.sonyBaselineCubePath ?? null,
+    };
+  }
+
+  async function updateSettings(
+    patch: ReferenceMatchSettingsPatch,
+  ): Promise<ReferenceMatchSettings> {
+    const current = await readSettings();
+    const next: StoredSettings = { ...current };
+    if (patch.useDefault === true) {
+      next.outputDirectory = deps.defaultExportDirectory;
+    } else if (typeof patch.outputDirectory === "string") {
+      const candidate = patch.outputDirectory.trim();
+      if (!candidate) throw new Error("REFERENCE_MATCH_OUTPUT_DIRECTORY_INVALID");
+      const resolved = path.resolve(candidate);
+      await mkdir(resolved, { recursive: true });
+      next.outputDirectory = resolved;
+    }
+    if (typeof patch.resolveLutDirectory === "string") {
+      const candidate = patch.resolveLutDirectory.trim();
+      if (!candidate) throw new Error("REFERENCE_MATCH_LIBRARY_DIRECTORY_INVALID");
+      next.resolveLutDirectory = path.resolve(candidate);
+    }
+    if (typeof patch.resolveOutputCompensation === "boolean") {
+      next.resolveOutputCompensation = patch.resolveOutputCompensation;
+    }
+    await writeSettings(next);
+    return getSettings();
+  }
+
+  return {
+    analyse,
+    create,
+    exportLut,
+    exportPng,
+    importToLibrary,
+    clearCache,
+    getSettings,
+    updateSettings,
+  };
 }

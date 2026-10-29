@@ -1421,7 +1421,21 @@ export interface ReferenceMatchSwatch {
   coverage: number;
 }
 
-/** 参考图风格摘要：主色板、亮度分布、饱和度与色相族。 */
+/** LUT 的输入域：决定导出的 .cube 该放在 Resolve 的哪个节点上。 */
+export type ReferenceMatchWorkspace = "rec709" | "dwg" | "slog3";
+export type ReferenceMatchSlog3Gamut = "sgamut3-cine" | "sgamut3";
+export type ReferenceMatchSlog3Range = "full" | "video";
+
+/** RGB 直方图与 Cb/Cr 密度，供面板画示波器。 */
+export interface ReferenceMatchScopes {
+  /** 三通道显示序列，各 64 段（已做 7 点平滑与 4 段合并）。 */
+  histogram: [number[], number[], number[]];
+  /** 行优先密度图：行是 Cr，列是 Cb。 */
+  density: number[];
+  densitySize: number;
+}
+
+/** 参考图风格摘要：主色板、亮度分布、饱和度、色相族与示波器数据。 */
 export interface ReferenceMatchAnalysis {
   /** 参考图的预览源（refbrowse:// 或 refasset://，可直接用于 <img>）。 */
   url: string;
@@ -1431,6 +1445,7 @@ export interface ReferenceMatchAnalysis {
   brightness: { p10: number; median: number; p90: number; contrastSpan: number };
   saturation: { mean: number; p90: number };
   hue: { meanDegrees: number | null; family: ReferenceMatchHueFamily };
+  scopes: ReferenceMatchScopes;
 }
 
 export interface ReferenceMatchRequest {
@@ -1443,14 +1458,30 @@ export interface ReferenceMatchRequest {
   dimension?: 33 | 65;
   /** 预览长边像素，默认 1280。 */
   previewSize?: number;
+  /** LUT 输入域，默认 rec709。 */
+  workspace?: ReferenceMatchWorkspace;
+  /** S-Log3 源的色域，默认 S-Gamut3.Cine。 */
+  slog3Gamut?: ReferenceMatchSlog3Gamut;
+  /** S-Log3 源的编码范围，默认 full。 */
+  slog3InputRange?: ReferenceMatchSlog3Range;
+  /** DWG 流程是否烘入 Resolve 709 输出补偿；缺省读设置。 */
+  resolveOutputCompensation?: boolean;
 }
 
 export interface ReferenceMatchResult {
   previewUrl: string;
   originalUrl: string;
+  /** 预览 PNG 的本地路径（导出 PNG 时用）。 */
+  previewPath: string;
   lutPath: string;
   width: number;
   height: number;
+  workspace: ReferenceMatchWorkspace;
+  slog3Gamut?: ReferenceMatchSlog3Gamut;
+  slog3InputRange?: ReferenceMatchSlog3Range;
+  resolveOutputCompensation: boolean;
+  /** S-Log3 使用哪种还原基线。 */
+  baseline: "none" | "sony-lc709" | "analytical";
 }
 
 export interface ReferenceMatchExportRequest {
@@ -1458,6 +1489,40 @@ export interface ReferenceMatchExportRequest {
   targetDirectory: string;
   /** 不含扩展名；缺省用 LUT 的 TITLE 或 "reference-match"。 */
   baseName?: string;
+}
+
+export interface ReferenceMatchExportPngRequest {
+  previewPath: string;
+  targetDirectory: string;
+  /** 不含扩展名；缺省 "reference-match-preview"。 */
+  baseName?: string;
+}
+
+export interface ReferenceMatchLibraryImportRequest {
+  lutPath: string;
+  /** 写入 Resolve LUT 库的文件名（不含扩展名）。 */
+  name?: string;
+  /** 已通过写权限审批的库目录；缺省用设置里的 Resolve LUT 根目录。 */
+  targetDirectory?: string;
+}
+
+export interface ReferenceMatchSettings {
+  outputDirectory: string;
+  /** 是否仍在用默认产出目录。 */
+  isDefault: boolean;
+  /** Resolve LUT 库根目录（导入写进其下的 Reference LUT 子目录）。 */
+  resolveLutDirectory: string;
+  resolveOutputCompensation: boolean;
+  /** 可选的 Sony LC-709 基线 cube 路径。 */
+  sonyBaselineCubePath: string | null;
+}
+
+export interface ReferenceMatchSettingsPatch {
+  /** 恢复默认产出目录。 */
+  useDefault?: boolean;
+  outputDirectory?: string;
+  resolveLutDirectory?: string;
+  resolveOutputCompensation?: boolean;
 }
 
 /** 色彩管理状态（阶段 5 §10.3）。 */
@@ -1818,6 +1883,16 @@ export interface RefCanvasApi {
     matchCreate(request: ReferenceMatchRequest): Promise<ReferenceMatchResult>;
     /** 把匹配 LUT 复制到目标目录（重名自动编号）。 */
     exportMatchLut(request: ReferenceMatchExportRequest): Promise<{ path: string }>;
+    /** 把分屏预览 PNG 复制到目标目录。 */
+    exportMatchPng(request: ReferenceMatchExportPngRequest): Promise<{ path: string }>;
+    /** 把匹配 LUT 写入 Resolve LUT 库的 Reference LUT 子目录（重名报错）。 */
+    importMatchLutToLibrary(request: ReferenceMatchLibraryImportRequest): Promise<{ path: string }>;
+    /** 清理生成过的匹配 LUT、预览 PNG 与分析文件。 */
+    clearMatchCache(): Promise<{ removed: number }>;
+    /** 读取参考图仿色的设置（产出目录、Resolve LUT 库、输出补偿）。 */
+    matchSettings(): Promise<ReferenceMatchSettings>;
+    /** 更新参考图仿色设置。 */
+    updateMatchSettings(patch: ReferenceMatchSettingsPatch): Promise<ReferenceMatchSettings>;
     /** 校验自定义 OCIO 配置可用性（解析 + 最小转换；LUT 缺失在此暴露）。 */
     validateOcioConfig(path: string): Promise<{ ok: boolean; detail: string | null }>;
     /** 按时间戳精确取帧（视频逐帧；不依赖 HTML video seek）。 */

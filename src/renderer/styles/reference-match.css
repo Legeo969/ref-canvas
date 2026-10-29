@@ -5,15 +5,41 @@
 .reference-match-studio {
   display: grid;
   gap: 10px;
-  /* 托盘只有四五百宽；聚焦/全屏下会铺满整窗，限宽居中才不会把滑杆拉成
-     一米长、把分屏图挤成一条。 */
+  /* 面板在侧边栏里只有四五百宽，聚焦/全屏时却能铺满整窗。用容器查询
+     在宽屏切成“画面 + 参数”双列，窄屏保持单列堆叠。 */
   width: 100%;
-  max-width: 720px;
-  margin-inline: auto;
   padding: 10px 12px 14px;
   color: #d5dbd8;
   font-size: 12px;
   box-sizing: border-box;
+  container: match / inline-size;
+}
+
+.match-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.match-visual {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.match-side {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* 宽托盘（聚焦、全屏、拉宽的侧栏）：画面占主列，参数收到右侧一栏。 */
+@container match (min-width: 760px) {
+  .match-body {
+    grid-template-columns: minmax(0, 1fr) 288px;
+    align-items: start;
+  }
 }
 
 /* 整个面板都能接受拖放：拖动经过时给一圈提示，否则用户不知道能放。 */
@@ -177,7 +203,7 @@
   aspect-ratio: 16 / 9;
   /* 宽度上限由内联 style 按图片比例反算，这里只限制高度；两者叠加才不会
      把框拉成和画面不同比例，导致分界线落在黑边上。 */
-  max-height: min(48vh, 420px);
+  max-height: var(--match-compare-cap, min(58vh, 560px));
   margin-inline: auto;
   overflow: hidden;
   border-radius: 6px;
@@ -302,7 +328,7 @@
 
 .match-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
   gap: 6px;
 }
 
@@ -514,10 +540,213 @@
 }
 
 /* LUT 浮层里的入口：与上面的单选/文件名行同一列，但用分隔线隔开，
-   表明它不是一个 LUT 选项而是一个动作。 */
-.preview-color-tools.lut-popover-menu .lut-match-entry {
+   表明它不是一个 LUT 选项而是一个动作。 */.preview-color-tools.lut-popover-menu .lut-match-entry {
   margin-top: 2px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 0 0 4px 4px;
   color: #a9e6d2;
+}
+
+/* ── 参考图仿色独立面板 ────────────────────────────────────────────────
+   托盘宽度只有四五百，放不下分屏对比 + 示波器 + 一整套参数；这个工具
+   改成从 LUT 菜单打开的一块独立工作区：左画面、右参数，两块都按实际
+   可用尺寸排版。 */
+
+.reference-match-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 2650;
+  display: grid;
+  padding: 22px;
+  place-items: center;
+  background: rgba(6, 8, 7, 0.74);
+}
+
+.reference-match-panel-card {
+  display: grid;
+  width: min(1440px, 96vw);
+  height: min(920px, 92vh);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 10px;
+  background: #101312;
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.reference-match-panel-head {
+  display: flex;
+  height: 46px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.reference-match-panel-head strong {
+  color: #e6ebe8;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.reference-match-panel-source {
+  overflow: hidden;
+  max-width: 46%;
+  color: #8b9591;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-match-panel-close {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #9aa4a0;
+}
+
+.reference-match-panel-close:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e6ebe8;
+}
+
+.reference-match-panel-body {
+  overflow: auto;
+  padding: 6px 8px 12px;
+}
+
+/* 面板里画面可以比托盘高得多：这是它值得单独开一块的全部理由。 */
+.reference-match-panel-body .reference-match-studio {
+  --match-compare-cap: min(64vh, 760px);
+}
+
+/* ── 面板新增控件（工作空间、次级动作、设置区）──────────────────────── */
+
+.match-workspace-menu .select-menu-trigger {
+  width: auto;
+  min-width: 96px;
+  padding: 0 6px;
+}
+
+.match-secondary {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: transparent;
+  color: #b6c0bb;
+  font-size: 11px;
+}
+
+.match-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6ebe8;
+}
+
+.match-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.match-reset.is-on {
+  border-color: rgba(64, 161, 130, 0.55);
+  background: rgba(64, 161, 130, 0.16);
+  color: #a9e6d2;
+}
+
+.match-notice {
+  margin: 0;
+  color: #7fc7ac;
+  font-size: 11px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.match-settings {
+  display: grid;
+  gap: 6px;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.match-settings-row {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  gap: 6px;
+  color: #98a29d;
+  font-size: 11px;
+}
+
+.match-settings-row > span {
+  flex: 0 0 auto;
+}
+
+.match-settings-row code {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: #c8d2ce;
+  font-family: inherit;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-settings-row button {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  background: transparent;
+  color: #b6c0bb;
+  font-size: 10.5px;
+}
+
+.match-settings-row button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6ebe8;
+}
+
+.match-settings-row button.match-toggle {
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.match-settings-row button.match-toggle.is-on {
+  border-color: rgba(64, 161, 130, 0.55);
+  background: rgba(64, 161, 130, 0.16);
+  color: #a9e6d2;
+}
+
+.match-settings-row button.match-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #e09a8c;
+}
+
+.match-settings-row button.match-danger:hover {
+  background: rgba(224, 154, 140, 0.12);
+  color: #f3b3a4;
+}
+
+.match-result-meta {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  gap: 5px;
+  color: #7d8783;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }

@@ -131,6 +131,24 @@ export function registerResourcesIpc(
       if (!cacheDirectory) throw new Error("THUMBNAIL_CACHE_UNAVAILABLE");
       referenceMatchService = createReferenceMatchService({
         cacheDirectory,
+        settingsPath: path.join(cacheDirectory, "reference-match-settings.json"),
+        // 默认产出目录放在用户自己的下载夹下，而不是缓存目录：用户点“导出”
+        // 时期望看到一个能直接拖进 Resolve 的文件夹。
+        defaultExportDirectory: path.join(os.homedir(), "Downloads", "RefCanvas", "reference-match"),
+        resolveLutDirectory:
+          process.platform === "win32"
+            ? path.join(
+                process.env.PROGRAMDATA || "C:\\ProgramData",
+                "Blackmagic Design",
+                "DaVinci Resolve",
+                "Support",
+                "LUT",
+              )
+            : process.platform === "darwin"
+              ? "/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT"
+              : "/home/resolve/LUT",
+        // Sony 的 LC-709 Look Profile 不可再分发，只能由用户自己放到磁盘上。
+        sonyBaselineCubePath: process.env.REFCANVAS_SONY_LC709_CUBE || null,
         previewUrlFor: (filePath) =>
           `refbrowse://preview/${dependencies.previewTokens.tokenFor(filePath)}`,
         registerCacheFile: (key, filePath) => {
@@ -814,6 +832,66 @@ export function registerResourcesIpc(
       targetDirectory,
       baseName: parsed.baseName,
     });
+  });
+
+  ipc.handleWithEvent("media:exportMatchPng", async (event, request) => {
+    const parsed = z
+      .object({
+        previewPath: pathSchema,
+        targetDirectory: pathSchema,
+        baseName: z.string().min(1).max(128).optional(),
+      })
+      .parse(request);
+    const [targetDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "export",
+      [{ path: assertAbsoluteLocalPath(parsed.targetDirectory), mode: "destination" }],
+    );
+    return referenceMatch().exportPng({
+      previewPath: assertAbsoluteLocalPath(parsed.previewPath),
+      targetDirectory,
+      baseName: parsed.baseName,
+    });
+  });
+
+  ipc.handleWithEvent("media:importMatchLutToLibrary", async (event, request) => {
+    const parsed = z
+      .object({
+        lutPath: pathSchema,
+        name: z.string().min(1).max(128).optional(),
+      })
+      .parse(request);
+    // 写入 Resolve 的 LUT 目录属于用户不可见的系统位置，必须走写权限审批。
+    const settings = await referenceMatch().getSettings();
+    if (!settings.resolveLutDirectory) throw new Error("REFERENCE_MATCH_LIBRARY_DIRECTORY_MISSING");
+    const [targetDirectory] = await dependencies.writeAccess.authorize(
+      dependencies.windowForSender(event),
+      "export",
+      [{ path: path.join(settings.resolveLutDirectory, "Reference LUT"), mode: "destination" }],
+    );
+    return referenceMatch().importToLibrary({
+      lutPath: assertAbsoluteLocalPath(parsed.lutPath),
+      name: parsed.name,
+      targetDirectory,
+    });
+  });
+
+  ipc.handle("media:clearMatchCache", () =>
+    referenceMatch().clearCache(),
+  );
+
+  ipc.handle("media:matchSettings", () => referenceMatch().getSettings());
+
+  ipc.handle("media:updateMatchSettings", async (request) => {
+    const parsed = z
+      .object({
+        useDefault: z.boolean().optional(),
+        outputDirectory: pathSchema.optional(),
+        resolveLutDirectory: z.string().min(1).max(4096).optional(),
+        resolveOutputCompensation: z.boolean().optional(),
+      })
+      .parse(request ?? {});
+    return referenceMatch().updateSettings(parsed);
   });
   /**
    * 阶段 4：音频波形峰值（provider waveform，8kHz 流式解码）。
