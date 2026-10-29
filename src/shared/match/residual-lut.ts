@@ -229,6 +229,93 @@ export function renderResidualToSrgbBytes(
   }
 }
 
+/**
+ * Apply the residual and encode bytes through a three-channel transform.
+ *
+ * The display-domain renderer above can encode each channel on its own. A DWG
+ * or S-Log3 preview needs a matrix or curve that mixes channels, so this variant
+ * keeps the same inlined trilinear inner loop and hands whole RGB triples to
+ * `convert`, which returns display-encoded 0..1 values.
+ */
+export function renderResidualToBytes(
+  lut: ResidualLut,
+  samples: Float32Array,
+  bytes: Uint8Array,
+  convert: (red: number, green: number, blue: number) => readonly number[],
+): void {
+  const { dimension, data } = lut;
+  const plane = dimension * dimension;
+  const denominator = dimension - 1;
+  for (let offset = 0; offset + 2 < samples.length; offset += 3) {
+    const redCoordinate = clamp01(samples[offset]) * denominator;
+    const greenCoordinate = clamp01(samples[offset + 1]) * denominator;
+    const blueCoordinate = clamp01(samples[offset + 2]) * denominator;
+    const red0 = Math.floor(redCoordinate);
+    const green0 = Math.floor(greenCoordinate);
+    const blue0 = Math.floor(blueCoordinate);
+    const redWeight = redCoordinate - red0;
+    const greenWeight = greenCoordinate - green0;
+    const blueWeight = blueCoordinate - blue0;
+    const redLow = 1 - redWeight;
+    const greenLow = 1 - greenWeight;
+    const blueLow = 1 - blueWeight;
+    const redStep = red0 === denominator ? 0 : 3;
+    const greenStep = green0 === denominator ? 0 : dimension * 3;
+    const blueStep = blue0 === denominator ? 0 : plane * 3;
+    const base000 = (plane * blue0 + green0 * dimension + red0) * 3;
+    const base001 = base000 + redStep;
+    const base010 = base000 + greenStep;
+    const base011 = base010 + redStep;
+    const base100 = base000 + blueStep;
+    const base101 = base100 + redStep;
+    const base110 = base100 + greenStep;
+    const base111 = base110 + redStep;
+    const weight000 = blueLow * greenLow * redLow;
+    const weight001 = blueLow * greenLow * redWeight;
+    const weight010 = blueLow * greenWeight * redLow;
+    const weight011 = blueLow * greenWeight * redWeight;
+    const weight100 = blueWeight * greenLow * redLow;
+    const weight101 = blueWeight * greenLow * redWeight;
+    const weight110 = blueWeight * greenWeight * redLow;
+    const weight111 = blueWeight * greenWeight * redWeight;
+    const red =
+      samples[offset] +
+      data[base000] * weight000 +
+      data[base001] * weight001 +
+      data[base010] * weight010 +
+      data[base011] * weight011 +
+      data[base100] * weight100 +
+      data[base101] * weight101 +
+      data[base110] * weight110 +
+      data[base111] * weight111;
+    const green =
+      samples[offset + 1] +
+      data[base000 + 1] * weight000 +
+      data[base001 + 1] * weight001 +
+      data[base010 + 1] * weight010 +
+      data[base011 + 1] * weight011 +
+      data[base100 + 1] * weight100 +
+      data[base101 + 1] * weight101 +
+      data[base110 + 1] * weight110 +
+      data[base111 + 1] * weight111;
+    const blue =
+      samples[offset + 2] +
+      data[base000 + 2] * weight000 +
+      data[base001 + 2] * weight001 +
+      data[base010 + 2] * weight010 +
+      data[base011 + 2] * weight011 +
+      data[base100 + 2] * weight100 +
+      data[base101 + 2] * weight101 +
+      data[base110 + 2] * weight110 +
+      data[base111 + 2] * weight111;
+    const encoded = convert(red, green, blue);
+    for (let channel = 0; channel < 3; channel += 1) {
+      const value = encoded[channel];
+      bytes[offset + channel] = value <= 0 ? 0 : value >= 1 ? 255 : Math.round(value * 255);
+    }
+  }
+}
+
 export interface CubeOptions {
   title?: string;
   comments?: readonly string[];

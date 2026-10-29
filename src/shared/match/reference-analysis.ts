@@ -33,6 +33,7 @@ export interface ReferenceAnalysis {
   brightness: { p10: number; median: number; p90: number; contrastSpan: number };
   saturation: { mean: number; p90: number };
   hue: { meanDegrees: number | null; family: HueFamily };
+  scopes: ScopeReport;
 }
 
 const MAX_PALETTE_SAMPLES = 80_000;
@@ -166,6 +167,83 @@ function hueAndSaturation(red: number, green: number, blue: number): [number, nu
   return [hue * 60, maximum > 1e-7 ? delta / maximum : 0];
 }
 
+export interface ScopeReport {
+  /** Three display series of 64 segments: 7-tap binomial smoothing, then 4 bins merged. */
+  histogram: [number[], number[], number[]];
+  /** Cb/Cr density, row-major with Cr as the row and Cb as the column. */
+  density: number[];
+  densitySize: number;
+}
+
+const SCOPE_BINS = 256;
+const SCOPE_SEGMENTS = 64;
+const SCOPE_DENSITY = 128;
+const SMOOTHING_KERNEL = [1, 6, 15, 20, 15, 6, 1] as const;
+
+function smoothHistogramChannel(counts: Uint32Array): number[] {
+  const radius = 3;
+  const smoothed = new Float64Array(SCOPE_BINS);
+  for (let index = 0; index < SCOPE_BINS; index += 1) {
+    let sum = 0;
+    let weight = 0;
+    for (let tap = 0; tap < SMOOTHING_KERNEL.length; tap += 1) {
+      const source = index + tap - radius;
+      if (source < 0 || source >= SCOPE_BINS) continue;
+      sum += counts[source] * SMOOTHING_KERNEL[tap];
+      weight += SMOOTHING_KERNEL[tap];
+    }
+    smoothed[index] = weight > 0 ? sum / weight : 0;
+  }
+  const segments: number[] = [];
+  const merge = SCOPE_BINS / SCOPE_SEGMENTS;
+  for (let segment = 0; segment < SCOPE_SEGMENTS; segment += 1) {
+    let sum = 0;
+    for (let step = 0; step < merge; step += 1) sum += smoothed[segment * merge + step];
+    segments.push(sum / merge);
+  }
+  return segments;
+}
+
+/**
+ * RGB histogram and Cb/Cr density for the reference image.
+ *
+ * The reference implementation computed these in the browser from an already
+ * displayed image; doing it in the shared module keeps the numbers identical to
+ * what the matcher saw and lets the renderer stay a dumb painter.
+ */
+export function analyseScopes(samples: Float32Array): ScopeReport {
+  const pixels = samples.length / 3;
+  if (pixels === 0) throw new Error("REFERENCE_SAMPLES_INVALID");
+  const channels = [new Uint32Array(SCOPE_BINS), new Uint32Array(SCOPE_BINS), new Uint32Array(SCOPE_BINS)];
+  const density = new Uint32Array(SCOPE_DENSITY * SCOPE_DENSITY);
+  const last = SCOPE_DENSITY - 1;
+  for (let index = 0; index < pixels; index += 1) {
+    const offset = index * 3;
+    const red = Math.round(clamp01(samples[offset]) * 255);
+    const green = Math.round(clamp01(samples[offset + 1]) * 255);
+    const blue = Math.round(clamp01(samples[offset + 2]) * 255);
+    channels[0][red] += 1;
+    channels[1][green] += 1;
+    channels[2][blue] += 1;
+    // Rec.601 Cb/Cr is what video scopes show, and it is what the upstream
+    // browser-side implementation used for this plot.
+    const cb = (-0.168736 * red - 0.331264 * green + 0.5 * blue) / 255 + 0.5;
+    const cr = (0.5 * red - 0.418688 * green - 0.081312 * blue) / 255 + 0.5;
+    const cbIndex = Math.min(last, Math.max(0, Math.round(cb * last)));
+    const crIndex = Math.min(last, Math.max(0, Math.round(cr * last)));
+    density[crIndex * SCOPE_DENSITY + cbIndex] += 1;
+  }
+  return {
+    histogram: [
+      smoothHistogramChannel(channels[0]),
+      smoothHistogramChannel(channels[1]),
+      smoothHistogramChannel(channels[2]),
+    ],
+    density: Array.from(density),
+    densitySize: SCOPE_DENSITY,
+  };
+}
+
 /** Summarise major colours plus brightness, contrast and saturation tendencies. */
 export function analyseReference(samples: Float32Array, colourCount = 10): ReferenceAnalysis {
   const pixels = samples.length / 3;
@@ -214,5 +292,6 @@ export function analyseReference(samples: Float32Array, colourCount = 10): Refer
       meanDegrees: meanDegrees === null ? null : Math.round(meanDegrees * 10) / 10,
       family: hueFamily(meanDegrees),
     },
+    scopes: analyseScopes(samples),
   };
 }

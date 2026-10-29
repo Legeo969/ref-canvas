@@ -67,6 +67,8 @@ function serviceFor(cacheDirectory: string): {
   const registered: string[] = [];
   const dependencies: ReferenceMatchDependencies = {
     cacheDirectory,
+    settingsPath: path.join(cacheDirectory, "reference-match-settings.json"),
+    defaultExportDirectory: path.join(cacheDirectory, "exports"),
     previewUrlFor: (filePath) => pathToFileURL(filePath).href,
     registerCacheFile: (key) => registered.push(key),
   };
@@ -131,7 +133,7 @@ describe("reference match service", () => {
 
     const cube = await readFile(first.lutPath, "utf8");
     expect(cube).toContain("LUT_3D_SIZE 33");
-    expect(cube).toContain('TITLE "RefCanvas reference match"');
+    expect(cube).toContain('TITLE "RefCanvas reference match · rec709"');
 
     const second = await service.create(request);
     expect(second.lutPath).toBe(first.lutPath);

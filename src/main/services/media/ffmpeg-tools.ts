@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpegStatic from "ffmpeg-static";
+import { readFfprobeFullMetadata } from "./ffprobe-full";
 
 /**
  * FFmpeg 工具（阶段 3 §9.3）。
@@ -309,4 +310,60 @@ export async function applyLut3dToPng(
     executable,
     signal,
   });
+}
+
+export interface DecodedRgbImage {
+  /** 交错 RGB，0..1。DPX 下为 16-bit 码值的归一化结果，未经任何传输曲线。 */
+  samples: Float32Array;
+  width: number;
+  height: number;
+}
+
+/**
+ * 用 ffmpeg 把 DPX（以及其它 sharp 读不了的位图）解成归一化 RGB。
+ *
+ * DPX 里装的是 DaVinci Intermediate 或原生 S-Log3 码值，不是 sRGB 图像。
+ * 这里刻意不做缩放、不套传输曲线：色域与码值的解释交给调用方，否则
+ * "DWG 直方图拟合"会在尺寸变换那一步就被悄悄污染。
+ */
+export async function decodeImageToRgb48(
+  filename: string,
+  executable = packagedFfmpegPath(),
+  signal?: AbortSignal,
+): Promise<DecodedRgbImage> {
+  const metadata = await readFfprobeFullMetadata(filename);
+  const width = metadata.streams[0]?.width ?? 0;
+  const height = metadata.streams[0]?.height ?? 0;
+  if (!width || !height) throw new Error("DECODED_IMAGE_SIZE_UNKNOWN");
+  const expected = width * height * 6;
+  const { stdout } = await execFileAsync(
+    executable,
+    [
+      "-v",
+      "error",
+      "-i",
+      filename,
+      "-frames:v",
+      "1",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb48le",
+      "pipe:1",
+    ],
+    {
+      encoding: "buffer",
+      maxBuffer: expected + 4 * 1024 * 1024,
+      timeout: 120_000,
+      windowsHide: true,
+      signal,
+    },
+  );
+  const raw = stdout as Buffer;
+  if (raw.length !== expected) throw new Error("DECODED_IMAGE_INCOMPLETE");
+  const samples = new Float32Array(width * height * 3);
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = raw.readUInt16LE(index * 2) / 65535;
+  }
+  return { samples, width, height };
 }

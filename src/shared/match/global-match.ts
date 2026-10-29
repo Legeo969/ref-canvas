@@ -17,7 +17,13 @@ import {
   displayRgbToOklab,
   oklabToDisplayRgb,
   smoothstep,
+  type Oklab,
 } from "./colour";
+import {
+  displayToDwgIntermediate,
+  dwgIntermediateToOklab,
+  oklabToDwgIntermediate,
+} from "./colour-management";
 import { createIdentityLattice, createResidualLut, type ResidualLut } from "./residual-lut";
 
 const SAMPLE_LIMIT = 80_000;
@@ -72,6 +78,14 @@ export function samplePixels(samples: Float32Array): Float32Array {
 }
 
 export function toOklabSamples(samples: Float32Array): OklabSamples {
+  return toOklabSamplesWith(samples, displayRgbToOklab);
+}
+
+/** Oklab view of packed RGB triplets through an arbitrary colour transform. */
+function toOklabSamplesWith(
+  samples: Float32Array,
+  convert: (red: number, green: number, blue: number) => Oklab,
+): OklabSamples {
   const count = samples.length / 3;
   const lightness = new Float32Array(count);
   const axisA = new Float32Array(count);
@@ -81,7 +95,7 @@ export function toOklabSamples(samples: Float32Array): OklabSamples {
     // Samples outside the LUT input domain carry no usable distribution
     // information, so they are bounded the way the reference implementation
     // bounds them.
-    const lab = displayRgbToOklab(
+    const lab = convert(
       clamp01(samples[offset]),
       clamp01(samples[offset + 1]),
       clamp01(samples[offset + 2]),
@@ -251,30 +265,56 @@ function applyZoneMapping(
   );
 }
 
-/**
- * Fit a smooth Oklab tone-and-colour residual LUT.
- *
- * `source` and `reference` are packed RGB triplets already in the Rec.709
- * Gamma 2.4 match domain (use `srgbToMatchDomain` for sRGB inputs).
- */
-export function fitGlobalResidualLut(
+interface MatchSpace {
+  toLab(red: number, green: number, blue: number): Oklab;
+  fromLab(lightness: number, axisA: number, axisB: number): [number, number, number];
+}
+
+const DISPLAY_SPACE: MatchSpace = {
+  toLab: displayRgbToOklab,
+  fromLab: oklabToDisplayRgb,
+};
+
+const DWG_SPACE: MatchSpace = {
+  toLab: dwgIntermediateToOklab,
+  fromLab: oklabToDwgIntermediate,
+};
+
+function fitResidualLutInSpace(
   source: Float32Array,
   reference: Float32Array,
-  dimension = 33,
+  dimension: number,
+  space: MatchSpace,
+  nearIdentityTolerance = 0,
 ): ResidualLut {
   assertSamples(source, "SOURCE");
   assertSamples(reference, "REFERENCE");
   const sourceSamples = samplePixels(source);
   const referenceSamples = samplePixels(reference);
   if (
+    nearIdentityTolerance === 0 &&
     sourceSamples.length === referenceSamples.length &&
     sourceSamples.every((value, index) => value === referenceSamples[index])
   ) {
     return createResidualLut(dimension);
   }
 
-  const sourceLab = toOklabSamples(sourceSamples);
-  const referenceLab = toOklabSamples(referenceSamples);
+  const sourceLab = toOklabSamplesWith(sourceSamples, space.toLab);
+  const referenceLab = toOklabSamplesWith(referenceSamples, space.toLab);
+  if (nearIdentityTolerance > 0 && sourceLab.lightness.length === referenceLab.lightness.length) {
+    // A source still and a reference may encode the same image through
+    // different spaces. Treat that numerical round trip as identity instead of
+    // letting sub-micro precision tilt a far LUT corner.
+    let identical = true;
+    for (let index = 0; index < sourceLab.lightness.length && identical; index += 1) {
+      identical =
+        Math.abs(sourceLab.lightness[index] - referenceLab.lightness[index]) <= nearIdentityTolerance &&
+        Math.abs(sourceLab.axisA[index] - referenceLab.axisA[index]) <= nearIdentityTolerance &&
+        Math.abs(sourceLab.axisB[index] - referenceLab.axisB[index]) <= nearIdentityTolerance;
+    }
+    if (identical) return createResidualLut(dimension);
+  }
+
   const toneMapping = fitToneMapping(sourceLab.lightness, referenceLab.lightness);
   const chromaMappings = [
     fitZoneMappings(sourceLab.axisA, sourceLab.lightness, referenceLab.axisA, referenceLab.lightness),
@@ -285,7 +325,7 @@ export function fitGlobalResidualLut(
   const residual = new Float32Array(identity.length);
   const weights = new Float32Array(3);
   for (let offset = 0; offset < identity.length; offset += 3) {
-    const lab = displayRgbToOklab(identity[offset], identity[offset + 1], identity[offset + 2]);
+    const lab = space.toLab(identity[offset], identity[offset + 1], identity[offset + 2]);
     const rawLightness = applyMapping(lab.l, toneMapping);
     // Retaining part of the source curve keeps an unrelated reference
     // composition from forcing a brittle exposure/contrast change.
@@ -299,7 +339,7 @@ export function fitGlobalResidualLut(
       (NEUTRAL_CHROMA_AMOUNT + (1 - NEUTRAL_CHROMA_AMOUNT) * smoothstep(0.018, 0.16, sourceChroma));
     const rawA = applyZoneMapping(lab.a, lab.l, chromaMappings[0], weights);
     const rawB = applyZoneMapping(lab.b, lab.l, chromaMappings[1], weights);
-    const mapped = oklabToDisplayRgb(
+    const mapped = space.fromLab(
       mappedLightness,
       lab.a + (rawA - lab.a) * chromaAmount,
       lab.b + (rawB - lab.b) * chromaAmount,
@@ -309,4 +349,47 @@ export function fitGlobalResidualLut(
     residual[offset + 2] = clamp01(mapped[2]) - identity[offset + 2];
   }
   return createResidualLut(dimension, residual);
+}
+
+/**
+ * Fit a smooth Oklab tone-and-colour residual LUT.
+ *
+ * `source` and `reference` are packed RGB triplets already in the Rec.709
+ * Gamma 2.4 match domain (use `srgbToMatchDomain` for sRGB inputs).
+ */
+export function fitGlobalResidualLut(
+  source: Float32Array,
+  reference: Float32Array,
+  dimension = 33,
+): ResidualLut {
+  return fitResidualLutInSpace(source, reference, dimension, DISPLAY_SPACE);
+}
+
+/**
+ * Fit final DWG/DI LUT values directly from a DPX still and an sRGB reference.
+ *
+ * Unlike the display-domain fit followed by a bake, this builds the lattice in
+ * DaVinci Intermediate from the start: the reference is transformed into that
+ * same working space for the distribution fit, and every row is written as a
+ * final DWG/DI result. That matters on real footage, where a saturated colour
+ * can sit outside the Rec.709 volume even though its brightness is ordinary.
+ */
+export function fitDwgResidualLut(
+  sourceDwg: Float32Array,
+  referenceDisplay: Float32Array,
+  dimension = 33,
+): ResidualLut {
+  assertSamples(referenceDisplay, "REFERENCE");
+  const referenceDwg = new Float32Array(referenceDisplay.length);
+  for (let offset = 0; offset + 2 < referenceDisplay.length; offset += 3) {
+    const converted = displayToDwgIntermediate(
+      clamp01(referenceDisplay[offset]),
+      clamp01(referenceDisplay[offset + 1]),
+      clamp01(referenceDisplay[offset + 2]),
+    );
+    referenceDwg[offset] = converted[0];
+    referenceDwg[offset + 1] = converted[1];
+    referenceDwg[offset + 2] = converted[2];
+  }
+  return fitResidualLutInSpace(sourceDwg, referenceDwg, dimension, DWG_SPACE, 2e-6);
 }
