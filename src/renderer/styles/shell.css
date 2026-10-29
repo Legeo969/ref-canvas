@@ -469,9 +469,73 @@ button[aria-label] {
   grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(360px, 1fr);
 }
 
-/* 参考图仿色占满整块工作区：没有侧边栏，因此不存在“点一下就跳走”的歧义。 */
+/* 参考图仿色的排版与「磁盘」一致：侧栏 + 素材网格 + 右侧工具面板。
+   工具栏默认比预览宽一些，它要装下滑杆与读数。 */
 .workspace.match-workspace {
-  grid-template-columns: minmax(0, 1fr);
+  --panel-details: 420px;
+  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(0, 1fr) 8px var(--panel-details, 420px);
+}
+
+.match-tool-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--bg-base, #141817);
+}
+
+.match-tool-panel.is-drag-over {
+  outline: 1px dashed rgba(64, 161, 130, 0.6);
+  outline-offset: -4px;
+}
+
+.match-tool-header {
+  display: flex;
+  height: 40px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.match-tool-header strong {
+  color: #dfe5e2;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.match-tool-header .match-secondary {
+  height: 24px;
+  margin-left: auto;
+  padding: 0 8px;
+  font-size: 10.5px;
+}
+
+.match-tool-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0 6px 12px;
+}
+
+.match-tool-empty {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 7px;
+  padding: 24px;
+  color: #7d8783;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.match-tool-empty-hint {
+  max-width: 32ch;
+  color: #6f7975;
+  font-size: 10.5px;
+  line-height: 1.6;
 }
 
 .panel-divider {

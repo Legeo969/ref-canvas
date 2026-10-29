@@ -1814,8 +1814,8 @@ export type MessageKey =
 | "preview.matchPickSource"
 | "preview.matchChangeSource"
 | "preview.matchSourceHint"
-| "preview.matchOpenDisk"
-| "preview.matchFromDiskHint"
+
+| "preview.matchNoSource"
 
   | "preview.matchProtectContrast"
 

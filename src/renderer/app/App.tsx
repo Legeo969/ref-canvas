@@ -701,20 +701,29 @@ function WorkspaceApp() {
       />
 
       <div className={`workspace ${store.workspaceMode}-workspace`}>
-        {store.workspaceMode !== "match" && (
+        <Sidebar />
+        <PanelDividers
+          panel="sidebar"
+          activePanels={activePanelIds}
+          layout={effectivePanelLayout}
+          windowWidth={windowWidth}
+          onCommit={(next) => commitPanelLayout("sidebar", next)}
+        />
+        {store.workspaceMode === "match" ? (
           <>
-            <Sidebar />
+            <div className="workspace-main-column">
+              <BrowserTabBar />
+              <DirectoryAssetPanel />
+            </div>
             <PanelDividers
-              panel="sidebar"
+              panel="details"
               activePanels={activePanelIds}
               layout={effectivePanelLayout}
               windowWidth={windowWidth}
-              onCommit={(next) => commitPanelLayout("sidebar", next)}
+              onCommit={(next) => commitPanelLayout("details", next)}
             />
+            <MatchWorkspace />
           </>
-        )}
-        {store.workspaceMode === "match" ? (
-          <MatchWorkspace />
         ) : store.workspaceMode === "board" ? (
           store.activeBoard && store.boardDocument ? (
             <BoardCanvas

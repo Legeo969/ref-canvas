@@ -269,20 +269,23 @@ export function ReferenceMatchStudio({
     if (filename) acceptReference(filename);
   };
 
-  /** 整个面板都是投放区：用户不会先瞄准那一小块对比框。 */
-  const dragProps = {
+  /** 拖放分两个明确的落区：参考图行与对比区是“换参考图”，面板其余位置（由上层处理）是“换源画面”。
+   *  两层都监听 drop 时，内层必须 stopPropagation，否则一次拖动会同时被当参考图和源图。 */
+  const referenceDropProps = {
     onDragOver: (event: ReactDragEvent<HTMLElement>) => {
       event.preventDefault();
-      // 不声明 copy，部分来源（应用内部拖拽）会在松手时被判定为不允许。
+      event.stopPropagation();
       event.dataTransfer.dropEffect = "copy";
       setDragOver(true);
     },
     onDragLeave: (event: ReactDragEvent<HTMLElement>) => {
-      // 子元素之间移动也会触发 dragleave，只有真正离开面板才收起高亮。
       if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
       setDragOver(false);
     },
-    onDrop: dropReference,
+    onDrop: (event: ReactDragEvent<HTMLElement>) => {
+      event.stopPropagation();
+      dropReference(event);
+    },
   };
 
   const exportLut = async () => {
@@ -425,7 +428,7 @@ export function ReferenceMatchStudio({
   const ready = referencePath !== null;
 
   return (
-    <div className={`reference-match-studio${dragOver ? " is-drag-over" : ""}`} {...dragProps}>
+    <div className={`reference-match-studio${dragOver ? " is-drag-over" : ""}`}>
       <div className="match-source-row">
         <span className="match-source-label">{translate("preview.matchSource")}</span>
         <span className="match-source-name">{fileNameOf(sourcePath)}</span>
@@ -436,7 +439,7 @@ export function ReferenceMatchStudio({
         )}
       </div>
 
-      <div className="match-reference-row">
+      <div className="match-reference-row" {...referenceDropProps}>
         <button
           type="button"
           className={`match-reference-slot${dragOver ? " is-drag-over" : ""}`}
@@ -508,6 +511,7 @@ export function ReferenceMatchStudio({
             className={`match-compare${busy ? " is-busy" : ""}${ready ? "" : " is-empty"}${dragOver ? " is-drag-over" : ""}`}
             style={compareStyle}
             onDoubleClick={() => setDivider(50)}
+            {...referenceDropProps}
           >
             {!ready ? (
               // 空状态本身就是投放区：面板一打开就能看出这里是干什么的，

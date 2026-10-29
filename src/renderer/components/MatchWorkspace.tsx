@@ -7,17 +7,20 @@ import { DIRECTORY_ENTRY_MIME } from "./DirectoryAssetPanel";
 import { ReferenceMatchStudio } from "./ReferenceMatchStudio";
 
 /**
- * 参考图仿色工作区（与“磁盘 / 参考板”并列的顶级工作区）。
+ * 参考图仿色工具面板（工作区右侧那一栏）。
  *
- * 这块工具要同时摆下分屏对比、示波器与一整套参数，还得能直接看到导出的
- * cube 会挂在什么工作空间上。预览托盘只有四五百像素，塞不下，所以它是一整块
- * 工作区，而不是预览里的浮层。
+ * 它和预览面板占同一个位置，但不是预览里的浮层：左侧仍然是侧栏与素材网格，
+ * 点选素材即把它当源画面。源画面默认跟随当前选中项，也可以在这个面板里
+ * 重新选一张或直接拖进来。
  */
 export function MatchWorkspace() {
-  const sourcePath = useAppStore((state) => state.matchSourcePath);
+  const selectedEntry = useAppStore((state) => state.selectedDirectoryEntry);
+  const rememberedSource = useAppStore((state) => state.matchSourcePath);
   const showMatchWorkspace = useAppStore((state) => state.showMatchWorkspace);
-  const showDirectoryWorkspace = useAppStore((state) => state.showDirectoryWorkspace);
   const [dragOver, setDragOver] = useState(false);
+
+  const selectedPath = selectedEntry && !selectedEntry.isDirectory ? selectedEntry.path : null;
+  const sourcePath = selectedPath ?? rememberedSource;
 
   const acceptSource = (path: string) => showMatchWorkspace(path);
 
@@ -56,41 +59,10 @@ export function MatchWorkspace() {
     if (filename) acceptSource(filename);
   };
 
-  if (!sourcePath) {
-    return (
-      <section
-        className={`match-surface match-surface-empty${dragOver ? " is-drag-over" : ""}`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = "copy";
-          setDragOver(true);
-        }}
-        onDragLeave={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-          setDragOver(false);
-        }}
-        onDrop={dropSource}
-      >
-        <div className="match-surface-pick">
-          <button type="button" className="match-surface-dropzone" onClick={() => void pickSource()}>
-            <ImagePlus size={22} aria-hidden="true" />
-            <strong>{translate("preview.matchPickSource")}</strong>
-            <span>{translate("preview.matchSourceHint")}</span>
-          </button>
-          <div className="match-surface-pick-actions">
-            <button type="button" className="match-secondary" onClick={() => showDirectoryWorkspace()}>
-              {translate("preview.matchOpenDisk")}
-            </button>
-            <p className="match-surface-pick-note">{translate("preview.matchFromDiskHint")}</p>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section
-      className={`match-surface${dragOver ? " is-drag-over" : ""}`}
+    <aside
+      className={`match-tool-panel${dragOver ? " is-drag-over" : ""}`}
+      aria-label={translate("workspace.match")}
       onDragOver={(event) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
@@ -102,11 +74,27 @@ export function MatchWorkspace() {
       }}
       onDrop={dropSource}
     >
-      <ReferenceMatchStudio
-        key={sourcePath}
-        sourcePath={sourcePath}
-        onChangeSource={() => void pickSource()}
-      />
-    </section>
+      <header className="match-tool-header">
+        <strong>{translate("workspace.match")}</strong>
+        <button type="button" className="match-secondary" onClick={() => void pickSource()}>
+          <ImagePlus size={12} aria-hidden="true" />
+          {translate("preview.matchPickSource")}
+        </button>
+      </header>
+      <div className="match-tool-body">
+        {sourcePath ? (
+          <ReferenceMatchStudio
+            key={sourcePath}
+            sourcePath={sourcePath}
+            onChangeSource={() => void pickSource()}
+          />
+        ) : (
+          <div className="match-tool-empty">
+            <span>{translate("preview.matchNoSource")}</span>
+            <span className="match-tool-empty-hint">{translate("preview.matchSourceHint")}</span>
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
