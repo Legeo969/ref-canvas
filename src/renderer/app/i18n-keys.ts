@@ -1816,6 +1816,7 @@ export type MessageKey =
 | "preview.matchSourceHint"
 
 | "preview.matchNoSource"
+| "preview.matchSourceNone"
 
   | "preview.matchProtectContrast"
 

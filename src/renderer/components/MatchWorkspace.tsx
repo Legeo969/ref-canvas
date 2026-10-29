@@ -1,5 +1,5 @@
 import { ImagePlus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { translate } from "../app/i18n";
 import { useAppStore } from "../app/store";
@@ -9,20 +9,31 @@ import { ReferenceMatchStudio } from "./ReferenceMatchStudio";
 /**
  * 参考图仿色工具面板（工作区右侧那一栏）。
  *
- * 它和预览面板占同一个位置，但不是预览里的浮层：左侧仍然是侧栏与素材网格，
- * 点选素材即把它当源画面。源画面默认跟随当前选中项，也可以在这个面板里
- * 重新选一张或直接拖进来。
+ * 它是常驻的工作区，不是一次性的对话框：参考图、观感参数、上次拟合结果都留在
+ * 面板里，网格里点另一张素材只是换「源画面」。所以这里刻意不用 key 重挂组件，
+ * 并且记住上一张源：切目录时网格选中会清空，但工具不应该跟着变空。
  */
 export function MatchWorkspace() {
   const selectedEntry = useAppStore((state) => state.selectedDirectoryEntry);
   const rememberedSource = useAppStore((state) => state.matchSourcePath);
   const showMatchWorkspace = useAppStore((state) => state.showMatchWorkspace);
+  const [sourcePath, setSourcePath] = useState<string | null>(
+    selectedEntry && !selectedEntry.isDirectory ? selectedEntry.path : rememberedSource,
+  );
   const [dragOver, setDragOver] = useState(false);
 
-  const selectedPath = selectedEntry && !selectedEntry.isDirectory ? selectedEntry.path : null;
-  const sourcePath = selectedPath ?? rememberedSource;
+  // 网格里点中新素材才替换源画面；选中被清空（例如切了目录）时保留上一张，
+  // 否则右侧工具会在浏览过程中莫名其妙变空。
+  useEffect(() => {
+    if (selectedEntry && !selectedEntry.isDirectory) {
+      setSourcePath(selectedEntry.path);
+    }
+  }, [selectedEntry]);
 
-  const acceptSource = (path: string) => showMatchWorkspace(path);
+  const acceptSource = (path: string) => {
+    setSourcePath(path);
+    showMatchWorkspace(path);
+  };
 
   const pickSource = async () => {
     const [filename] = await window.refCanvas.system.pickFile({
@@ -82,18 +93,10 @@ export function MatchWorkspace() {
         </button>
       </header>
       <div className="match-tool-body">
-        {sourcePath ? (
-          <ReferenceMatchStudio
-            key={sourcePath}
-            sourcePath={sourcePath}
-            onChangeSource={() => void pickSource()}
-          />
-        ) : (
-          <div className="match-tool-empty">
-            <span>{translate("preview.matchNoSource")}</span>
-            <span className="match-tool-empty-hint">{translate("preview.matchSourceHint")}</span>
-          </div>
-        )}
+        <ReferenceMatchStudio
+          sourcePath={sourcePath}
+          onChangeSource={() => void pickSource()}
+        />
       </div>
     </aside>
   );

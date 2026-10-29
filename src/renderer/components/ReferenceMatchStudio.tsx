@@ -87,8 +87,8 @@ export function ReferenceMatchStudio({
   sourcePath,
   onChangeSource,
 }: {
-  /** 源画面：位图，或 DWG/DI、原生 S-Log3 的 DPX 静帧。 */
-  sourcePath: string;
+  /** 源画面：位图，或 DWG/DI、原生 S-Log3 的 DPX 静帧；未选时为 null。 */
+  sourcePath: string | null;
   /** 在工作区里换一张源画面（可选）。 */
   onChangeSource?: () => void;
 }) {
@@ -169,13 +169,13 @@ export function ReferenceMatchStudio({
     };
   }, [referencePath]);
 
-  const sourceIsDpx = isDpxPath(sourcePath);
+  const sourceIsDpx = sourcePath ? isDpxPath(sourcePath) : false;
   const slog3NeedsDpx = workspace === "slog3" && !sourceIsDpx;
   const rec709RejectsDpx = workspace === "rec709" && sourceIsDpx;
   const workspaceBlocked = slog3NeedsDpx || rec709RejectsDpx;
 
   const runMatch = useCallback(async () => {
-    if (!referencePath || workspaceBlocked) return;
+    if (!referencePath || !sourcePath || workspaceBlocked) return;
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
     setBusy(true);
@@ -215,17 +215,26 @@ export function ReferenceMatchStudio({
     slog3Gamut,
     slog3Range,
     workspace,
+    sourcePath,
     workspaceBlocked,
   ]);
 
+  // 换源画面：旧预览与导出状态立即作废，参考图与参数保留（工作区不应因为
+  // 换一个镜头就丢掉已经调好的配方）。
   useEffect(() => {
-    if (!referencePath || workspaceBlocked) {
-      if (!referencePath) setResult(null);
+    setResult(null);
+    setExportedPath(null);
+    setApplied(false);
+  }, [sourcePath]);
+
+  useEffect(() => {
+    if (!referencePath || !sourcePath || workspaceBlocked) {
+      if (!referencePath || !sourcePath) setResult(null);
       return;
     }
     const timer = setTimeout(() => void runMatch(), MATCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [referencePath, runMatch, workspaceBlocked]);
+  }, [referencePath, runMatch, sourcePath, workspaceBlocked]);
 
   /** 选图与拖放共用一条入口：重置对比位置与上一条导出结果。 */
   const acceptReference = useCallback((filename: string) => {
@@ -300,7 +309,7 @@ export function ReferenceMatchStudio({
       const saved = await window.refCanvas.media.exportMatchLut({
         lutPath: result.lutPath,
         targetDirectory: directory,
-        baseName: `${stemOf(sourcePath)}-match`,
+        baseName: `${sourcePath ? stemOf(sourcePath) : "reference-match"}-match`,
       });
       if (mountedRef.current) setExportedPath(saved.path);
     } catch (caught) {
@@ -322,7 +331,7 @@ export function ReferenceMatchStudio({
       const saved = await window.refCanvas.media.exportMatchPng({
         previewPath: result.previewPath,
         targetDirectory: directory,
-        baseName: `${stemOf(sourcePath)}-match-preview`,
+        baseName: `${sourcePath ? stemOf(sourcePath) : "reference-match"}-match-preview`,
       });
       if (mountedRef.current) setNotice(translate("preview.matchPngSaved").replace("{path}", saved.path));
     } catch (caught) {
@@ -340,7 +349,7 @@ export function ReferenceMatchStudio({
     try {
       const saved = await window.refCanvas.media.importMatchLutToLibrary({
         lutPath: result.lutPath,
-        name: `${stemOf(sourcePath)}-${result.workspace}`,
+        name: `${sourcePath ? stemOf(sourcePath) : "reference-match"}-${result.workspace}`,
       });
       if (mountedRef.current) {
         setNotice(translate("preview.matchLibraryImported").replace("{path}", saved.path));
@@ -426,12 +435,14 @@ export function ReferenceMatchStudio({
   }, [ratio, result]);
 
   const ready = referencePath !== null;
+  const hasSource = sourcePath !== null;
+  const canFit = ready && hasSource;
 
   return (
     <div className={`reference-match-studio${dragOver ? " is-drag-over" : ""}`}>
       <div className="match-source-row">
         <span className="match-source-label">{translate("preview.matchSource")}</span>
-        <span className="match-source-name">{fileNameOf(sourcePath)}</span>
+        <span className="match-source-name">{sourcePath ? fileNameOf(sourcePath) : translate("preview.matchSourceNone")}</span>
         {onChangeSource && (
           <button type="button" className="match-reference-change" onClick={onChangeSource}>
             {translate("preview.matchChangeSource")}
@@ -552,12 +563,17 @@ export function ReferenceMatchStudio({
               <div className="match-compare-placeholder">
                 {busy && <LoaderCircle className="spin" size={16} />}
                 {!busy && (
-                  <span>
-                    {workspaceBlocked
-                      ? workspace === "slog3"
-                        ? translate("preview.matchSlog3NeedsDpx")
-                        : translate("preview.matchDpxNeedsWorkspace")
-                      : translate("preview.matchWaiting")}
+                  <span className="match-placeholder">
+                    {!hasSource ? (
+                      <>
+                        {translate("preview.matchNoSource")}
+                        <small className="match-placeholder-hint">{translate("preview.matchSourceHint")}</small>
+                      </>
+                    ) : workspaceBlocked ? (
+                      <>{workspace === "slog3" ? translate("preview.matchSlog3NeedsDpx") : translate("preview.matchDpxNeedsWorkspace")}</>
+                    ) : (
+                      <>{translate("preview.matchWaiting")}</>
+                    )}
                   </span>
                 )}
               </div>
@@ -631,7 +647,7 @@ export function ReferenceMatchStudio({
                 min={0}
                 max={100}
                 value={controls.matchStrength}
-                disabled={!ready}
+                disabled={!canFit}
                 onChange={(event) => updateControl("matchStrength", Number(event.target.value))}
               />
             </label>
@@ -650,7 +666,7 @@ export function ReferenceMatchStudio({
                     min={0}
                     max={100}
                     value={controls[key]}
-                    disabled={!ready}
+                    disabled={!canFit}
                     onChange={(event) => updateControl(key, Number(event.target.value))}
                   />
                 </label>
@@ -669,7 +685,7 @@ export function ReferenceMatchStudio({
                   type="button"
                   className={`match-toggle${controls[key] ? " is-on" : ""}`}
                   aria-pressed={controls[key]}
-                  disabled={!ready}
+                  disabled={!canFit}
                   onClick={() => updateControl(key, !controls[key])}
                 >
                   {translate(label)}
@@ -689,7 +705,7 @@ export function ReferenceMatchStudio({
                   onValueChange={(value) => setDimension(value === 65 ? 65 : 33)}
                   ariaLabel={translate("preview.matchSize")}
                   className="match-size-menu"
-                  disabled={!ready}
+                  disabled={!canFit}
                 />
               </label>
               <button
@@ -723,7 +739,7 @@ export function ReferenceMatchStudio({
                 type="button"
                 className="match-reset"
                 aria-label={translate("preview.matchReset")}
-                disabled={!ready}
+                disabled={!canFit}
                 onClick={() => setControls(DEFAULT_CONTROLS)}
               >
                 <Sparkles size={14} />
