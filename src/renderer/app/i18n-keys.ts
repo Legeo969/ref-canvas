@@ -1769,7 +1769,6 @@ export type MessageKey =
   | "preview.matchMidtones"
 
   | "preview.matchOpen"
-| "preview.matchClose"
 | "preview.matchWorkspace"
 | "preview.matchWorkspaceRec709"
 | "preview.matchWorkspaceDwg"
@@ -1811,6 +1810,10 @@ export type MessageKey =
   | "preview.matchPickDirectory"
 
   | "preview.matchPickReference"
+| "preview.matchSource"
+| "preview.matchPickSource"
+| "preview.matchChangeSource"
+| "preview.matchSourceHint"
 
   | "preview.matchProtectContrast"
 
@@ -1836,7 +1839,6 @@ export type MessageKey =
 
   | "preview.matchTargetMissing"
 
-  | "preview.matchUseCurrentFrame"
 
   | "preview.matchWaiting"
 
@@ -2510,6 +2512,8 @@ export type MessageKey =
   | "status.boardReady"
 
   | "status.diskReady"
+| "status.matchReady"
+| "status.hint.match"
 
   | "status.hint.boardPureRef"
 
@@ -2669,6 +2673,7 @@ export type MessageKey =
   | "workspace.adjustPanelWidth"
 
   | "workspace.board"
+| "workspace.match"
 
   | "workspace.boardDefault"
 

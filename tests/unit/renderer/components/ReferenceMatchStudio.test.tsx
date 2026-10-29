@@ -79,7 +79,7 @@ describe("ReferenceMatchStudio", () => {
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
-    await act(async () => root.render(<ReferenceMatchStudio asset={asset} timeMs={0} />));
+    await act(async () => root.render(<ReferenceMatchStudio sourcePath={asset.path} />));
     expect(host.textContent).toContain("拖入或选择一张参考图");
     // 没选参考图时面板仍应是一块完整的工具：有投放区和置灰的参数。
     expect(host.querySelector(".match-dropzone")).not.toBeNull();
@@ -117,7 +117,7 @@ describe("ReferenceMatchStudio", () => {
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
-    await act(async () => root.render(<ReferenceMatchStudio asset={asset} timeMs={0} />));
+    await act(async () => root.render(<ReferenceMatchStudio sourcePath={asset.path} />));
 
     await act(async () => {
       host.querySelector<HTMLButtonElement>(".match-reference-slot")?.click();
@@ -183,7 +183,7 @@ describe("ReferenceMatchStudio", () => {
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
-    await act(async () => root.render(<ReferenceMatchStudio asset={asset} timeMs={0} />));
+    await act(async () => root.render(<ReferenceMatchStudio sourcePath={asset.path} />));
 
     // 网格拖拽只带自定义 MIME，没有 File 对象。
     const drop = new Event("drop", { bubbles: true, cancelable: true });
@@ -229,7 +229,7 @@ describe("ReferenceMatchStudio", () => {
     document.body.append(host);
     const root = createRoot(host);
     roots.push(root);
-    await act(async () => root.render(<ReferenceMatchStudio asset={asset} timeMs={0} />));
+    await act(async () => root.render(<ReferenceMatchStudio sourcePath={asset.path} />));
     await act(async () => {
       host.querySelector<HTMLButtonElement>(".match-reference-slot")?.click();
     });

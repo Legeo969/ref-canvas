@@ -4,6 +4,7 @@ export const catalog = {
   en: {
     "workspace.disk": "Disk",
     "workspace.board": "Boards",
+  "workspace.match": "Reference match",
     "titlebar.screenshot": "Screenshot",
     "titlebar.settings": "Settings",
     "titlebar.tasks": "Tasks",
@@ -44,6 +45,8 @@ export const catalog = {
     "sidebar.expand": "Expand",
     "sidebar.adjustHeight": "Adjust panel height",
     "status.diskReady": "Disk browsing ready",
+  "status.matchReady": "Reference match ready",
+  "status.hint.match": "Drop a source still and a reference image to fit a LUT",
     "status.boardReady": "Boards ready",
     "status.importing": "Updating file index…",
     "status.hint.directory": "Arrow keys browse · Space preview · F favorite · 0–5 rate · Alt+drag media out",
@@ -85,6 +88,7 @@ export const catalog = {
   zhCN: {
     "workspace.disk": "磁盘",
     "workspace.board": "参考板",
+  "workspace.match": "参考图仿色",
     "titlebar.screenshot": "截图",
     "titlebar.settings": "设置",
     "titlebar.tasks": "任务",
@@ -125,6 +129,8 @@ export const catalog = {
     "sidebar.expand": "展开",
     "sidebar.adjustHeight": "调整面板高度",
     "status.diskReady": "磁盘浏览已就绪",
+  "status.matchReady": "参考图仿色已就绪",
+  "status.hint.match": "放入一张源画面与一张参考图即可拟合 LUT",
     "status.boardReady": "参考板已就绪",
     "status.importing": "正在更新文件索引…",
     "status.hint.directory": "方向键浏览 · Space 预览 · F 收藏 · 0–5 评分 · 素材 Alt+拖到外部",

@@ -2,7 +2,6 @@ import { FolderOpen, ImageOff, ImagePlus, LoaderCircle, Save, Settings2, Sparkle
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from "react";
 import type {
-  AssetRecord,
   ReferenceMatchAnalysis,
   ReferenceMatchControls,
   ReferenceMatchHueFamily,
@@ -85,12 +84,13 @@ const WORKSPACE_OPTIONS: { value: ReferenceMatchWorkspace; labelKey: Parameters<
 ];
 
 export function ReferenceMatchStudio({
-  asset,
-  timeMs,
+  sourcePath,
+  onChangeSource,
 }: {
-  asset: AssetRecord;
-  /** 视频/序列当前播放位置；静态图片会被主进程忽略。 */
-  timeMs: number;
+  /** 源画面：位图，或 DWG/DI、原生 S-Log3 的 DPX 静帧。 */
+  sourcePath: string;
+  /** 在工作区里换一张源画面（可选）。 */
+  onChangeSource?: () => void;
 }) {
   const [referencePath, setReferencePath] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<ReferenceMatchAnalysis | null>(null);
@@ -106,7 +106,6 @@ export function ReferenceMatchStudio({
   const [notice, setNotice] = useState<string | null>(null);
   const [divider, setDivider] = useState(50);
   const [dragOver, setDragOver] = useState(false);
-  const [pinnedTimeMs, setPinnedTimeMs] = useState(timeMs);
   const [exporting, setExporting] = useState(false);
   const [exportingPng, setExportingPng] = useState(false);
   const [exportedPath, setExportedPath] = useState<string | null>(null);
@@ -170,7 +169,7 @@ export function ReferenceMatchStudio({
     };
   }, [referencePath]);
 
-  const sourceIsDpx = isDpxPath(asset.path);
+  const sourceIsDpx = isDpxPath(sourcePath);
   const slog3NeedsDpx = workspace === "slog3" && !sourceIsDpx;
   const rec709RejectsDpx = workspace === "rec709" && sourceIsDpx;
   const workspaceBlocked = slog3NeedsDpx || rec709RejectsDpx;
@@ -183,9 +182,9 @@ export function ReferenceMatchStudio({
     setError(null);
     try {
       const next = await window.refCanvas.media.matchCreate({
-        sourcePath: asset.path,
+        sourcePath: sourcePath,
         referencePath,
-        timeMs: pinnedTimeMs,
+        timeMs: 0,
         controls,
         dimension,
         workspace,
@@ -209,10 +208,9 @@ export function ReferenceMatchStudio({
       if (mountedRef.current && requestRef.current === requestId) setBusy(false);
     }
   }, [
-    asset.path,
+    sourcePath,
     controls,
     dimension,
-    pinnedTimeMs,
     referencePath,
     slog3Gamut,
     slog3Range,
@@ -299,7 +297,7 @@ export function ReferenceMatchStudio({
       const saved = await window.refCanvas.media.exportMatchLut({
         lutPath: result.lutPath,
         targetDirectory: directory,
-        baseName: `${stemOf(asset.path)}-match`,
+        baseName: `${stemOf(sourcePath)}-match`,
       });
       if (mountedRef.current) setExportedPath(saved.path);
     } catch (caught) {
@@ -321,7 +319,7 @@ export function ReferenceMatchStudio({
       const saved = await window.refCanvas.media.exportMatchPng({
         previewPath: result.previewPath,
         targetDirectory: directory,
-        baseName: `${stemOf(asset.path)}-match-preview`,
+        baseName: `${stemOf(sourcePath)}-match-preview`,
       });
       if (mountedRef.current) setNotice(translate("preview.matchPngSaved").replace("{path}", saved.path));
     } catch (caught) {
@@ -339,7 +337,7 @@ export function ReferenceMatchStudio({
     try {
       const saved = await window.refCanvas.media.importMatchLutToLibrary({
         lutPath: result.lutPath,
-        name: `${stemOf(asset.path)}-${result.workspace}`,
+        name: `${stemOf(sourcePath)}-${result.workspace}`,
       });
       if (mountedRef.current) {
         setNotice(translate("preview.matchLibraryImported").replace("{path}", saved.path));
@@ -428,6 +426,16 @@ export function ReferenceMatchStudio({
 
   return (
     <div className={`reference-match-studio${dragOver ? " is-drag-over" : ""}`} {...dragProps}>
+      <div className="match-source-row">
+        <span className="match-source-label">{translate("preview.matchSource")}</span>
+        <span className="match-source-name">{fileNameOf(sourcePath)}</span>
+        {onChangeSource && (
+          <button type="button" className="match-reference-change" onClick={onChangeSource}>
+            {translate("preview.matchChangeSource")}
+          </button>
+        )}
+      </div>
+
       <div className="match-reference-row">
         <button
           type="button"
@@ -770,15 +778,6 @@ export function ReferenceMatchStudio({
               </div>
             )}
 
-            {asset.duration ? (
-              <button
-                type="button"
-                className="match-pin-frame"
-                onClick={() => setPinnedTimeMs(Math.round(timeMs))}
-              >
-                {translate("preview.matchUseCurrentFrame")}
-              </button>
-            ) : null}
             {exportedPath && (
               <p className="match-exported">
                 {translate("preview.matchExported")}{" "}

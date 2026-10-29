@@ -1,7 +1,7 @@
 /** Presentation is a board-only surface, even if the native window reports fullscreen. */
 export function presentationModeForWorkspace(
   nativeFullscreen: boolean,
-  workspaceMode: "directory" | "board",
+  workspaceMode: "directory" | "board" | "match",
 ): boolean {
   return nativeFullscreen && workspaceMode === "board";
 }
@@ -13,7 +13,7 @@ export function presentationModeForWorkspace(
  */
 export function presentationTargetForF11(
   active: boolean,
-  workspaceMode: "directory" | "board",
+  workspaceMode: "directory" | "board" | "match",
 ): boolean | null {
   if (workspaceMode !== "board") return active ? false : null;
   return !active;

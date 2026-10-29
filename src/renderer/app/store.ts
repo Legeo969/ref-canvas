@@ -64,7 +64,7 @@ export interface AppState
     DirectorySliceState,
     BoardSliceState,
     PreferencesSliceState {
-  workspaceMode: "directory" | "board";
+  workspaceMode: "directory" | "board" | "match";
   initialize(): Promise<void>;
   reloadAssets(): Promise<void>;
   selectAsset(asset: AssetRecord | null): void;
@@ -82,6 +82,9 @@ export interface AppState
   addDirectoryEntriesToBoard(paths: string[]): Promise<AssetRecord[]>;
   consumePendingBoardAssets(ids: string[]): void;
   showDirectoryWorkspace(): void;
+  /** 参考图仿色工作区：可带一个源画面路径（从预览的 LUT 菜单进来时）。 */
+  showMatchWorkspace(sourcePath?: string): void;
+  matchSourcePath: string | null;
   toggleFocusMode(): void;
   /** 引用集合（FND-003 §6.3）：打开集合视图；null 关闭。 */
   activeCollectionId: string | null;
@@ -237,6 +240,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   ...createPreferencesSliceState(),
   workspaceMode: "directory",
 
+  matchSourcePath: null,
+
   initialize: async () => {
     if (initializationPromise) return initializationPromise;
     const run = (async () => {
@@ -304,6 +309,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentLibraryName: appInfo.libraryName,
       preferences,
       workspaceMode: "directory",
+
+      matchSourcePath: null,
       browserTabs: navigationV3.tabs,
       activeTabId: navigationV3.activeTabId ?? navigationV3.tabs[0]?.id ?? "",
       navigationSource: "directory",
@@ -351,6 +358,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!directoryOpened) {
       set({
         workspaceMode: "directory",
+
+        matchSourcePath: null,
         navigationSource: "directory",
         directoryPath: null,
       });
@@ -394,6 +403,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().openDirectory(directory);
     set({
       workspaceMode: "directory",
+
+      matchSourcePath: null,
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: null,
@@ -580,10 +591,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
+  /**
+   * 进参考图仿色工作区。
+   *
+   * 它是一个顶级工作区（和“磁盘/参考板”并列），不是预览里的浮层：
+   * 面板要同时放画面、示波器和一整套参数，托盘里已经没有位置。
+   */
+  showMatchWorkspace: (sourcePath) => {
+    set({
+      workspaceMode: "match",
+      focusMode: false,
+      ...(sourcePath ? { matchSourcePath: sourcePath } : {}),
+    });
+  },
+
   showDirectoryWorkspace: () => {
     const state = get();
     set({
       workspaceMode: "directory",
+
+      matchSourcePath: null,
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: null,
@@ -623,6 +650,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   openCollection: (id) => {
     set({
       workspaceMode: "directory",
+
+      matchSourcePath: null,
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: id,
@@ -741,6 +770,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const generation = ++directoryOpenGeneration;
     set({
       workspaceMode: "directory",
+
+      matchSourcePath: null,
       navigationSource: "directory",
       focusMode: false,
       activeCollectionId: null,
@@ -807,6 +838,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         set({
           workspaceMode: "directory",
+
+          matchSourcePath: null,
           navigationSource: "directory",
           focusMode: false,
           activeCollectionId: null,
@@ -851,6 +884,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       // 集合标签：切换到对应集合视图（集合引用不依赖目录路径）。
       set({
         workspaceMode: "directory",
+
+        matchSourcePath: null,
         navigationSource: "directory",
         focusMode: false,
         directoryPath: null,

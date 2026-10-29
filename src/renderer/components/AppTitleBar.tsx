@@ -1,5 +1,6 @@
 import {
   Camera,
+  Blend,
   Expand,
   FileJson,
   FolderInput,
@@ -16,13 +17,14 @@ import {
 import { translate } from "../app/i18n";
 
 interface AppTitleBarProps {
-  workspaceMode: "directory" | "board";
+  workspaceMode: "directory" | "board" | "match";
   focusMode: boolean;
   capturePreparing: boolean;
   alwaysOnTop: boolean;
   pinPending: boolean;
   onShowDirectoryWorkspace(): void;
   onShowBoardWorkspace(): void;
+  onShowMatchWorkspace(): void;
   onPrepareRegionCapture(): void;
   onExportPng(): void;
   onExportPackage(): void;
@@ -46,6 +48,7 @@ export function AppTitleBar({
   pinPending,
   onShowDirectoryWorkspace,
   onShowBoardWorkspace,
+  onShowMatchWorkspace,
   onPrepareRegionCapture,
   onExportPng,
   onExportPackage,
@@ -81,6 +84,15 @@ export function AppTitleBar({
           >
             <PanelsTopLeft size={14} />
             {translate("workspace.board")}
+          </button>
+          <button
+            role="tab"
+            aria-selected={workspaceMode === "match"}
+            className={workspaceMode === "match" ? "active" : ""}
+            onClick={onShowMatchWorkspace}
+          >
+            <Blend size={14} />
+            {translate("workspace.match")}
           </button>
         </div>
       </div>
