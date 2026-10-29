@@ -470,10 +470,10 @@ button[aria-label] {
 }
 
 /* 参考图仿色的排版与「磁盘」一致：侧栏 + 素材网格 + 右侧工具面板。
-   工具栏默认比预览宽一些，它要装下滑杆与读数。 */
+   注意不要在这里覆盖 --panel-details：分栏宽度是写到 :root 上的，
+   局部覆盖会让分隔条拖动看起来失效。 */
 .workspace.match-workspace {
-  --panel-details: 420px;
-  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(0, 1fr) 8px var(--panel-details, 420px);
+  grid-template-columns: var(--panel-sidebar, 260px) 8px minmax(0, 1fr) 8px var(--panel-details, 286px);
 }
 
 .match-tool-panel {
