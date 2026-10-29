@@ -126,6 +126,17 @@ export function ReferenceMatchStudio({
     };
   }, []);
 
+  // 拖出窗口或全局松手时浏览器不一定发 dragleave，高亮会粘住。
+  useEffect(() => {
+    const clear = () => setDragOver(false);
+    window.addEventListener("drop", clear);
+    window.addEventListener("dragend", clear);
+    return () => {
+      window.removeEventListener("drop", clear);
+      window.removeEventListener("dragend", clear);
+    };
+  }, []);
+
   // 设置只在打开设置区时读一次，避免每次渲染都过 IPC。
   useEffect(() => {
     if (!settingsOpen) return;

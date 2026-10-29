@@ -35,16 +35,32 @@
   overflow: hidden;
 }
 
-/* 宽托盘（聚焦、全屏、拉宽的侧栏）：画面占主列，参数收到右侧一栏。 */
-@container match (min-width: 760px) {
+/* 只有真正宽的面板才值得切双栏：960px 时拆成“画面 + 340px 参数”会让画面只剩
+   600px，还不如竖向堆叠、把整栏宽度都给画面。 */
+@container match (min-width: 1080px) {
   .match-body {
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) 320px;
     align-items: start;
   }
 
-  /* 340px 里四列读数会把“暖橙 · -40°”这类值挤断，改成两列。 */
   .match-side .match-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 竖排时把参数摊成两列，别让滑块排成一条长队。 */
+@container match (min-width: 560px) {
+  .match-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .match-controls > .match-actions,
+  .match-controls > .match-settings,
+  .match-controls > .match-exported,
+  .match-controls > .match-applied,
+  .match-controls > .match-result-meta {
+    grid-column: 1 / -1;
   }
 }
 
@@ -557,61 +573,8 @@
   color: #a9e6d2;
 }
 
-/* ── 参考图仿色工作区（与“磁盘 / 参考板”并列）───────────────────────── */
 
-.match-surface {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-  overflow: auto;
-  padding: 12px 14px 16px;
-}
-
-.match-surface.is-drag-over {
-  outline: 1px dashed rgba(64, 161, 130, 0.6);
-  outline-offset: -6px;
-}
-
-.match-surface-empty {
-  display: grid;
-  place-items: center;
-}
-
-.match-surface-dropzone {
-  display: grid;
-  width: min(560px, 82%);
-  justify-items: center;
-  gap: 9px;
-  padding: 40px 26px;
-  border: 1px dashed rgba(255, 255, 255, 0.16);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  color: #8b9591;
-  font-size: 11.5px;
-  text-align: center;
-}
-
-.match-surface-dropzone strong {
-  color: #d5dbd8;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.match-surface-dropzone span {
-  max-width: 40ch;
-  line-height: 1.6;
-}
-
-.match-surface-dropzone:hover {
-  border-color: rgba(64, 161, 130, 0.55);
-  color: #c8d2ce;
-}
-
-/* 工作区里画面可以更高：这正是它值得占一整块的理由。 */
-.match-surface .reference-match-studio {
-  --match-compare-cap: min(62vh, 720px);
-}
+/* ── 工具面板（右侧那一栏）──────────────────────────────────────── */
 
 .match-source-row {
   display: flex;
@@ -631,7 +594,9 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}/* ── 面板新增控件（工作空间、次级动作、设置区）──────────────────────── */
+}
+
+/* ── 面板新增控件（工作空间、次级动作、设置区）──────────────────────── */
 
 .match-workspace-menu .select-menu-trigger {
   width: auto;
@@ -758,27 +723,6 @@
   color: #7d8783;
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
-}
-
-.match-surface-pick {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-}
-
-.match-surface-pick-actions {
-  display: grid;
-  justify-items: center;
-  gap: 7px;
-}
-
-.match-surface-pick-note {
-  max-width: 46ch;
-  margin: 0;
-  color: #6f7975;
-  font-size: 10.5px;
-  line-height: 1.6;
-  text-align: center;
 }
 
 .match-placeholder {

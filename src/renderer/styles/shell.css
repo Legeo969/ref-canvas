@@ -486,8 +486,7 @@ button[aria-label] {
 }
 
 .match-tool-panel.is-drag-over {
-  outline: 1px dashed rgba(64, 161, 130, 0.6);
-  outline-offset: -4px;
+  background: rgba(64, 161, 130, 0.06);
 }
 
 .match-tool-header {

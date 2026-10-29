@@ -30,6 +30,18 @@ export function MatchWorkspace() {
     }
   }, [selectedEntry]);
 
+  // 拖到面板外松手时浏览器不一定发 dragleave，高亮会一直挂着；
+  // 统一在全局 drop / dragend 时收尾。
+  useEffect(() => {
+    const clear = () => setDragOver(false);
+    window.addEventListener("drop", clear);
+    window.addEventListener("dragend", clear);
+    return () => {
+      window.removeEventListener("drop", clear);
+      window.removeEventListener("dragend", clear);
+    };
+  }, []);
+
   const acceptSource = (path: string) => {
     setSourcePath(path);
     showMatchWorkspace(path);
