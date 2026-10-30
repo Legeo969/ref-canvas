@@ -518,6 +518,11 @@ button[aria-label] {
   padding: 0 6px 12px;
 }
 
+/* 工具面板里画面可以更大：这正是它占一整块的理由。 */
+.match-tool-body .reference-match-studio {
+  --match-compare-cap: min(64vh, 640px);
+}
+
 .match-tool-empty {
   display: grid;
   height: 100%;

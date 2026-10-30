@@ -35,11 +35,13 @@
   overflow: hidden;
 }
 
-/* 只有真正宽的面板才值得切双栏：960px 时拆成“画面 + 340px 参数”会让画面只剩
-   600px，还不如竖向堆叠、把整栏宽度都给画面。 */
-@container match (min-width: 1080px) {
-  .match-body {
-    grid-template-columns: minmax(0, 1fr) 320px;
+/* 画面永远横跨整栏，不随宽度切双栏：这个工具的主体是那张对比图，
+   拆成“画面 + 参数栏”只会让画面变小，而且拖动分隔条时会突然换一种排版。 */
+
+/* 真正宽的面板里，把读数与参数并排，把横向空间用起来。 */
+@container match (min-width: 900px) {
+  .match-side {
+    grid-template-columns: 268px minmax(0, 1fr);
     align-items: start;
   }
 
@@ -48,27 +50,10 @@
   }
 }
 
-/* 竖排时把参数摊成两列，别让滑块排成一条长队。 */
-@container match (min-width: 560px) {
-  .match-controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
-
-  .match-controls > .match-actions,
-  .match-controls > .match-settings,
-  .match-controls > .match-exported,
-  .match-controls > .match-applied,
-  .match-controls > .match-result-meta {
-    grid-column: 1 / -1;
-  }
-}
-
 /* 整个面板都能接受拖放：拖动经过时给一圈提示，否则用户不知道能放。 */
 .reference-match-studio.is-drag-over {
   border-radius: 6px;
-  outline: 1px dashed rgba(64, 161, 130, 0.65);
-  outline-offset: -5px;
+  box-shadow: inset 0 0 0 1px rgba(64, 161, 130, 0.55);
 }
 
 .match-reference-row {
@@ -146,9 +131,10 @@
 }
 
 .match-compare.is-empty {
-  border: 1px dashed rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.02);
-  box-shadow: none;
+  /* 空态用素底线描边，不用虚线：虚线与“拖拽残留”长得太像。 */
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.015);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .match-compare.is-drag-over {

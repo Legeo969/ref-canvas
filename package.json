@@ -1,7 +1,7 @@
 {
   "name": "ref-canvas",
   "productName": "RefCanvas",
-  "version": "0.40.8",
+  "version": "0.40.9",
   "description": "A disk-native media browser and infinite reference canvas.",
   "main": ".vite/build/main.js",
   "private": true,
