@@ -7,7 +7,15 @@ const root = path.resolve(__dirname, "../..");
 const version = require(path.join(root, "package.json")).version;
 const releaseDirectory = process.env.REFCANVAS_RELEASE_DIRECTORY ??
   path.join(path.dirname(root), "ref-canvas-releases", version);
+// pnpm 11 on Windows reports npm_execpath as pnpm.exe; Node cannot load an
+// executable as a script, so call the binary directly instead of wrapping it
+// in process.execPath. Only a JS entry point goes through node.
 const pnpmCli = process.env.npm_execpath;
+const pnpmInvocation = !pnpmCli
+  ? { command: "pnpm", args: [], shell: process.platform === "win32" }
+  : /\.(?:cjs|mjs|js)$/i.test(pnpmCli)
+    ? { command: process.execPath, args: [pnpmCli], shell: false }
+    : { command: pnpmCli, args: [], shell: false };
 const signingConfigured = Boolean(
   process.env.REFCANVAS_CERTIFICATE_FILE ||
     process.env.REFCANVAS_SIGN_WITH_PARAMS,
@@ -26,12 +34,11 @@ if (userTempDirectory) {
 }
 
 function run(script) {
-  const result = pnpmCli
-    ? spawnSync(process.execPath, [pnpmCli, script], {
-        cwd: root,
-        stdio: "inherit",
-      })
-    : spawnSync("pnpm", [script], { cwd: root, stdio: "inherit" });
+  const result = spawnSync(
+    pnpmInvocation.command,
+    [...pnpmInvocation.args, script],
+    { cwd: root, stdio: "inherit", shell: pnpmInvocation.shell },
+  );
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
